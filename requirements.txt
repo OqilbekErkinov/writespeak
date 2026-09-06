@@ -1,0 +1,28 @@
+aiogram==3.15.0
+pydantic-settings==2.6.1
+SQLAlchemy==2.0.36
+asyncpg==0.30.0
+psycopg[binary]==3.2.3
+alembic==1.14.0
+redis==5.2.0
+openai==1.57.0
+weasyprint==63.1
+Jinja2==3.1.6
+pypdf==5.1.0
+pdf2image==1.17.0
+python-docx==1.1.2
+Pillow==11.0.0
+matplotlib==3.9.3
+pgvector==0.3.6
+python-dotenv==1.0.1
+aiofiles==24.1.0
+# --- Web admin panel (webapp/) ---
+# fastapi/uvicorn resolved unpinned on 2026-08-29's build, then pinned here -
+# note the jump to starlette 1.x that came with it changed
+# Jinja2Templates.TemplateResponse's signature (request is now the first
+# positional arg, no longer stuffed into the context dict) - see
+# webapp/main.py, and re-check that call shape before bumping fastapi again.
+fastapi==0.141.1
+uvicorn==0.52.4
+itsdangerous==2.2.0
+python-multipart==0.0.32

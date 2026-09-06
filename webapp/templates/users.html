@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Foydalanuvchilar — WriteSpeak Admin{% endblock %}
+{% block content %}
+<h1>Foydalanuvchilar</h1>
+
+<form method="get" action="/users" style="margin-bottom: 16px;">
+  <input type="text" name="q" value="{{ q }}" placeholder="Ism, username yoki ID bo'yicha qidirish..." style="width: 320px;">
+  <button type="submit" class="btn">Qidirish</button>
+</form>
+
+<div class="card">
+  {% if users %}
+  <div class="table-scroll">
+  <table>
+    <tr>
+      <th>ID</th><th>Ism</th><th>Username</th><th>Til</th><th>Kredit</th><th>Obuna</th><th>Qo'shilgan</th>
+    </tr>
+    {% for u in users %}
+    <tr>
+      <td class="strong">{{ u.id }}</td>
+      <td>{{ u.full_name }}</td>
+      <td>{{ "@" + u.username if u.username else "—" }}</td>
+      <td>{{ "🇷🇺 RU" if u.language == "ru" else "🇺🇿 UZ" }}</td>
+      <td>{{ u.credit_balance }}</td>
+      <td>
+        {% if u.subscription_expires_at and u.subscription_expires_at > now %}
+          <span class="pill pill-good">faol</span>
+        {% else %}
+          —
+        {% endif %}
+      </td>
+      <td>{{ u.created_at.strftime("%d.%m.%Y") if u.created_at else "—" }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+  {% else %}
+  <div class="empty">Hech kim topilmadi.</div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,17 @@
+[
+  {"topic": "a person", "question_text": "Describe a person who has influenced you a lot. You should say: who this person is; how you know this person; what this person is like; and explain why this person has influenced you so much."},
+  {"topic": "a place", "question_text": "Describe a place you have visited that you found particularly beautiful. You should say: where this place is; when you visited it; what you did there; and explain why you found it beautiful."},
+  {"topic": "an object", "question_text": "Describe an object that is important to you. You should say: what the object is; where you got it from; how long you have had it; and explain why it is important to you."},
+  {"topic": "an event", "question_text": "Describe a memorable event in your life. You should say: what the event was; when and where it happened; who was involved; and explain why it was memorable for you."},
+  {"topic": "a skill", "question_text": "Describe a skill you would like to learn. You should say: what the skill is; how you would learn it; how long it would take to learn; and explain why you want to learn this skill."},
+  {"topic": "a book", "question_text": "Describe a book that you have read and enjoyed. You should say: what the book is about; when you read it; why you decided to read it; and explain why you enjoyed it."},
+  {"topic": "a journey", "question_text": "Describe a memorable journey you have taken. You should say: where you went; who you went with; how you travelled; and explain why the journey was memorable."},
+  {"topic": "a piece of technology", "question_text": "Describe a piece of technology you find useful. You should say: what it is; how often you use it; how you learned to use it; and explain why you find it useful."},
+  {"topic": "a celebration", "question_text": "Describe a celebration or festival that is important in your country. You should say: what the celebration is; when it takes place; how people celebrate it; and explain why it is important."},
+  {"topic": "a goal", "question_text": "Describe a goal you have set for yourself. You should say: what the goal is; when you set it; what steps you are taking to achieve it; and explain why this goal is important to you."},
+  {"topic": "a teacher", "question_text": "Describe a teacher who has had a positive impact on you. You should say: who this teacher was; what subject they taught; what they were like; and explain how they influenced you."},
+  {"topic": "a difficult decision", "question_text": "Describe a difficult decision you have had to make. You should say: what the decision was; when you had to make it; what options you had; and explain how you made your final decision."},
+  {"topic": "a piece of art", "question_text": "Describe a piece of art or a film that impressed you. You should say: what it was; when you saw it; what it was about; and explain why it impressed you."},
+  {"topic": "a healthy habit", "question_text": "Describe a healthy habit you have or would like to develop. You should say: what the habit is; how you started it (or would start it); how difficult it was; and explain why it is important to you."},
+  {"topic": "a business", "question_text": "Describe a successful business you know about. You should say: what the business does; how you know about it; what makes it successful; and explain why you admire it."}
+]

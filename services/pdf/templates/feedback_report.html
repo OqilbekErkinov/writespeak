@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  @page {
+    size: A4;
+    margin: 2.2cm 1.8cm 2.5cm 1.8cm;
+    @bottom-center {
+      content: "WriteSpeak \00A0 \2022 \00A0 Page " counter(page) " / " counter(pages);
+      font-size: 8pt;
+      color: #8a94a6;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'Noto Sans', 'DejaVu Sans', sans-serif;
+    color: #1f2430;
+    font-size: 10.5pt;
+    line-height: 1.55;
+  }
+  h1, h2, h3 { font-family: 'Noto Sans', sans-serif; margin: 0; }
+
+  .header {
+    background: #0f1c3f;
+    color: #ffffff;
+    padding: 22px 26px;
+    border-radius: 10px;
+    margin-bottom: 22px;
+  }
+  .header .brand { font-size: 9pt; letter-spacing: 2px; text-transform: uppercase; color: #93a5d1; }
+  .header h1 { font-size: 20pt; margin-top: 4px; }
+  .header .meta { margin-top: 10px; font-size: 9.5pt; color: #c7d0ea; }
+
+  .score-box {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    margin: 18px 0 22px 0;
+    padding: 16px 20px;
+    background: #f4f6fb;
+    border-left: 5px solid #0f1c3f;
+    border-radius: 6px;
+  }
+  .score-box .band {
+    font-size: 30pt;
+    font-weight: 700;
+    color: #0f1c3f;
+    min-width: 90px;
+  }
+  .score-box .criteria { font-size: 9.5pt; }
+  .score-box .criteria div { margin-bottom: 2px; }
+  .score-box .criteria b { display: inline-block; min-width: 210px; }
+
+  section { margin-bottom: 24px; }
+  section > h2 {
+    font-size: 13pt;
+    color: #0f1c3f;
+    border-bottom: 2px solid #e2e6f0;
+    padding-bottom: 6px;
+    margin-bottom: 12px;
+  }
+
+  .legend { font-size: 8.5pt; color: #555; margin-bottom: 10px; }
+  .legend span { padding: 1px 6px; border-radius: 4px; margin-right: 10px; }
+
+  .answer-block {
+    background: #fbfbfd;
+    border: 1px solid #e6e9f2;
+    border-radius: 6px;
+    padding: 16px 18px;
+    font-size: 10.5pt;
+  }
+  /* "red" stays the internal/stored tier name (schema + historical-data
+     stability - see services/ai/schemas.py's Annotation.color comment), but
+     it renders amber/gold, not an alarming red - Revision Brief v2,
+     Section 2 (2026-08-30). */
+  mark.hl-green  { background: #c9f2d8; color: #0d4a2a; padding: 1px 2px; border-radius: 3px; }
+  mark.hl-yellow { background: #ffefb0; color: #6b5300; padding: 1px 2px; border-radius: 3px; }
+  mark.hl-red    { background: #FCE8B5; color: #8a5d00; padding: 1px 2px; border-radius: 3px; }
+  mark.hl-vocab  { background: #cfe3fb; color: #0b3d78; padding: 1px 2px; border-radius: 3px; }
+  mark.hl-grammar{ background: #e3d6fb; color: #402676; padding: 1px 2px; border-radius: 3px; }
+  mark sup { font-size: 7pt; font-weight: 700; }
+
+  .feedback-item { margin-bottom: 10px; padding-left: 10px; border-left: 3px solid #e2e6f0; }
+  .feedback-item .num { font-weight: 700; color: #0f1c3f; }
+  .feedback-item .tag-green  { color: #0d4a2a; font-weight: 700; }
+  .feedback-item .tag-yellow { color: #6b5300; font-weight: 700; }
+  .feedback-item .tag-red    { color: #D4900B; font-weight: 700; }
+  .feedback-item .tag-vocabulary { color: #0b3d78; font-weight: 700; }
+  .feedback-item .tag-grammar    { color: #402676; font-weight: 700; }
+  .feedback-item .quote { font-style: italic; color: #444; }
+  .feedback-note { font-size: 9.5pt; color: #3a6b3a; margin-bottom: 12px; }
+  .style-tips { margin: 0; padding-left: 18px; font-size: 10.5pt; }
+  .style-tips li { margin-bottom: 8px; }
+
+  .summary-box {
+    background: #f4f6fb;
+    border-radius: 6px;
+    padding: 16px 18px;
+    font-size: 10.5pt;
+  }
+
+  table.vocab { width: 100%; border-collapse: collapse; font-size: 9.5pt; }
+  table.vocab th {
+    text-align: left; background: #0f1c3f; color: #fff;
+    padding: 7px 10px; font-size: 9pt;
+  }
+  table.vocab td { padding: 7px 10px; border-bottom: 1px solid #e6e9f2; vertical-align: top; }
+  table.vocab tr:nth-child(even) td { background: #f8f9fc; }
+
+  .sample-box {
+    background: #eef6ff;
+    border: 1px solid #cfe3fb;
+    border-radius: 6px;
+    padding: 16px 18px;
+  }
+  .sample-box .badge {
+    display: inline-block;
+    background: #0f1c3f; color: #fff;
+    font-size: 8.5pt; padding: 3px 10px; border-radius: 12px;
+    margin-bottom: 8px;
+  }
+  .sample-box .source { font-size: 8.5pt; color: #5a6a8a; margin-top: 8px; }
+  .sample-box .no-sample { font-size: 9.5pt; color: #7a6a00; }
+
+  .disclaimer { font-size: 7.5pt; color: #9aa2b1; margin-top: 26px; text-align: center; }
+</style>
+</head>
+<body>
+
+  <div class="header">
+    <div class="brand">WriteSpeak &middot; IELTS Feedback Report</div>
+    <h1>{{ task_label }}</h1>
+    <div class="meta">{{ student_name }} &nbsp;&bull;&nbsp; {{ date_str }}</div>
+  </div>
+
+  <div class="score-box">
+    <div class="band">{{ "%.1f"|format(overall_band) }}</div>
+    <div class="criteria">
+      {% for name, score in criteria %}
+      <div><b>{{ name }}:</b> {{ "%.1f"|format(score) }}</div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <section>
+    <h2>1. Rangli Tahlil &mdash; Color-Coded Analysis</h2>
+    <div class="legend">
+      <span style="background:#c9f2d8;">Yashil = kuchli / ilg'or</span>
+      <span style="background:#ffefb0;">Sariq = yaxshilash mumkin</span>
+      <span style="background:#FCE8B5; color:#8a5d00;">Amber = xato</span>
+    </div>
+    <div class="answer-block">{{ highlighted_answer_html|safe }}</div>
+  </section>
+
+  <section>
+    <h2>2. Batafsil Feedback</h2>
+    {% if detailed_feedback_note %}
+    <div class="feedback-note">{{ detailed_feedback_note }}</div>
+    {% endif %}
+    {% for item in annotations %}
+    <div class="feedback-item">
+      <span class="num">[{{ item.number }}]</span>
+      <span class="tag-{{ item.color }}">
+        {% if item.color == "yellow" %}✏️ Yaxshilash mumkin{% else %}❌ Xato{% endif %}
+      </span>
+      &mdash; <span class="quote">&ldquo;{{ item.sentence }}&rdquo;</span><br>
+      {{ item.comment }}
+    </div>
+    {% endfor %}
+    <div class="summary-box">{{ feedback_summary }}</div>
+  </section>
+
+  <section>
+    <h2>3. Foydali Lug'at &mdash; Useful Vocabulary</h2>
+    <table class="vocab">
+      <tr><th>So'z / Ibora</th><th>Ma'nosi</th><th>Misol jumla</th></tr>
+      {% for v in vocabulary %}
+      <tr>
+        <td><b>{{ v.word_or_phrase }}</b></td>
+        <td>{{ v.meaning }}</td>
+        <td><i>{{ v.example_sentence }}</i></td>
+      </tr>
+      {% endfor %}
+    </table>
+  </section>
+
+  <section>
+    <h2>4. Haqiqiy Namuna &mdash; Authentic Book Sample</h2>
+    {% if book_sample %}
+    <div class="sample-box">
+      <div class="badge">Band {{ "%.1f"|format(book_sample.band_level) if book_sample.band_level else "N/A" }}</div>
+      <div>{{ (highlighted_sample_html or book_sample.content_text)|safe }}</div>
+      <div class="source">Muallif: <b>{{ book_sample.author }}</b> &nbsp;&bull;&nbsp; Manba: {{ book_sample.book_title }}{% if book_sample.page_number %}, sahifa {{ book_sample.page_number }}{% endif %} &mdash; ushbu namuna original kitobdan olingan, AI tomonidan yozilmagan.</div>
+    </div>
+
+    {% if sample_overview %}
+    <div class="summary-box" style="margin-top:14px;">{{ sample_overview }}</div>
+    {% endif %}
+
+    {% if sample_highlight_notes %}
+    <div class="legend" style="margin-top:14px;">
+      <span style="background:#cfe3fb;">Ko'k = foydali lug'at</span>
+      <span style="background:#e3d6fb;">Binafsha = ilg'or grammatika</span>
+    </div>
+    {% for item in sample_highlight_notes %}
+    <div class="feedback-item">
+      <span class="num">[{{ item.number }}]</span>
+      <span class="tag-{{ item.type }}">
+        {% if item.type == "vocabulary" %}📘 Lug'at{% else %}🧩 Grammatika{% endif %}
+      </span>
+      &mdash; <span class="quote">&ldquo;{{ item.phrase }}&rdquo;</span><br>
+      {{ item.note }}
+    </div>
+    {% endfor %}
+    {% endif %}
+    {% elif style_overview %}
+    <div class="sample-box">
+      <div class="badge">Uslub bo'yicha tavsiyalar</div>
+      <div>{{ style_overview }}</div>
+    </div>
+    <div class="summary-box" style="margin-top:14px;">
+      <ul class="style-tips">
+        {% for tip in style_tips %}
+        <li>{{ tip }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% else %}
+    <div class="sample-box">
+      <div class="no-sample">⚠️ Hozircha kitoblar bazasi bo'sh — namuna yoki uslub tavsiyasi berib bo'lmadi.</div>
+    </div>
+    {% endif %}
+  </section>
+
+  <div class="disclaimer">
+    Ushbu ball — AI tomonidan IELTS Band Descriptors asosida, ESL (ikkinchi til sifatida ingliz tili) o'quvchilari uchun moslashtirilgan holda baholangan taxminiy, qo'llab-quvvatlovchi natija bo'lib, rasmiy IELTS imtihon natijasi emas.
+  </div>
+
+</body>
+</html>

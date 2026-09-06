@@ -1,0 +1,19 @@
+[
+  {"topic": "hometown", "question_text": "Let's talk about your hometown. Where is it? What do you like most about it? Has it changed much since you were a child?"},
+  {"topic": "work/study", "question_text": "Do you work or are you a student? What do you do / what do you study? Why did you choose this job/subject? What do you enjoy most about it?"},
+  {"topic": "hobbies", "question_text": "What do you like to do in your free time? How did you become interested in this hobby? Do you prefer to spend your free time alone or with others?"},
+  {"topic": "food", "question_text": "What kind of food do you like? Do you enjoy cooking? Has your taste in food changed since you were a child?"},
+  {"topic": "weather", "question_text": "What's the weather like in your country? What is your favourite season, and why? Does the weather affect your mood?"},
+  {"topic": "technology use", "question_text": "How often do you use a smartphone? What do you mainly use it for? Do you think you spend too much time on your phone?"},
+  {"topic": "reading", "question_text": "Do you like reading? What kind of books do you enjoy? Did you read a lot as a child?"},
+  {"topic": "music", "question_text": "What kind of music do you like? Do you play any musical instruments? Do you prefer listening to music alone or with friends?"},
+  {"topic": "travel", "question_text": "Do you like travelling? What's the most interesting place you have visited? Would you prefer to travel alone or with a group?"},
+  {"topic": "friends", "question_text": "How important are friends to you? What qualities do you look for in a friend? Do you prefer having a few close friends or many friends?"},
+  {"topic": "shopping", "question_text": "Do you enjoy shopping? Do you prefer shopping online or in physical stores? What was the last thing you bought?"},
+  {"topic": "sports", "question_text": "Do you play any sports? Did you do sports when you were younger? Do you prefer watching sports or playing them?"},
+  {"topic": "daily routine", "question_text": "Can you describe your typical daily routine? Has your routine changed much in the last few years? What part of your day do you enjoy most?"},
+  {"topic": "neighbours", "question_text": "Do you know your neighbours well? Do you think it's important to have a good relationship with neighbours? Has this changed compared to the past?"},
+  {"topic": "public transport", "question_text": "How do you usually travel around your city? Do you prefer public transport or private vehicles? Is public transport good in your city?"},
+  {"topic": "art", "question_text": "Are you interested in art? Did you study art at school? Do you ever visit art galleries or museums?"},
+  {"topic": "photography", "question_text": "Do you like taking photos? What do you usually take photos of? Do you prefer looking at old photos or taking new ones?"}
+]

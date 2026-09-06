@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — WriteSpeak Admin{% endblock %}
+{% block content %}
+<h1>Dashboard</h1>
+
+<div class="stat-grid">
+  <div class="stat"><div class="n">{{ "{:,}".format(stats.revenue_today).replace(",", " ") }}</div><div class="l">Bugungi tushum (so'm)</div></div>
+  <div class="stat"><div class="n">{{ stats.new_users_today }}</div><div class="l">Yangi foydalanuvchi (bugun)</div></div>
+  <div class="stat"><div class="n">{{ stats.writing_today + stats.speaking_today }}</div><div class="l">Tekshiruvlar (bugun)</div></div>
+  <div class="stat"><div class="n">{{ active_subs }}</div><div class="l">Faol obunalar</div></div>
+  <div class="stat"><div class="n">{{ stats.pending_payments }}</div><div class="l">Ko'rib chiqilmagan to'lov</div></div>
+  <div class="stat"><div class="n">{{ stats.total_users }}</div><div class="l">Jami foydalanuvchilar</div></div>
+</div>
+
+<div class="card">
+  <h2>Tushum — so'nggi 30 kun</h2>
+  <canvas id="revenueChart" height="90"></canvas>
+</div>
+
+<div class="card">
+  <h2>Tekshiruvlar — so'nggi 30 kun</h2>
+  <canvas id="checksChart" height="90"></canvas>
+</div>
+
+<div class="card">
+  <h2>Yangi foydalanuvchilar — so'nggi 30 kun</h2>
+  <canvas id="usersChart" height="90"></canvas>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script>
+  const series = {{ timeseries_json | safe }};
+  const labels = series.map(d => d.date);
+
+  Chart.defaults.font.family = "system-ui, -apple-system, 'Segoe UI', sans-serif";
+  Chart.defaults.font.size = 12;
+  Chart.defaults.color = "#5a6274";
+
+  const gridStyle = { color: "#e1e0d9", drawTicks: false };
+  const commonScales = {
+    x: { grid: { display: false }, ticks: { maxTicksLimit: 10 } },
+    y: { grid: gridStyle, beginAtZero: true, ticks: { precision: 0 } },
+  };
+
+  new Chart(document.getElementById("revenueChart"), {
+    type: "line",
+    data: {
+      labels,
+      datasets: [{
+        label: "Tushum (so'm)",
+        data: series.map(d => d.revenue),
+        borderColor: "#2a78d6",
+        backgroundColor: "rgba(42,120,214,0.12)",
+        borderWidth: 2, pointRadius: 0, fill: true, tension: 0.25,
+      }],
+    },
+    options: {
+      plugins: { legend: { display: false } },
+      scales: commonScales,
+    },
+  });
+
+  new Chart(document.getElementById("checksChart"), {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [
+        { label: "Writing", data: series.map(d => d.writing), backgroundColor: "#2a78d6" },
+        { label: "Speaking", data: series.map(d => d.speaking), backgroundColor: "#eb6834" },
+      ],
+    },
+    options: {
+      plugins: { legend: { position: "top", align: "end", labels: { boxWidth: 10, boxHeight: 10 } } },
+      scales: { x: { ...commonScales.x, stacked: true }, y: { ...commonScales.y, stacked: true } },
+    },
+  });
+
+  new Chart(document.getElementById("usersChart"), {
+    type: "line",
+    data: {
+      labels,
+      datasets: [{
+        label: "Yangi foydalanuvchilar",
+        data: series.map(d => d.new_users),
+        borderColor: "#1baf7a",
+        backgroundColor: "rgba(27,175,122,0.12)",
+        borderWidth: 2, pointRadius: 0, fill: true, tension: 0.25,
+      }],
+    },
+    options: {
+      plugins: { legend: { display: false } },
+      scales: commonScales,
+    },
+  });
+</script>
+{% endblock %}

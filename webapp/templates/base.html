@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}WriteSpeak Admin{% endblock %}</title>
+<style>
+  :root {
+    --navy: #0f1c3f;
+    --navy-2: #172a5c;
+    --accent: #2a78d6;
+    --paper: #f7f8fc;
+    --surface: #ffffff;
+    --border: #e1e5f0;
+    --ink: #1c2333;
+    --ink-soft: #5a6274;
+    --ink-faint: #8991ac;
+    --good: #0ca30c;
+    --warn: #a6720a;
+    --bad: #d03b3b;
+    --font: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: var(--font); background: var(--paper); color: var(--ink);
+    font-size: 15px; line-height: 1.5;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .topbar {
+    background: var(--navy); color: #fff; display: flex; align-items: center;
+    gap: 28px; padding: 0 24px; height: 58px;
+  }
+  .topbar .brand { font-weight: 700; font-size: 17px; margin-right: 8px; }
+  .topbar nav { display: flex; gap: 4px; flex: 1; }
+  .topbar nav a {
+    color: rgba(255,255,255,0.75); padding: 8px 14px; border-radius: 8px; font-size: 14px;
+    font-weight: 500;
+  }
+  .topbar nav a:hover { color: #fff; text-decoration: none; background: rgba(255,255,255,0.08); }
+  .topbar nav a.active { color: #fff; background: rgba(255,255,255,0.14); }
+  .topbar .logout { color: rgba(255,255,255,0.6); font-size: 13px; }
+
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 28px 24px 60px; }
+
+  h1 { font-size: 22px; margin: 0 0 20px; }
+
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1px;
+    background: var(--border); border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
+    margin-bottom: 28px; }
+  .stat { background: var(--surface); padding: 16px 18px; }
+  .stat .n { font-size: 26px; font-weight: 700; color: var(--navy-2); font-variant-numeric: tabular-nums; }
+  .stat .l { font-size: 12.5px; color: var(--ink-soft); margin-top: 2px; }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: 18px 20px; margin-bottom: 24px;
+  }
+  .card h2 { font-size: 15px; margin: 0 0 14px; color: var(--ink); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { text-align: left; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--ink-faint); font-weight: 600; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  td { padding: 9px 10px; border-bottom: 1px solid var(--border); color: var(--ink-soft); }
+  tr:last-child td { border-bottom: none; }
+  td.strong { color: var(--ink); font-weight: 600; }
+  .table-scroll { overflow-x: auto; }
+
+  .pill { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600;
+    padding: 3px 9px; border-radius: 100px; }
+  .pill-good { color: var(--good); background: #e4f5e4; }
+  .pill-warn { color: var(--warn); background: #fbf0da; }
+  .pill-bad { color: var(--bad); background: #fbe9e7; }
+
+  .btn { display: inline-block; font-size: 13px; font-weight: 600; padding: 6px 12px; border-radius: 7px;
+    border: 1px solid var(--border); background: var(--surface); color: var(--ink); cursor: pointer; }
+  .btn:hover { background: var(--paper); text-decoration: none; }
+  .btn-good { color: #fff; background: var(--good); border-color: var(--good); }
+  .btn-bad { color: #fff; background: var(--bad); border-color: var(--bad); }
+
+  form.inline { display: inline; }
+
+  input[type=text], input[type=password] {
+    font-family: var(--font); font-size: 14px; padding: 8px 10px; border: 1px solid var(--border);
+    border-radius: 7px; background: var(--surface); color: var(--ink);
+  }
+
+  .filters { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+  .filters a { padding: 6px 12px; border-radius: 100px; border: 1px solid var(--border); font-size: 13px;
+    color: var(--ink-soft); }
+  .filters a.active { background: var(--navy); color: #fff; border-color: var(--navy); }
+
+  .empty { color: var(--ink-faint); font-size: 14px; padding: 20px 0; text-align: center; }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="brand">WriteSpeak</div>
+    <nav>
+      <a href="/" class="{{ 'active' if active == 'dashboard' else '' }}">Dashboard</a>
+      <a href="/users" class="{{ 'active' if active == 'users' else '' }}">Foydalanuvchilar</a>
+      <a href="/payments" class="{{ 'active' if active == 'payments' else '' }}">To'lovlar</a>
+      <a href="/groups" class="{{ 'active' if active == 'groups' else '' }}">Guruhlar</a>
+    </nav>
+    <a href="/logout" class="logout">Chiqish</a>
+  </div>
+  <div class="wrap">
+    {% block content %}{% endblock %}
+  </div>
+</body>
+</html>

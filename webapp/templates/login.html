@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kirish — WriteSpeak Admin</title>
+<style>
+  :root { --navy: #0f1c3f; --accent: #2a78d6; --paper: #f7f8fc; --surface: #fff;
+    --border: #e1e5f0; --ink: #1c2333; --ink-soft: #5a6274; --bad: #d03b3b;
+    --font: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    background: var(--navy); font-family: var(--font); }
+  .box { background: var(--surface); border-radius: 14px; padding: 36px 34px; width: 100%; max-width: 340px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+  h1 { font-size: 19px; margin: 0 0 4px; color: var(--ink); }
+  p.sub { font-size: 13px; color: var(--ink-soft); margin: 0 0 22px; }
+  label { display: block; font-size: 13px; font-weight: 600; color: var(--ink); margin: 14px 0 6px; }
+  input { width: 100%; font-family: var(--font); font-size: 14px; padding: 10px 12px; border: 1px solid var(--border);
+    border-radius: 8px; background: var(--paper); color: var(--ink); }
+  button { width: 100%; margin-top: 20px; padding: 11px; border: none; border-radius: 8px; background: var(--navy);
+    color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; }
+  button:hover { background: #172a5c; }
+  .error { margin-top: 14px; font-size: 13px; color: var(--bad); background: #fbe9e7; padding: 9px 12px;
+    border-radius: 8px; }
+</style>
+</head>
+<body>
+  <div class="box">
+    <h1>WriteSpeak Admin</h1>
+    <p class="sub">Boshqaruv paneliga kirish</p>
+    <form method="post" action="/login">
+      <label for="username">Login</label>
+      <input type="text" id="username" name="username" autocomplete="username" required autofocus>
+      <label for="password">Parol</label>
+      <input type="password" id="password" name="password" autocomplete="current-password" required>
+      <button type="submit">Kirish</button>
+    </form>
+    {% if error %}<div class="error">{{ error }}</div>{% endif %}
+  </div>
+</body>
+</html>

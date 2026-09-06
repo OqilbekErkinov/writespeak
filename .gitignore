@@ -1,0 +1,19 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+data/storage/
+data/books/*.pdf
+data/books/_review/
+*.egg-info/
+.pytest_cache/
+
+# IDE / OS junk
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
+
+# Build/deploy scratch that should never be part of history
+build*.log

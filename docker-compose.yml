@@ -1,0 +1,61 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ielts}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ielts}
+      POSTGRES_DB: ${POSTGRES_DB:-ielts_bot}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      # host:container - exposed only so alembic/scripts can be run from the host if needed
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ielts}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redisdata:/data
+
+  bot:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # .env's DATABASE_URL_SYNC intentionally points at localhost:5433 (the
+      # host-mapped port) for convenience when running alembic/scripts
+      # directly on the host. Inside this container "localhost" is the
+      # container itself, not the db service, so override it here to the
+      # in-network address - this is what the alembic step in `command`
+      # below actually connects with.
+      DATABASE_URL_SYNC: postgresql+psycopg://${POSTGRES_USER:-ielts}:${POSTGRES_PASSWORD:-ielts}@db:5432/${POSTGRES_DB:-ielts_bot}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - ./data:/data
+    command: sh -c "alembic upgrade head && python -m bot.main"
+
+  admin_web:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      # No domain/HTTPS yet (2026-08-29 decision) - plain http://<vps-ip>:8088.
+      - "8088:8000"
+    command: uvicorn webapp.main:app --host 0.0.0.0 --port 8000
+
+volumes:
+  pgdata:
+  redisdata:

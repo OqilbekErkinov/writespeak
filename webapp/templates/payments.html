@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}To'lovlar — WriteSpeak Admin{% endblock %}
+{% block content %}
+<h1>To'lovlar</h1>
+
+<div class="filters">
+  <a href="/payments" class="{{ 'active' if status == 'all' else '' }}">Barchasi</a>
+  <a href="/payments?status=pending" class="{{ 'active' if status == 'pending' else '' }}">Kutilmoqda</a>
+  <a href="/payments?status=approved" class="{{ 'active' if status == 'approved' else '' }}">Tasdiqlangan</a>
+  <a href="/payments?status=rejected" class="{{ 'active' if status == 'rejected' else '' }}">Rad etilgan</a>
+</div>
+
+<div class="card">
+  {% if requests %}
+  <div class="table-scroll">
+  <table>
+    <tr>
+      <th>Sana</th><th>Foydalanuvchi</th><th>Turi</th><th>Miqdor</th><th>Holat</th><th></th>
+    </tr>
+    {% for r in requests %}
+    <tr>
+      <td>{{ r.created_at.strftime("%d.%m.%Y %H:%M") if r.created_at else "—" }}</td>
+      <td class="strong">{{ r.user_id }}</td>
+      <td>
+        {% if r.kind.value == "subscription" %}
+          Obuna ({{ r.subscription_months }} oy)
+        {% else %}
+          {{ r.credits }} ta tekshiruv
+        {% endif %}
+      </td>
+      <td>{{ "{:,}".format(r.amount).replace(",", " ") }} so'm</td>
+      <td>
+        {% if r.status.value == "pending" %}<span class="pill pill-warn">kutilmoqda</span>
+        {% elif r.status.value == "approved" %}<span class="pill pill-good">tasdiqlangan</span>
+        {% else %}<span class="pill pill-bad">rad etilgan</span>{% endif %}
+      </td>
+      <td>
+        {% if r.status.value == "pending" %}
+        <form class="inline" method="post" action="/payments/{{ r.id }}/approve">
+          <button type="submit" class="btn btn-good">Tasdiqlash</button>
+        </form>
+        <form class="inline" method="post" action="/payments/{{ r.id }}/reject">
+          <button type="submit" class="btn btn-bad">Rad etish</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+  {% else %}
+  <div class="empty">Bu bo'limda hech narsa yo'q.</div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Guruhlar — WriteSpeak Admin{% endblock %}
+{% block content %}
+<h1>Guruhlar (B2B)</h1>
+
+<div class="card">
+  {% if groups %}
+  <div class="table-scroll">
+  <table>
+    <tr>
+      <th>Guruh</th><th>O'qituvchi</th><th>Telegram ID</th><th>A'zolar</th><th>Yaratilgan</th>
+    </tr>
+    {% for g in groups %}
+    <tr>
+      <td class="strong">{{ g.name }}</td>
+      <td>{{ g.teacher_name }}</td>
+      <td>{{ g.teacher_id }}</td>
+      <td>{{ g.member_count }}</td>
+      <td>{{ g.created_at.strftime("%d.%m.%Y") if g.created_at else "—" }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+  {% else %}
+  <div class="empty">Hali hech qanday guruh yaratilmagan.</div>
+  {% endif %}
+</div>
+{% endblock %}
