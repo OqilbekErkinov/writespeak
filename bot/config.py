@@ -57,13 +57,15 @@ class Settings(BaseSettings):
 
     # --- Web admin panel (webapp/main.py) ---
     # Single shared login, not tied to Telegram accounts - see webapp/main.py's
-    # module docstring. No domain/HTTPS yet (plain http://<vps-ip>:port) per
-    # the user's choice on 2026-08-29 - a strong password matters more than
-    # usual here since it travels unencrypted; get a domain later and this
-    # becomes a non-issue.
+    # module docstring. Served as https://admin.writespeak.uz via the host's
+    # nginx (TLS from certbot) since 2026-10-06; the container port is only
+    # published on 127.0.0.1 (docker-compose.yml).
     web_admin_username: str = "admin"
     web_admin_password: str = "change-me"
     web_session_secret: str = "change-me-too"
+    # Session cookie only sent over HTTPS - true in production, false for a
+    # local http:// run (otherwise login can't stick).
+    web_cookie_secure: bool = False
 
     @property
     def admin_ids(self) -> set[int]:

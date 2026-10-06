@@ -3,13 +3,13 @@ Postgres database the bot uses (db/ package, completely unchanged - this is
 a second consumer of it, not a rewrite). Runs as a separate process from the
 same Docker image as the bot (see docker-compose.yml's `admin_web` service):
 
-    uvicorn webapp.main:app --host 0.0.0.0 --port 8000
+    uvicorn webapp.main:app --host 0.0.0.0 --port 8000 --proxy-headers ...
 
 Auth is a single shared login (WEB_ADMIN_USERNAME/PASSWORD in .env) - a
 different surface for the same business owner, not a multi-tenant system.
-No domain/HTTPS yet per the user's 2026-08-29 choice (plain http://<vps-ip>
-:port) - see bot/config.py's comment on why the password matters more than
-usual here, and the small brute-force guard below.
+In production it sits behind the host's nginx at https://admin.writespeak.uz
+(see bot/config.py's web panel comment), which passes the real client IP in
+X-Forwarded-For for the small brute-force guard below.
 """
 from __future__ import annotations
 
@@ -30,11 +30,15 @@ from db.models import PaymentStatus, PracticeModule
 from services.storage.file_storage import delete_file, save_practice_image
 
 app = FastAPI(title="WriteSpeak Admin")
-app.add_middleware(SessionMiddleware, secret_key=settings.web_session_secret)
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=settings.web_session_secret,
+    https_only=settings.web_cookie_secure,
+)
 
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
-# --- tiny in-memory brute-force guard (no domain/reverse-proxy to do this yet) ---
+# --- tiny in-memory brute-force guard (per client IP, as forwarded by nginx) ---
 _failed_attempts: dict[str, list[float]] = {}
 MAX_ATTEMPTS = 5
 WINDOW_SECONDS = 900

@@ -56,9 +56,13 @@ services:
       # (Savollar page) are sent to students by the bot container.
       - ./data:/data
     ports:
-      # No domain/HTTPS yet (2026-08-29 decision) - plain http://<vps-ip>:8088.
-      - "8088:8000"
-    command: uvicorn webapp.main:app --host 0.0.0.0 --port 8000
+      # Localhost only: the public way in is https://admin.writespeak.uz via
+      # the host's nginx (/etc/nginx/sites-available/writespeak.uz), which
+      # proxies to this port.
+      - "127.0.0.1:8088:8000"
+    # --proxy-headers: take the client IP from nginx's X-Forwarded-For (safe
+    # to trust from anywhere since only nginx can reach the port above).
+    command: uvicorn webapp.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips=*
 
 volumes:
   pgdata:

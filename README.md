@@ -47,7 +47,7 @@ scripts/        seed_practice_questions.py, ingest_books.py
    docker compose exec bot python scripts/seed_practice_questions.py
    ```
    Skript faqat **bo'sh** bo'limlarni to'ldiradi. Shundan keyin savollar web admin panelning
-   **Savollar** sahifasida (`http://<server>:8088/questions`) boshqariladi: qo'shish,
+   **Savollar** sahifasida (`https://admin.writespeak.uz/questions`) boshqariladi: qo'shish,
    tahrirlash, o'chirish, tartibini o'zgartirish, Writing Task 1 uchun rasm yuklash. Biror
    bo'limni JSON fayldagi holatga qaytarish kerak bo'lsa (admin o'zgarishlari ustidan yoziladi):
    ```
