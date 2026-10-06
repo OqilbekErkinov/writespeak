@@ -18,7 +18,7 @@ server {
     location = /index.html {
         add_header Cache-Control "no-cache";
     }
-    location ~* \.(png|svg)$ {
+    location ~* \.(png|svg|ico)$ {
         add_header Cache-Control "public, max-age=604800";
     }
 

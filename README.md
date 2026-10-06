@@ -26,6 +26,9 @@ db/             SQLAlchemy modellari, CRUD, Alembic migratsiyalar
 data/practice_questions/  Practice uchun boshlang'ich savollar: 50+50 Writing, 40+40+40 Speaking
 data/books/     O'zingizning IELTS namuna kitoblaringiz (PDF) shu yerga qo'yiladi
 scripts/        seed_practice_questions.py, ingest_books.py
+landing/        writespeak.uz landing sahifasi (statik, nginx beradi)
+branding/       Logo, Telegram bot avatari va bot tavsif rasmi (BotFather uchun)
+deploy/nginx/   Serverdagi nginx sozlamasi nusxasi
 ```
 
 ## O'rnatish (lokal, Docker bilan)
