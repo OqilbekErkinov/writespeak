@@ -51,6 +51,10 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    volumes:
+      # Same storage as the bot: practice question images uploaded here
+      # (Savollar page) are sent to students by the bot container.
+      - ./data:/data
     ports:
       # No domain/HTTPS yet (2026-08-29 decision) - plain http://<vps-ip>:8088.
       - "8088:8000"

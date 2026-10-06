@@ -1,17 +1,162 @@
 [
-  {"topic": "a person", "question_text": "Describe a person who has influenced you a lot. You should say: who this person is; how you know this person; what this person is like; and explain why this person has influenced you so much."},
-  {"topic": "a place", "question_text": "Describe a place you have visited that you found particularly beautiful. You should say: where this place is; when you visited it; what you did there; and explain why you found it beautiful."},
-  {"topic": "an object", "question_text": "Describe an object that is important to you. You should say: what the object is; where you got it from; how long you have had it; and explain why it is important to you."},
-  {"topic": "an event", "question_text": "Describe a memorable event in your life. You should say: what the event was; when and where it happened; who was involved; and explain why it was memorable for you."},
-  {"topic": "a skill", "question_text": "Describe a skill you would like to learn. You should say: what the skill is; how you would learn it; how long it would take to learn; and explain why you want to learn this skill."},
-  {"topic": "a book", "question_text": "Describe a book that you have read and enjoyed. You should say: what the book is about; when you read it; why you decided to read it; and explain why you enjoyed it."},
-  {"topic": "a journey", "question_text": "Describe a memorable journey you have taken. You should say: where you went; who you went with; how you travelled; and explain why the journey was memorable."},
-  {"topic": "a piece of technology", "question_text": "Describe a piece of technology you find useful. You should say: what it is; how often you use it; how you learned to use it; and explain why you find it useful."},
-  {"topic": "a celebration", "question_text": "Describe a celebration or festival that is important in your country. You should say: what the celebration is; when it takes place; how people celebrate it; and explain why it is important."},
-  {"topic": "a goal", "question_text": "Describe a goal you have set for yourself. You should say: what the goal is; when you set it; what steps you are taking to achieve it; and explain why this goal is important to you."},
-  {"topic": "a teacher", "question_text": "Describe a teacher who has had a positive impact on you. You should say: who this teacher was; what subject they taught; what they were like; and explain how they influenced you."},
-  {"topic": "a difficult decision", "question_text": "Describe a difficult decision you have had to make. You should say: what the decision was; when you had to make it; what options you had; and explain how you made your final decision."},
-  {"topic": "a piece of art", "question_text": "Describe a piece of art or a film that impressed you. You should say: what it was; when you saw it; what it was about; and explain why it impressed you."},
-  {"topic": "a healthy habit", "question_text": "Describe a healthy habit you have or would like to develop. You should say: what the habit is; how you started it (or would start it); how difficult it was; and explain why it is important to you."},
-  {"topic": "a business", "question_text": "Describe a successful business you know about. You should say: what the business does; how you know about it; what makes it successful; and explain why you admire it."}
+  {
+    "topic": "influential people",
+    "question_text": "Describe a person who has influenced you a lot.\nYou should say:\n• who this person is\n• how you know this person\n• what this person is like\nand explain why this person has influenced you so much."
+  },
+  {
+    "topic": "teachers",
+    "question_text": "Describe a teacher who made a positive difference to your life.\nYou should say:\n• who this teacher was\n• what subject he or she taught\n• what his or her lessons were like\nand explain why this teacher made such a difference to you."
+  },
+  {
+    "topic": "friendship",
+    "question_text": "Describe a friend you have known for a long time.\nYou should say:\n• who this friend is\n• how and when you first met\n• what you usually do together\nand explain why your friendship has lasted so long."
+  },
+  {
+    "topic": "older people",
+    "question_text": "Describe an older person you enjoy spending time with.\nYou should say:\n• who this person is\n• how you know him or her\n• what you usually do together\nand explain why you enjoy spending time with this person."
+  },
+  {
+    "topic": "fame",
+    "question_text": "Describe a famous person you would like to meet.\nYou should say:\n• who this person is\n• how you first heard about him or her\n• what you would talk about if you met\nand explain why you would like to meet this person."
+  },
+  {
+    "topic": "work and careers",
+    "question_text": "Describe someone you know who is very good at their job.\nYou should say:\n• who this person is\n• what job he or she does\n• how you know about his or her work\nand explain why you think this person is so good at the job."
+  },
+  {
+    "topic": "quiet places",
+    "question_text": "Describe a quiet place where you like to spend time.\nYou should say:\n• where this place is\n• how often you go there\n• what you do there\nand explain why you like spending time in this place."
+  },
+  {
+    "topic": "nature",
+    "question_text": "Describe a beautiful natural place you have visited.\nYou should say:\n• where it is\n• when you went there\n• what you saw and did there\nand explain why you found this place so beautiful."
+  },
+  {
+    "topic": "tourism",
+    "question_text": "Describe a city you would like to visit in the future.\nYou should say:\n• which city it is\n• how you learned about it\n• what you would like to do there\nand explain why you would like to visit this city."
+  },
+  {
+    "topic": "architecture",
+    "question_text": "Describe a building in your town or city that you find interesting.\nYou should say:\n• where the building is\n• what it looks like\n• what it is used for\nand explain why you find this building interesting."
+  },
+  {
+    "topic": "eating out",
+    "question_text": "Describe a restaurant or cafe you enjoy going to.\nYou should say:\n• where it is\n• how often you go there\n• what kind of food or drinks it serves\nand explain why you enjoy going there."
+  },
+  {
+    "topic": "possessions",
+    "question_text": "Describe an object that is important to you.\nYou should say:\n• what the object is\n• where you got it from\n• how long you have had it\nand explain why this object is so important to you."
+  },
+  {
+    "topic": "technology",
+    "question_text": "Describe a piece of technology you find very useful.\nYou should say:\n• what it is\n• when you got it\n• how often you use it\nand explain why you find it so useful."
+  },
+  {
+    "topic": "gifts",
+    "question_text": "Describe a gift you received that was special to you.\nYou should say:\n• what the gift was\n• who gave it to you\n• when you received it\nand explain why this gift was so special to you."
+  },
+  {
+    "topic": "fashion",
+    "question_text": "Describe a piece of clothing you enjoy wearing.\nYou should say:\n• what it is\n• where you got it\n• when you usually wear it\nand explain why you enjoy wearing it."
+  },
+  {
+    "topic": "photographs",
+    "question_text": "Describe a photograph that means a lot to you.\nYou should say:\n• what is in the photograph\n• when and where it was taken\n• who took it\nand explain why this photograph is meaningful to you."
+  },
+  {
+    "topic": "celebrations",
+    "question_text": "Describe a celebration you attended that you really enjoyed.\nYou should say:\n• what the celebration was\n• where and when it took place\n• who was there\nand explain why you enjoyed it so much."
+  },
+  {
+    "topic": "journeys",
+    "question_text": "Describe a memorable journey you have made.\nYou should say:\n• where you went\n• how you travelled\n• who you travelled with\nand explain why this journey was so memorable."
+  },
+  {
+    "topic": "patience",
+    "question_text": "Describe a time when you had to wait a long time for something.\nYou should say:\n• what you were waiting for\n• where you were\n• how long you had to wait\nand explain how you felt while you were waiting."
+  },
+  {
+    "topic": "helping others",
+    "question_text": "Describe a time when you helped someone.\nYou should say:\n• who you helped\n• when and where it happened\n• how you helped this person\nand explain how you felt after helping this person."
+  },
+  {
+    "topic": "surprises",
+    "question_text": "Describe a time when you were pleasantly surprised.\nYou should say:\n• what the surprise was\n• when it happened\n• who was involved\nand explain how you felt about this surprise."
+  },
+  {
+    "topic": "mistakes",
+    "question_text": "Describe a mistake you made that taught you something important.\nYou should say:\n• what the mistake was\n• when it happened\n• what the consequences were\nand explain what you learned from this mistake."
+  },
+  {
+    "topic": "hobbies",
+    "question_text": "Describe a hobby you enjoy.\nYou should say:\n• what the hobby is\n• when and how you started it\n• how often you do it\nand explain why you enjoy this hobby."
+  },
+  {
+    "topic": "sport and exercise",
+    "question_text": "Describe a sport or physical activity you would like to try.\nYou should say:\n• what it is\n• where you could do it\n• what equipment or training you would need\nand explain why you would like to try it."
+  },
+  {
+    "topic": "skills",
+    "question_text": "Describe a skill you would like to learn.\nYou should say:\n• what the skill is\n• how you would learn it\n• how long you think it would take to learn\nand explain why you would like to learn this skill."
+  },
+  {
+    "topic": "family time",
+    "question_text": "Describe a day out with your family or friends that you particularly enjoyed.\nYou should say:\n• where you went\n• who you were with\n• what you did\nand explain why you enjoyed this day so much."
+  },
+  {
+    "topic": "books and reading",
+    "question_text": "Describe a book you have read and enjoyed.\nYou should say:\n• what the book is about\n• when you read it\n• why you decided to read it\nand explain why you enjoyed reading this book."
+  },
+  {
+    "topic": "films",
+    "question_text": "Describe a film that made a strong impression on you.\nYou should say:\n• what the film was\n• when and where you watched it\n• what it was about\nand explain why it made such a strong impression on you."
+  },
+  {
+    "topic": "websites and apps",
+    "question_text": "Describe a website or app that you use often.\nYou should say:\n• what it is\n• how you found out about it\n• what you use it for\nand explain why you find it so useful."
+  },
+  {
+    "topic": "news",
+    "question_text": "Describe a piece of news that you found interesting.\nYou should say:\n• what the news was about\n• when you heard about it\n• how you found out about it\nand explain why you found this piece of news interesting."
+  },
+  {
+    "topic": "music",
+    "question_text": "Describe a song or piece of music that is special to you.\nYou should say:\n• what it is\n• when you first heard it\n• how often you listen to it\nand explain why this song or piece of music is special to you."
+  },
+  {
+    "topic": "advertising",
+    "question_text": "Describe an advertisement that you remember well.\nYou should say:\n• what was being advertised\n• where you saw or heard it\n• what the advertisement showed\nand explain why you remember it so well."
+  },
+  {
+    "topic": "decisions",
+    "question_text": "Describe a difficult decision you once had to make.\nYou should say:\n• what the decision was\n• when you had to make it\n• what options you had\nand explain how you finally made your decision."
+  },
+  {
+    "topic": "changing opinions",
+    "question_text": "Describe a time when you changed your mind about something.\nYou should say:\n• what you changed your mind about\n• when this happened\n• what made you change your mind\nand explain how you feel about this change now."
+  },
+  {
+    "topic": "achievements",
+    "question_text": "Describe an achievement you are proud of.\nYou should say:\n• what you achieved\n• when you achieved it\n• how you achieved it\nand explain why you are proud of this achievement."
+  },
+  {
+    "topic": "goals and ambitions",
+    "question_text": "Describe a goal you hope to achieve in the next few years.\nYou should say:\n• what the goal is\n• when you first decided on it\n• what you are doing to achieve it\nand explain why this goal is important to you."
+  },
+  {
+    "topic": "advice",
+    "question_text": "Describe a piece of good advice someone gave you.\nYou should say:\n• who gave you the advice\n• when you received it\n• what the advice was\nand explain how this advice helped you."
+  },
+  {
+    "topic": "local area",
+    "question_text": "Describe a change that would improve your local area.\nYou should say:\n• what the change would be\n• how it could be made\n• who would benefit from it\nand explain why this change would improve the area."
+  },
+  {
+    "topic": "personal change",
+    "question_text": "Describe a positive change you have made in your life.\nYou should say:\n• what the change was\n• when you made it\n• why you decided to make it\nand explain how this change has affected your life."
+  },
+  {
+    "topic": "rules and laws",
+    "question_text": "Describe a rule that you think is important.\nYou should say:\n• what the rule is\n• where this rule applies\n• what happens if people break it\nand explain why you think this rule is important."
+  }
 ]

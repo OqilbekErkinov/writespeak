@@ -28,6 +28,7 @@ from bot.keyboards.group_kb import (
     teacher_actions_kb,
 )
 from bot.keyboards.main_menu_kb import BTN_GROUP_RU, BTN_GROUP_UZ, MENU_BUTTON_TEXTS
+from bot.keyboards.nav_kb import back_kb, with_back
 from bot.states.group_states import GroupStates
 from db import crud
 from db.database import get_session
@@ -50,7 +51,7 @@ async def open_group(message: Message, state: FSMContext, lang: str) -> None:
             count = await crud.get_group_member_count(session, owned.id)
             await message.answer(
                 t("group.teacher_view", lang, name=owned.name, count=count, link=_group_link(owned.id)),
-                reply_markup=teacher_actions_kb(lang),
+                reply_markup=with_back(teacher_actions_kb(lang), lang),
             )
             return
 
@@ -63,11 +64,12 @@ async def open_group(message: Message, state: FSMContext, lang: str) -> None:
                     lang,
                     group_name=member_group.name,
                     teacher_name=teacher.full_name if teacher is not None else "?",
-                )
+                ),
+                reply_markup=back_kb(lang),
             )
             return
 
-    await message.answer(t("group.no_group_prompt", lang), reply_markup=no_group_kb(lang))
+    await message.answer(t("group.no_group_prompt", lang), reply_markup=with_back(no_group_kb(lang), lang))
 
 
 @router.callback_query(F.data == CB_GROUP_CREATE)

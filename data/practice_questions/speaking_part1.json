@@ -1,19 +1,162 @@
 [
-  {"topic": "hometown", "question_text": "Let's talk about your hometown. Where is it? What do you like most about it? Has it changed much since you were a child?"},
-  {"topic": "work/study", "question_text": "Do you work or are you a student? What do you do / what do you study? Why did you choose this job/subject? What do you enjoy most about it?"},
-  {"topic": "hobbies", "question_text": "What do you like to do in your free time? How did you become interested in this hobby? Do you prefer to spend your free time alone or with others?"},
-  {"topic": "food", "question_text": "What kind of food do you like? Do you enjoy cooking? Has your taste in food changed since you were a child?"},
-  {"topic": "weather", "question_text": "What's the weather like in your country? What is your favourite season, and why? Does the weather affect your mood?"},
-  {"topic": "technology use", "question_text": "How often do you use a smartphone? What do you mainly use it for? Do you think you spend too much time on your phone?"},
-  {"topic": "reading", "question_text": "Do you like reading? What kind of books do you enjoy? Did you read a lot as a child?"},
-  {"topic": "music", "question_text": "What kind of music do you like? Do you play any musical instruments? Do you prefer listening to music alone or with friends?"},
-  {"topic": "travel", "question_text": "Do you like travelling? What's the most interesting place you have visited? Would you prefer to travel alone or with a group?"},
-  {"topic": "friends", "question_text": "How important are friends to you? What qualities do you look for in a friend? Do you prefer having a few close friends or many friends?"},
-  {"topic": "shopping", "question_text": "Do you enjoy shopping? Do you prefer shopping online or in physical stores? What was the last thing you bought?"},
-  {"topic": "sports", "question_text": "Do you play any sports? Did you do sports when you were younger? Do you prefer watching sports or playing them?"},
-  {"topic": "daily routine", "question_text": "Can you describe your typical daily routine? Has your routine changed much in the last few years? What part of your day do you enjoy most?"},
-  {"topic": "neighbours", "question_text": "Do you know your neighbours well? Do you think it's important to have a good relationship with neighbours? Has this changed compared to the past?"},
-  {"topic": "public transport", "question_text": "How do you usually travel around your city? Do you prefer public transport or private vehicles? Is public transport good in your city?"},
-  {"topic": "art", "question_text": "Are you interested in art? Did you study art at school? Do you ever visit art galleries or museums?"},
-  {"topic": "photography", "question_text": "Do you like taking photos? What do you usually take photos of? Do you prefer looking at old photos or taking new ones?"}
+  {
+    "topic": "work or study",
+    "question_text": "Let's talk about what you do. Do you work or are you a student?\nWhat job do you do, or what subject are you studying?\nWhy did you choose this job or subject?\nWhat do you enjoy most about it?\nWould you like to change your job or subject in the future?"
+  },
+  {
+    "topic": "hometown",
+    "question_text": "Now let's talk about your hometown. Where is your hometown?\nWhat do you like most about living there?\nHow has your hometown changed since you were a child?\nIs it a good place for young people to live?\nWould you like to live there in the future?"
+  },
+  {
+    "topic": "home and accommodation",
+    "question_text": "Let's move on to talk about where you live. Do you live in a house or a flat?\nWho do you live with?\nWhich room in your home do you like the most?\nWhat would you like to change about your home?\nDo you plan to live there for a long time?"
+  },
+  {
+    "topic": "music",
+    "question_text": "Let's talk about music. What kind of music do you like listening to?\nWhen do you usually listen to music?\nDid you learn to play a musical instrument as a child?\nDo you prefer listening to live music or recorded music?\nHas your taste in music changed as you have got older?"
+  },
+  {
+    "topic": "reading",
+    "question_text": "I'd like to ask you about reading. Do you enjoy reading?\nWhat kinds of things do you usually read?\nDo you prefer paper books or e-books?\nDid your parents read to you when you were a child?\nDo you read more or less than you did a few years ago?"
+  },
+  {
+    "topic": "weather",
+    "question_text": "Let's talk about the weather. What's the weather usually like where you live?\nWhat kind of weather do you like best?\nDoes the weather ever affect your mood?\nDo you check the weather forecast regularly?\nWould you like to live somewhere with a different climate?"
+  },
+  {
+    "topic": "food",
+    "question_text": "Now let's talk about food. What is your favourite food?\nAre there any foods you disliked as a child but enjoy now?\nDo you prefer eating at home or eating out?\nWhat is a typical meal like in your country?\nDo you think you have a healthy diet?"
+  },
+  {
+    "topic": "cooking",
+    "question_text": "Let's talk about cooking. Do you enjoy cooking?\nWho usually does the cooking in your family?\nHow old were you when you first learned to cook?\nIs there a dish you would like to learn how to make?\nDo you think everyone should know how to cook?"
+  },
+  {
+    "topic": "sport",
+    "question_text": "I'd like to talk about sport. Do you play any sports?\nWhat sports did you do when you were at school?\nDo you prefer watching sport or taking part in it?\nWhich sports are most popular in your country?\nIs there a sport you would like to try in the future?"
+  },
+  {
+    "topic": "shopping",
+    "question_text": "Let's talk about shopping. Do you enjoy going shopping?\nHow often do you go shopping?\nDo you prefer shopping online or in shops?\nWhat was the last thing you bought for yourself?\nDo you usually plan what to buy before you go shopping?"
+  },
+  {
+    "topic": "travel",
+    "question_text": "Let's talk about travelling. Do you like travelling?\nWhere did you go on your last trip?\nDo you prefer travelling alone or with other people?\nWhat do you always take with you when you travel?\nIs there a country you would really like to visit one day?"
+  },
+  {
+    "topic": "friends",
+    "question_text": "Let's talk about friends. How often do you see your friends?\nWhat do you usually do together?\nDo you prefer to have a few close friends or lots of friends?\nAre you still in touch with any of your childhood friends?\nWhat do you think makes someone a good friend?"
+  },
+  {
+    "topic": "family",
+    "question_text": "Now let's talk about your family. How many people are there in your family?\nWho are you closest to in your family?\nHow often do you get together with your relatives?\nWhat do you usually do together as a family?\nAre you similar to anyone in your family?"
+  },
+  {
+    "topic": "mobile phones",
+    "question_text": "Let's talk about mobile phones. How often do you use your mobile phone?\nWhat do you mainly use your phone for?\nHow old were you when you got your first phone?\nCould you manage a whole day without your phone?\nDo you think people spend too much time on their phones?"
+  },
+  {
+    "topic": "the internet",
+    "question_text": "Let's talk about the internet. How much time do you spend online each day?\nWhat do you usually do on the internet?\nWhen did you first start using the internet?\nWhich website do you visit most often?\nHow would your life be different without the internet?"
+  },
+  {
+    "topic": "social media",
+    "question_text": "Let's talk about social media. Which social media apps do you use?\nHow much time do you spend on social media in a typical day?\nWhat kind of things do you post online?\nHas social media changed the way you keep in touch with friends?\nHave you ever thought about taking a break from social media?"
+  },
+  {
+    "topic": "transport",
+    "question_text": "Let's talk about transport. How do you usually get to work or school?\nWhat is public transport like in your city?\nDo you prefer travelling by bus or by train?\nHow did you travel to school when you were a child?\nWhat would improve transport in your area?"
+  },
+  {
+    "topic": "festivals",
+    "question_text": "Let's talk about festivals. What is the most important festival in your country?\nHow do you usually celebrate it?\nWhat did you enjoy most about festivals when you were a child?\nDo you prefer celebrating festivals with family or with friends?\nHave festivals in your country changed in recent years?"
+  },
+  {
+    "topic": "birthdays",
+    "question_text": "Let's talk about birthdays. Do you usually celebrate your birthday?\nHow did you celebrate your last birthday?\nWhich birthday from your childhood do you remember best?\nDo you prefer big parties or quiet celebrations?\nDo you think birthdays are more important for children than for adults?"
+  },
+  {
+    "topic": "art",
+    "question_text": "Let's talk about art. Are you interested in art?\nDid you enjoy art lessons when you were at school?\nDo you ever visit art galleries or museums?\nWhat kind of pictures do you have on the walls of your home?\nDo you think art is important in everyday life?"
+  },
+  {
+    "topic": "photography",
+    "question_text": "Let's talk about photography. Do you like taking photos?\nWhat do you usually take photos of?\nDo you prefer taking photos with a phone or a camera?\nDo you like having your photo taken?\nDo you ever print your photos, or do you keep them on your phone?"
+  },
+  {
+    "topic": "films",
+    "question_text": "Let's talk about films. How often do you watch films?\nWhat kind of films do you enjoy most?\nDo you prefer watching films at home or at the cinema?\nWho do you usually watch films with?\nIs there a film you have watched more than once?"
+  },
+  {
+    "topic": "television",
+    "question_text": "Let's talk about television. Do you watch much TV?\nWhat kinds of programmes do you like watching?\nWhat TV programmes did you enjoy as a child?\nDo you prefer watching TV alone or with other people?\nDo you think TV is less popular now than it used to be?"
+  },
+  {
+    "topic": "sleep",
+    "question_text": "Let's talk about sleep. How many hours do you usually sleep at night?\nWhat time do you usually go to bed?\nDo you ever take a nap during the day?\nWhat do you do if you can't fall asleep?\nDo you think you get enough sleep?"
+  },
+  {
+    "topic": "mornings",
+    "question_text": "Let's talk about mornings. Are you a morning person?\nWhat do you usually do first thing in the morning?\nDo you have breakfast every day?\nIs your morning routine different at the weekend?\nWhat could you do to make your mornings more productive?"
+  },
+  {
+    "topic": "weekends",
+    "question_text": "Let's talk about weekends. How do you usually spend your weekends?\nWhat did you do last weekend?\nDo you prefer relaxing at home or going out at the weekend?\nHow were your weekends different when you were a child?\nDo you ever have to work or study at the weekend?"
+  },
+  {
+    "topic": "parks",
+    "question_text": "Let's talk about parks. Is there a park near where you live?\nHow often do you go to parks?\nWhat do people usually do in parks in your city?\nDid you play in parks when you were a child?\nDo you think your city needs more parks?"
+  },
+  {
+    "topic": "pets and animals",
+    "question_text": "Let's talk about animals. Do you have a pet?\nWhat pets are popular in your country?\nDid you have any pets when you were a child?\nWhat is your favourite animal?\nWould you like to have a pet in the future?"
+  },
+  {
+    "topic": "colours",
+    "question_text": "Let's talk about colours. What is your favourite colour?\nHas your favourite colour changed since you were a child?\nWhat colours do you usually wear?\nWhat colour would you like to paint your bedroom?\nDo any colours have special meanings in your culture?"
+  },
+  {
+    "topic": "clothes",
+    "question_text": "Let's talk about clothes. What kind of clothes do you usually wear?\nDo you wear different clothes at the weekend?\nDo you prefer comfortable clothes or fashionable clothes?\nWhere do you usually buy your clothes?\nDid you have to wear a uniform at school?"
+  },
+  {
+    "topic": "handwriting",
+    "question_text": "Let's talk about handwriting. Do you often write by hand?\nIs your handwriting easy to read?\nDo you prefer writing by hand or typing?\nHow did you learn to write when you were a child?\nDo you think handwriting will still be important in the future?"
+  },
+  {
+    "topic": "names",
+    "question_text": "Let's talk about names. Does your name have a special meaning?\nWho chose your name?\nDo you like your name?\nWhat names are popular in your country at the moment?\nWould you ever change your name if you could?"
+  },
+  {
+    "topic": "flowers",
+    "question_text": "Let's talk about flowers. Do you like flowers?\nWhat is your favourite flower?\nHave you ever given flowers to someone?\nOn what occasions do people give flowers in your country?\nWould you like to grow flowers at home?"
+  },
+  {
+    "topic": "the sky and stars",
+    "question_text": "Let's talk about the sky. Do you often look up at the sky?\nCan you see the stars clearly where you live?\nDid you enjoy looking at the stars when you were a child?\nWould you rather watch the sunrise or the sunset?\nAre you interested in learning more about space?"
+  },
+  {
+    "topic": "rain",
+    "question_text": "Let's talk about rain. Does it rain much where you live?\nDo you like rainy days?\nWhat do you usually do when it rains?\nDid you enjoy playing in the rain as a child?\nWould you rather live in a wet place or a dry place?"
+  },
+  {
+    "topic": "crowded places",
+    "question_text": "Let's talk about crowded places. Are there many crowded places in your city?\nHow do you feel when you are in a crowded place?\nWhen was the last time you were somewhere very crowded?\nWhat do you do to avoid crowds?\nDo you think your city will become more crowded in the future?"
+  },
+  {
+    "topic": "noise",
+    "question_text": "Let's talk about noise. Is the area where you live noisy or quiet?\nWhat kinds of noise do you hear every day?\nDo you need a quiet place to study or work?\nAre there any sounds that you find relaxing?\nWhat kind of noise annoys you the most?"
+  },
+  {
+    "topic": "gifts",
+    "question_text": "Let's talk about gifts. Do you enjoy giving gifts?\nWhat was the last gift you gave to someone?\nWhat is the best gift you have ever received?\nIs it difficult for you to choose gifts for people?\nDo you prefer to give money or presents?"
+  },
+  {
+    "topic": "time management",
+    "question_text": "Let's talk about time management. Are you good at organising your time?\nDo you make a plan for each day?\nDo you ever feel that you don't have enough time?\nWhat do you do when you have a lot of things to do at once?\nIs it easier to manage your time now than when you were younger?"
+  },
+  {
+    "topic": "learning languages",
+    "question_text": "Let's talk about learning languages. How many languages can you speak?\nWhen did you start learning English?\nWhat do you find most difficult about learning a foreign language?\nHow do you usually practise your English?\nWhich other language would you like to learn in the future?"
+  }
 ]

@@ -14,6 +14,7 @@ from aiogram.types import CallbackQuery, Message
 
 from bot.i18n import t
 from bot.keyboards.main_menu_kb import BTN_VOCAB_RU, BTN_VOCAB_UZ
+from bot.keyboards.nav_kb import back_kb, with_back
 from bot.keyboards.vocab_kb import (
     CB_VOCAB_AGAIN,
     CB_VOCAB_KNOW,
@@ -40,17 +41,17 @@ async def show_vocab_menu(message: Message, state: FSMContext, lang: str) -> Non
 
     due = total - learned
     if total == 0:
-        await message.answer(t("vocab.empty", lang))
+        await message.answer(t("vocab.empty", lang), reply_markup=back_kb(lang))
         return
 
     text = t("vocab.summary", lang, total=total, learned=learned)
     if due == 0:
-        await message.answer(text + "\n\n" + t("vocab.all_learned", lang))
+        await message.answer(text + "\n\n" + t("vocab.all_learned", lang), reply_markup=back_kb(lang))
         return
 
     await message.answer(
         text + "\n\n" + t("vocab.ready_to_review", lang, due=due),
-        reply_markup=start_review_kb(lang),
+        reply_markup=with_back(start_review_kb(lang), lang),
     )
 
 
@@ -108,7 +109,7 @@ async def _show_card(message: Message, state: FSMContext, lang: str) -> None:
     if index >= len(queue):
         await message.edit_text(
             t("vocab.finished", lang, reviewed=data["reviewed"], learned=data["learned_now"]),
-            reply_markup=None,
+            reply_markup=back_kb(lang),
         )
         await state.clear()
         return

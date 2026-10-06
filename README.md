@@ -23,7 +23,7 @@ services/ai/    OCR, hujjat parsing, transkripsiya, baholash (writing/speaking),
 services/pdf/   Jinja2 shablon + WeasyPrint PDF generator
 services/storage/  Fayllarni diskda saqlash
 db/             SQLAlchemy modellari, CRUD, Alembic migratsiyalar
-data/practice_questions/  Practice bo'limi uchun 50+50 yozma va Speaking savollar banki
+data/practice_questions/  Practice uchun boshlang'ich savollar: 50+50 Writing, 40+40+40 Speaking
 data/books/     O'zingizning IELTS namuna kitoblaringiz (PDF) shu yerga qo'yiladi
 scripts/        seed_practice_questions.py, ingest_books.py
 ```
@@ -46,6 +46,16 @@ scripts/        seed_practice_questions.py, ingest_books.py
    ```
    docker compose exec bot python scripts/seed_practice_questions.py
    ```
+   Skript faqat **bo'sh** bo'limlarni to'ldiradi. Shundan keyin savollar web admin panelning
+   **Savollar** sahifasida (`http://<server>:8088/questions`) boshqariladi: qo'shish,
+   tahrirlash, o'chirish, tartibini o'zgartirish, Writing Task 1 uchun rasm yuklash. Biror
+   bo'limni JSON fayldagi holatga qaytarish kerak bo'lsa (admin o'zgarishlari ustidan yoziladi):
+   ```
+   docker compose exec bot python scripts/seed_practice_questions.py --overwrite speaking_part1 speaking_part2 speaking_part3
+   ```
+   Speaking savollari formati: Part 1/3 da **har bir qator bitta savol**, bot ularni birma-bir
+   so'raydi va oxirida hammasini bitta tekshiruv sifatida baholaydi. Part 2 da butun matn bitta
+   cue card bo'ladi.
 4. IELTS namuna kitoblaringizni `data/books/*.pdf` ga qo'ying, so'ng:
    ```
    docker compose exec bot python scripts/ingest_books.py extract

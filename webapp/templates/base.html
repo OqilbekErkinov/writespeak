@@ -81,10 +81,18 @@
 
   form.inline { display: inline; }
 
-  input[type=text], input[type=password] {
+  input[type=text], input[type=password], textarea, select {
     font-family: var(--font); font-size: 14px; padding: 8px 10px; border: 1px solid var(--border);
     border-radius: 7px; background: var(--surface); color: var(--ink);
   }
+  textarea { width: 100%; line-height: 1.5; resize: vertical; }
+  .btn-primary { color: #fff; background: var(--accent); border-color: var(--accent); }
+  .btn-sm { font-size: 12px; padding: 4px 9px; }
+  .flash { background: #e4f5e4; color: var(--good); border-radius: 8px; padding: 10px 14px;
+    font-size: 14px; font-weight: 600; margin-bottom: 16px; }
+  .error { background: #fbe9e7; color: var(--bad); border-radius: 8px; padding: 10px 14px;
+    font-size: 14px; font-weight: 600; margin-bottom: 16px; }
+  .hint { color: var(--ink-soft); font-size: 13px; margin: 4px 0 0; }
 
   .filters { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
   .filters a { padding: 6px 12px; border-radius: 100px; border: 1px solid var(--border); font-size: 13px;
@@ -102,6 +110,7 @@
       <a href="/users" class="{{ 'active' if active == 'users' else '' }}">Foydalanuvchilar</a>
       <a href="/payments" class="{{ 'active' if active == 'payments' else '' }}">To'lovlar</a>
       <a href="/groups" class="{{ 'active' if active == 'groups' else '' }}">Guruhlar</a>
+      <a href="/questions" class="{{ 'active' if active == 'questions' else '' }}">Savollar</a>
     </nav>
     <a href="/logout" class="logout">Chiqish</a>
   </div>

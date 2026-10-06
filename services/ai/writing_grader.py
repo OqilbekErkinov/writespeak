@@ -1,6 +1,8 @@
 """Writing (Task 1 / Task 2) grading against the IELTS Writing Band Descriptors."""
 from __future__ import annotations
 
+import base64
+
 from bot.config import settings
 from services.ai.openai_client import client
 from services.ai.schemas import WritingGradingResult
@@ -117,15 +119,38 @@ calibrated for ESL learners, not a literal examiner reading of the descriptors.
 6. Produce a short topic label (3-6 words) for this essay/report."""
 
 
-async def grade_writing(task_type: str, prompt_text: str, answer_text: str) -> WritingGradingResult:
+async def grade_writing(
+    task_type: str,
+    prompt_text: str,
+    answer_text: str,
+    prompt_images: list[tuple[bytes, str]] | None = None,
+) -> WritingGradingResult:
+    """`prompt_images` - (bytes, mime) pairs of the Task 1 chart/diagram, so
+    the grader can check the student's figures and overview against the
+    actual visual instead of just its text description."""
+    user_text = f"QUESTION PROMPT:\n{prompt_text}\n\nSTUDENT'S ANSWER:\n{answer_text}"
+    user_content: str | list[dict] = user_text
+    if prompt_images:
+        user_content = [
+            {
+                "type": "text",
+                "text": user_text + "\n\nThe attached image(s) are the visual this task is "
+                "based on - check the student's data, comparisons and overview against them.",
+            },
+            *(
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:{mime};base64,{base64.b64encode(data).decode()}"},
+                }
+                for data, mime in prompt_images
+            ),
+        ]
+
     response = await client.beta.chat.completions.parse(
         model=settings.openai_model_grading,
         messages=[
             {"role": "system", "content": _system_prompt(task_type)},
-            {
-                "role": "user",
-                "content": f"QUESTION PROMPT:\n{prompt_text}\n\nSTUDENT'S ANSWER:\n{answer_text}",
-            },
+            {"role": "user", "content": user_content},
         ],
         response_format=WritingGradingResult,
         # No `temperature` override - see services/ai/ocr.py's comment.

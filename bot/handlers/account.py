@@ -13,6 +13,7 @@ from bot.config import settings
 from bot.i18n import t
 from bot.keyboards.lang_kb import CB_LANG_CHANGE_PREFIX, lang_picker_kb
 from bot.keyboards.main_menu_kb import BTN_ACCOUNT_RU, BTN_ACCOUNT_UZ
+from bot.keyboards.nav_kb import with_back
 from bot.keyboards.payment_kb import buy_credits_kb
 from bot.utils.quota import format_som
 from db import crud
@@ -80,5 +81,6 @@ async def show_account(message: Message, lang: str) -> None:
 
     await message.answer("\n".join(lines), reply_markup=buy_credits_kb(lang))
     await message.answer(
-        t("account.language_button", lang), reply_markup=lang_picker_kb(CB_LANG_CHANGE_PREFIX)
+        t("account.language_button", lang),
+        reply_markup=with_back(lang_picker_kb(CB_LANG_CHANGE_PREFIX), lang),
     )

@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}Savollar — WriteSpeak Admin{% endblock %}
+{% block content %}
+<style>
+  .q-head { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    flex-wrap: wrap; margin-bottom: 16px; }
+  .q-head h1 { margin: 0; }
+  .q-text { white-space: pre-line; color: var(--ink); max-width: 560px; }
+  .q-topic { font-size: 12px; color: var(--ink-faint); text-transform: uppercase;
+    letter-spacing: 0.03em; margin-bottom: 2px; }
+  .q-meta { font-size: 12px; color: var(--ink-faint); margin-top: 4px; }
+  .q-thumb { width: 96px; height: 64px; object-fit: contain; border: 1px solid var(--border);
+    border-radius: 6px; background: var(--paper); display: block; }
+  .q-actions { white-space: nowrap; }
+  .q-actions form { display: inline; }
+  .q-order button { width: 28px; padding: 2px 0; }
+  .no-image { font-size: 12px; color: var(--warn); }
+  td { vertical-align: top; }
+  tr:target td { background: #fffbe8; }
+</style>
+
+<div class="q-head">
+  <h1>Practice savollari</h1>
+  <a class="btn btn-primary" href="/questions/new?module={{ module }}">+ Yangi savol</a>
+</div>
+
+{% if flash %}<div class="flash">{{ flash }}</div>{% endif %}
+
+<div class="filters">
+  {% for value, label in modules.items() %}
+  <a href="/questions?module={{ value }}" class="{{ 'active' if value == module else '' }}">
+    {{ label }} ({{ counts.get(value, 0) }})
+  </a>
+  {% endfor %}
+</div>
+
+<p class="hint" style="margin: 0 0 16px;">{{ hint }}</p>
+
+<div class="card">
+  {% if questions %}
+  <div class="table-scroll">
+  <table>
+    <tr>
+      <th>#</th><th>Savol</th>
+      {% if module == "writing_task1" %}<th>Rasm</th>{% endif %}
+      <th>Tartib</th><th></th>
+    </tr>
+    {% for q in questions %}
+    <tr id="q{{ q.id }}">
+      <td class="strong">Q{{ loop.index }}</td>
+      <td>
+        {% if q.topic %}<div class="q-topic">{{ q.topic }}</div>{% endif %}
+        <div class="q-text">{{ q.question_text if q.question_text|length <= 400 else q.question_text[:400] ~ "…" }}</div>
+        {% if module in ("speaking_part1", "speaking_part3") %}
+          {% set lines = q.question_text.splitlines()|select|list %}
+          <div class="q-meta">{{ lines|length }} ta savol birma-bir so'raladi</div>
+        {% endif %}
+      </td>
+      {% if module == "writing_task1" %}
+      <td>
+        {% if q.image_path %}
+          <a href="/questions/{{ q.id }}/image" target="_blank"><img class="q-thumb" src="/questions/{{ q.id }}/image" alt="rasm" loading="lazy"></a>
+        {% else %}
+          <span class="no-image">rasm yo'q</span>
+        {% endif %}
+      </td>
+      {% endif %}
+      <td class="q-order">
+        <form class="inline" method="post" action="/questions/{{ q.id }}/move/up">
+          <button type="submit" class="btn btn-sm" title="Yuqoriga" {{ 'disabled' if loop.first else '' }}>▲</button>
+        </form>
+        <form class="inline" method="post" action="/questions/{{ q.id }}/move/down">
+          <button type="submit" class="btn btn-sm" title="Pastga" {{ 'disabled' if loop.last else '' }}>▼</button>
+        </form>
+      </td>
+      <td class="q-actions">
+        <a class="btn btn-sm" href="/questions/{{ q.id }}/edit">Tahrirlash</a>
+        <form method="post" action="/questions/{{ q.id }}/delete"
+              onsubmit="return confirm('Q{{ loop.index }} o\'chirilsinmi? Buni qaytarib bo\'lmaydi.');">
+          <button type="submit" class="btn btn-sm btn-bad">O'chirish</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+  {% else %}
+  <div class="empty">Bu bo'limda hali savol yo'q. «+ Yangi savol» tugmasi orqali qo'shing.</div>
+  {% endif %}
+</div>
+{% endblock %}

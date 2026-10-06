@@ -88,14 +88,14 @@ async def advance_mock_test(message: Message, state: FSMContext, mock_session_id
         await state.set_state(WritingStates.awaiting_prompt)
         await message.answer(
             f"🎯 <b>Mock Test</b> — {TASK_LABELS[sub_key]}\n\n"
-            "✏️ Savol (prompt) matnini yuboring — matn, rasm, PDF yoki DOCX shaklida."
+            "✏️ Please, send the question/s in any format"
         )
     else:
         await state.update_data(part=sub_key)
         await state.set_state(SpeakingStates.awaiting_question)
         await message.answer(
             f"🎯 <b>Mock Test</b> — {PART_LABELS[sub_key]}\n\n"
-            "✏️ Savol matnini yuboring — matn, rasm, PDF yoki DOCX shaklida."
+            "✏️ Please, send the question/s in any format"
         )
 
 

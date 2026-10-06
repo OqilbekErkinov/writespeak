@@ -47,4 +47,8 @@ def main_menu_kb(lang: str = "uz") -> ReplyKeyboardMarkup:
             [KeyboardButton(text=group_label)],
         ],
         resize_keyboard=True,
+        # Collapses after each tap so the section's own (inline) buttons get
+        # the screen; still reachable via the keyboard icon, and every
+        # section's "⬅️ Orqaga" re-opens it (bot/handlers/main_menu.py).
+        one_time_keyboard=True,
     )

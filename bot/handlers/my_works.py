@@ -18,10 +18,12 @@ from bot.keyboards.main_menu_kb import BTN_MY_WORKS
 from bot.keyboards.my_works_kb import (
     CB_DOWNLOAD_PREFIX,
     CB_HISTORY,
+    CB_MENU,
     CB_STATS,
     history_list_kb,
     my_works_menu_kb,
 )
+from bot.utils.messages import show_screen
 from db import crud
 from db.database import get_session
 from services.storage.file_storage import read_file
@@ -32,22 +34,26 @@ router = Router(name="my_works")
 @router.message(F.text == BTN_MY_WORKS)
 async def open_my_works(message: Message, state: FSMContext, lang: str) -> None:
     await state.clear()  # abandon any in-progress Writing/Speaking flow
-    await message.answer(t("mywork.title", lang), reply_markup=my_works_menu_kb())
+    await message.answer(t("mywork.title", lang), reply_markup=my_works_menu_kb(lang))
+
+
+@router.callback_query(F.data == CB_MENU)
+async def back_to_my_works(callback: CallbackQuery, lang: str) -> None:
+    await callback.answer()
+    await show_screen(callback, t("mywork.title", lang), my_works_menu_kb(lang))
 
 
 @router.callback_query(F.data == CB_HISTORY)
 async def show_history(callback: CallbackQuery, lang: str) -> None:
-    await callback.answer()
     async with get_session() as session:
         items = await crud.get_user_history(session, callback.from_user.id, limit=20)
 
     if not items:
-        await callback.message.answer(t("mywork.empty", lang))
+        await callback.answer(t("mywork.empty", lang), show_alert=True)
         return
 
-    await callback.message.answer(
-        t("mywork.history_header", lang), reply_markup=history_list_kb(items)
-    )
+    await callback.answer()
+    await show_screen(callback, t("mywork.history_header", lang), history_list_kb(items, lang))
 
 
 @router.callback_query(F.data.startswith(CB_DOWNLOAD_PREFIX))

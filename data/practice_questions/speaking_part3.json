@@ -1,17 +1,162 @@
 [
-  {"topic": "influence of people", "question_text": "Let's discuss the influence of role models more generally. Do you think celebrities have too much influence on young people today? Why do some people become role models while others don't? Is it healthy for people to have role models?"},
-  {"topic": "tourism and travel", "question_text": "Let's talk about travel and tourism in general. How has tourism changed in your country over the last few decades? What are the environmental impacts of mass tourism? Do you think tourism will change in the future?"},
-  {"topic": "value of objects", "question_text": "Let's discuss why people value certain objects. Why do you think people become attached to certain possessions? Do you think younger generations value material things differently from older generations? Is it a good thing to be attached to objects?"},
-  {"topic": "memorable experiences", "question_text": "Let's talk about memory and experiences more broadly. Why do you think some events stay in our memory while others are forgotten? Do you think technology (like photos and videos) changes the way we remember events? Is it important to keep records of important events?"},
-  {"topic": "skills and education", "question_text": "Let's discuss skills and learning in general. Do you think schools teach students the practical skills they need for life? What skills do you think will become more important in the future? Should adults continue learning new skills throughout their lives?"},
-  {"topic": "reading and media", "question_text": "Let's talk about reading habits in society. Do you think people read less now than in the past? What are the effects of digital media on reading habits? Do you think books will disappear completely in the future?"},
-  {"topic": "travel and transport", "question_text": "Let's discuss transport more generally. How has the way people travel changed over the past 50 years? What are the environmental effects of increased travel? What do you think transport will look like in the future?"},
-  {"topic": "technology and society", "question_text": "Let's talk about the impact of technology on society. How has technology changed the way people communicate? Do you think technology brings people closer together or pushes them apart? What are the risks associated with relying too much on technology?"},
-  {"topic": "traditions and culture", "question_text": "Let's discuss traditions and festivals more broadly. Why are traditional celebrations important to a society? Do you think traditions are being lost due to globalization? Should governments make an effort to preserve cultural traditions?"},
-  {"topic": "goals and success", "question_text": "Let's talk about setting goals and achieving success. Why do you think some people are more successful at achieving their goals than others? Is it better to set long-term or short-term goals? Do you think society's definition of success has changed over time?"},
-  {"topic": "education and teachers", "question_text": "Let's discuss education more broadly. What qualities make a good teacher? Do you think the role of teachers will change in the future due to technology? Should teachers be paid more than they currently are?"},
-  {"topic": "decision-making", "question_text": "Let's talk about decision-making in general. Do you think people today have more difficult decisions to make than in the past? Is it better to make decisions quickly or to think carefully before deciding? How does culture influence the way people make decisions?"},
-  {"topic": "art and film", "question_text": "Let's discuss the role of art and film in society. Why is art important to a culture? Do you think governments should fund the arts? How has technology changed the film industry?"},
-  {"topic": "health and lifestyle", "question_text": "Let's talk about health and lifestyle more generally. Why do you think lifestyle-related illnesses are increasing worldwide? What role should governments play in promoting healthy lifestyles? Do you think people today are more health-conscious than in the past?"},
-  {"topic": "business and economy", "question_text": "Let's discuss business and entrepreneurship. What qualities do successful entrepreneurs share? Do you think it has become easier or harder to start a business in recent years? What role does government play in supporting new businesses?"}
+  {
+    "topic": "influential people",
+    "question_text": "Who has the most influence on young people today: parents, teachers or celebrities?\nWhy do some public figures become role models for young people?\nWhat qualities should a good role model have?\nIs it healthy for people to look up to role models?\nShould famous people be expected to set a good example for the young?"
+  },
+  {
+    "topic": "teachers",
+    "question_text": "What qualities do you think make a good teacher?\nIs teaching a well-respected profession in your country?\nHow has technology changed the role of the teacher in the classroom?\nDo you think online learning will ever fully replace face-to-face teaching?\nShould teachers be responsible for children's behaviour as well as their academic progress?"
+  },
+  {
+    "topic": "friendship",
+    "question_text": "What do you think is the most important quality in a friendship?\nIs it easier for children or adults to make new friends?\nHow has technology changed the way people keep in touch with friends?\nCan online friendships be as meaningful as face-to-face ones?\nWhy do some friendships last a lifetime while others fade away?"
+  },
+  {
+    "topic": "older people",
+    "question_text": "What can young people learn from older generations?\nHow is the role of elderly people in the family changing in your country?\nIs it better for elderly people to live with their families or in care homes?\nWhat problems might a society face if its population is ageing quickly?\nHow could governments help older people to stay active and independent?"
+  },
+  {
+    "topic": "fame",
+    "question_text": "Why are so many young people today eager to become famous?\nWhat are the disadvantages of being a famous person?\nDo you think celebrities deserve the high incomes they receive?\nShould famous people have the right to keep their private lives private?\nHow has the internet changed the way people become famous?"
+  },
+  {
+    "topic": "work and careers",
+    "question_text": "What factors do people consider most when choosing a career?\nIs job satisfaction more important than a high salary?\nWhich jobs do you think are undervalued in society today?\nHow might artificial intelligence change the kinds of jobs people do in the future?\nIs it still realistic for people to stay in the same job for their whole working life?"
+  },
+  {
+    "topic": "quiet places",
+    "question_text": "Why do some people find it difficult to relax nowadays?\nIs it harder to find quiet places in cities than it used to be?\nShould city planners create more quiet public spaces such as libraries and gardens?\nDo people need time alone in order to be happy?\nHow does noise pollution affect people's health and well-being?"
+  },
+  {
+    "topic": "nature",
+    "question_text": "Why do people living in cities enjoy spending time in nature?\nDo you think children today spend enough time outdoors?\nWhat are the negative effects of tourism on areas of natural beauty?\nShould governments limit the number of visitors to national parks?\nWho should be responsible for protecting the natural environment: individuals or governments?"
+  },
+  {
+    "topic": "tourism",
+    "question_text": "Why do people choose to travel abroad for their holidays?\nWhat are the benefits of international tourism for a country's economy?\nCan tourism damage the local culture of a place?\nHow has the internet changed the way people plan their holidays?\nDo you think people will travel more or less in the future?"
+  },
+  {
+    "topic": "architecture",
+    "question_text": "Why is it important to preserve old buildings?\nWhy do some people prefer traditional architecture to modern designs?\nShould the government control the design of new buildings in cities?\nHow do public buildings such as museums and libraries benefit a community?\nWhat do you think homes and buildings will look like in fifty years' time?"
+  },
+  {
+    "topic": "eating out",
+    "question_text": "Why is eating out more popular now than it was in the past?\nWhat are the advantages of cooking at home compared with eating out?\nHow has fast food changed people's eating habits?\nShould restaurants be required to show calorie information on their menus?\nDo you think family mealtimes are becoming less common?"
+  },
+  {
+    "topic": "possessions",
+    "question_text": "Why do people become emotionally attached to certain objects?\nDo older and younger generations value possessions in the same way?\nDo you think people today own too many things?\nWhat kinds of objects do families usually pass down to the next generation?\nWhy do some people choose a minimalist lifestyle with very few possessions?"
+  },
+  {
+    "topic": "technology",
+    "question_text": "How has technology changed people's everyday lives over the last twenty years?\nDo you think people rely too much on technology nowadays?\nWhy do some older people find it harder to adapt to new technology?\nWhat are the dangers of children using technology from a very young age?\nWhich technology do you think will have the greatest impact on society in the future?"
+  },
+  {
+    "topic": "gifts",
+    "question_text": "Why do people give gifts to each other?\nIs the price of a gift important?\nAre handmade gifts more meaningful than bought ones?\nHow have gift-giving customs changed in your country in recent years?\nDo businesses encourage people to spend too much money on gifts during festivals?"
+  },
+  {
+    "topic": "fashion",
+    "question_text": "Why do some people care a lot about fashion while others do not?\nDo the clothes people wear reflect their personality?\nShould employees be required to wear uniforms at work?\nWhat are the environmental effects of the fashion industry?\nHow might the way people dress change in the future?"
+  },
+  {
+    "topic": "photographs",
+    "question_text": "Why do people like to take photographs of important moments?\nHow has the invention of smartphones changed photography?\nDo you think people take too many photos nowadays?\nCan a photograph ever give a false picture of reality?\nWill printed photographs disappear completely in the future?"
+  },
+  {
+    "topic": "celebrations",
+    "question_text": "Why are celebrations important in people's lives?\nHow have weddings and other family celebrations changed in your country?\nWhat role do celebrations play in bringing communities together?\nIs it important to keep traditional festivals alive?\nHow has globalisation affected the way people celebrate in your country?"
+  },
+  {
+    "topic": "journeys",
+    "question_text": "How has the way people travel changed over the last fifty years?\nWhat are the advantages and disadvantages of travelling by air?\nWhy do some people prefer to travel by car rather than use public transport?\nHow can governments encourage people to use public transport?\nWhat do you think transport will be like in the future?"
+  },
+  {
+    "topic": "patience",
+    "question_text": "Are people less patient now than they were in the past?\nIn what situations is patience particularly important?\nHow has technology affected people's ability to wait?\nWhy are some people naturally more patient than others?\nWhat can businesses do to make waiting less frustrating for their customers?"
+  },
+  {
+    "topic": "helping others",
+    "question_text": "Why do some people enjoy doing volunteer work?\nShould schools encourage students to take part in community service?\nAre people less willing to help strangers than they used to be?\nWhich groups in society need the most help, in your opinion?\nShould helping people in need be the responsibility of the government or of individuals?"
+  },
+  {
+    "topic": "surprises",
+    "question_text": "Why do some people love surprises while others dislike them?\nDo children and adults react to surprises in different ways?\nIs it better to plan everything carefully or to leave room for the unexpected in life?\nIn what situations could a surprise cause problems?\nWhy do companies sometimes use surprise as a marketing strategy?"
+  },
+  {
+    "topic": "mistakes",
+    "question_text": "Why are some people afraid of making mistakes?\nDo schools punish students too much for making mistakes?\nIs it better to learn from your own mistakes or from other people's?\nShould parents let children make mistakes rather than always protecting them?\nWhy do some people find it hard to admit they were wrong?"
+  },
+  {
+    "topic": "hobbies",
+    "question_text": "Why is it important for people to have hobbies?\nHow do the hobbies of young people differ from those of older people?\nDo people today have less free time than in the past?\nCan a hobby ever become a successful career?\nShould parents choose hobbies for their children?"
+  },
+  {
+    "topic": "sport and exercise",
+    "question_text": "Do people in your country exercise more or less than they did in the past?\nShould physical education be a compulsory subject at school?\nWhat are the benefits of team sports compared with individual sports?\nWhy are professional sportspeople paid so much money?\nHow can governments encourage people to lead more active lives?"
+  },
+  {
+    "topic": "skills",
+    "question_text": "Which practical skills should schools teach young people?\nIs it easier to learn new skills as a child or as an adult?\nShould employers pay for their staff to learn new skills?\nAre practical skills more valuable than academic knowledge?\nWhy do some people give up when learning something new?"
+  },
+  {
+    "topic": "family time",
+    "question_text": "How do families in your country usually spend their free time together?\nDo families spend less time together than they did in the past?\nWhy is it important for working people to have a good work-life balance?\nShould employers do more to help their staff balance work and family life?\nHow might the way people spend their leisure time change in the future?"
+  },
+  {
+    "topic": "books and reading",
+    "question_text": "Do people read less now than they did in the past?\nWhat are the benefits of encouraging children to read for pleasure?\nAre e-books likely to replace printed books completely?\nWhy do some books become bestsellers?\nShould public libraries continue to receive government funding?"
+  },
+  {
+    "topic": "films",
+    "question_text": "Why do some films become popular all over the world?\nIs going to the cinema still popular now that people can stream films at home?\nShould films based on true stories stay completely faithful to the facts?\nCan violence in films influence the behaviour of young people?\nShould governments support their country's own film industry?"
+  },
+  {
+    "topic": "websites and apps",
+    "question_text": "How has the internet changed the way people find information?\nShould parents control their children's use of the internet?\nHas the internet made people more or less sociable?\nWhat are the risks of sharing personal information online?\nHow will the internet change the way people work in the future?"
+  },
+  {
+    "topic": "news",
+    "question_text": "How do most people in your country get their news nowadays?\nDo you think news reports today are reliable?\nWhy do people tend to pay more attention to bad news than good news?\nHow important is it for young people to follow current events?\nHow could the spread of fake news online be prevented?"
+  },
+  {
+    "topic": "music",
+    "question_text": "Why is music important in every culture?\nWhat are the benefits for children of learning a musical instrument?\nHow has technology changed the way people listen to music?\nIs traditional music in your country still popular with young people?\nAre musicians paid fairly in the age of streaming?"
+  },
+  {
+    "topic": "advertising",
+    "question_text": "Why do companies spend so much money on advertising?\nDoes advertising encourage people to buy things they do not need?\nShould advertisements aimed at children be banned?\nHow is online advertising different from traditional advertising?\nShould there be stricter rules about what advertisements can claim?"
+  },
+  {
+    "topic": "decisions",
+    "question_text": "Do young people today face more difficult decisions than their parents did?\nAt what age should children be allowed to make important decisions for themselves?\nIs it better to make decisions quickly or to take time to think carefully?\nShould important decisions in a company be made by managers alone or by the whole team?\nWhy do some people find it hard to make decisions?"
+  },
+  {
+    "topic": "changing opinions",
+    "question_text": "Why do people's opinions often change as they get older?\nIs changing your mind a sign of weakness or of strength?\nHow much do the media influence people's opinions?\nWhy do some people refuse to change their views even when presented with evidence?\nShould politicians be criticised for changing their minds?"
+  },
+  {
+    "topic": "achievements",
+    "question_text": "How do people in your country usually define success?\nIs success mainly the result of hard work or of luck?\nShould schools reward effort as well as achievement?\nIs competition between students a good thing?\nWhy do some successful people still feel unhappy?"
+  },
+  {
+    "topic": "goals and ambitions",
+    "question_text": "Is it better to set long-term goals or short-term goals?\nWhat usually stops people from achieving their goals?\nDo parents put too much pressure on children to achieve their goals?\nHow have young people's ambitions changed compared with previous generations?\nIs it possible to be too ambitious?"
+  },
+  {
+    "topic": "advice",
+    "question_text": "Who do young people usually go to when they need advice?\nIs it better to get advice from friends or from professionals?\nWhy do some people find it difficult to accept advice?\nIs advice from older people still relevant to young people today?\nWhy do people sometimes ask strangers online for advice rather than people they know?"
+  },
+  {
+    "topic": "local area",
+    "question_text": "How have towns and cities in your country changed in recent years?\nShould local people have a say in how their area is developed?\nWhat are the main problems facing big cities today?\nWhat are the advantages and disadvantages of living in the suburbs rather than the city centre?\nHow can governments make cities better places to live?"
+  },
+  {
+    "topic": "personal change",
+    "question_text": "Why do many people find it difficult to change their habits?\nAre young people generally more open to change than older people?\nWhat have been the most significant changes in family life over recent decades?\nIs change always a good thing for society?\nHow can people cope better with major changes such as moving to a new country?"
+  },
+  {
+    "topic": "rules and laws",
+    "question_text": "Why do societies need rules and laws?\nShould children be involved in making the rules at school?\nWhy do some people choose to break rules even when they know the consequences?\nWhat is the best way to make people obey road safety rules?\nIs punishment the most effective way to stop people breaking the law?"
+  }
 ]

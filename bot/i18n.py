@@ -49,6 +49,13 @@ _T: dict[str, dict[str, str]] = {
         "uz": "Asosiy menyu:",
         "ru": "Главное меню:",
     },
+    # --- Navigation (bot/keyboards/nav_kb.py) ---
+    "nav.back": {"uz": "⬅️ Orqaga", "ru": "⬅️ Назад"},
+    "nav.main_menu": {"uz": "🏠 Asosiy menyu", "ru": "🏠 Главное меню"},
+    "nav.next_question": {"uz": "➡️ Keyingi savol", "ru": "➡️ Следующий вопрос"},
+    "nav.question_list": {"uz": "📋 Savollar ro'yxati", "ru": "📋 Список вопросов"},
+    "nav.check_again": {"uz": "🔁 Yana tekshirish", "ru": "🔁 Проверить ещё"},
+    "nav.what_next": {"uz": "Davom etamizmi? 👇", "ru": "Продолжим? 👇"},
     # --- Quota / paywall (bot/utils/quota.py) ---
     "quota.paywall": {
         "uz": "⚠️ Bugungi {free_limit} ta bepul tekshiruv imkoniyatingiz tugadi.\n\nDavom "
@@ -109,9 +116,11 @@ _T: dict[str, dict[str, str]] = {
         "uz": "Qaysi turini tekshirmoqchisiz?",
         "ru": "Какой тип хотите проверить?",
     },
+    # Exact wording requested by the business owner (2026-10-06), same in
+    # both UI languages - no format list, since any format is accepted.
     "writing.send_prompt": {
-        "uz": "✏️ Avval savol (prompt) matnini yuboring — matn, rasm, PDF yoki DOCX shaklida.",
-        "ru": "✏️ Сначала отправьте текст задания (prompt) — текстом, фото, PDF или DOCX.",
+        "uz": "✏️ Please, send the question/s in any format",
+        "ru": "✏️ Please, send the question/s in any format",
     },
     "writing.could_not_read": {
         "uz": "Afsuski, matnni o'qib bo'lmadi. Iltimos, yana urinib ko'ring yoki matn "
@@ -128,10 +137,8 @@ _T: dict[str, dict[str, str]] = {
         "ru": "Пожалуйста, отправьте правильный текст:",
     },
     "writing.send_answer": {
-        "uz": "✅ Qabul qilindi.\n\n✏️ Endi javobingizni yuboring (kamida {min_words} so'z) — "
-        "matn, rasm, PDF yoki DOCX shaklida.",
-        "ru": "✅ Принято.\n\n✏️ Теперь отправьте свой ответ (минимум {min_words} слов) — "
-        "текстом, фото, PDF или DOCX.",
+        "uz": "✅ Qabul qilindi.\n\n✏️ Endi javobingizni yuboring (kamida {min_words} so'z).",
+        "ru": "✅ Принято.\n\n✏️ Теперь отправьте свой ответ (минимум {min_words} слов).",
     },
     "writing.grading_in_progress": {
         "uz": "⏳ Tahlil qilinmoqda, biroz kuting...",
@@ -152,27 +159,55 @@ _T: dict[str, dict[str, str]] = {
         "ru": "Какую часть хотите проверить?",
     },
     "speaking.send_question": {
-        "uz": "✏️ Savol matnini yuboring — matn, rasm, PDF yoki DOCX shaklida.",
-        "ru": "✏️ Отправьте текст вопроса — текстом, фото, PDF или DOCX.",
+        "uz": "✏️ Please, send the question/s in any format",
+        "ru": "✏️ Please, send the question/s in any format",
     },
-    "speaking.send_answer": {
-        "uz": "✅ Qabul qilindi.\n\n🎙 Endi javobingizni ovozli xabar, video-xabar yoki "
-        "audio fayl shaklida yuboring.",
-        "ru": "✅ Принято.\n\n🎙 Теперь отправьте свой ответ голосовым, видео-сообщением "
-        "или аудиофайлом.",
+    # One question of a multi-question set (Part 1/3), asked one at a time
+    # like a real examiner - see bot/handlers/speaking.py's _ask_current_question.
+    "speaking.question_n": {
+        "uz": "❓ <b>Savol {n}/{total}</b>\n\n{question}\n\n🎙 Javobingizni ovozli xabar qilib "
+        "yuboring.",
+        "ru": "❓ <b>Вопрос {n}/{total}</b>\n\n{question}\n\n🎙 Отправьте ответ голосовым "
+        "сообщением.",
+    },
+    "speaking.question_single": {
+        "uz": "❓ <b>Savol</b>\n\n{question}\n\n🎙 Javobingizni ovozli xabar qilib yuboring.",
+        "ru": "❓ <b>Вопрос</b>\n\n{question}\n\n🎙 Отправьте ответ голосовым сообщением.",
+    },
+    "speaking.cue_card": {
+        "uz": "🗂 <b>Cue card</b>\n\n{question}\n\n⏱ 1 daqiqa tayyorlaning, so'ng 1-2 daqiqa "
+        "gapiring.\n🎙 Javobingizni ovozli xabar qilib yuboring.",
+        "ru": "🗂 <b>Cue card</b>\n\n{question}\n\n⏱ 1 минута на подготовку, затем говорите "
+        "1-2 минуты.\n🎙 Отправьте ответ голосовым сообщением.",
+    },
+    "speaking.btn_finish_now": {
+        "uz": "✅ Yakunlash va baholash",
+        "ru": "✅ Завершить и оценить",
     },
     "speaking.audio_only": {
-        "uz": "Iltimos, ovozli xabar, video-xabar yoki audio fayl yuboring.",
-        "ru": "Пожалуйста, отправьте голосовое, видео-сообщение или аудиофайл.",
+        "uz": "🎙 Iltimos, javobingizni ovozli xabar, video-xabar yoki audio fayl qilib yuboring.",
+        "ru": "🎙 Пожалуйста, отправьте ответ голосовым, видео-сообщением или аудиофайлом.",
     },
     # --- Input extraction (bot/utils/input_extraction.py) ---
-    "input.pdf_docx_only": {
-        "uz": "Faqat .pdf yoki .docx fayllar qabul qilinadi (yoki matn/rasm yuboring).",
-        "ru": "Принимаются только файлы .pdf или .docx (или отправьте текст/фото).",
+    "input.reading": {
+        "uz": "⏳ O'qilmoqda...",
+        "ru": "⏳ Читаю...",
+    },
+    "input.unsupported_file": {
+        "uz": "Bu fayl turini o'qib bo'lmadi. Iltimos, boshqa shaklda yuboring (masalan, matn "
+        "yoki rasm qilib).",
+        "ru": "Не удалось прочитать файл такого типа. Пожалуйста, отправьте в другом виде "
+        "(например, текстом или картинкой).",
+    },
+    "input.file_too_big": {
+        "uz": "Fayl juda katta (Telegram botlar uchun chegara — 20 MB). Iltimos, kichikroq "
+        "fayl yoki rasm yuboring.",
+        "ru": "Файл слишком большой (лимит Telegram для ботов — 20 МБ). Пожалуйста, отправьте "
+        "файл поменьше или картинку.",
     },
     "input.send_supported_format": {
-        "uz": "Iltimos, matn, rasm, PDF yoki DOCX ko'rinishida yuboring.",
-        "ru": "Пожалуйста, отправьте текстом, фото, PDF или DOCX.",
+        "uz": "Bu xabardan matn olib bo'lmadi. Iltimos, boshqa shaklda yuboring.",
+        "ru": "Не удалось извлечь текст из этого сообщения. Пожалуйста, отправьте в другом виде.",
     },
     # --- Practice (bot/handlers/practice.py) ---
     "practice.choose_module": {
@@ -188,16 +223,20 @@ _T: dict[str, dict[str, str]] = {
         "ru": "Вопрос не найден, выберите ещё раз.",
     },
     "practice.writing_question": {
-        "uz": "📋 Savol:\n\n{question}\n\n✏️ Javobingizni yuboring (kamida {min_words} "
-        "so'z) — matn, rasm, PDF yoki DOCX shaklida.",
-        "ru": "📋 Вопрос:\n\n{question}\n\n✏️ Отправьте свой ответ (минимум {min_words} "
-        "слов) — текстом, фото, PDF или DOCX.",
+        "uz": "📋 Savol:\n\n{question}\n\n✏️ Javobingizni yuboring (kamida {min_words} so'z).",
+        "ru": "📋 Вопрос:\n\n{question}\n\n✏️ Отправьте свой ответ (минимум {min_words} слов).",
     },
-    "practice.speaking_question": {
-        "uz": "📋 Savol:\n\n{question}\n\n🎙 Javobingizni ovozli xabar, video-xabar yoki "
-        "audio fayl shaklida yuboring.",
-        "ru": "📋 Вопрос:\n\n{question}\n\n🎙 Отправьте ответ голосовым, видео-сообщением "
-        "или аудиофайлом.",
+    "practice.speaking_topic": {
+        "uz": "<b>{label}</b> — {topic}",
+        "ru": "<b>{label}</b> — {topic}",
+    },
+    "practice.no_questions": {
+        "uz": "Bu bo'limda hozircha savollar yo'q.",
+        "ru": "В этом разделе пока нет вопросов.",
+    },
+    "practice.all_done": {
+        "uz": "🎉 Bu bo'limdagi oxirgi savol edi! Ro'yxatdan boshqa savolni tanlashingiz mumkin.",
+        "ru": "🎉 Это был последний вопрос в разделе! Можете выбрать другой вопрос из списка.",
     },
     # --- My Works (bot/handlers/my_works.py) ---
     "mywork.title": {

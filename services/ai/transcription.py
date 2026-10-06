@@ -44,6 +44,35 @@ async def _transcode_to_mp3(audio_bytes: bytes, suffix: str) -> bytes:
         return dst.read_bytes()
 
 
+async def concat_mp3(clips: list[bytes]) -> bytes:
+    """Joins several mp3 clips into one, in order - a multi-question Speaking
+    set (bot/handlers/speaking.py) is graded as one performance, like the
+    real exam. Re-encoded mono 64 kbps to keep the audio-grading request
+    small; ffmpeg's concat filter reconciles differing sample rates/layouts."""
+    if len(clips) == 1:
+        return clips[0]
+    with tempfile.TemporaryDirectory() as tmp:
+        inputs: list[str] = []
+        for i, clip in enumerate(clips):
+            src = Path(tmp) / f"clip{i}.mp3"
+            src.write_bytes(clip)
+            inputs += ["-i", str(src)]
+        dst = Path(tmp) / "joined.mp3"
+        streams = "".join(f"[{i}:a]" for i in range(len(clips)))
+
+        proc = await asyncio.create_subprocess_exec(
+            "ffmpeg", "-y", *inputs,
+            "-filter_complex", f"{streams}concat=n={len(clips)}:v=0:a=1[out]",
+            "-map", "[out]", "-ac", "1", "-b:a", "64k", str(dst),
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        await proc.communicate()
+        if proc.returncode != 0 or not dst.exists():
+            raise RuntimeError("ffmpeg audio concatenation failed")
+        return dst.read_bytes()
+
+
 async def transcribe_mp3(mp3_bytes: bytes) -> str:
     """Returns the plain-text transcript of an mp3 buffer (for display in the
     PDF report - the audio-input grading call assesses the raw audio itself)."""

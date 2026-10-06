@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models import (
@@ -470,13 +470,136 @@ async def get_practice_questions(
     stmt = (
         select(PracticeQuestion)
         .where(PracticeQuestion.module == module)
-        .order_by(PracticeQuestion.order_index)
+        .order_by(PracticeQuestion.order_index, PracticeQuestion.id)
     )
     return list((await session.execute(stmt)).scalars().all())
 
 
 async def get_practice_question(session: AsyncSession, question_id: int) -> PracticeQuestion | None:
     return await session.get(PracticeQuestion, question_id)
+
+
+async def get_next_practice_question(
+    session: AsyncSession, current: PracticeQuestion
+) -> PracticeQuestion | None:
+    """The question after `current` in its module's list order, if any."""
+    stmt = (
+        select(PracticeQuestion)
+        .where(
+            PracticeQuestion.module == current.module,
+            or_(
+                PracticeQuestion.order_index > current.order_index,
+                (PracticeQuestion.order_index == current.order_index)
+                & (PracticeQuestion.id > current.id),
+            ),
+        )
+        .order_by(PracticeQuestion.order_index, PracticeQuestion.id)
+        .limit(1)
+    )
+    return (await session.execute(stmt)).scalar_one_or_none()
+
+
+# Practice question management (web admin panel, webapp/main.py) ------------
+
+
+async def get_practice_question_counts(session: AsyncSession) -> dict[PracticeModule, int]:
+    stmt = select(PracticeQuestion.module, func.count()).group_by(PracticeQuestion.module)
+    counts = dict((await session.execute(stmt)).all())
+    return {module: counts.get(module, 0) for module in PracticeModule}
+
+
+async def create_practice_question(
+    session: AsyncSession,
+    *,
+    module: PracticeModule,
+    question_text: str,
+    topic: str | None,
+    image_path: str | None = None,
+) -> PracticeQuestion:
+    """Appended at the end of its module's list."""
+    max_index = (
+        await session.execute(
+            select(func.max(PracticeQuestion.order_index)).where(PracticeQuestion.module == module)
+        )
+    ).scalar()
+    question = PracticeQuestion(
+        module=module,
+        question_text=question_text,
+        topic=topic,
+        image_path=image_path,
+        order_index=(max_index + 1) if max_index is not None else 0,
+    )
+    session.add(question)
+    await session.commit()
+    return question
+
+
+async def update_practice_question(
+    session: AsyncSession,
+    question_id: int,
+    *,
+    module: PracticeModule,
+    question_text: str,
+    topic: str | None,
+    image_path: str | None,
+) -> PracticeQuestion | None:
+    """Overwrites the content. Students who already completed it keep their
+    ✅ only if the text and module stay the same - a rewritten question is a
+    new one. Moving it to another module appends it at that module's end."""
+    question = await session.get(PracticeQuestion, question_id)
+    if question is None:
+        return None
+    if question.question_text != question_text or question.module != module:
+        await session.execute(
+            delete(PracticeProgress).where(PracticeProgress.practice_question_id == question_id)
+        )
+    if question.module != module:
+        max_index = (
+            await session.execute(
+                select(func.max(PracticeQuestion.order_index)).where(PracticeQuestion.module == module)
+            )
+        ).scalar()
+        question.module = module
+        question.order_index = (max_index + 1) if max_index is not None else 0
+    question.question_text = question_text
+    question.topic = topic
+    question.image_path = image_path
+    await session.commit()
+    return question
+
+
+async def delete_practice_question(session: AsyncSession, question_id: int) -> PracticeQuestion | None:
+    """Deletes the question and its completion marks; past submissions made
+    from it stay in the students' history, just unlinked from the bank.
+    Returns the deleted row (e.g. so the caller can remove its image)."""
+    question = await session.get(PracticeQuestion, question_id)
+    if question is None:
+        return None
+    await session.execute(
+        delete(PracticeProgress).where(PracticeProgress.practice_question_id == question_id)
+    )
+    for model in (WritingSubmission, SpeakingSubmission):
+        await session.execute(
+            update(model).where(model.practice_question_id == question_id).values(practice_question_id=None)
+        )
+    await session.delete(question)
+    await session.commit()
+    return question
+
+
+async def move_practice_question(session: AsyncSession, question_id: int, offset: int) -> None:
+    """Moves a question `offset` places up (-1) / down (+1) in its module's
+    list, renumbering the whole module 0..n-1 so ties can't stall a move."""
+    question = await session.get(PracticeQuestion, question_id)
+    if question is None:
+        return
+    questions = await get_practice_questions(session, question.module)
+    index = next(i for i, q in enumerate(questions) if q.id == question_id)
+    target = max(0, min(len(questions) - 1, index + offset))
+    questions.insert(target, questions.pop(index))
+    for i, q in enumerate(questions):
+        q.order_index = i
+    await session.commit()
 
 
 async def get_completed_question_ids(

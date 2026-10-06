@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}{{ "Savolni tahrirlash" if question else "Yangi savol" }} — WriteSpeak Admin{% endblock %}
+{% block content %}
+<style>
+  .form { max-width: 760px; }
+  .field { margin-bottom: 18px; }
+  .field label { display: block; font-weight: 600; font-size: 14px; margin-bottom: 6px; }
+  .field input[type=text], .field select { width: 100%; }
+  .current-image { max-width: 100%; max-height: 320px; border: 1px solid var(--border);
+    border-radius: 8px; display: block; margin-bottom: 8px; background: var(--paper); }
+  .form-actions { display: flex; gap: 10px; align-items: center; }
+  #question-count { font-weight: 600; color: var(--ink); }
+</style>
+
+<h1>{{ "Savolni tahrirlash" if question else "Yangi savol" }}</h1>
+
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+
+<form class="card form" method="post" enctype="multipart/form-data"
+      action="{{ '/questions/%d/edit' % question.id if question else '/questions/new' }}">
+  <div class="field">
+    <label for="module">Bo'lim</label>
+    <select id="module" name="module">
+      {% for value, label in modules.items() %}
+      <option value="{{ value }}" {{ 'selected' if value == module else '' }}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="field">
+    <label for="topic">Mavzu <span style="font-weight: 400; color: var(--ink-faint);">(ixtiyoriy)</span></label>
+    <input type="text" id="topic" name="topic" value="{{ topic }}" maxlength="255"
+           placeholder="masalan: hometown, population, a memorable journey">
+  </div>
+
+  <div class="field">
+    <label for="question_text">Savol matni</label>
+    <textarea id="question_text" name="question_text" rows="10" required>{{ question_text }}</textarea>
+    <p class="hint" id="module-hint"></p>
+    <p class="hint" id="question-count-line" hidden>Bot <span id="question-count">0</span> ta savolni birma-bir so'raydi.</p>
+  </div>
+
+  <div class="field" id="image-field">
+    <label for="image">Rasm (grafik / diagramma)</label>
+    {% if question and question.image_path %}
+      <img class="current-image" src="/questions/{{ question.id }}/image" alt="joriy rasm">
+      <label style="font-weight: 400; display: flex; gap: 6px; align-items: center; margin-bottom: 8px;">
+        <input type="checkbox" name="remove_image" value="1"> Joriy rasmni o'chirish
+      </label>
+      <p class="hint" style="margin-bottom: 6px;">Yangi rasm tanlasangiz, joriysi almashtiriladi.</p>
+    {% endif %}
+    <input type="file" id="image" name="image" accept="image/*">
+    <p class="hint">JPG/PNG, 10 MB gacha. Writing Task 1 savollari uchun rasm talabaga savol bilan birga yuboriladi.</p>
+  </div>
+
+  <div class="form-actions">
+    <button type="submit" class="btn btn-primary">Saqlash</button>
+    <a class="btn" href="/questions?module={{ module }}">Bekor qilish</a>
+  </div>
+</form>
+
+<script>
+  (function () {
+    var hints = {{ hints_json | safe }};
+    var moduleSelect = document.getElementById("module");
+    var textarea = document.getElementById("question_text");
+    var hint = document.getElementById("module-hint");
+    var countLine = document.getElementById("question-count-line");
+    var count = document.getElementById("question-count");
+    var imageField = document.getElementById("image-field");
+    var hasImage = {{ "true" if question and question.image_path else "false" }};
+
+    function refresh() {
+      var m = moduleSelect.value;
+      hint.textContent = hints[m] || "";
+      var perLine = m === "speaking_part1" || m === "speaking_part3";
+      countLine.hidden = !perLine;
+      if (perLine) {
+        count.textContent = textarea.value.split("\n").filter(function (l) { return l.trim(); }).length;
+      }
+      // Images matter for Writing Task 1; keep the field visible elsewhere only if one is already attached.
+      imageField.hidden = m !== "writing_task1" && !hasImage;
+    }
+    moduleSelect.addEventListener("change", refresh);
+    textarea.addEventListener("input", refresh);
+    refresh();
+  })();
+</script>
+{% endblock %}

@@ -1,10 +1,12 @@
 """Writing module: Task 1 (Report) / Task 2 (Essay).
 
 Flow: pick task -> send prompt (any format) -> [confirm OCR/parse if needed]
--> send answer (any format) -> [confirm] -> grading -> PDF feedback report.
-Also entered directly from Practice (bot/handlers/practice.py), which presets
-task_type/prompt_text/practice_question_id and jumps straight to
-`awaiting_answer`.
+-> send answer (any format) -> [confirm] -> grading -> PDF feedback report
+-> "check again" / "next question" buttons (instead of dropping the student
+back at the main menu). Also entered directly from Practice
+(bot/handlers/practice.py), which presets task_type/prompt_text/
+practice_question_id (+ the Task 1 chart, if any) and jumps straight to
+`awaiting_answer`. Every step has a "⬅️ Orqaga" button.
 
 `lang` (bot/i18n.py) is only auto-injected by AccessControlMiddleware into
 top-level handlers (choose_task/receive_prompt/receive_answer/confirm_or_edit)
@@ -14,7 +16,9 @@ the same turn, not separately-dispatched events.
 """
 from __future__ import annotations
 
+import html
 import logging
+import mimetypes
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
@@ -23,10 +27,19 @@ from aiogram.types import BufferedInputFile, CallbackQuery, Message
 from bot.i18n import t
 from bot.keyboards.confirm_kb import CB_CONFIRM, CB_EDIT, confirm_edit_kb
 from bot.keyboards.main_menu_kb import BTN_WRITING, MENU_BUTTON_TEXTS
+from bot.keyboards.nav_kb import CB_BACK_MAIN, back_kb, check_again_kb
+from bot.keyboards.practice_kb import CB_BACK_TO_LIST_PREFIX, after_result_kb
 from bot.keyboards.share_kb import share_card_kb
-from bot.keyboards.writing_task_kb import CB_TASK1, CB_TASK2, writing_task_kb
+from bot.keyboards.writing_task_kb import (
+    CB_TASK1,
+    CB_TASK2,
+    CB_WRITING_MENU,
+    TASK_CALLBACKS,
+    writing_task_kb,
+)
 from bot.states.writing_states import WritingStates
-from bot.utils.input_extraction import UnsupportedInputError, extract_text_from_message
+from bot.utils.input_extraction import read_text_input
+from bot.utils.messages import show_screen, strip_buttons
 from bot.utils.mock_test_flow import record_mock_test_part
 from bot.utils.quota import check_quota, send_paywall
 from db import crud
@@ -36,19 +49,27 @@ from services.ai.rag_book_search import find_authentic_sample, get_style_referen
 from services.ai.sample_analyzer import analyze_sample, analyze_style
 from services.ai.writing_grader import grade_writing
 from services.pdf.report_builder import build_feedback_pdf
-from services.storage.file_storage import save_report
+from services.storage.file_storage import read_file, save_report
 
 logger = logging.getLogger(__name__)
 router = Router(name="writing")
 
 MIN_ANSWER_WORDS = {"task1": 150, "task2": 250}
 TASK_LABELS = {"task1": "Writing Task 1 (Report)", "task2": "Writing Task 2 (Essay)"}
+MAX_PROMPT_IMAGES = 3
 
 
 @router.message(F.text == BTN_WRITING)
 async def open_writing_menu(message: Message, state: FSMContext, lang: str) -> None:
     await state.clear()  # abandon any in-progress flow so stale FSM data can't leak into a new one
-    await message.answer(t("writing.choose_type", lang), reply_markup=writing_task_kb())
+    await message.answer(t("writing.choose_type", lang), reply_markup=writing_task_kb(lang))
+
+
+@router.callback_query(F.data == CB_WRITING_MENU)
+async def back_to_writing_menu(callback: CallbackQuery, state: FSMContext, lang: str) -> None:
+    await callback.answer()
+    await state.clear()
+    await show_screen(callback, t("writing.choose_type", lang), writing_task_kb(lang))
 
 
 @router.callback_query(F.data.in_({CB_TASK1, CB_TASK2}))
@@ -69,7 +90,7 @@ async def choose_task(callback: CallbackQuery, state: FSMContext, lang: str) -> 
     task_type = "task1" if callback.data == CB_TASK1 else "task2"
     await state.update_data(task_type=task_type, spend_credit=spend_credit)
     await state.set_state(WritingStates.awaiting_prompt)
-    await callback.message.answer(t("writing.send_prompt", lang))
+    await show_screen(callback, t("writing.send_prompt", lang), back_kb(lang, CB_WRITING_MENU))
 
 
 @router.message(WritingStates.awaiting_prompt, ~F.text.in_(MENU_BUTTON_TEXTS))
@@ -82,21 +103,35 @@ async def receive_answer(message: Message, state: FSMContext, lang: str) -> None
     await _receive_input(message, state, field="answer", lang=lang)
 
 
+def _back_target(data: dict, field: str) -> str:
+    """Where "⬅️ Orqaga" leads from the prompt/answer step."""
+    if data.get("mock_session_id"):
+        return CB_BACK_MAIN
+    if field == "prompt":
+        return CB_WRITING_MENU
+    if data.get("practice_question_id"):
+        return f"{CB_BACK_TO_LIST_PREFIX}{data['practice_question_id']}"
+    return TASK_CALLBACKS[data["task_type"]]  # re-asks for the prompt
+
+
 async def _receive_input(message: Message, state: FSMContext, field: str, lang: str) -> None:
-    try:
-        text, source, saved_path = await extract_text_from_message(
-            message, message.bot, message.from_user.id, lang
+    extracted = await read_text_input(message, lang)
+    if extracted is None:
+        return
+
+    file_path = extracted.file_paths[0] if extracted.file_paths else None
+    if field == "prompt":
+        # Kept for Task 1, so the grader sees the actual chart, not just its OCR'd labels.
+        await state.update_data(prompt_image_paths=extracted.image_paths)
+
+    if extracted.source == SourceType.text:
+        await state.update_data(
+            **{
+                f"{field}_text": extracted.text,
+                f"{field}_source": SourceType.text.value,
+                f"{field}_file_path": file_path,
+            }
         )
-    except UnsupportedInputError as e:
-        await message.answer(str(e))
-        return
-
-    if not text:
-        await message.answer(t("writing.could_not_read", lang))
-        return
-
-    if source == SourceType.text:
-        await state.update_data(**{f"{field}_text": text, f"{field}_source": source.value})
         await _advance(message, state, field, lang)
         return
 
@@ -104,9 +139,9 @@ async def _receive_input(message: Message, state: FSMContext, field: str, lang: 
     # it before it's used for grading (OCR/parsing isn't perfect).
     await state.update_data(
         **{
-            f"{field}_candidate_text": text,
-            f"{field}_source": source.value,
-            f"{field}_file_path": saved_path,
+            f"{field}_candidate_text": extracted.text,
+            f"{field}_source": extracted.source.value,
+            f"{field}_file_path": file_path,
             "_confirm_field": field,
         }
     )
@@ -114,11 +149,14 @@ async def _receive_input(message: Message, state: FSMContext, field: str, lang: 
         WritingStates.confirming_prompt if field == "prompt" else WritingStates.confirming_answer
     )
     await state.set_state(confirm_state)
-    preview = text if len(text) <= 3500 else text[:3500] + "…"
     await message.answer(
-        t("writing.confirm_preview", lang, preview=preview),
+        t("writing.confirm_preview", lang, preview=_preview(extracted.text)),
         reply_markup=confirm_edit_kb(),
     )
+
+
+def _preview(text: str) -> str:
+    return html.escape(text if len(text) <= 3500 else text[:3500] + "…", quote=False)
 
 
 @router.callback_query(WritingStates.confirming_prompt, F.data.in_({CB_CONFIRM, CB_EDIT}))
@@ -127,9 +165,12 @@ async def confirm_or_edit(callback: CallbackQuery, state: FSMContext, lang: str)
     data = await state.get_data()
     field = data["_confirm_field"]
     await callback.answer()
+    await strip_buttons(callback.message)  # no double-confirm
 
     if callback.data == CB_EDIT:
-        await callback.message.answer(t("writing.send_correct_text", lang))
+        await callback.message.answer(
+            t("writing.send_correct_text", lang), reply_markup=back_kb(lang, _back_target(data, field))
+        )
         back_state = (
             WritingStates.awaiting_prompt if field == "prompt" else WritingStates.awaiting_answer
         )
@@ -145,10 +186,25 @@ async def _advance(message: Message, state: FSMContext, field: str, lang: str) -
         data = await state.get_data()
         min_words = MIN_ANSWER_WORDS[data["task_type"]]
         await state.set_state(WritingStates.awaiting_answer)
-        await message.answer(t("writing.send_answer", lang, min_words=min_words))
+        await message.answer(
+            t("writing.send_answer", lang, min_words=min_words),
+            reply_markup=back_kb(lang, _back_target(data, "answer")),
+        )
     else:
         await state.set_state(WritingStates.processing)
         await _run_grading(message, state, lang)
+
+
+def _load_prompt_images(paths: list[str]) -> list[tuple[bytes, str]]:
+    images = []
+    for path in paths[:MAX_PROMPT_IMAGES]:
+        try:
+            content = read_file(path)
+        except FileNotFoundError:
+            logger.warning("Prompt image missing on disk: %s", path)
+            continue
+        images.append((content, mimetypes.guess_type(path)[0] or "image/jpeg"))
+    return images
 
 
 async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
@@ -157,10 +213,14 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
     processing_msg = await message.answer(t("writing.grading_in_progress", lang))
 
     try:
+        prompt_images = None
+        if data["task_type"] == "task1":
+            prompt_images = _load_prompt_images(data.get("prompt_image_paths") or [])
         result = await grade_writing(
             task_type=data["task_type"],
             prompt_text=data["prompt_text"],
             answer_text=data["answer_text"],
+            prompt_images=prompt_images,
         )
         book_task_type = BookTaskType(f"writing_{data['task_type']}")
         book_sample = await find_authentic_sample(
@@ -196,6 +256,8 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
         logger.exception("Writing grading failed for user %s", user_id)
         await processing_msg.edit_text(t("writing.grading_failed", lang))
         await state.clear()
+        if not data.get("mock_session_id"):
+            await message.answer(t("nav.what_next", lang), reply_markup=_after_result_kb(data, lang))
         return
 
     pdf_path = save_report(user_id, pdf_bytes, ".pdf")
@@ -247,3 +309,10 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
         )
     else:
         await state.clear()
+        await message.answer(t("nav.what_next", lang), reply_markup=_after_result_kb(data, lang))
+
+
+def _after_result_kb(data: dict, lang: str):
+    if data.get("practice_question_id"):
+        return after_result_kb(data["practice_question_id"], lang)
+    return check_again_kb(TASK_CALLBACKS[data["task_type"]], lang)
