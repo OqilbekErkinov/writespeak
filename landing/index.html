@@ -1,0 +1,1255 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>WriteSpeak — IELTS Writing va Speaking'ni bir necha daqiqada tekshiring</title>
+<meta name="description" content="Writing yoki Speaking javobingizni Telegram botga yuboring: IELTS Band Descriptors bo'yicha ball, har bir gapga izoh va ballni oshirish uchun aniq maslahatlar bilan PDF hisobot. Har kuni 2 ta tekshiruv bepul.">
+<link rel="canonical" href="https://writespeak.uz/">
+<meta name="theme-color" content="#0F1C3F">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://writespeak.uz/">
+<meta property="og:title" content="WriteSpeak — IELTS Writing va Speaking tekshiruvi Telegram'da">
+<meta property="og:description" content="Ball, har bir gapga izoh va aniq maslahatlar bilan PDF hisobot — bir necha daqiqada. Har kuni 2 ta tekshiruv bepul.">
+<meta property="og:image" content="https://writespeak.uz/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500&family=Inter+Tight:wght@700;800&family=Manrope:wght@400;500;600;700&family=Unbounded:wght@600;700&display=swap" rel="stylesheet">
+<script>document.documentElement.classList.add('js')</script>
+<style>
+  :root {
+    --navy-950: #070F26;
+    --navy-900: #0B1533;
+    --navy-800: #0F1C3F;
+    --navy-700: #172A5C;
+    --navy-600: #24396F;
+    --navy-300: #93A5D1;
+    --ink: #101935;
+    --ink-2: #3E4867;
+    --ink-3: #6B7493;
+    --paper: #FBFAF6;
+    --paper-2: #F4F1E8;
+    --surface: #FFFFFF;
+    --line: #E7E3D7;
+    --rule: rgba(42, 120, 214, 0.10);
+    --margin: rgba(226, 92, 92, 0.30);
+    --tg: #2AABEE;
+    --tg-2: #1E96D3;
+    --marker: #FFE066;
+    --hl-green: #C9F2D8;
+    --hl-green-ink: #0D4A2A;
+    --hl-yellow: #FFEFB0;
+    --hl-yellow-ink: #6B5300;
+    --hl-amber: #FBD99A;
+    --hl-amber-ink: #8A5D00;
+    --good: #16A34A;
+    --shadow: 0 1px 2px rgba(16, 25, 53, 0.05), 0 10px 30px -12px rgba(16, 25, 53, 0.18);
+    --shadow-lg: 0 40px 80px -30px rgba(11, 21, 51, 0.45), 0 18px 36px -18px rgba(11, 21, 51, 0.30);
+    --font-display: "Unbounded", system-ui, sans-serif;
+    --font-head: "Inter Tight", system-ui, sans-serif;
+    --font-body: "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-hand: "Caveat", "Segoe Print", cursive;
+    --wrap: 1180px;
+    color-scheme: light;
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; font-family: var(--font-body); color: var(--ink); background: var(--paper);
+    font-size: 17px; line-height: 1.6; overflow-x: hidden; -webkit-font-smoothing: antialiased;
+  }
+  svg { display: block; }
+  a { color: inherit; }
+  p { margin: 0; }
+  ul { margin: 0; padding: 0; list-style: none; }
+  h1, h2, h3 { font-family: var(--font-head); font-weight: 800; line-height: 1.08; letter-spacing: -0.025em; margin: 0; }
+  :focus-visible { outline: 3px solid var(--tg); outline-offset: 3px; border-radius: 6px; }
+  .wrap { max-width: var(--wrap); margin: 0 auto; padding: 0 20px; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+  /* Highlighter: the product's own visual language (the report marks sentences the same way). */
+  mark.mk {
+    color: inherit; background-color: transparent; padding: 0 0.12em; margin: 0 -0.04em;
+    background-image: linear-gradient(100deg, transparent 0 1.5%, var(--marker) 1.5% 98.5%, transparent 98.5%);
+    background-repeat: no-repeat; background-position: 0 86%; background-size: 0% 46%;
+    -webkit-box-decoration-break: clone; box-decoration-break: clone;
+    transition: background-size 0.9s cubic-bezier(0.6, 0.1, 0.2, 1) 0.15s;
+  }
+  .in mark.mk, html:not(.js) mark.mk { background-size: 100% 46%; }
+  .hero mark.mk { animation: marker 1s cubic-bezier(0.6, 0.1, 0.2, 1) 0.45s forwards; }
+  @keyframes marker { to { background-size: 100% 46%; } }
+  .dark mark.mk { color: var(--marker); background-image: linear-gradient(100deg, transparent 0 1.5%, rgba(255, 224, 102, 0.22) 1.5% 98.5%, transparent 98.5%); }
+
+  /* --- Buttons --- */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+    font: 700 16px/1 var(--font-body); text-decoration: none; border-radius: 14px;
+    padding: 15px 22px; border: 1.5px solid transparent; cursor: pointer;
+    transition: transform 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease;
+    -webkit-tap-highlight-color: transparent; white-space: nowrap;
+  }
+  .btn svg { width: 20px; height: 20px; flex: none; }
+  .btn-tg {
+    color: #fff; background: linear-gradient(180deg, #38B6F2 0%, var(--tg-2) 100%);
+    box-shadow: 0 10px 24px -10px rgba(30, 150, 211, 0.75), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  }
+  .btn-tg:hover { transform: translateY(-2px); box-shadow: 0 16px 30px -12px rgba(30, 150, 211, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.25); }
+  .btn-tg:active { transform: translateY(0); }
+  .btn-lg { font-size: 18px; padding: 19px 28px; border-radius: 16px; }
+  .btn-ghost { color: var(--navy-800); border-color: rgba(15, 28, 63, 0.18); background: rgba(255, 255, 255, 0.6); }
+  .btn-ghost:hover { background: #fff; border-color: rgba(15, 28, 63, 0.35); }
+  .btn-light { color: var(--navy-900); background: #fff; }
+  .btn-light:hover { transform: translateY(-2px); }
+
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 8px; font: 700 13px/1 var(--font-body);
+    letter-spacing: 0.08em; text-transform: uppercase; color: var(--navy-600);
+  }
+  .eyebrow::before { content: ""; width: 18px; height: 3px; border-radius: 2px; background: var(--marker); box-shadow: 0 0 0 1px rgba(0,0,0,0.04); }
+  .dark .eyebrow { color: var(--navy-300); }
+
+  /* --- Header --- */
+  .header {
+    position: sticky; top: 0; z-index: 40;
+    background: rgba(251, 250, 246, 0.82); backdrop-filter: saturate(1.4) blur(14px); -webkit-backdrop-filter: saturate(1.4) blur(14px);
+    border-bottom: 1px solid transparent; transition: border-color 0.2s;
+  }
+  .header.scrolled { border-bottom-color: var(--line); }
+  .header .wrap { display: flex; align-items: center; gap: 18px; height: 68px; }
+  .logo { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; font: 700 19px/1 var(--font-display); color: var(--navy-800); letter-spacing: -0.02em; }
+  .logo svg { width: 34px; height: 34px; }
+  .nav { display: flex; gap: 4px; margin-left: auto; }
+  .nav a { text-decoration: none; font-weight: 600; font-size: 15px; color: var(--ink-2); padding: 8px 12px; border-radius: 10px; }
+  .nav a:hover { color: var(--navy-800); background: rgba(15, 28, 63, 0.05); }
+  .lang { display: inline-flex; padding: 3px; border-radius: 11px; background: rgba(15, 28, 63, 0.06); }
+  .lang button { font: 700 13px/1 var(--font-body); border: 0; background: transparent; color: var(--ink-3); padding: 8px 10px; border-radius: 8px; cursor: pointer; }
+  .lang button[aria-pressed="true"] { background: #fff; color: var(--navy-800); box-shadow: 0 1px 3px rgba(16, 25, 53, 0.12); }
+  .header .btn { padding: 11px 16px; font-size: 15px; border-radius: 12px; }
+  @media (max-width: 980px) { .nav { display: none; } .lang { margin-left: auto; } }
+  @media (max-width: 520px) { .header .btn-tg span { display: none; } .header .btn { padding: 10px 12px; } .logo { font-size: 17px; } }
+
+  /* --- Hero --- */
+  .hero {
+    position: relative; overflow: hidden; padding: 56px 0 88px;
+    background-image: linear-gradient(var(--rule) 1px, transparent 1px);
+    background-size: 100% 38px; background-position: 0 30px;
+  }
+  .hero::before { /* exam-paper margin line */
+    content: ""; position: absolute; top: 0; bottom: 0; left: max(16px, calc(50% - 640px)); width: 2px; background: var(--margin);
+  }
+  .hero::after {
+    content: ""; position: absolute; inset: auto 0 0 0; height: 120px;
+    background: linear-gradient(to bottom, rgba(251, 250, 246, 0), var(--paper));
+  }
+  .hero-grid { position: relative; z-index: 1; display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 48px; align-items: center; }
+  .hero h1 { font-size: clamp(32px, 4.3vw, 56px); margin: 18px 0 22px; color: var(--navy-900); }
+  .lead { font-size: clamp(17px, 1.6vw, 20px); color: var(--ink-2); max-width: 590px; }
+  .cta-row { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 32px; }
+  .cta-note { margin-top: 12px; font-size: 14px; color: var(--ink-3); }
+  .trust { display: flex; flex-wrap: wrap; gap: 10px 22px; margin-top: 30px; }
+  .trust li { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; font-size: 15px; color: var(--ink-2); }
+  .trust li svg { width: 20px; height: 20px; color: var(--good); flex: none; }
+
+  .hero-visual { position: relative; display: flex; justify-content: center; }
+  .float-chip {
+    position: absolute; z-index: 3; display: inline-flex; align-items: center; gap: 8px;
+    background: #fff; border-radius: 14px; padding: 11px 15px; font-weight: 700; font-size: 14.5px; color: var(--navy-800);
+    box-shadow: var(--shadow); white-space: nowrap; animation: bob 6s ease-in-out infinite;
+  }
+  .float-chip.c1 { bottom: 16px; left: -18px; }
+  .float-chip.c2 { top: 58px; right: -26px; animation-delay: -3s; }
+  @keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+
+  /* --- Phone + Telegram chat mock --- */
+  .phone {
+    position: relative; width: min(350px, 100%); height: 640px; border-radius: 46px; padding: 12px;
+    background: linear-gradient(160deg, #23304F, #0B1226 60%); box-shadow: var(--shadow-lg), inset 0 0 0 1.5px rgba(255, 255, 255, 0.08);
+    transform: rotate(1.5deg);
+  }
+  .screen { position: relative; height: 100%; border-radius: 36px; overflow: hidden; display: flex; flex-direction: column; background: #C9DDB9; }
+  .notch { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: 92px; height: 26px; border-radius: 20px; background: #070B16; z-index: 5; }
+  .tg-head { display: flex; align-items: center; gap: 10px; padding: 46px 14px 11px; background: #fff; border-bottom: 1px solid rgba(0, 0, 0, 0.06); }
+  .tg-head .back { color: #2AA0DA; font-size: 22px; line-height: 1; width: 16px; }
+  .tg-ava { width: 38px; height: 38px; border-radius: 50%; overflow: hidden; flex: none; }
+  .tg-name { font: 700 15px/1.2 var(--font-body); color: #111; }
+  .tg-status { font-size: 12.5px; color: #8A8F98; }
+  .tg-chat {
+    flex: 1; display: flex; flex-direction: column; justify-content: flex-end; gap: 7px; padding: 12px 10px; overflow: hidden;
+    background-color: #CFE0C0;
+    background-image:
+      radial-gradient(circle at 20% 30%, rgba(255, 255, 255, 0.35) 0 2px, transparent 3px),
+      radial-gradient(circle at 70% 60%, rgba(255, 255, 255, 0.28) 0 2px, transparent 3px),
+      linear-gradient(160deg, #D7E8C6, #BFD6AE);
+    background-size: 46px 46px, 62px 62px, 100% 100%;
+  }
+  .msg { max-width: 84%; font-size: 13.5px; line-height: 1.42; color: #111; display: flex; flex-direction: column; }
+  .js .msg { display: none; }
+  .js .msg.show { display: flex; animation: pop 0.38s cubic-bezier(0.2, 0.9, 0.3, 1.2); }
+  .js .msg.gone { display: none; }
+  @keyframes pop { from { opacity: 0; transform: translateY(10px) scale(0.97); } to { opacity: 1; transform: none; } }
+  .bubble { position: relative; padding: 7px 10px 6px; border-radius: 15px; background: #fff; box-shadow: 0 1px 1px rgba(0, 0, 0, 0.08); }
+  .msg.in { align-self: flex-start; }
+  .msg.in .bubble { border-bottom-left-radius: 5px; }
+  .msg.out { align-self: flex-end; }
+  .msg.out .bubble { background: #EFFDDE; border-bottom-right-radius: 5px; }
+  .meta { float: right; margin: 6px 0 -3px 10px; font-size: 11px; color: #94A3A0; display: inline-flex; gap: 3px; align-items: center; }
+  .msg.out .meta { color: #5DAE5C; }
+  .kb { display: grid; grid-auto-flow: column; gap: 4px; margin-top: 4px; }
+  .kb span {
+    display: block; text-align: center; padding: 7px 6px; border-radius: 10px; font-weight: 600; font-size: 12.5px;
+    color: #fff; background: rgba(76, 110, 72, 0.55); backdrop-filter: blur(4px); transition: transform 0.15s, background 0.15s;
+  }
+  .kb span.pressed { transform: scale(0.95); background: rgba(46, 80, 42, 0.75); }
+  .photo-bubble { padding: 4px; border-radius: 15px; border-bottom-right-radius: 5px; background: #EFFDDE; box-shadow: 0 1px 1px rgba(0, 0, 0, 0.08); }
+  .hand-paper {
+    width: 196px; padding: 12px 12px 10px 22px; border-radius: 11px; position: relative;
+    font: 500 17px/22px var(--font-hand); color: #1D3A8A;
+    background-color: #FFFEF8;
+    background-image: linear-gradient(transparent 21px, rgba(42, 120, 214, 0.25) 22px);
+    background-size: 100% 22px; transform: rotate(-1deg);
+  }
+  .hand-paper::before { content: ""; position: absolute; left: 14px; top: 0; bottom: 0; width: 1px; background: rgba(226, 92, 92, 0.5); }
+  .doc { display: flex; align-items: center; gap: 10px; padding: 3px 2px 2px; }
+  .doc-ico { width: 44px; height: 44px; border-radius: 50%; background: #2AA0DA; color: #fff; display: grid; place-items: center; flex: none; }
+  .doc-ico svg { width: 20px; height: 20px; }
+  .doc b { display: block; font-size: 13.5px; }
+  .doc small { color: #8A8F98; font-size: 12px; }
+  .typing { align-self: flex-start; display: none; gap: 4px; padding: 11px 13px; border-radius: 15px; border-bottom-left-radius: 5px; background: #fff; }
+  .typing.show { display: inline-flex; }
+  .typing i { width: 7px; height: 7px; border-radius: 50%; background: #9AA3AE; animation: dot 1.2s infinite; }
+  .typing i:nth-child(2) { animation-delay: 0.15s; }
+  .typing i:nth-child(3) { animation-delay: 0.3s; }
+  @keyframes dot { 0%, 60%, 100% { opacity: 0.35; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-3px); } }
+  .tg-input { display: flex; align-items: center; gap: 10px; padding: 9px 12px 16px; background: #fff; color: #8A8F98; font-size: 14px; }
+  .tg-input .field { flex: 1; }
+  .tg-input svg { width: 22px; height: 22px; color: #8A8F98; }
+  .voice { display: flex; align-items: center; gap: 9px; min-width: 190px; }
+  .voice .play { width: 36px; height: 36px; border-radius: 50%; background: #5DAE5C; display: grid; place-items: center; flex: none; }
+  .voice .play svg { width: 14px; height: 14px; color: #fff; }
+  .wave { display: flex; align-items: center; gap: 2px; height: 24px; }
+  .wave i { width: 3px; border-radius: 2px; background: #5DAE5C; opacity: 0.85; }
+  .voice small { font-size: 11.5px; color: #5DAE5C; display: block; margin-top: 2px; }
+
+  /* --- Sections --- */
+  .section { padding: 96px 0; position: relative; }
+  .section.white { background: var(--surface); }
+  .section-head { max-width: 760px; margin-bottom: 52px; }
+  .section-head.center { margin-left: auto; margin-right: auto; text-align: center; }
+  .section-head h2 { font-size: clamp(30px, 4.2vw, 48px); margin-top: 14px; color: var(--navy-900); }
+  .section-head p { margin-top: 18px; font-size: 18px; color: var(--ink-2); }
+  .dark { background: var(--navy-900); color: #DCE3F5; }
+  .dark .section-head h2, .dark h3 { color: #fff; }
+  .dark .section-head p { color: #AEBAD8; }
+  .reveal { transition: opacity 0.7s ease, transform 0.7s cubic-bezier(0.2, 0.7, 0.2, 1); }
+  .js .reveal:not(.in) { opacity: 0; transform: translateY(22px); }
+
+  /* Pain */
+  .pain-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  .pain-card {
+    position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: 22px; padding: 28px 26px 30px;
+    box-shadow: var(--shadow);
+  }
+  .pain-ico { width: 54px; height: 54px; border-radius: 16px; display: grid; place-items: center; font-size: 27px; background: var(--paper-2); margin-bottom: 18px; }
+  .pain-card h3 { font-size: 22px; color: var(--navy-900); margin-bottom: 10px; letter-spacing: -0.015em; }
+  .pain-card p { color: var(--ink-2); font-size: 16px; }
+  .pain-card .strike { position: absolute; top: 24px; right: 22px; font: 500 22px/1 var(--font-hand); color: #D95C5C; transform: rotate(-6deg); }
+  .bridge {
+    margin-top: 34px; display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+    background: var(--navy-900); color: #fff; border-radius: 22px; padding: 24px 28px;
+  }
+  .bridge p { flex: 1; min-width: 240px; font: 700 clamp(18px, 2vw, 22px)/1.35 var(--font-head); letter-spacing: -0.01em; }
+  .bridge .logo-mark { width: 52px; height: 52px; flex: none; }
+
+  /* Report mock */
+  .report-grid { display: grid; grid-template-columns: 1.45fr 1fr; gap: 44px; align-items: start; }
+  .report { background: #fff; border-radius: 20px; box-shadow: var(--shadow-lg); overflow: hidden; border: 1px solid #E6E9F2; }
+  .report-top { background: var(--navy-800); color: #fff; padding: 20px 24px; display: flex; justify-content: space-between; gap: 16px; align-items: flex-end; }
+  .report-top .brand { font: 700 11px/1 var(--font-body); letter-spacing: 0.18em; color: var(--navy-300); }
+  .report-top h3 { font-size: 21px; margin-top: 8px; color: #fff; letter-spacing: -0.01em; }
+  .report-top .topic { font-size: 13.5px; color: #C7D0EA; margin-top: 6px; }
+  .report-top .doc-tag { font: 700 11px/1 var(--font-body); letter-spacing: 0.08em; background: rgba(255, 255, 255, 0.12); padding: 7px 9px; border-radius: 8px; white-space: nowrap; }
+  .scores { display: grid; grid-template-columns: auto 1fr; gap: 26px; align-items: center; padding: 24px; background: #F4F6FB; border-bottom: 1px solid #E6E9F2; }
+  .ring { position: relative; width: 128px; height: 128px; }
+  .ring svg { width: 128px; height: 128px; transform: rotate(-90deg); }
+  .ring .track { stroke: #DDE3F0; }
+  .ring .val { stroke: var(--navy-800); stroke-dasharray: 326.7; stroke-dashoffset: 326.7; transition: stroke-dashoffset 1.4s cubic-bezier(0.3, 0.7, 0.2, 1) 0.2s; }
+  .in .ring .val, html:not(.js) .ring .val { stroke-dashoffset: 72.6; }
+  .ring-label { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; }
+  .ring-label b { font: 700 38px/1 var(--font-display); color: var(--navy-800); }
+  .ring-label span { font-size: 11px; font-weight: 700; color: var(--ink-3); margin-top: 5px; }
+  .crit { display: grid; gap: 11px; }
+  .crit-row { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; font-size: 13.5px; font-weight: 600; color: var(--ink-2); }
+  .crit-row b { font: 700 14px/1 var(--font-display); color: var(--navy-800); }
+  .bar { grid-column: 1 / -1; height: 7px; border-radius: 4px; background: #DDE3F0; overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0; border-radius: 4px; background: linear-gradient(90deg, var(--navy-600), var(--navy-800)); transition: width 1.3s cubic-bezier(0.3, 0.7, 0.2, 1) 0.3s; }
+  .in .bar i, html:not(.js) .bar i { width: var(--w); }
+  .report-body { display: grid; grid-template-columns: 1fr 210px; gap: 20px; padding: 22px 24px 24px; }
+  .legend { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 13px; color: var(--ink-3); font-weight: 600; }
+  .legend span { display: inline-flex; align-items: center; gap: 7px; }
+  .legend i { width: 14px; height: 14px; border-radius: 4px; }
+  .essay { font: 15px/1.75 Georgia, "Times New Roman", serif; color: #1F2430; }
+  .essay p + p { margin-top: 12px; }
+  .essay mark {
+    color: inherit; padding: 1px 3px; border-radius: 4px; cursor: pointer; -webkit-box-decoration-break: clone; box-decoration-break: clone;
+    transition: box-shadow 0.15s, filter 0.15s;
+  }
+  .essay mark[data-tone="g"] { background: var(--hl-green); color: var(--hl-green-ink); }
+  .essay mark[data-tone="y"] { background: var(--hl-yellow); color: var(--hl-yellow-ink); }
+  .essay mark[data-tone="a"] { background: var(--hl-amber); color: var(--hl-amber-ink); }
+  .essay mark:hover { filter: saturate(1.25) brightness(0.97); }
+  .essay mark.active { box-shadow: 0 0 0 2px currentColor; }
+  .essay sup { font: 700 10px/1 var(--font-body); margin-left: 2px; }
+  .sticky-note {
+    align-self: start; position: sticky; top: 90px; background: #FFF4A8; padding: 16px 16px 18px; border-radius: 4px 4px 14px 4px;
+    box-shadow: 0 14px 24px -14px rgba(90, 70, 0, 0.45); transform: rotate(1.2deg); font-size: 14px; color: #3D3300;
+  }
+  .sticky-note .hand { font: 500 24px/1 var(--font-hand); color: #7A5C00; }
+  .note-tag { display: inline-block; margin-top: 10px; font: 700 11px/1 var(--font-body); letter-spacing: 0.06em; text-transform: uppercase; padding: 5px 8px; border-radius: 6px; }
+  .note-tag[data-tone="g"] { background: var(--hl-green); color: var(--hl-green-ink); }
+  .note-tag[data-tone="y"] { background: #FFE38A; color: var(--hl-yellow-ink); }
+  .note-tag[data-tone="a"] { background: var(--hl-amber); color: var(--hl-amber-ink); }
+  .note-quote { margin-top: 10px; font-style: italic; font-family: Georgia, serif; font-size: 13.5px; color: #5C4D00; }
+  .note-text { margin-top: 8px; font-weight: 600; line-height: 1.5; }
+  .vocab { padding: 18px 24px 24px; border-top: 1px dashed #E1E5EF; }
+  .vocab h4 { margin: 0 0 12px; font: 700 13px/1 var(--font-body); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { font-size: 13.5px; padding: 7px 11px; border-radius: 10px; background: #EEF3FC; color: #12366B; }
+  .chip b { font-weight: 700; }
+  .inside h3 { font-size: 24px; color: var(--navy-900); margin-bottom: 20px; }
+  .checks { display: grid; gap: 16px; }
+  .checks li { display: grid; grid-template-columns: 30px 1fr; gap: 12px; font-size: 16.5px; color: var(--ink-2); }
+  .checks li b { color: var(--ink); }
+  .check { width: 30px; height: 30px; border-radius: 10px; display: grid; place-items: center; background: #E7F7EC; color: var(--good); }
+  .check svg { width: 17px; height: 17px; }
+  .disclaimer { margin-top: 22px; font-size: 13.5px; color: var(--ink-3); padding-left: 12px; border-left: 3px solid var(--line); }
+  .inside .btn { margin-top: 28px; }
+
+  /* Speaking */
+  .speak-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: center; }
+  .speak-points { display: grid; gap: 22px; margin-top: 34px; }
+  .speak-points li { display: grid; grid-template-columns: 46px 1fr; gap: 16px; }
+  .sp-ico { width: 46px; height: 46px; border-radius: 14px; background: rgba(255, 255, 255, 0.08); display: grid; place-items: center; font-size: 22px; }
+  .speak-points h3 { font-size: 19px; margin-bottom: 4px; letter-spacing: -0.01em; }
+  .speak-points p { color: #AEBAD8; font-size: 15.5px; }
+  .speak-visual { position: relative; }
+  .chat-card { border-radius: 26px; overflow: hidden; box-shadow: 0 40px 80px -30px rgba(0, 0, 0, 0.6); border: 1px solid rgba(255, 255, 255, 0.08); }
+  .chat-card .tg-head { padding-top: 14px; }
+  .chat-card .tg-chat { justify-content: flex-start; padding: 16px 14px 34px; gap: 9px; }
+  .js .chat-card .msg { display: flex; }
+  .speak-visual { padding-bottom: 190px; }
+  .cue {
+    position: absolute; right: -14px; bottom: 0; width: 280px; background: #FFFDF5; color: #2A2614; border-radius: 16px; padding: 16px 18px;
+    box-shadow: 0 30px 50px -20px rgba(0, 0, 0, 0.55); transform: rotate(3deg); font-size: 13.5px; line-height: 1.5;
+  }
+  .cue .cue-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .cue .cue-head b { font: 700 11px/1 var(--font-body); letter-spacing: 0.12em; text-transform: uppercase; color: #8C7A2B; }
+  .timer { font: 700 12px/1 var(--font-display); background: var(--navy-800); color: #FFE066; padding: 6px 8px; border-radius: 8px; }
+  .cue ul { margin-top: 6px; }
+  .cue li::before { content: "• "; color: #B9A24A; }
+
+  /* How it works */
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; counter-reset: s; }
+  .step { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: 22px; padding: 28px 26px; box-shadow: var(--shadow); }
+  .step-num { font: 800 52px/1 var(--font-head); letter-spacing: -0.03em; color: transparent; -webkit-text-stroke: 1.6px var(--navy-600); }
+  .step h3 { font-size: 22px; margin: 18px 0 8px; color: var(--navy-900); letter-spacing: -0.015em; }
+  .step p { color: var(--ink-2); font-size: 16px; }
+  .step:not(:last-child)::after {
+    content: ""; position: absolute; top: 50px; right: -22px; width: 22px; border-top: 2px dashed rgba(36, 57, 111, 0.35);
+  }
+  .formats { margin-top: 34px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+  .formats > span { font-weight: 700; color: var(--ink-2); margin-right: 6px; }
+  .fmt { display: inline-flex; align-items: center; gap: 7px; background: var(--surface); border: 1px solid var(--line); border-radius: 100px; padding: 9px 14px; font-weight: 600; font-size: 14.5px; color: var(--navy-800); }
+
+  /* Features */
+  .feat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  .feat { border-radius: 22px; padding: 28px 26px; background: var(--paper); border: 1px solid var(--line); transition: transform 0.2s, box-shadow 0.2s; }
+  .feat:hover { transform: translateY(-4px); box-shadow: var(--shadow); }
+  .feat-ico { font-size: 30px; line-height: 1; }
+  .feat h3 { font-size: 20px; margin: 16px 0 8px; color: var(--navy-900); letter-spacing: -0.012em; }
+  .feat p { color: var(--ink-2); font-size: 15.5px; }
+
+  /* Pricing */
+  .price-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; align-items: stretch; }
+  .plan { display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--line); border-radius: 24px; padding: 30px 28px; box-shadow: var(--shadow); position: relative; }
+  .plan h3 { font-size: 20px; color: var(--navy-900); }
+  .plan .desc { color: var(--ink-3); font-size: 15px; margin-top: 6px; min-height: 48px; }
+  .price { margin: 18px 0 20px; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .price b { font: 700 44px/1 var(--font-display); color: var(--navy-900); letter-spacing: -0.03em; }
+  .price span { font-weight: 600; color: var(--ink-3); }
+  .plan ul { display: grid; gap: 11px; margin-bottom: 28px; }
+  .plan li { display: grid; grid-template-columns: 22px 1fr; gap: 10px; font-size: 15.5px; color: var(--ink-2); }
+  .plan li svg { width: 20px; height: 20px; color: var(--good); margin-top: 2px; }
+  .plan .btn { margin-top: auto; width: 100%; }
+  .plan.featured { background: var(--navy-900); border-color: var(--navy-900); color: #DCE3F5; }
+  .plan.featured h3, .plan.featured .price b { color: #fff; }
+  .plan.featured .desc, .plan.featured .price span { color: #AEBAD8; }
+  .plan.featured li { color: #DCE3F5; }
+  .plan.featured li svg { color: #FFE066; }
+  .badge { position: absolute; top: -13px; left: 28px; background: var(--marker); color: var(--navy-900); font: 700 12px/1 var(--font-body); padding: 8px 11px; border-radius: 9px; letter-spacing: 0.02em; }
+  .referral { margin-top: 24px; display: flex; gap: 14px; align-items: center; background: #FFF8D6; border: 1px solid #F3E39A; border-radius: 18px; padding: 18px 22px; color: #5B4A00; font-weight: 600; }
+  .referral .gift { font-size: 28px; }
+
+  /* Teachers */
+  .teach { display: grid; grid-template-columns: 1.2fr 1fr; gap: 40px; align-items: center; background: linear-gradient(135deg, #EEF3FC, #F8F5EA); border: 1px solid #E2E7F2; border-radius: 28px; padding: 44px; }
+  .teach h2 { font-size: clamp(26px, 3.2vw, 38px); color: var(--navy-900); margin: 12px 0 14px; }
+  .teach p { color: var(--ink-2); }
+  .teach .btn { margin-top: 26px; }
+  .teach-list { display: grid; gap: 12px; }
+  .teach-list li { display: flex; gap: 14px; align-items: center; background: #fff; border-radius: 16px; padding: 16px 18px; box-shadow: var(--shadow); font-weight: 700; color: var(--navy-800); }
+  .teach-list li > span:first-child { font-size: 24px; }
+
+  /* FAQ */
+  .faq { max-width: 820px; margin: 0 auto; display: grid; gap: 12px; }
+  .faq details { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 0 24px; transition: box-shadow 0.2s; }
+  .faq details[open] { box-shadow: var(--shadow); }
+  .faq summary { cursor: pointer; list-style: none; display: flex; justify-content: space-between; gap: 16px; align-items: center; padding: 21px 0; font: 700 18px/1.35 var(--font-head); color: var(--navy-900); letter-spacing: -0.01em; }
+  .faq summary::-webkit-details-marker { display: none; }
+  .faq summary::after { content: "+"; flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--paper-2); font: 600 20px/1 var(--font-body); color: var(--navy-700); transition: transform 0.2s; }
+  .faq details[open] summary::after { transform: rotate(45deg); }
+  .faq details p { padding: 0 0 22px; color: var(--ink-2); }
+
+  /* Final CTA */
+  .final { position: relative; overflow: hidden; padding: 100px 0; }
+  .final::before {
+    content: ""; position: absolute; inset: 0; opacity: 0.5;
+    background-image: linear-gradient(rgba(147, 165, 209, 0.10) 1px, transparent 1px); background-size: 100% 38px;
+  }
+  .final-grid { position: relative; display: grid; grid-template-columns: 1fr auto; gap: 48px; align-items: center; }
+  .final h2 { font-size: clamp(32px, 4.8vw, 56px); color: #fff; }
+  .final p { margin-top: 18px; font-size: 19px; color: #AEBAD8; max-width: 560px; }
+  .final .btn { margin-top: 32px; }
+  .qr { background: #fff; border-radius: 22px; padding: 20px; width: 220px; text-align: center; box-shadow: 0 30px 60px -24px rgba(0, 0, 0, 0.6); transform: rotate(-2deg); }
+  .qr svg { width: 180px; height: 180px; margin: 0 auto; }
+  .qr p { margin-top: 12px; font-size: 13px; line-height: 1.4; color: var(--ink-2); }
+
+  .footer { background: var(--navy-950); color: #8E9BBE; padding: 40px 0 120px; font-size: 14px; }
+  .footer .row { display: flex; flex-wrap: wrap; gap: 16px 28px; align-items: center; justify-content: space-between; }
+  .footer .logo { color: #fff; }
+  .footer a { color: #C7D0EA; text-decoration: none; }
+  .footer a:hover { color: #fff; }
+  .footer .legal { margin-top: 22px; font-size: 12.5px; line-height: 1.6; max-width: 860px; color: #6F7CA0; }
+
+  /* Mobile sticky CTA */
+  .sticky-cta {
+    position: fixed; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); z-index: 60; display: none;
+    transform: translateY(160%); transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .sticky-cta .btn { width: 100%; box-shadow: 0 18px 40px -12px rgba(7, 15, 38, 0.55); }
+  .sticky-cta.on { transform: none; }
+
+  /* --- Responsive --- */
+  @media (max-width: 980px) {
+    .hero { padding: 36px 0 70px; }
+    .hero-grid, .report-grid, .speak-grid, .teach, .final-grid { grid-template-columns: 1fr; }
+    .hero-grid { gap: 48px; }
+    .hero-visual { padding: 0 8px; }
+    .pain-grid, .steps, .feat-grid, .price-grid { grid-template-columns: 1fr; }
+    .feat-grid { grid-template-columns: 1fr 1fr; }
+    .step:not(:last-child)::after { display: none; }
+    .speak-visual { margin-bottom: 40px; }
+    .qr { display: none; }
+    .sticky-cta { display: block; }
+    .teach { padding: 30px 24px; }
+    .plan .desc { min-height: 0; }
+  }
+  @media (max-width: 640px) {
+    body { font-size: 16px; }
+    .section { padding: 72px 0; }
+    .section-head { margin-bottom: 36px; }
+    .feat-grid { grid-template-columns: 1fr; }
+    .float-chip { display: none; }
+    .phone { height: 590px; transform: none; }
+    .report-body { grid-template-columns: 1fr; }
+    .sticky-note { position: static; transform: none; }
+    .scores { grid-template-columns: 1fr; justify-items: center; }
+    .crit { width: 100%; }
+    .report-top { flex-direction: column; align-items: flex-start; }
+    .speak-visual { padding-bottom: 0; }
+    .cue { position: relative; right: auto; bottom: auto; width: auto; margin: -20px 14px 0; transform: rotate(1.5deg); }
+    .cta-row .btn { width: 100%; }
+    .bridge { padding: 22px; }
+    .final { padding: 76px 0; }
+    .final .btn { width: 100%; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+  }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-send" viewBox="0 0 24 24"><path fill="currentColor" d="M20.7 3.4 2.9 10.3c-1.2.5-1.2 1.2-.2 1.5l4.6 1.4 1.8 5.4c.2.6.1.8.7.8.5 0 .7-.2.9-.4l2.2-2.2 4.6 3.4c.8.5 1.5.2 1.7-.8l3-14.2c.3-1.2-.5-1.8-1.5-1.3Zm-3.6 3.3-8.4 7.6-.3 3.5-1.4-4.5 10.1-6.6Z"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+    <symbol id="i-checks" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="m2 12.5 4 4 8-9M10 15.5l1 1 8-9"/></symbol>
+    <symbol id="i-logo" viewBox="0 0 40 40"><rect width="40" height="40" rx="11" fill="#0F1C3F"/><path d="M8 27.5h24" stroke="#FFE066" stroke-width="7" stroke-linecap="round"/><path d="m9.5 12 4.6 15 5.9-11.4L25.9 27l4.6-15" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  </defs>
+</svg>
+
+<header class="header" id="header">
+  <div class="wrap">
+    <a class="logo" href="#top" aria-label="WriteSpeak"><svg aria-hidden="true"><use href="#i-logo"/></svg>WriteSpeak</a>
+    <nav class="nav" aria-label="Bo'limlar">
+      <a href="#hisobot" data-i18n="nav.report">Hisobot</a>
+      <a href="#speaking" data-i18n="nav.speaking">Speaking</a>
+      <a href="#qanday" data-i18n="nav.how">Qanday ishlaydi</a>
+      <a href="#narxlar" data-i18n="nav.pricing">Narxlar</a>
+      <a href="#savollar" data-i18n="nav.faq">Savollar</a>
+    </nav>
+    <div class="lang" role="group" aria-label="Til / Язык">
+      <button type="button" data-lang="uz" aria-pressed="true">UZ</button>
+      <button type="button" data-lang="ru" aria-pressed="false">RU</button>
+    </div>
+    <a class="btn btn-tg" href="https://t.me/writespeak_bot" data-cta="header"><svg aria-hidden="true"><use href="#i-send"/></svg><span data-i18n="nav.cta">Botni ochish</span></a>
+  </div>
+</header>
+
+<main>
+<!-- ================= HERO ================= -->
+<section class="hero" id="top">
+  <div class="wrap hero-grid">
+    <div class="hero-copy">
+      <span class="eyebrow" data-i18n="hero.eyebrow">IELTS Writing va Speaking · Telegram bot</span>
+      <h1 data-i18n="hero.title">IELTS ballingizni <mark class="mk">nima pasaytirayotganini</mark> bir necha daqiqada biling</h1>
+      <p class="lead" data-i18n="hero.lead">Writing yoki Speaking javobingizni Telegram botga yuboring. IELTS Band Descriptors mezonlari bo‘yicha ball, har bir gapga izoh va ballni oshirish uchun aniq maslahatlar bilan PDF hisobot olasiz.</p>
+      <div class="cta-row">
+        <a class="btn btn-tg btn-lg" href="https://t.me/writespeak_bot" data-cta="hero" id="heroCta"><svg aria-hidden="true"><use href="#i-send"/></svg><span data-i18n="hero.cta">Bepul tekshirib ko‘rish</span></a>
+        <a class="btn btn-ghost btn-lg" href="#hisobot" data-i18n="hero.cta2">Namuna hisobotni ko‘rish</a>
+      </div>
+      <p class="cta-note" data-i18n="hero.note">@writespeak_bot · Telegram’da ochiladi</p>
+      <ul class="trust">
+        <li><svg aria-hidden="true"><use href="#i-check"/></svg><span data-i18n="hero.t1">Har kuni 2 ta tekshiruv bepul</span></li>
+        <li><svg aria-hidden="true"><use href="#i-check"/></svg><span data-i18n="hero.t2">Karta va ro‘yxatdan o‘tish shart emas</span></li>
+        <li><svg aria-hidden="true"><use href="#i-check"/></svg><span data-i18n="hero.t3">Qo‘lyozma rasmi ham qabul qilinadi</span></li>
+      </ul>
+    </div>
+
+    <div class="hero-visual" aria-hidden="true">
+      <div class="float-chip c1" data-i18n="hero.chip1">⚡ Bir necha daqiqada</div>
+      <div class="float-chip c2" data-i18n="hero.chip2">🎯 4 mezon bo‘yicha ball</div>
+      <div class="phone">
+        <div class="notch"></div>
+        <div class="screen">
+          <div class="tg-head">
+            <span class="back">‹</span>
+            <svg class="tg-ava"><use href="#i-logo"/></svg>
+            <div><div class="tg-name">WriteSpeak</div><div class="tg-status">bot</div></div>
+          </div>
+          <div class="tg-chat" id="heroChat">
+            <div class="msg out" data-step="photo">
+              <div class="photo-bubble">
+                <div class="hand-paper">In recent years, technology has become deeply embedded in almost every aspect of daily life. While some people believe…</div>
+                <span class="meta" style="margin:4px 4px 0">21:14 <svg width="15" height="15"><use href="#i-checks"/></svg></span>
+              </div>
+            </div>
+            <div class="msg in" data-step="ocr">
+              <div class="bubble"><span data-i18n="chat.ocr">📄 Men shunday o‘qidim:<br><i>In recent years, technology has become deeply embedded in almost every aspect…</i><br>To‘g‘rimi?</span><span class="meta">21:14</span></div>
+              <div class="kb"><span data-press data-i18n="chat.ok">✅ To‘g‘ri</span><span data-i18n="chat.edit">✏️ Tahrirlash</span></div>
+            </div>
+            <div class="msg in" data-step="wait">
+              <div class="bubble"><span data-i18n="chat.wait">⏳ Tahlil qilinmoqda, biroz kuting...</span><span class="meta">21:15</span></div>
+            </div>
+            <div class="msg in" data-step="pdf">
+              <div class="bubble">
+                <div class="doc">
+                  <div class="doc-ico"><svg viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 20h14"/></svg></div>
+                  <div><b>IELTS_Feedback.pdf</b><small data-i18n="chat.pdf">PDF hisobot</small></div>
+                </div>
+                <div style="margin-top:6px"><span data-i18n="chat.done">✅ Tayyor! Umumiy ball: <b>7.0</b></span><span class="meta">21:17</span></div>
+              </div>
+              <div class="kb"><span data-i18n="chat.share">📤 Ulashish uchun rasm</span></div>
+            </div>
+            <div class="msg in" data-step="next">
+              <div class="bubble"><span data-i18n="chat.next">Davom etamizmi? 👇</span><span class="meta">21:17</span></div>
+              <div class="kb"><span data-i18n="chat.again">🔁 Yana tekshirish</span></div>
+            </div>
+            <div class="typing" id="heroTyping"><i></i><i></i><i></i></div>
+          </div>
+          <div class="tg-input">
+            <svg viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="m20.5 11.5-8.2 8.2a5 5 0 0 1-7-7l8.5-8.5a3.3 3.3 0 0 1 4.7 4.7l-8.5 8.5a1.7 1.7 0 0 1-2.3-2.4l7.8-7.8"/></svg>
+            <span class="field" data-i18n="chat.input">Xabar</span>
+            <svg viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3Zm-7 9a7 7 0 0 0 14 0M12 19v3"/></svg>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= PAIN ================= -->
+<section class="section" id="muammo">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <span class="eyebrow" data-i18n="pain.eyebrow">Tanish holatmi?</span>
+      <h2 data-i18n="pain.title">Tayyorgarlikda eng qiyini — <mark class="mk">o‘z xatolaringizni ko‘rish</mark></h2>
+    </div>
+    <div class="pain-grid">
+      <article class="pain-card reveal">
+        <div class="pain-ico">✍️</div>
+        <h3 data-i18n="pain.1t">Essay yozildi. Kim tekshiradi?</h3>
+        <p data-i18n="pain.1d">O‘qituvchini kutasiz, navbatda turasiz, natijani esa bir necha kundan keyin bilasiz. Bu orada mashq to‘xtab qoladi.</p>
+      </article>
+      <article class="pain-card reveal">
+        <div class="pain-ico">🎙</div>
+        <h3 data-i18n="pain.2t">Speaking uchun sherik yo‘q</h3>
+        <p data-i18n="pain.2d">Uyda o‘zingiz gapirasiz — lekin ravonlik, talaffuz va grammatikangizni kim baholaydi?</p>
+      </article>
+      <article class="pain-card reveal">
+        <div class="pain-ico">🤷</div>
+        <span class="strike">6.0?</span>
+        <h3 data-i18n="pain.3t">Ball bor, sababi yo‘q</h3>
+        <p data-i18n="pain.3d">Bitta raqam yetarli emas. Qaysi gap, qaysi so‘z ballni tushirayotganini bilmasangiz, keyingi safar ham shu xatoni qilasiz.</p>
+      </article>
+    </div>
+    <div class="bridge reveal">
+      <svg class="logo-mark" aria-hidden="true"><use href="#i-logo"/></svg>
+      <p data-i18n="pain.bridge">WriteSpeak — cho‘ntagingizdagi IELTS murabbiyi: 24/7, Telegram ichida, bir necha daqiqada.</p>
+      <a class="btn btn-light" href="https://t.me/writespeak_bot" data-cta="bridge"><svg aria-hidden="true" style="color:var(--tg-2)"><use href="#i-send"/></svg><span data-i18n="pain.cta">Sinab ko‘rish</span></a>
+    </div>
+  </div>
+</section>
+
+<!-- ================= REPORT ================= -->
+<section class="section white" id="hisobot">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <span class="eyebrow" data-i18n="rep.eyebrow">Namuna hisobot</span>
+      <h2 data-i18n="rep.title">Shunchaki ball emas — <mark class="mk">har bir gap</mark> tahlili</h2>
+      <p data-i18n="rep.sub">Har bir tekshiruvdan keyin shunday PDF hisobot keladi. Rangli gaplarni bosib, izohni ko‘ring 👇</p>
+    </div>
+
+    <div class="report-grid">
+      <div class="report reveal" id="report">
+        <div class="report-top">
+          <div>
+            <div class="brand">WRITESPEAK · IELTS FEEDBACK REPORT</div>
+            <h3>Writing Task 2 (Essay)</h3>
+            <div class="topic"><span data-i18n="rep.topic">Mavzu:</span> Technology and modern life</div>
+          </div>
+          <span class="doc-tag">PDF</span>
+        </div>
+        <div class="scores">
+          <div class="ring">
+            <svg viewBox="0 0 128 128" aria-hidden="true"><circle class="track" cx="64" cy="64" r="52" fill="none" stroke-width="11"/><circle class="val" cx="64" cy="64" r="52" fill="none" stroke-width="11" stroke-linecap="round"/></svg>
+            <div class="ring-label"><b>7.0</b><span data-i18n="rep.overall">Umumiy ball</span></div>
+          </div>
+          <div class="crit">
+            <div class="crit-row">Task Response <b>7.0</b><span class="bar"><i style="--w:77.8%"></i></span></div>
+            <div class="crit-row">Coherence &amp; Cohesion <b>7.5</b><span class="bar"><i style="--w:83.3%"></i></span></div>
+            <div class="crit-row">Lexical Resource <b>6.5</b><span class="bar"><i style="--w:72.2%"></i></span></div>
+            <div class="crit-row">Grammatical Range &amp; Accuracy <b>7.0</b><span class="bar"><i style="--w:77.8%"></i></span></div>
+          </div>
+        </div>
+        <div class="report-body">
+          <div class="legend">
+            <span><i style="background:var(--hl-green)"></i><span data-i18n="tone.g">Kuchli</span></span>
+            <span><i style="background:var(--hl-yellow)"></i><span data-i18n="tone.y">Yaxshilasa bo‘ladi</span></span>
+            <span><i style="background:var(--hl-amber)"></i><span data-i18n="tone.a">Tuzatish kerak</span></span>
+          </div>
+          <div class="essay" id="essay">
+            <p>In recent years, technology has become deeply embedded in almost every aspect of daily life. While some people believe this has made our lives unnecessarily complicated, others argue that it has genuinely simplified how we live and work. <mark data-tone="g" data-c="c1" tabindex="0" role="button">This essay will discuss both views before presenting my own opinion.</mark></p>
+            <p>On one hand, critics of modern technology point out that constant connectivity often leads to stress and information overload. <mark data-tone="g" data-c="c2" tabindex="0" role="button">Many people feel obligated to check their phones throughout the day, which can make it harder to relax or focus on a single task.</mark> <mark data-tone="y" data-c="c3" tabindex="0" role="button">Furthermore, the rapid pace of technological change means that people must continuously learn new systems, which some find overwhelming.<sup>[1]</sup></mark></p>
+            <p><mark data-tone="g" data-c="c4" tabindex="0" role="button">On the other hand, supporters of technology highlight the enormous convenience it provides.</mark> <mark data-tone="a" data-c="c5" tabindex="0" role="button">Tasks that once took hours, such as paying bills, can now be completed in second.<sup>[2]</sup></mark> …</p>
+          </div>
+          <aside class="sticky-note" aria-live="polite">
+            <div class="hand" data-i18n="rep.note">Izoh</div>
+            <span class="note-tag" id="noteTag" data-tone="y">—</span>
+            <p class="note-quote" id="noteQuote"></p>
+            <p class="note-text" id="noteText"></p>
+          </aside>
+        </div>
+        <div class="vocab">
+          <h4 data-i18n="rep.vocab">Foydali so‘zlar</h4>
+          <div class="chips" id="vocabChips">
+            <span class="chip"><b>deeply embedded</b> — <span data-i18n="voc.1">chuqur singib ketgan</span></span>
+            <span class="chip"><b>information overload</b> — <span data-i18n="voc.2">axborot bilan haddan tashqari yuklanish</span></span>
+            <span class="chip"><b>a positive force</b> — <span data-i18n="voc.3">ijobiy omil</span></span>
+            <span class="chip"><b>constant connectivity</b> — <span data-i18n="voc.4">doimo onlayn bo‘lish</span></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="inside reveal">
+        <h3 data-i18n="rep.inside">Hisobotda nimalar bor</h3>
+        <ul class="checks">
+          <li><span class="check"><svg><use href="#i-check"/></svg></span><span data-i18n="rep.i1"><b>Umumiy Band ball</b> va 4 mezon bo‘yicha alohida ball</span></li>
+          <li><span class="check"><svg><use href="#i-check"/></svg></span><span data-i18n="rep.i2"><b>Har bir gap rang bilan belgilanadi</b> — qayerda kuchli, qayerda ball yo‘qotayotganingiz darhol ko‘rinadi</span></li>
+          <li><span class="check"><svg><use href="#i-check"/></svg></span><span data-i18n="rep.i3"><b>Har bir izohda</b> nima uchun va qanday tuzatish kerakligi yozilgan</span></li>
+          <li><span class="check"><svg><use href="#i-check"/></svg></span><span data-i18n="rep.i4"><b>6–10 ta Band 7+ so‘z va ibora</b> — aynan shu mavzu uchun, ma’nosi va misoli bilan</span></li>
+          <li><span class="check"><svg><use href="#i-check"/></svg></span><span data-i18n="rep.i5"><b>Iliq, tushunarli xulosa</b> va keyingi qadamlar</span></li>
+        </ul>
+        <p class="disclaimer" data-i18n="rep.disc">Ball — IELTS Band Descriptors asosidagi taxminiy baho, rasmiy IELTS natijasi emas.</p>
+        <a class="btn btn-tg btn-lg" href="https://t.me/writespeak_bot" data-cta="report"><svg aria-hidden="true"><use href="#i-send"/></svg><span data-i18n="rep.cta">O‘z essayimni tekshirish</span></a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= SPEAKING ================= -->
+<section class="section dark" id="speaking">
+  <div class="wrap speak-grid">
+    <div class="reveal">
+      <div class="section-head" style="margin-bottom:0">
+        <span class="eyebrow">Speaking</span>
+        <h2 data-i18n="sp.title">Xuddi <mark class="mk">imtihondagidek</mark> — savolma-savol</h2>
+        <p data-i18n="sp.sub">Bot savollarni birma-bir beradi, siz ovozli xabar bilan javob berasiz. Oxirida barcha javoblaringiz bitta tekshiruv sifatida birga baholanadi.</p>
+      </div>
+      <ul class="speak-points">
+        <li><span class="sp-ico">🗣</span><div><h3 data-i18n="sp.1t">Part 1, 2 va 3</h3><p data-i18n="sp.1d">Savolni o‘zingiz yuborasiz yoki Practice bo‘limidan tayyorini olasiz.</p></div></li>
+        <li><span class="sp-ico">🗂</span><div><h3 data-i18n="sp.2t">Part 2 uchun cue card</h3><p data-i18n="sp.2d">1 daqiqa tayyorgarlik, so‘ng 1–2 daqiqa gapirasiz — haqiqiy imtihon formatida.</p></div></li>
+        <li><span class="sp-ico">🎧</span><div><h3 data-i18n="sp.3t">Talaffuz ovozingizdan baholanadi</h3><p data-i18n="sp.3d">Ravonlik, pauzalar va talaffuz matndan emas, yozilgan ovozning o‘zidan tahlil qilinadi.</p></div></li>
+        <li><span class="sp-ico">📊</span><div><h3 data-i18n="sp.4t">4 mezon bo‘yicha ball</h3><p data-i18n="sp.4d">Fluency &amp; Coherence, Lexical Resource, Grammar va Pronunciation — har biriga alohida.</p></div></li>
+      </ul>
+    </div>
+
+    <div class="speak-visual reveal" aria-hidden="true">
+      <div class="chat-card">
+        <div class="tg-head">
+          <svg class="tg-ava"><use href="#i-logo"/></svg>
+          <div><div class="tg-name">WriteSpeak</div><div class="tg-status">bot</div></div>
+        </div>
+        <div class="tg-chat">
+          <div class="msg in"><div class="bubble"><b>🎙 Speaking Part 1</b> — hometown<br><br><span data-i18n="sp.q1">❓ <b>Savol 1/4</b></span><br>Let's talk about your hometown. Where is your hometown?<span class="meta">20:41</span></div></div>
+          <div class="msg out"><div class="bubble"><div class="voice"><span class="play"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M8 5v14l11-7z"/></svg></span><div><div class="wave" data-wave="34"></div><small>0:34</small></div></div><span class="meta">20:42 <svg width="15" height="15"><use href="#i-checks"/></svg></span></div></div>
+          <div class="msg in"><div class="bubble"><span data-i18n="sp.q2">❓ <b>Savol 2/4</b></span><br>What do you like most about living there?<span class="meta">20:42</span></div></div>
+          <div class="msg out"><div class="bubble"><div class="voice"><span class="play"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M8 5v14l11-7z"/></svg></span><div><div class="wave" data-wave="41"></div><small>0:41</small></div></div><span class="meta">20:43 <svg width="15" height="15"><use href="#i-checks"/></svg></span></div></div>
+          <div class="msg in"><div class="bubble"><span data-i18n="sp.q3">❓ <b>Savol 3/4</b></span><br>How has your hometown changed since you were a child?<span class="meta">20:43</span></div><div class="kb"><span data-i18n="sp.finish">✅ Yakunlash va baholash</span></div></div>
+        </div>
+      </div>
+      <div class="cue">
+        <div class="cue-head"><b>Part 2 · Cue card</b><span class="timer">⏱ 1:00</span></div>
+        Describe a place you have visited that you found particularly beautiful.
+        <div style="margin-top:6px;font-weight:600">You should say:</div>
+        <ul><li>where this place is</li><li>when you visited it</li><li>what you did there</li></ul>
+        and explain why you found it beautiful.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= HOW ================= -->
+<section class="section" id="qanday">
+  <div class="wrap">
+    <div class="section-head center reveal">
+      <span class="eyebrow" data-i18n="how.eyebrow">Qanday ishlaydi</span>
+      <h2 data-i18n="how.title">3 qadam — va <mark class="mk">hisobot qo‘lingizda</mark></h2>
+    </div>
+    <div class="steps">
+      <div class="step reveal">
+        <div class="step-num">01</div>
+        <h3 data-i18n="how.1t">Botni oching</h3>
+        <p data-i18n="how.1d">Telegram’da @writespeak_bot’ni oching va “Start”ni bosing. Tilni tanlaysiz — tamom, ro‘yxatdan o‘tish yo‘q.</p>
+      </div>
+      <div class="step reveal">
+        <div class="step-num">02</div>
+        <h3 data-i18n="how.2t">Savol va javobni yuboring</h3>
+        <p data-i18n="how.2d">Writing yoki Speaking’ni tanlang. Savol va javobingizni istalgan shaklda yuboring — matn, rasm, fayl yoki ovoz.</p>
+      </div>
+      <div class="step reveal">
+        <div class="step-num">03</div>
+        <h3 data-i18n="how.3t">Hisobotni oling</h3>
+        <p data-i18n="how.3d">Bir necha daqiqada ball, izohlar va foydali so‘zlar bilan PDF keladi. Xohlasangiz, natijangizni do‘stlarga ulashing.</p>
+      </div>
+    </div>
+    <div class="formats reveal">
+      <span data-i18n="how.formats">Istalgan formatda yuboring:</span>
+      <span class="fmt">⌨️ <span data-i18n="fmt.text">Matn</span></span>
+      <span class="fmt">📷 <span data-i18n="fmt.photo">Rasm</span></span>
+      <span class="fmt">✍️ <span data-i18n="fmt.hand">Qo‘lyozma</span></span>
+      <span class="fmt">📄 PDF</span>
+      <span class="fmt">📝 Word</span>
+      <span class="fmt">🎤 <span data-i18n="fmt.voice">Ovozli xabar</span></span>
+      <span class="fmt">⭕ <span data-i18n="fmt.video">Video-xabar</span></span>
+    </div>
+  </div>
+</section>
+
+<!-- ================= FEATURES ================= -->
+<section class="section white" id="imkoniyatlar">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <span class="eyebrow" data-i18n="ft.eyebrow">Imkoniyatlar</span>
+      <h2 data-i18n="ft.title">Bitta botda — <mark class="mk">butun tayyorgarlik</mark></h2>
+    </div>
+    <div class="feat-grid">
+      <div class="feat reveal"><div class="feat-ico">📝</div><h3 data-i18n="ft.1t">Practice bo‘limi</h3><p data-i18n="ft.1d">100 ta Writing savoli va 120 ta Speaking to‘plami. Bajarganlaringiz ✅ bilan belgilanadi, “Keyingi savol” bilan to‘xtamay davom etasiz.</p></div>
+      <div class="feat reveal"><div class="feat-ico">📊</div><h3 data-i18n="ft.2t">Task 1 grafiklari</h3><p data-i18n="ft.2d">Grafik yoki diagramma rasmini yuboring — bot javobingizdagi raqamlarni rasmdagi ma’lumot bilan solishtiradi.</p></div>
+      <div class="feat reveal"><div class="feat-ico">📈</div><h3 data-i18n="ft.3t">Progress ko‘rinib turadi</h3><p data-i18n="ft.3d">“My Works”da barcha hisobotlaringiz arxivi va ballingiz o‘zgarishi grafigi.</p></div>
+      <div class="feat reveal"><div class="feat-ico">📚</div><h3 data-i18n="ft.4t">Shaxsiy lug‘at</h3><p data-i18n="ft.4d">Hisobotlardagi foydali so‘zlar avtomatik “Lug‘atim”ga tushadi — kartochkalar bilan takrorlaysiz.</p></div>
+      <div class="feat reveal"><div class="feat-ico">🖼</div><h3 data-i18n="ft.5t">Natijani ulashing</h3><p data-i18n="ft.5d">Bir bosishda band-ballingiz bilan chiroyli rasm olasiz — Instagram yoki Telegram’ga joylang.</p></div>
+      <div class="feat reveal"><div class="feat-ico">🌙</div><h3 data-i18n="ft.6t">24/7, o‘zbek va rus tilida</h3><p data-i18n="ft.6d">Tunda ham, imtihon arafasida ham ishlaydi. Interfeys o‘zbek va rus tillarida.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= PRICING ================= -->
+<section class="section" id="narxlar">
+  <div class="wrap">
+    <div class="section-head center reveal">
+      <span class="eyebrow" data-i18n="pr.eyebrow">Narxlar</span>
+      <h2 data-i18n="pr.title">Boshlash — <mark class="mk">bepul</mark></h2>
+      <p data-i18n="pr.sub">Har kuni bepul tekshiruvlar. Ko‘proq kerak bo‘lsa — arzon va oddiy.</p>
+    </div>
+    <div class="price-grid">
+      <div class="plan reveal">
+        <h3 data-i18n="pr.1n">Bepul</h3>
+        <p class="desc" data-i18n="pr.1d">Har kuni mashq qilish uchun</p>
+        <div class="price"><b>0</b><span data-i18n="pr.som">so‘m</span></div>
+        <ul>
+          <li><svg><use href="#i-check"/></svg><span data-i18n="pr.1f1">Kuniga 2 ta tekshiruv</span></li>
+          <li><svg><use href="#i-check"/></svg><span data-i18n="pr.1f2">Writing va Speaking</span></li>
+          <li><svg><use href="#i-check"/></svg><span data-i18n="pr.1f3">To‘liq PDF hisobot</span></li>
+          <li><svg><use href="#i-check"/></svg><span data-i18n="pr.1f4">Practice, lug‘at va progress</span></li>
+        </ul>
+        <a class="btn btn-tg" href="https://t.me/writespeak_bot" data-cta="plan-free"><svg aria-hidden="true"><use href="#i-send"/></svg><span data-i18n="pr.1b">Bepul boshlash</span></a>
+      </div>
+      <div class="plan reveal">
+        <h3 data-i18n="pr.2n">Kerakicha</h3>
+        <p class="desc" data-i18n="pr.2d">Bepul limitdan ortig‘i uchun</p>
+        <div class="price"><b>5 000</b><span data-i18n="pr.per">so‘m / tekshiruv</span></div>
+        <ul>
+          <li><svg><use href="#i-check"/></svg><span data-i18n="pr.2f1">1, 3, 5 yoki 10 tadan oling</span></li>
+          <li><svg><use href="#i-check"/></svg><span data-i18n="pr.2f2">Kreditlar muddatsiz — kuyib ketmaydi</span></li>
+          <li><svg><use href="#i-check"/></svg><span data-i18n="pr.2f3">Karta orqali oddiy o‘tkazma</span></li>
+        </ul>
+        <a class="btn btn-ghost" href="https://t.me/writespeak_bot" data-cta="plan-credits" data-i18n="pr.2b">Botda sotib olish</a>
+      </div>
+      <div class="plan featured reveal">
+        <span class="badge" data-i18n="pr.badge">Intensiv tayyorgarlik uchun</span>
+        <h3 data-i18n="pr.3n">Cheksiz</h3>
+        <p class="desc" data-i18n="pr.3d">Imtihon oldidan har kuni ko‘p yozadigan va gapiradiganlar uchun</p>
+        <div class="price"><b>99 000</b><span data-i18n="pr.month">so‘m / oy</span></div>
+        <ul>
+          <li><svg><use href="#i-check"/></svg><span data-i18n="pr.3f1">Cheksiz tekshiruv</span></li>
+          <li><svg><use href="#i-check"/></svg><span data-i18n="pr.3f2">Writing va Speaking</span></li>
+          <li><svg><use href="#i-check"/></svg><span data-i18n="pr.3f3">Barcha imkoniyatlar</span></li>
+        </ul>
+        <a class="btn btn-light" href="https://t.me/writespeak_bot" data-cta="plan-unlimited" data-i18n="pr.3b">Obunani olish</a>
+      </div>
+    </div>
+    <div class="referral reveal"><span class="gift">🎁</span><p data-i18n="pr.ref">Do‘stingizni taklif qiling: u birinchi tekshiruvini tugatganda sizga 1 ta tekshiruv bepul. Havolangiz botdagi “👤 Hisobim” bo‘limida.</p></div>
+  </div>
+</section>
+
+<!-- ================= TEACHERS ================= -->
+<section class="section white" id="ustozlar" style="padding-top:0">
+  <div class="wrap">
+    <div class="teach reveal">
+      <div>
+        <span class="eyebrow" data-i18n="te.eyebrow">O‘qituvchi va o‘quv markazlari uchun</span>
+        <h2 data-i18n="te.title">Butun guruhingiz — bitta botda</h2>
+        <p data-i18n="te.text">Guruh oching, talabalarni havola orqali qo‘shing va har birining ishlari soni, o‘rtacha bali va so‘nggi faolligini kuzating. O‘z balansingizdan talabalarga tekshiruv ulashishingiz ham mumkin.</p>
+        <a class="btn btn-tg" href="https://t.me/writespeak_bot" data-cta="teachers"><svg aria-hidden="true"><use href="#i-send"/></svg><span data-i18n="te.cta">Guruh ochish</span></a>
+      </div>
+      <ul class="teach-list">
+        <li><span>🔗</span><span data-i18n="te.1">Taklif havolasi bilan qo‘shilish</span></li>
+        <li><span>📊</span><span data-i18n="te.2">Har bir talaba statistikasi</span></li>
+        <li><span>🎁</span><span data-i18n="te.3">Talabalarga kredit ulashish</span></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ================= FAQ ================= -->
+<section class="section" id="savollar">
+  <div class="wrap">
+    <div class="section-head center reveal">
+      <span class="eyebrow" data-i18n="faq.eyebrow">Savollar</span>
+      <h2 data-i18n="faq.title">Ko‘p beriladigan savollar</h2>
+    </div>
+    <div class="faq reveal">
+      <details open><summary data-i18n="faq.1q">Bu rasmiy IELTS bali bo‘ladimi?</summary><p data-i18n="faq.1a">Yo‘q. Bu IELTS Band Descriptors mezonlari asosida sun’iy intellekt chiqargan taxminiy baho. U qayerda turganingizni va nimani yaxshilash kerakligini ko‘rsatadi, lekin rasmiy imtihon natijasi o‘rnini bosmaydi.</p></details>
+      <details><summary data-i18n="faq.2q">Qo‘lda yozgan essayimni yuborsam bo‘ladimi?</summary><p data-i18n="faq.2a">Ha. Rasmga olib yuboring — bir nechta sahifa bo‘lsa, albom qilib. Bot matnni o‘qiydi va tekshirishdan oldin sizga ko‘rsatadi: biror so‘zni noto‘g‘ri o‘qigan bo‘lsa, tuzatib yuborasiz.</p></details>
+      <details><summary data-i18n="faq.3q">Natija qancha vaqtda chiqadi?</summary><p data-i18n="faq.3a">Odatda bir necha daqiqada. Bot tahlil qilayotganini yozib turadi va tayyor bo‘lishi bilan PDF hisobotni yuboradi.</p></details>
+      <details><summary data-i18n="faq.4q">Speaking’ni qanday topshiraman?</summary><p data-i18n="faq.4a">Part’ni tanlang, savollarni yuboring (yoki Practice’dan tayyorini oling) va har biriga ovozli xabar bilan javob bering. Video-xabar va audio fayl ham qabul qilinadi.</p></details>
+      <details><summary data-i18n="faq.5q">Bepul tekshiruvlar tugasa-chi?</summary><p data-i18n="faq.5a">Har bir qo‘shimcha tekshiruv — 5 000 so‘m, yoki oylik cheksiz obuna — 99 000 so‘m. To‘lov karta orqali: o‘tkazma qilasiz, chek rasmini botga yuborasiz, tasdiqlangach hisobingizga tushadi.</p></details>
+      <details><summary data-i18n="faq.6q">Hisobotlarim saqlanib qoladimi?</summary><p data-i18n="faq.6a">Ha. “My Works” bo‘limida barcha hisobotlaringizni qayta yuklab olishingiz va ballingiz qanday o‘zgarayotganini grafikda ko‘rishingiz mumkin.</p></details>
+      <details><summary data-i18n="faq.7q">Bot qaysi tilda?</summary><p data-i18n="faq.7a">Interfeys o‘zbek va rus tillarida — birinchi kirishda tanlaysiz, keyin “Hisobim”dan o‘zgartirsa bo‘ladi. Essay va javoblar, albatta, ingliz tilida.</p></details>
+    </div>
+  </div>
+</section>
+
+<!-- ================= FINAL CTA ================= -->
+<section class="final dark" id="final">
+  <div class="wrap final-grid">
+    <div class="reveal">
+      <h2 data-i18n="fin.title">Keyingi essayingizni <mark class="mk">bugun</mark> tekshiring</h2>
+      <p data-i18n="fin.sub">Birinchi tekshiruvlar bepul. Botni oching va bir daqiqada boshlang.</p>
+      <a class="btn btn-tg btn-lg" href="https://t.me/writespeak_bot" data-cta="final"><svg aria-hidden="true"><use href="#i-send"/></svg><span data-i18n="fin.cta">Botni ochish — bepul</span></a>
+    </div>
+    <div class="qr reveal">
+      <svg viewBox="-2 -2 33 33" role="img" aria-label="QR: t.me/writespeak_bot"><rect x="-2" y="-2" width="33" height="33" fill="#fff"/><path fill="#0F1C3F" d="M0 0h7v1h-7zM14 0h1v1h-1zM17 0h3v1h-3zM22 0h7v1h-7zM0 1h1v1h-1zM6 1h1v1h-1zM8 1h3v1h-3zM12 1h2v1h-2zM19 1h2v1h-2zM22 1h1v1h-1zM28 1h1v1h-1zM0 2h1v1h-1zM2 2h3v1h-3zM6 2h1v1h-1zM9 2h3v1h-3zM15 2h1v1h-1zM20 2h1v1h-1zM22 2h1v1h-1zM24 2h3v1h-3zM28 2h1v1h-1zM0 3h1v1h-1zM2 3h3v1h-3zM6 3h1v1h-1zM9 3h1v1h-1zM13 3h1v1h-1zM16 3h4v1h-4zM22 3h1v1h-1zM24 3h3v1h-3zM28 3h1v1h-1zM0 4h1v1h-1zM2 4h3v1h-3zM6 4h1v1h-1zM8 4h2v1h-2zM11 4h1v1h-1zM13 4h1v1h-1zM16 4h2v1h-2zM19 4h1v1h-1zM22 4h1v1h-1zM24 4h3v1h-3zM28 4h1v1h-1zM0 5h1v1h-1zM6 5h1v1h-1zM9 5h2v1h-2zM14 5h3v1h-3zM18 5h3v1h-3zM22 5h1v1h-1zM28 5h1v1h-1zM0 6h7v1h-7zM8 6h1v1h-1zM10 6h1v1h-1zM12 6h1v1h-1zM14 6h1v1h-1zM16 6h1v1h-1zM18 6h1v1h-1zM20 6h1v1h-1zM22 6h7v1h-7zM11 7h2v1h-2zM15 7h1v1h-1zM17 7h4v1h-4zM0 8h1v1h-1zM2 8h1v1h-1zM4 8h1v1h-1zM6 8h1v1h-1zM12 8h1v1h-1zM16 8h2v1h-2zM20 8h1v1h-1zM24 8h1v1h-1zM27 8h1v1h-1zM0 9h1v1h-1zM3 9h2v1h-2zM8 9h1v1h-1zM10 9h4v1h-4zM15 9h3v1h-3zM20 9h4v1h-4zM25 9h1v1h-1zM28 9h1v1h-1zM0 10h5v1h-5zM6 10h1v1h-1zM8 10h1v1h-1zM10 10h2v1h-2zM14 10h5v1h-5zM20 10h2v1h-2zM23 10h2v1h-2zM26 10h3v1h-3zM0 11h2v1h-2zM4 11h1v1h-1zM7 11h3v1h-3zM13 11h2v1h-2zM16 11h2v1h-2zM19 11h1v1h-1zM22 11h1v1h-1zM27 11h1v1h-1zM1 12h3v1h-3zM5 12h2v1h-2zM9 12h2v1h-2zM12 12h1v1h-1zM14 12h2v1h-2zM17 12h1v1h-1zM21 12h2v1h-2zM25 12h1v1h-1zM27 12h2v1h-2zM3 13h1v1h-1zM5 13h1v1h-1zM8 13h4v1h-4zM14 13h2v1h-2zM20 13h1v1h-1zM22 13h1v1h-1zM25 13h1v1h-1zM28 13h1v1h-1zM0 14h3v1h-3zM4 14h1v1h-1zM6 14h8v1h-8zM17 14h1v1h-1zM21 14h5v1h-5zM27 14h2v1h-2zM0 15h1v1h-1zM2 15h2v1h-2zM7 15h1v1h-1zM10 15h1v1h-1zM12 15h1v1h-1zM15 15h1v1h-1zM17 15h2v1h-2zM22 15h1v1h-1zM24 15h2v1h-2zM27 15h1v1h-1zM0 16h4v1h-4zM5 16h3v1h-3zM12 16h1v1h-1zM16 16h2v1h-2zM21 16h2v1h-2zM25 16h1v1h-1zM27 16h2v1h-2zM1 17h2v1h-2zM4 17h1v1h-1zM7 17h1v1h-1zM9 17h5v1h-5zM15 17h4v1h-4zM20 17h1v1h-1zM22 17h1v1h-1zM25 17h2v1h-2zM28 17h1v1h-1zM0 18h1v1h-1zM3 18h1v1h-1zM5 18h4v1h-4zM10 18h1v1h-1zM12 18h1v1h-1zM14 18h3v1h-3zM22 18h1v1h-1zM27 18h2v1h-2zM1 19h3v1h-3zM7 19h1v1h-1zM9 19h1v1h-1zM12 19h3v1h-3zM16 19h2v1h-2zM19 19h4v1h-4zM24 19h2v1h-2zM27 19h1v1h-1zM0 20h1v1h-1zM2 20h1v1h-1zM4 20h1v1h-1zM6 20h5v1h-5zM12 20h1v1h-1zM14 20h2v1h-2zM18 20h1v1h-1zM20 20h5v1h-5zM8 21h1v1h-1zM14 21h2v1h-2zM19 21h2v1h-2zM24 21h1v1h-1zM26 21h3v1h-3zM0 22h7v1h-7zM9 22h1v1h-1zM12 22h2v1h-2zM17 22h1v1h-1zM19 22h2v1h-2zM22 22h1v1h-1zM24 22h2v1h-2zM27 22h2v1h-2zM0 23h1v1h-1zM6 23h1v1h-1zM15 23h1v1h-1zM20 23h1v1h-1zM24 23h2v1h-2zM28 23h1v1h-1zM0 24h1v1h-1zM2 24h3v1h-3zM6 24h1v1h-1zM8 24h3v1h-3zM12 24h1v1h-1zM16 24h1v1h-1zM20 24h5v1h-5zM0 25h1v1h-1zM2 25h3v1h-3zM6 25h1v1h-1zM9 25h1v1h-1zM13 25h1v1h-1zM15 25h3v1h-3zM19 25h1v1h-1zM23 25h2v1h-2zM26 25h1v1h-1zM0 26h1v1h-1zM2 26h3v1h-3zM6 26h1v1h-1zM8 26h3v1h-3zM15 26h2v1h-2zM18 26h3v1h-3zM24 26h2v1h-2zM28 26h1v1h-1zM0 27h1v1h-1zM6 27h1v1h-1zM14 27h1v1h-1zM16 27h3v1h-3zM20 27h4v1h-4zM27 27h1v1h-1zM0 28h7v1h-7zM8 28h6v1h-6zM15 28h1v1h-1zM18 28h8v1h-8zM27 28h2v1h-2z"/></svg>
+      <p data-i18n="fin.qr">Kompyuterdamisiz? Telefon kamerasi bilan skanerlang</p>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer class="footer">
+  <div class="wrap">
+    <div class="row">
+      <a class="logo" href="#top"><svg aria-hidden="true"><use href="#i-logo"/></svg>WriteSpeak</a>
+      <span>Telegram: <a href="https://t.me/writespeak_bot" data-cta="footer">@writespeak_bot</a></span>
+      <span>© <span id="year">2026</span> WriteSpeak</span>
+    </div>
+    <p class="legal" data-i18n="foot.legal">IELTS — British Council, IDP: IELTS Australia va Cambridge University Press &amp; Assessment’ning ro‘yxatdan o‘tgan savdo belgisi. WriteSpeak ular bilan bog‘liq emas va rasmiy IELTS bahosini bermaydi.</p>
+  </div>
+</footer>
+
+<div class="sticky-cta" id="stickyCta">
+  <a class="btn btn-tg btn-lg" href="https://t.me/writespeak_bot" data-cta="sticky"><svg aria-hidden="true"><use href="#i-send"/></svg><span data-i18n="hero.cta">Bepul tekshirib ko‘rish</span></a>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var RU = {
+    "nav.report": "Отчёт",
+    "nav.speaking": "Speaking",
+    "nav.how": "Как это работает",
+    "nav.pricing": "Цены",
+    "nav.faq": "Вопросы",
+    "nav.cta": "Открыть бота",
+    "hero.eyebrow": "IELTS Writing и Speaking · Telegram-бот",
+    "hero.title": "Узнайте, <mark class=\"mk\">что снижает</mark> ваш балл IELTS — за несколько минут",
+    "hero.lead": "Отправьте ответ по Writing или Speaking в Telegram-бот и получите PDF-отчёт: балл по критериям IELTS Band Descriptors, комментарий к каждому предложению и конкретные советы, как поднять балл.",
+    "hero.cta": "Проверить бесплатно",
+    "hero.cta2": "Посмотреть пример отчёта",
+    "hero.note": "@writespeak_bot · откроется в Telegram",
+    "hero.t1": "2 проверки бесплатно каждый день",
+    "hero.t2": "Без карты и регистрации",
+    "hero.t3": "Можно фото рукописного текста",
+    "hero.chip1": "⚡ За несколько минут",
+    "hero.chip2": "🎯 Балл по 4 критериям",
+    "chat.ocr": "📄 Вот что я прочитал:<br><i>In recent years, technology has become deeply embedded in almost every aspect…</i><br>Всё верно?",
+    "chat.ok": "✅ Верно",
+    "chat.edit": "✏️ Исправить",
+    "chat.wait": "⏳ Идёт анализ, немного подождите...",
+    "chat.pdf": "PDF-отчёт",
+    "chat.done": "✅ Готово! Общий балл: <b>7.0</b>",
+    "chat.share": "📤 Изображение для публикации",
+    "chat.next": "Продолжим? 👇",
+    "chat.again": "🔁 Проверить ещё",
+    "chat.input": "Сообщение",
+    "pain.eyebrow": "Знакомо?",
+    "pain.title": "Самое сложное в подготовке — <mark class=\"mk\">увидеть свои ошибки</mark>",
+    "pain.1t": "Эссе написано. А кто проверит?",
+    "pain.1d": "Ждёте преподавателя, стоите в очереди, а результат узнаёте через несколько дней. Всё это время практика стоит на месте.",
+    "pain.2t": "Не с кем практиковать Speaking",
+    "pain.2d": "Дома говорите сами с собой — но кто оценит беглость, произношение и грамматику?",
+    "pain.3t": "Балл есть, причины нет",
+    "pain.3d": "Одной цифры мало. Не зная, какие предложения и слова снижают балл, вы повторите те же ошибки снова.",
+    "pain.bridge": "WriteSpeak — IELTS-тренер у вас в кармане: 24/7, прямо в Telegram, за несколько минут.",
+    "pain.cta": "Попробовать",
+    "rep.eyebrow": "Пример отчёта",
+    "rep.title": "Не просто балл — <mark class=\"mk\">разбор каждого предложения</mark>",
+    "rep.sub": "После каждой проверки приходит такой PDF-отчёт. Нажмите на выделенные предложения, чтобы увидеть комментарий 👇",
+    "rep.topic": "Тема:",
+    "rep.overall": "Общий балл",
+    "tone.g": "Сильная сторона",
+    "tone.y": "Можно улучшить",
+    "tone.a": "Нужно исправить",
+    "rep.note": "Комментарий",
+    "rep.vocab": "Полезные слова",
+    "voc.1": "глубоко укоренившийся",
+    "voc.2": "информационная перегрузка",
+    "voc.3": "положительный фактор",
+    "voc.4": "постоянно быть онлайн",
+    "rep.inside": "Что внутри отчёта",
+    "rep.i1": "<b>Общий балл</b> и отдельный балл по каждому из 4 критериев",
+    "rep.i2": "<b>Каждое предложение выделено цветом</b> — сразу видно, где вы сильны, а где теряете баллы",
+    "rep.i3": "<b>В каждом комментарии</b> — почему это ошибка и как её исправить",
+    "rep.i4": "<b>6–10 слов и выражений уровня Band 7+</b> — именно по вашей теме, со значением и примером",
+    "rep.i5": "<b>Понятный, доброжелательный вывод</b> и следующие шаги",
+    "rep.disc": "Балл — ориентировочная оценка по IELTS Band Descriptors, а не официальный результат IELTS.",
+    "rep.cta": "Проверить своё эссе",
+    "sp.title": "Как на <mark class=\"mk\">настоящем экзамене</mark> — вопрос за вопросом",
+    "sp.sub": "Бот задаёт вопросы по одному, вы отвечаете голосовыми сообщениями. В конце все ответы оцениваются вместе — как одна проверка.",
+    "sp.1t": "Part 1, 2 и 3",
+    "sp.1d": "Отправьте свой вопрос или возьмите готовый из раздела Practice.",
+    "sp.2t": "Cue card для Part 2",
+    "sp.2d": "1 минута на подготовку, затем 1–2 минуты речи — как на настоящем экзамене.",
+    "sp.3t": "Произношение оценивается по голосу",
+    "sp.3d": "Беглость, паузы и произношение анализируются по самой записи, а не по тексту.",
+    "sp.4t": "Балл по 4 критериям",
+    "sp.4d": "Fluency &amp; Coherence, Lexical Resource, Grammar и Pronunciation — по каждому отдельно.",
+    "sp.q1": "❓ <b>Вопрос 1/4</b>",
+    "sp.q2": "❓ <b>Вопрос 2/4</b>",
+    "sp.q3": "❓ <b>Вопрос 3/4</b>",
+    "sp.finish": "✅ Завершить и оценить",
+    "how.eyebrow": "Как это работает",
+    "how.title": "3 шага — и <mark class=\"mk\">отчёт у вас</mark>",
+    "how.1t": "Откройте бота",
+    "how.1d": "Откройте @writespeak_bot в Telegram и нажмите «Start». Выберите язык — и всё, никакой регистрации.",
+    "how.2t": "Отправьте вопрос и ответ",
+    "how.2d": "Выберите Writing или Speaking. Отправьте вопрос и ответ в любом виде — текстом, фото, файлом или голосом.",
+    "how.3t": "Получите отчёт",
+    "how.3d": "Через несколько минут придёт PDF с баллом, комментариями и полезными словами. Результатом можно поделиться с друзьями.",
+    "how.formats": "Отправляйте в любом формате:",
+    "fmt.text": "Текст",
+    "fmt.photo": "Фото",
+    "fmt.hand": "Рукопись",
+    "fmt.voice": "Голосовое",
+    "fmt.video": "Видеосообщение",
+    "ft.eyebrow": "Возможности",
+    "ft.title": "Вся подготовка — <mark class=\"mk\">в одном боте</mark>",
+    "ft.1t": "Раздел Practice",
+    "ft.1d": "100 вопросов Writing и 120 наборов Speaking. Выполненные отмечаются ✅, а кнопка «Следующий вопрос» не даёт остановиться.",
+    "ft.2t": "Графики Task 1",
+    "ft.2d": "Отправьте фото графика или диаграммы — бот сверит цифры в вашем ответе с данными на картинке.",
+    "ft.3t": "Прогресс на виду",
+    "ft.3d": "В «My Works» — архив всех ваших отчётов и график изменения балла.",
+    "ft.4t": "Личный словарь",
+    "ft.4d": "Полезные слова из отчётов автоматически попадают в «Мой словарь» — повторяйте их карточками.",
+    "ft.5t": "Делитесь результатом",
+    "ft.5d": "В один клик — красивая картинка с вашим баллом для Instagram или Telegram.",
+    "ft.6t": "24/7, на узбекском и русском",
+    "ft.6d": "Работает и ночью, и накануне экзамена. Интерфейс на узбекском и русском.",
+    "pr.eyebrow": "Цены",
+    "pr.title": "Начать — <mark class=\"mk\">бесплатно</mark>",
+    "pr.sub": "Бесплатные проверки каждый день. Нужно больше — просто и недорого.",
+    "pr.som": "сум",
+    "pr.per": "сум / проверка",
+    "pr.month": "сум / месяц",
+    "pr.1n": "Бесплатно",
+    "pr.1d": "Для ежедневной практики",
+    "pr.1f1": "2 проверки в день",
+    "pr.1f2": "Writing и Speaking",
+    "pr.1f3": "Полный PDF-отчёт",
+    "pr.1f4": "Practice, словарь и прогресс",
+    "pr.1b": "Начать бесплатно",
+    "pr.2n": "По мере надобности",
+    "pr.2d": "Сверх бесплатного лимита",
+    "pr.2f1": "Пакеты по 1, 3, 5 или 10 проверок",
+    "pr.2f2": "Кредиты бессрочные — не сгорают",
+    "pr.2f3": "Простой перевод на карту",
+    "pr.2b": "Купить в боте",
+    "pr.badge": "Для интенсивной подготовки",
+    "pr.3n": "Безлимит",
+    "pr.3d": "Для тех, кто перед экзаменом много пишет и говорит каждый день",
+    "pr.3f1": "Безлимитные проверки",
+    "pr.3f2": "Writing и Speaking",
+    "pr.3f3": "Все возможности",
+    "pr.3b": "Оформить подписку",
+    "pr.ref": "Пригласите друга: когда он завершит первую проверку, вы получите 1 проверку бесплатно. Ваша ссылка — в разделе «👤 Профиль» в боте.",
+    "te.eyebrow": "Для преподавателей и учебных центров",
+    "te.title": "Вся ваша группа — в одном боте",
+    "te.text": "Создайте группу, пригласите учеников по ссылке и следите за количеством работ, средним баллом и последней активностью каждого. Можно делиться проверками со своего баланса.",
+    "te.cta": "Создать группу",
+    "te.1": "Вступление по ссылке-приглашению",
+    "te.2": "Статистика по каждому ученику",
+    "te.3": "Подарок кредитов ученикам",
+    "faq.eyebrow": "Вопросы",
+    "faq.title": "Частые вопросы",
+    "faq.1q": "Это официальный балл IELTS?",
+    "faq.1a": "Нет. Это ориентировочная оценка, которую выставляет искусственный интеллект по критериям IELTS Band Descriptors. Она показывает, где вы сейчас и что улучшить, но не заменяет официальный результат экзамена.",
+    "faq.2q": "Можно отправить эссе, написанное от руки?",
+    "faq.2a": "Да. Сфотографируйте и отправьте — если страниц несколько, альбомом. Бот распознает текст и покажет его перед проверкой: если какое-то слово прочитано неверно, просто исправьте.",
+    "faq.3q": "Сколько ждать результат?",
+    "faq.3a": "Обычно несколько минут. Бот сообщает, что идёт анализ, и сразу присылает PDF-отчёт, когда он готов.",
+    "faq.4q": "Как сдавать Speaking?",
+    "faq.4a": "Выберите Part, отправьте вопросы (или возьмите готовые из Practice) и отвечайте на каждый голосовым сообщением. Видеосообщения и аудиофайлы тоже принимаются.",
+    "faq.5q": "Что, если бесплатные проверки закончились?",
+    "faq.5a": "Каждая дополнительная проверка — 5 000 сум, или безлимитная подписка на месяц — 99 000 сум. Оплата переводом на карту: переводите, отправляете боту фото чека, после подтверждения проверки зачисляются.",
+    "faq.6q": "Мои отчёты сохраняются?",
+    "faq.6a": "Да. В разделе «My Works» можно заново скачать все отчёты и посмотреть на графике, как меняется ваш балл.",
+    "faq.7q": "На каком языке бот?",
+    "faq.7a": "Интерфейс на узбекском и русском — выбираете при первом входе, потом можно сменить в «Профиле». Эссе и ответы, конечно, на английском.",
+    "fin.title": "Проверьте следующее эссе <mark class=\"mk\">сегодня</mark>",
+    "fin.sub": "Первые проверки — бесплатно. Откройте бота и начните за минуту.",
+    "fin.cta": "Открыть бота — бесплатно",
+    "fin.qr": "Вы за компьютером? Отсканируйте камерой телефона",
+    "foot.legal": "IELTS — зарегистрированный товарный знак British Council, IDP: IELTS Australia и Cambridge University Press &amp; Assessment. WriteSpeak не связан с ними и не выставляет официальных оценок IELTS."
+  };
+
+  var META = {
+    uz: {
+      title: "WriteSpeak — IELTS Writing va Speaking'ni bir necha daqiqada tekshiring",
+      desc: "Writing yoki Speaking javobingizni Telegram botga yuboring: IELTS Band Descriptors bo'yicha ball, har bir gapga izoh va ballni oshirish uchun aniq maslahatlar bilan PDF hisobot. Har kuni 2 ta tekshiruv bepul."
+    },
+    ru: {
+      title: "WriteSpeak — проверка IELTS Writing и Speaking за несколько минут",
+      desc: "Отправьте ответ по Writing или Speaking в Telegram-бот: балл по IELTS Band Descriptors, комментарий к каждому предложению и советы, как поднять балл. 2 проверки бесплатно каждый день."
+    }
+  };
+
+  // Comments on the sample report's highlighted sentences.
+  var NOTES = {
+    uz: {
+      c1: "Insho tuzilishini aniq va tabiiy belgilab qo‘yadi — examiner uchun juda foydali.",
+      c2: "Murakkab gap (relative clause) to‘g‘ri va tabiiy ishlatilgan.",
+      c3: "Fikr yaxshi, lekin “overwhelming” — juda ko‘p ishlatiladigan so‘z. “Daunting” yoki “exhausting” kabi aniqroq sinonim Lexical Resource ballini oshiradi.",
+      c4: "Paragraflar orasidagi bog‘lovchi tabiiy ishlatilgan — Coherence & Cohesion uchun plyus.",
+      c5: "“in second” → “in seconds”: bu yerda ko‘plik shakli kerak."
+    },
+    ru: {
+      c1: "Чётко и естественно задаёт структуру эссе — экзаменатору это очень помогает.",
+      c2: "Сложное предложение (relative clause) построено правильно и естественно.",
+      c3: "Мысль хорошая, но «overwhelming» — слишком частое слово. Более точный синоним вроде «daunting» или «exhausting» поднимет балл за Lexical Resource.",
+      c4: "Связка между абзацами использована естественно — плюс к Coherence & Cohesion.",
+      c5: "«in second» → «in seconds»: здесь нужна форма множественного числа."
+    }
+  };
+
+  var lang = "uz";
+  var i18nEls = Array.prototype.slice.call(document.querySelectorAll("[data-i18n]"));
+  i18nEls.forEach(function (el) { el.setAttribute("data-uz-html", el.innerHTML); });
+
+  function storeGet() { try { return localStorage.getItem("ws-lang"); } catch (e) { return null; } }
+  function storeSet(v) { try { localStorage.setItem("ws-lang", v); } catch (e) { /* private mode */ } }
+
+  function applyLang(next) {
+    lang = next === "ru" ? "ru" : "uz";
+    document.documentElement.lang = lang;
+    i18nEls.forEach(function (el) {
+      var key = el.getAttribute("data-i18n");
+      el.innerHTML = lang === "ru" && RU[key] !== undefined ? RU[key] : el.getAttribute("data-uz-html");
+    });
+    document.title = META[lang].title;
+    var d = document.querySelector('meta[name="description"]');
+    if (d) d.setAttribute("content", META[lang].desc);
+    document.querySelectorAll(".lang button").forEach(function (b) {
+      b.setAttribute("aria-pressed", String(b.getAttribute("data-lang") === lang));
+    });
+    if (activeMark) selectMark(activeMark);
+  }
+
+  document.querySelectorAll(".lang button").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var v = b.getAttribute("data-lang");
+      storeSet(v);
+      applyLang(v);
+    });
+  });
+
+  // --- Sample report: click/hover a highlighted sentence to read its comment ---
+  var activeMark = null;
+  var marks = Array.prototype.slice.call(document.querySelectorAll("#essay mark"));
+  var noteTag = document.getElementById("noteTag");
+  var noteQuote = document.getElementById("noteQuote");
+  var noteText = document.getElementById("noteText");
+  var TONE_KEY = { g: "tone.g", y: "tone.y", a: "tone.a" };
+
+  function toneLabel(tone) {
+    var el = document.querySelector('[data-i18n="' + TONE_KEY[tone] + '"]');
+    return el ? el.textContent : "";
+  }
+
+  function selectMark(m) {
+    activeMark = m;
+    marks.forEach(function (x) { x.classList.toggle("active", x === m); });
+    var tone = m.getAttribute("data-tone");
+    noteTag.setAttribute("data-tone", tone);
+    noteTag.textContent = toneLabel(tone);
+    var quote = m.textContent.replace(/\[\d+\]/g, "").trim();
+    noteQuote.textContent = "“" + (quote.length > 90 ? quote.slice(0, 88) + "…" : quote) + "”";
+    noteText.textContent = NOTES[lang][m.getAttribute("data-c")];
+  }
+
+  var finePointer = window.matchMedia && window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+  marks.forEach(function (m) {
+    m.addEventListener("click", function () { selectMark(m); });
+    m.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); selectMark(m); }
+    });
+    if (finePointer) m.addEventListener("mouseenter", function () { selectMark(m); });
+  });
+
+  // --- Hero chat: replays the real bot flow (photo -> OCR confirm -> PDF) ---
+  var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var chat = document.getElementById("heroChat");
+  var typing = document.getElementById("heroTyping");
+  var step = function (name) { return chat.querySelector('[data-step="' + name + '"]'); };
+  var timers = [];
+
+  function at(ms, fn) { timers.push(setTimeout(fn, ms)); }
+  function show(name) { var el = step(name); el.classList.remove("gone"); el.classList.add("show"); }
+
+  function playChat() {
+    timers.forEach(clearTimeout);
+    timers = [];
+    chat.querySelectorAll(".msg").forEach(function (m) { m.classList.remove("show", "gone"); });
+    chat.querySelectorAll("[data-press]").forEach(function (p) { p.classList.remove("pressed"); });
+    typing.classList.remove("show");
+
+    at(400, function () { show("photo"); });
+    at(1200, function () { typing.classList.add("show"); });
+    at(2700, function () { typing.classList.remove("show"); show("ocr"); });
+    at(4600, function () { step("ocr").querySelector("[data-press]").classList.add("pressed"); });
+    at(5100, function () { show("wait"); });
+    at(7900, function () { step("wait").classList.add("gone"); show("pdf"); });
+    at(9300, function () { show("next"); });
+    at(15500, playChat);
+  }
+
+  if (reduceMotion) {
+    ["photo", "ocr", "pdf", "next"].forEach(show);
+  } else if ("IntersectionObserver" in window) {
+    var playing = false;
+    new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting && !playing) { playing = true; playChat(); }
+        else if (!e.isIntersecting && playing) { playing = false; timers.forEach(clearTimeout); }
+      });
+    }).observe(chat);
+  } else {
+    playChat();
+  }
+
+  // --- Voice-message waveforms (deterministic, so they look the same every load) ---
+  document.querySelectorAll("[data-wave]").forEach(function (w) {
+    var seed = parseInt(w.getAttribute("data-wave"), 10);
+    for (var i = 0; i < 26; i++) {
+      var h = 5 + Math.round(17 * Math.abs(Math.sin(seed * 0.37 + i * 0.83) * Math.cos(i * 0.29)));
+      var bar = document.createElement("i");
+      bar.style.height = h + "px";
+      w.appendChild(bar);
+    }
+  });
+
+  // --- Scroll reveals ---
+  var revealEls = document.querySelectorAll(".reveal");
+  if ("IntersectionObserver" in window && !reduceMotion) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); }
+      });
+    }, { rootMargin: "0px 0px -40px 0px", threshold: 0 });
+    revealEls.forEach(function (el) { io.observe(el); });
+  } else {
+    revealEls.forEach(function (el) { el.classList.add("in"); });
+  }
+
+  // --- Header border + mobile sticky CTA (hidden over the hero and final CTA) ---
+  var header = document.getElementById("header");
+  var sticky = document.getElementById("stickyCta");
+  var heroCta = document.getElementById("heroCta");
+  var finalSec = document.getElementById("final");
+  var heroVisible = true, finalVisible = false;
+  function updateSticky() { sticky.classList.toggle("on", !heroVisible && !finalVisible); }
+  if ("IntersectionObserver" in window) {
+    new IntersectionObserver(function (es) { heroVisible = es[0].isIntersecting; updateSticky(); }).observe(heroCta);
+    new IntersectionObserver(function (es) { finalVisible = es[0].isIntersecting; updateSticky(); }).observe(finalSec);
+  }
+  window.addEventListener("scroll", function () {
+    header.classList.toggle("scrolled", window.scrollY > 8);
+  }, { passive: true });
+
+  document.getElementById("year").textContent = String(new Date().getFullYear());
+
+  // --- Language: ?lang=ru|uz link (e.g. for ads), else saved choice, else the browser's ---
+  var fromUrl = (new URLSearchParams(location.search).get("lang") || "").toLowerCase();
+  var saved = fromUrl === "ru" || fromUrl === "uz" ? fromUrl : storeGet();
+  var browserRu = (navigator.language || "").toLowerCase().indexOf("ru") === 0;
+  applyLang(saved || (browserRu ? "ru" : "uz"));
+  selectMark(marks[2]);
+})();
+</script>
+</body>
+</html>

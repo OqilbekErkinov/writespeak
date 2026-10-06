@@ -116,7 +116,7 @@ async def receive_question(message: Message, state: FSMContext, lang: str) -> No
     preview = html.escape(text if len(text) <= 3500 else text[:3500] + "…", quote=False)
     await message.answer(
         t("writing.confirm_preview", lang, preview=preview),
-        reply_markup=confirm_edit_kb(),
+        reply_markup=confirm_edit_kb(lang),
     )
 
 

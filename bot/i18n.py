@@ -132,6 +132,8 @@ _T: dict[str, dict[str, str]] = {
         "uz": "📄 Men shunday o'qidim:\n\n<i>{preview}</i>\n\nTo'g'rimi?",
         "ru": "📄 Вот что я прочитал:\n\n<i>{preview}</i>\n\nВсё верно?",
     },
+    "confirm.ok": {"uz": "✅ To'g'ri", "ru": "✅ Верно"},
+    "confirm.edit": {"uz": "✏️ Tahrirlash", "ru": "✏️ Исправить"},
     "writing.send_correct_text": {
         "uz": "Iltimos, to'g'ri matnni yozib yuboring:",
         "ru": "Пожалуйста, отправьте правильный текст:",

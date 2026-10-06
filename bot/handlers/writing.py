@@ -151,7 +151,7 @@ async def _receive_input(message: Message, state: FSMContext, field: str, lang: 
     await state.set_state(confirm_state)
     await message.answer(
         t("writing.confirm_preview", lang, preview=_preview(extracted.text)),
-        reply_markup=confirm_edit_kb(),
+        reply_markup=confirm_edit_kb(lang),
     )
 
 

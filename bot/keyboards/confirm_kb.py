@@ -2,16 +2,18 @@
 student can catch extraction mistakes before grading runs."""
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
+from bot.i18n import t
+
 CB_CONFIRM = "confirm_text"
 CB_EDIT = "edit_text"
 
 
-def confirm_edit_kb() -> InlineKeyboardMarkup:
+def confirm_edit_kb(lang: str = "uz") -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="✅ To'g'ri", callback_data=CB_CONFIRM),
-                InlineKeyboardButton(text="✏️ Tahrirlash", callback_data=CB_EDIT),
+                InlineKeyboardButton(text=t("confirm.ok", lang), callback_data=CB_CONFIRM),
+                InlineKeyboardButton(text=t("confirm.edit", lang), callback_data=CB_EDIT),
             ]
         ]
     )
