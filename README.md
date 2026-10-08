@@ -114,10 +114,19 @@ usul (`bot/handlers/payments.py`). Payme/Click orqali avtomatik tasdiqlashga o't
 biznes/YATT sifatida ro'yxatdan o'tish, ular bilan shartnoma va bot uchun webhook qabul
 qiladigan ochiq domen+SSL kerak bo'ladi.
 
-## Zaxira nusxa (production uchun tavsiya)
+## Zaxira nusxa
 
-- `docker compose exec db pg_dump -U ielts ielts_bot > backup.sql` — kunlik cron orqali.
-- `data/storage/` (foydalanuvchi fayllari va PDF hisobotlar) papkasini alohida rsync/backup qiling.
+Har kuni 03:50 (Toshkent) da avtomatik: baza, `data/storage` (fayllar, PDF hisobotlar,
+savol rasmlari) va `.env`. Har bir zaxira vaqtinchalik konteynerga tiklab tekshiriladi,
+xato bo'lsa adminlarga Telegram xabari keladi. Serverda 14 kunlik + 8 haftalik + 12 oylik
+nusxa saqlanadi, kompyuterga esa Task Scheduler har kuni ko'chiradi (`D:\Backups\WriteSpeak`).
+
+- Server skripti va cron: `deploy/backup/backup.sh`, `deploy/backup/writespeak-backup.cron`
+- Kompyuterga ko'chirish: `deploy/backup/pull-backups.ps1`
+- Tiklash yo'riqnomasi: [`deploy/backup/RESTORE.md`](deploy/backup/RESTORE.md)
+
+Baza porti (5433) faqat serverning o'zida ochiq. Kompyuterdan ulanish uchun SSH-tunnel:
+`ssh -L 5433:127.0.0.1:5433 bridgin`, so'ng `localhost:5433`.
 
 ## Cheklovlar / ma'lum kamchiliklar
 

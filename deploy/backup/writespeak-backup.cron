@@ -1,0 +1,5 @@
+# WriteSpeak daily backup (repo: deploy/backup/). Installed as /etc/cron.d/writespeak-backup.
+# Server TZ is Europe/Berlin: 00:50 here = 03:50 Tashkent (04:50 in winter),
+# 20 minutes after Sector-O's backup so the two don't overlap.
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+50 0 * * * root /opt/writespeak/deploy/backup/backup.sh >> /var/log/writespeak-backup.log 2>&1
