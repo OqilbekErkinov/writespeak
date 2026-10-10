@@ -4,6 +4,8 @@ and a later change from Hisobim/Профиль (bot/handlers/account.py - just
 saves and confirms)."""
 from __future__ import annotations
 
+import asyncio
+
 from aiogram import F, Router
 from aiogram.types import BufferedInputFile, CallbackQuery
 
@@ -38,7 +40,8 @@ async def onboard_set_language(callback: CallbackQuery) -> None:
     await callback.message.answer(
         t("start.welcome", lang, name=callback.from_user.full_name), reply_markup=main_menu_kb(lang)
     )
-    pdf_bytes = build_sample_report_pdf()
+    # In the student's language; rendered off the event loop (WeasyPrint is CPU-bound).
+    pdf_bytes = await asyncio.to_thread(build_sample_report_pdf, lang)
     await callback.message.answer_document(
         BufferedInputFile(pdf_bytes, filename="Namuna_Hisobot.pdf"),
         caption=t("start.sample_caption", lang, free_limit=settings.free_daily_limit),

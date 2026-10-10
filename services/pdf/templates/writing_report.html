@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="{{ lang }}">
+<head>
+<meta charset="utf-8">
+<style>
+@page {
+  size: A4;
+  margin: 16mm 15mm 16mm 15mm;
+  @bottom-center { content: "WriteSpeak  •  " counter(page) " / " counter(pages); font: 8pt Inter, "Noto Sans", sans-serif; color: #9aa0ad; }
+}
+/* WeasyPrint 63 ignores flexbox `gap`, so spacing between flex items uses margins. */
+:root {
+  --navy: #1b2545; --ink: #2b2f38; --muted: #6b7180; --line: #e6e8ee;
+  --green: #23784a; --green-bg: #e3f3e9; --amber: #b8730a; --amber-bg: #fff3d9; --amber-line: #e8a33a;
+}
+* { box-sizing: border-box; }
+body { font-family: Inter, "Noto Sans", sans-serif; color: var(--ink); font-size: 10pt; line-height: 1.5; margin: 0; }
+h2 { color: var(--navy); font-size: 14pt; font-weight: 700; margin: 0 0 2mm; }
+h2 .en { color: var(--muted); font-weight: 400; font-size: 11pt; }
+.sub { color: var(--muted); font-size: 9pt; margin-bottom: 4.5mm; }
+.page-break { page-break-before: always; }
+
+.top { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid var(--navy); padding-bottom: 3mm; margin-bottom: 6mm; }
+.brand { font-size: 8pt; letter-spacing: 3px; color: var(--muted); font-weight: 600; }
+.title { font-size: 17pt; font-weight: 700; color: var(--navy); }
+.meta { text-align: right; font-size: 9pt; color: var(--muted); }
+
+.dash { display: flex; margin-bottom: 6mm; }
+.band { width: 52mm; margin-right: 6mm; background: var(--navy); color: white; border-radius: 4mm; padding: 6mm 5mm; text-align: center; }
+.band .lbl { font-size: 8.5pt; opacity: .75; letter-spacing: 1px; text-transform: uppercase; }
+.band .num { font-size: 46pt; font-weight: 700; line-height: 1.05; margin: 2mm 0; }
+.band .next { display: inline-block; background: rgba(255,255,255,.14); border-radius: 10mm; padding: 1mm 4mm; font-size: 9pt; }
+.crit { flex: 1; }
+.crow { margin-bottom: 3.2mm; }
+.crow .head { display: flex; justify-content: space-between; font-size: 9.5pt; }
+.crow .head b { color: var(--navy); }
+.crow .note { font-size: 8.5pt; color: var(--muted); }
+.bar { position: relative; height: 3mm; background: var(--line); border-radius: 2mm; margin: 1mm 0 .8mm; }
+.bar .fill { height: 100%; border-radius: 2mm; }
+.bar .tick { position: absolute; top: -1mm; width: .6mm; height: 5mm; background: var(--navy); }
+.weak .fill { background: var(--amber-line); } .ok .fill { background: #5b7bd5; } .strong .fill { background: #3aa36b; }
+.legend-tick { font-size: 8pt; color: var(--muted); text-align: right; }
+
+.strength { background: var(--green-bg); border-left: 1.2mm solid var(--green); border-radius: 2mm; padding: 4mm 5mm; margin-bottom: 6mm; }
+.strength .k { color: var(--green); font-weight: 700; font-size: 9pt; text-transform: uppercase; letter-spacing: .8px; }
+
+.focus { border: 1px solid var(--line); border-radius: 3mm; padding: 4mm 5mm; }
+.focus .fh { font-weight: 700; color: var(--navy); font-size: 10.5pt; margin-bottom: 2mm; }
+.focus ol { margin: 0; padding-left: 5mm; }
+.focus li { margin-bottom: 1.6mm; font-size: 9.6pt; }
+.focus li:last-child { margin-bottom: 0; }
+.focus .ids { color: var(--muted); font-size: 8.5pt; }
+
+.tag { display: inline-block; font-size: 7.3pt; font-weight: 600; border-radius: 1.5mm; padding: .2mm 1.8mm; white-space: nowrap; }
+.tag.lr { background: #fde8d8; color: #a2531a; }
+.tag.gra { background: #ece6fb; color: #5b3fb0; }
+.tag.cc { background: #dff0f7; color: #1d6f93; }
+.tag.tr { background: #e8eefc; color: #2b5aa8; }
+
+.legend { font-size: 8.5pt; color: var(--muted); margin-bottom: 4mm; }
+.legend > span { white-space: nowrap; margin-right: 5mm; }
+.sw { display: inline-block; width: 7mm; height: 3.5mm; border-radius: 1mm; margin-right: 1.5mm; vertical-align: -0.5mm; }
+.essay { border: 1px solid var(--line); border-radius: 3mm; padding: 5mm 6mm; font-size: 10.3pt; line-height: 1.85; }
+.essay p { margin: 0 0 3.2mm; }
+.essay p:last-child { margin: 0; }
+.good { background: var(--green-bg); border-radius: 1mm; padding: 0 .6mm; }
+.err { border-bottom: 1.6px solid var(--amber-line); }
+.essay s { color: #a6623a; text-decoration-color: #c98a5a; }
+.essay ins { text-decoration: none; color: var(--green); font-weight: 600; }
+.unmarked { font-size: 8.8pt; color: var(--muted); margin-bottom: 3mm; }
+
+.mist { position: relative; border-bottom: 1px solid var(--line); padding: 2.4mm 22mm 2.4mm 10mm; page-break-inside: avoid; }
+.mist .num { position: absolute; left: 0; top: 2.6mm; width: 6.5mm; height: 6.5mm; border-radius: 50%; background: var(--navy); color: #fff; font-weight: 700; font-size: 8.5pt; text-align: center; line-height: 6.5mm; }
+.mist .fix { font-size: 9.8pt; }
+.mist .w { color: #a6623a; text-decoration: line-through; text-decoration-color: #d8a684; }
+.mist .r { color: var(--green); font-weight: 600; }
+.mist .why { font-size: 9pt; color: var(--muted); margin-top: .6mm; }
+.mist .side { position: absolute; right: 0; top: 3mm; }
+.mist.ask { background: #f5f8fd; border-radius: 2mm; padding-left: 12mm; padding-right: 24mm; }
+.mist.ask .num { left: 2mm; }
+.mist.ask .side { right: 2mm; }
+.mist.ask .q { font-size: 9pt; color: #2b5aa8; font-weight: 600; margin-top: .6mm; }
+.nomist { font-size: 10pt; color: var(--green); }
+
+table.voc { width: 100%; border-collapse: collapse; font-size: 9pt; }
+table.voc th { text-align: left; font-size: 7.8pt; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); border-bottom: 1.5px solid var(--navy); padding: 1.5mm 2mm; }
+table.voc td { border-bottom: 1px solid var(--line); padding: 2mm; vertical-align: top; line-height: 1.38; }
+table.voc tr { page-break-inside: avoid; }
+table.voc td.term { color: var(--navy); font-weight: 700; width: 24%; }
+table.voc td.mean { width: 34%; }
+table.voc td.exm { color: #4a4f5c; font-style: italic; }
+
+.sample-note { background: #eef3fb; color: #2b5aa8; font-size: 8.8pt; border-radius: 2mm; padding: 2.5mm 4mm; margin-bottom: 4mm; }
+.sample { border: 1px solid var(--line); border-radius: 3mm; padding: 5mm 6mm; font-size: 10.3pt; line-height: 1.75; }
+.sample p { margin: 0 0 3mm; } .sample p:last-child { margin: 0; }
+.sample-meta { font-size: 8.5pt; color: var(--muted); margin-top: 2mm; text-align: right; }
+
+.track { position: relative; margin-top: 7mm; background: #f6f7fa; border-radius: 3mm; padding: 4mm 5mm 4mm 17mm; font-size: 9pt; page-break-inside: avoid; }
+.track b { color: var(--navy); }
+.track .ico { position: absolute; left: 5mm; top: 50%; margin-top: -4mm; width: 8mm; height: 8mm; font-size: 15pt; line-height: 8mm; text-align: center; }
+.disc { margin-top: 5mm; font-size: 7.5pt; color: #9aa0ad; text-align: center; }
+</style>
+</head>
+<body>
+
+<!-- PAGE 1: DASHBOARD -->
+<div class="top">
+  <div>
+    <div class="brand">WRITESPEAK · IELTS FEEDBACK</div>
+    <div class="title">{{ title }}</div>
+  </div>
+  <div class="meta">{{ student_name }}<br>{{ date_str }}{% if essay_number %} · {{ L.essay_number.format(n=essay_number) }}{% endif %}</div>
+</div>
+
+<div class="dash">
+  <div class="band">
+    <div class="lbl">{{ L.overall }}</div>
+    <div class="num">{{ "%.1f"|format(report.overall_band) }}</div>
+    <div class="next">{{ L.next_goal.format(x="%.1f"|format(report.target_band)) }}</div>
+  </div>
+  <div class="crit">
+    {% for c in report.criteria %}
+    <div class="crow {{ c.cls }}">
+      <div class="head"><b>{{ c.name }}</b><span>{{ "%.1f"|format(c.band) }}</span></div>
+      <div class="bar"><div class="fill" style="width:{{ (c.band / 9 * 100)|round(1) }}%"></div><div class="tick" style="left:{{ (report.target_band / 9 * 100)|round(1) }}%"></div></div>
+      <div class="note">{{ c.note }}</div>
+    </div>
+    {% endfor %}
+    <div class="legend-tick">{{ L.tick_legend.format(x="%.1f"|format(report.target_band)) }}</div>
+  </div>
+</div>
+
+<div class="strength">
+  <div class="k">✓ {{ L.strength }}</div>
+  {{ report.strength }}
+</div>
+
+{% if report.focus %}
+<div class="focus">
+  <div class="fh">{{ L.focus.format(x="%.1f"|format(report.target_band)) }} <span style="font-weight:400;color:var(--muted)">— focus for next time</span></div>
+  <ol>
+    {% for f in report.focus %}
+    <li><b>{{ f.title }}</b> — {{ f.rule }} <span class="tag {{ f.tag_cls }}">{{ f.tag }}</span>{% if f.ids %} <span class="ids">№ {{ f.ids|join(", ") }}</span>{% endif %}</li>
+    {% endfor %}
+  </ol>
+</div>
+{% endif %}
+
+<!-- PAGE 2: ESSAY -->
+<div class="page-break"></div>
+<h2>{{ L.essay_h }} <span class="en">— Your essay, marked</span></h2>
+<div class="sub">{{ L.essay_sub }}</div>
+
+{% if report.essay_marked %}
+<div class="legend">
+  <span><i class="sw" style="background:var(--green-bg)"></i> {{ L.legend_good }}</span>
+  <span><i class="sw" style="border-bottom:2px solid var(--amber-line); height:2.5mm"></i> {{ L.legend_err }}</span>
+  <span><s style="color:#a6623a">{{ L.legend_word }}</s> <b style="color:var(--green)">{{ L.legend_fix }}</b></span>
+</div>
+{% else %}
+<div class="unmarked">{{ L.unmarked }}</div>
+{% endif %}
+
+<div class="essay">
+  {% for p in report.essay_paragraphs %}<p>{{ p|safe }}</p>
+  {% endfor %}
+</div>
+
+<!-- PAGE 3: MISTAKES -->
+<div class="page-break"></div>
+<h2>{{ L.mist_h }} <span class="en">— Every mistake explained</span></h2>
+<div class="sub">{{ L.mist_sub }}</div>
+
+{% for m in report.mistakes %}
+{% if m.unclear %}
+<div class="mist ask"><div class="num">{{ m.n }}</div><div class="body">
+  <div class="fix"><span class="w">{{ m.wrong }}</span></div>
+  <div class="why">{{ m.why }}</div>
+  <div class="q">{{ L.ask_prefix.format(meaning=m.likely_meaning) }} <span class="r">{{ m.correct }}</span></div>
+</div><div class="side"><span class="tag {{ m.tag_cls }}">{{ m.tag }}</span></div></div>
+{% else %}
+<div class="mist"><div class="num">{{ m.n }}</div><div class="body">
+  <div class="fix"><span class="w">{{ m.wrong }}</span> → <span class="r">{{ m.correct }}</span></div>
+  <div class="why">{{ m.why }}</div>
+</div><div class="side"><span class="tag {{ m.tag_cls }}">{{ m.tag }}</span></div></div>
+{% endif %}
+{% else %}
+<div class="nomist">✓ {{ L.no_mistakes }}</div>
+{% endfor %}
+
+<!-- VOCABULARY -->
+{% if report.vocabulary %}
+<div class="page-break"></div>
+<h2>{{ L.voc_h }} <span class="en">— Useful vocabulary for this topic</span></h2>
+<div class="sub">{{ L.voc_sub }}</div>
+<table class="voc">
+  <tr><th>{{ L.voc_term }}</th><th>{{ L.voc_meaning }}</th><th>{{ L.voc_example }}</th></tr>
+  {% for v in report.vocabulary %}
+  <tr><td class="term">{{ v.term }}</td><td class="mean">{{ v.meaning }}</td><td class="exm">{{ v.example }}</td></tr>
+  {% endfor %}
+</table>
+{% endif %}
+
+<!-- SAMPLE -->
+{% if sample %}
+<div class="page-break"></div>
+{% if sample.kind == "book" %}
+<h2>{{ L.sample_book_h }} <span class="en">— Book sample</span></h2>
+<div class="sub">{{ L.question }} <i>{{ sample.question }}</i></div>
+<div class="sample-note">{{ L.source.format(author=sample.author, book=sample.book_title) }}{% if sample.page %}{{ L.source_page.format(page=sample.page) }}{% endif %}</div>
+{% elif sample.kind == "style" %}
+<h2>{{ L.sample_h }} <span class="en">— {{ L.style_en.format(author=sample.author) }}</span></h2>
+<div class="sub">{{ L.question }} <i>{{ sample.question }}</i></div>
+<div class="sample-note">{{ L.style_note.format(author=sample.author) }}</div>
+{% else %}
+<h2>{{ L.sample_h }} <span class="en">— Band 8 sample</span></h2>
+<div class="sub">{{ L.question }} <i>{{ sample.question }}</i></div>
+<div class="sample-note">{{ L.generic_note }}</div>
+{% endif %}
+<div class="sample">
+  {% for p in sample.paragraphs %}<p>{{ p }}</p>
+  {% endfor %}
+</div>
+<div class="sample-meta">{{ L.words.format(n=sample.word_count) }}</div>
+{% endif %}
+
+<div class="track">
+  <div class="ico">📈</div>
+  <div><b>{{ L.progress }}</b> {{ progress_html|safe }}</div>
+</div>
+
+<div class="disc">{{ L.disclaimer }}</div>
+
+</body>
+</html>

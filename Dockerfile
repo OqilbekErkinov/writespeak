@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     shared-mime-info \
     fonts-noto \
     fonts-noto-color-emoji \
+    fonts-inter \
     fontconfig \
     libpq-dev \
     gcc \

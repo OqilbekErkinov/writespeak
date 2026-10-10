@@ -20,6 +20,8 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from weasyprint import HTML
 
 from db.models import BookChunk
+from services.ai.essay_marking import WritingReport
+from services.ai.sample_bank import SampleSection
 from services.ai.schemas import (
     Annotation,
     SampleAnalysis,
@@ -228,5 +230,181 @@ def build_feedback_pdf(
         # populated when book_sample is None (see writing.py/speaking.py).
         style_overview=style_analysis.overview if style_analysis else None,
         style_tips=style_analysis.tips if style_analysis else [],
+    )
+    return HTML(string=html_str).write_pdf()
+
+
+# --- Writing report (2026-10 redesign) ------------------------------------------------
+# Writing reports use templates/writing_report.html (the approved reference
+# design); build_feedback_pdf above still renders Speaking reports unchanged.
+
+_RU_MONTHS = (
+    "января", "февраля", "марта", "апреля", "мая", "июня",
+    "июля", "августа", "сентября", "октября", "ноября", "декабря",
+)
+
+WRITING_LABELS: dict[str, dict] = {
+    "uz": {
+        "title_task1": "Writing Task 1 — Report",
+        "title_task2": "Writing Task 2 — Essay",
+        "essay_number": "{n}-insho",
+        "overall": "Umumiy ball",
+        "next_goal": "Keyingi maqsad: {x}",
+        "tick_legend": "▮ chiziq = {x} maqsad",
+        "strength": "Kuchli tomoningiz",
+        "focus": "{x} uchun asosiy e'tibor",
+        "essay_h": "Inshongiz",
+        "essay_sub": "Qisqa tuzatishlar matn ichida. Har bir xatoning tushuntirishi — Batafsil tahlil bo'limida.",
+        "legend_good": "Kuchli ibora — saqlang",
+        "legend_err": "Xato",
+        "legend_word": "so'z",
+        "legend_fix": "tuzatish",
+        "unmarked": "Bu safar matnni belgilab bo'lmadi, shuning uchun inshongiz o'zgarishsiz ko'rsatilgan. Barcha xatolar — Batafsil tahlil bo'limida.",
+        "mist_h": "Batafsil tahlil",
+        "mist_sub": "Faqat xatolar ko'rsatilgan. To'g'ri yozilgan gaplar takrorlanmaydi.",
+        "no_mistakes": "Bu inshoda tuzatish talab qiladigan xato topilmadi.",
+        "ask_prefix": "Agar \"{meaning}\" demoqchi bo'lsangiz:",
+        "voc_h": "Foydali lug'at",
+        "voc_sub": "Shu mavzudagi insholar uchun foydali so'z va iboralar.",
+        "voc_term": "So'z / Ibora",
+        "voc_meaning": "Ma'nosi",
+        "voc_example": "Misol jumla",
+        "sample_book_h": "Kitobdan namuna",
+        "sample_h": "Namuna",
+        "style_en": "{author} uslubida",
+        "question": "Savol:",
+        "source": "Manba: {author}, «{book}»",
+        "source_page": ", {page}-bet",
+        "style_note": "Bu namuna kitobdagi asl matn emas. U {author}ning yozish uslubi asosida aynan sizning savolingiz uchun tayyorlangan.",
+        "generic_note": "Bu namuna kitobdagi asl matn emas. U aynan sizning savolingiz uchun tayyorlangan.",
+        "words": "~{n} so'z",
+        "progress": "Rivojlanish kuzatuvi.",
+        "progress_first": "Bu sizning birinchi inshongiz — natija saqlandi. Keyingi hisobotda {areas} xatolaringiz qanday o'zgarganini ko'rsatamiz.",
+        "progress_band": "Oldingi inshoga nisbatan umumiy ball: <b>{prev} → {now}</b>.",
+        "progress_counts": "Xatolar soni: {items}.",
+        "progress_criteria": "Mezonlar: {items}.",
+        "progress_later": "Xatolar turlari bo'yicha solishtirish keyingi inshodan boshlanadi.",
+        "and": "va",
+        "areas": {"LR": "so'z tanlash", "GRA": "grammatika", "CC": "bog'lanish", "TR_or_TA": "topshiriq"},
+        # Kept exactly as in the previous report.
+        "disclaimer": "Ushbu ball — AI tomonidan IELTS Band Descriptors asosida, ESL (ikkinchi til sifatida ingliz tili) o'quvchilari uchun moslashtirilgan holda baholangan taxminiy, qo'llab-quvvatlovchi natija bo'lib, rasmiy IELTS imtihon natijasi emas.",
+    },
+    "ru": {
+        "title_task1": "Writing Task 1 — Report",
+        "title_task2": "Writing Task 2 — Essay",
+        "essay_number": "эссе №{n}",
+        "overall": "Общий балл",
+        "next_goal": "Следующая цель: {x}",
+        "tick_legend": "▮ отметка = цель {x}",
+        "strength": "Ваша сильная сторона",
+        "focus": "Главное для {x}",
+        "essay_h": "Ваше эссе",
+        "essay_sub": "Короткие исправления — прямо в тексте. Объяснение каждой ошибки — в разделе «Подробный разбор».",
+        "legend_good": "Сильная фраза — сохраните",
+        "legend_err": "Ошибка",
+        "legend_word": "слово",
+        "legend_fix": "исправление",
+        "unmarked": "В этот раз текст не удалось разметить, поэтому эссе показано без изменений. Все ошибки — в разделе «Подробный разбор».",
+        "mist_h": "Подробный разбор",
+        "mist_sub": "Показаны только ошибки. Правильные предложения не повторяются.",
+        "no_mistakes": "В этом эссе не найдено ошибок, требующих исправления.",
+        "ask_prefix": "Если вы хотели сказать «{meaning}»:",
+        "voc_h": "Полезная лексика",
+        "voc_sub": "Полезные слова и выражения для эссе на эту тему.",
+        "voc_term": "Слово / выражение",
+        "voc_meaning": "Значение",
+        "voc_example": "Пример",
+        "sample_book_h": "Образец из книги",
+        "sample_h": "Образец",
+        "style_en": "в стиле {author}",
+        "question": "Вопрос:",
+        "source": "Источник: {author}, «{book}»",
+        "source_page": ", стр. {page}",
+        "style_note": "Это не текст из книги. Образец написан именно для вашего вопроса на основе стиля автора {author}.",
+        "generic_note": "Это не текст из книги. Образец написан именно для вашего вопроса.",
+        "words": "~{n} слов",
+        "progress": "Отслеживание прогресса.",
+        "progress_first": "Это ваше первое эссе — результат сохранён. В следующем отчёте покажем, как изменилось число ошибок в {areas}.",
+        "progress_band": "По сравнению с прошлым эссе общий балл: <b>{prev} → {now}</b>.",
+        "progress_counts": "Число ошибок: {items}.",
+        "progress_criteria": "Критерии: {items}.",
+        "progress_later": "Сравнение по типам ошибок начнётся со следующего эссе.",
+        "and": "и",
+        "areas": {"LR": "лексике", "GRA": "грамматике", "CC": "связности", "TR_or_TA": "выполнении задания"},
+        "disclaimer": "Этот балл — ориентировочная поддерживающая оценка ИИ по IELTS Band Descriptors, адаптированная для изучающих английский как второй язык (ESL); это не официальный результат экзамена IELTS.",
+    },
+}
+
+_TAG_NAMES = {"LR": "Lexical", "GRA": "Grammar", "CC": "Coherence", "TR_or_TA": "Task"}
+_DB_TO_CRITERION = {"TA": "TR_or_TA", "CC": "CC", "LR": "LR", "GRA": "GRA"}
+
+
+def _format_date(when: datetime, lang: str) -> str:
+    if lang == "ru":
+        return f"{when.day:02d} {_RU_MONTHS[when.month - 1]} {when.year}"
+    return when.strftime("%d %B %Y")
+
+
+def progress_note(
+    lang: str,
+    report: WritingReport,
+    previous: dict | None,
+) -> str:
+    """HTML for the 'Rivojlanish kuzatuvi' box. `previous` is the student's
+    previous Writing submission: {"band", "criteria_scores", "mistake_counts"}
+    (mistake_counts is None for reports made before the 2026-10 redesign)."""
+    L = WRITING_LABELS.get(lang, WRITING_LABELS["uz"])
+    if previous is None:
+        counts = report.mistake_counts()
+        top = sorted(counts, key=lambda k: -counts[k])[:2] or ["LR", "GRA"]
+        areas = f" {L['and']} ".join(L["areas"][k] for k in top)
+        return html_lib.escape(L["progress_first"].format(areas=areas)).replace("&lt;b&gt;", "<b>")
+
+    parts = [L["progress_band"].format(prev=f"{previous['band']:.1f}", now=f"{report.overall_band:.1f}")]
+    prev_counts = previous.get("mistake_counts")
+    if prev_counts is not None:
+        now_counts = report.mistake_counts()
+        items = []
+        for key in ("LR", "GRA", "CC", "TR_or_TA"):
+            before, after = prev_counts.get(key, 0), now_counts.get(key, 0)
+            if before or after:
+                arrow = " ↓" if after < before else " ↑" if after > before else ""
+                items.append(f"{_TAG_NAMES[key]} {before} → {after}{arrow}")
+        if items:
+            parts.append(L["progress_counts"].format(items=" · ".join(items)))
+    else:
+        now_scores = report.criteria_scores()
+        items = [
+            f"{_TAG_NAMES[_DB_TO_CRITERION[k]]} {float(v):.1f} → {float(now_scores[k]):.1f}"
+            for k, v in (previous.get("criteria_scores") or {}).items()
+            if k in now_scores
+        ]
+        if items:
+            parts.append(L["progress_criteria"].format(items=" · ".join(items)))
+        parts.append(L["progress_later"])
+    return " ".join(parts)
+
+
+def build_writing_report_pdf(
+    report: WritingReport,
+    sample: SampleSection | None,
+    progress_html: str,
+    student_name: str,
+    essay_number: int | None,
+    lang: str = "uz",
+    when: datetime | None = None,
+) -> bytes:
+    labels = WRITING_LABELS.get(lang, WRITING_LABELS["uz"])
+    template = _env.get_template("writing_report.html")
+    html_str = template.render(
+        L=labels,
+        lang=lang,
+        title=labels["title_task1"] if report.task_type == "task1" else labels["title_task2"],
+        student_name=student_name,
+        date_str=_format_date(when or datetime.now(), lang),
+        essay_number=essay_number,
+        report=report,
+        sample=sample,
+        progress_html=progress_html,
     )
     return HTML(string=html_str).write_pdf()

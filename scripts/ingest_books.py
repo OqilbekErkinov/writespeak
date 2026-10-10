@@ -23,7 +23,10 @@ fully automatic chunker for a "must not be a hallucination" feature:
      into the book_chunks table. Chunks with no "author" set are skipped
      (with a warning) rather than ingested. Re-running `load` replaces a
      book's existing chunks (matched by book_title), so re-ingestion after
-     edits is safe.
+     edits is safe. Writing chunks embed only their question (the first
+     paragraph): the sample section matches the student's question against
+     the library's questions (services/ai/sample_bank.py). With --prune, books
+     that no longer have a review file are removed from the table.
 """
 from __future__ import annotations
 
@@ -198,7 +201,13 @@ async def _classify_chunk(text: str) -> _Classification:
     return parsed
 
 
-async def cmd_load() -> None:
+def _embedding_text(chunk: dict) -> str:
+    if chunk["task_type"].startswith("writing_"):
+        return re.split(r"\n\s*\n", chunk["content_text"].strip(), maxsplit=1)[0]
+    return chunk["content_text"][:6000]
+
+
+async def cmd_load(prune: bool = False) -> None:
     review_files = sorted(REVIEW_DIR.glob("*.json"))
     if not review_files:
         print(f"No review files found in {REVIEW_DIR}. Run `extract` first.")
@@ -226,7 +235,7 @@ async def cmd_load() -> None:
                 chunk["topic_tags"] = chunk.get("topic_tags") or classification.topic_tags
                 chunk["band_level"] = chunk.get("band_level") or classification.band_level
 
-            embedding = await embed_text(chunk["content_text"][:6000])
+            embedding = await embed_text(_embedding_text(chunk))
             rows.append(
                 BookChunk(
                     book_title=book_title,
@@ -247,16 +256,24 @@ async def cmd_load() -> None:
         skip_note = f", {skipped} skipped (no author)" if skipped else ""
         print(f"  -> {len(rows)} chunk(s) ingested{skip_note}.")
 
+    if prune:
+        titles = [json.loads(p.read_text(encoding="utf-8"))["book_title"] for p in review_files]
+        async with get_session() as session:
+            result = await session.execute(delete(BookChunk).where(BookChunk.book_title.not_in(titles)))
+            await session.commit()
+        print(f"Pruned {result.rowcount} chunk(s) of books without a review file.")
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=["extract", "load"])
+    parser.add_argument("--prune", action="store_true", help="load: drop books that have no review file")
     args = parser.parse_args()
 
     if args.command == "extract":
         asyncio.run(cmd_extract())
     else:
-        asyncio.run(cmd_load())
+        asyncio.run(cmd_load(prune=args.prune))
 
 
 if __name__ == "__main__":

@@ -31,7 +31,7 @@ from db.models import (
     VocabularyEntry,
     WritingSubmission,
 )
-from services.ai.schemas import SpeakingGradingResult, VocabularyItem, WritingGradingResult
+from services.ai.schemas import SpeakingGradingResult, VocabularyItem
 
 # --- Users / access control -------------------------------------------------
 
@@ -113,12 +113,19 @@ async def save_writing_submission(
     answer_text: str,
     answer_source: str,
     original_file_paths: dict,
-    result: WritingGradingResult,
+    overall_band: float,
+    criteria_scores: dict[str, float],
+    annotations: list[dict],
+    vocabulary: list[VocabularyItem],
     book_sample_ref: int | None,
     feedback_pdf_path: str,
     practice_question_id: int | None = None,
     spend_credit: bool = False,
 ) -> WritingSubmission:
+    """`annotations` holds the report's numbered mistakes (each with its
+    `criterion`) since the 2026-10 report redesign - get_writing_history
+    compares their per-criterion counts with the student's next essay.
+    Older rows hold the previous sentence-annotation format."""
     submission = WritingSubmission(
         user_id=user_id,
         task_type=task_type,
@@ -127,15 +134,10 @@ async def save_writing_submission(
         answer_text=answer_text,
         answer_source=answer_source,
         original_file_paths=original_file_paths,
-        overall_band=result.overall_band,
-        criteria_scores={
-            "TA": result.task_achievement_or_response,
-            "CC": result.coherence_and_cohesion,
-            "LR": result.lexical_resource,
-            "GRA": result.grammatical_range_and_accuracy,
-        },
-        annotations=[a.model_dump() for a in result.annotations],
-        vocabulary_json=[v.model_dump() for v in result.vocabulary],
+        overall_band=overall_band,
+        criteria_scores=criteria_scores,
+        annotations=annotations,
+        vocabulary_json=[v.model_dump() for v in vocabulary],
         book_sample_ref=book_sample_ref,
         feedback_pdf_path=feedback_pdf_path,
         practice_question_id=practice_question_id,
@@ -187,6 +189,41 @@ async def save_speaking_submission(
     await session.commit()
     await session.refresh(submission)
     return submission
+
+
+async def get_writing_history(session: AsyncSession, user_id: int) -> tuple[int, dict | None]:
+    """(number of the student's earlier Writing submissions, their latest one
+    as {"band", "criteria_scores", "mistake_counts"}) for the report's essay
+    number and progress note. mistake_counts is None for reports made before
+    the 2026-10 redesign, whose annotations carry no criterion."""
+    count = (
+        await session.execute(
+            select(func.count()).select_from(WritingSubmission).where(WritingSubmission.user_id == user_id)
+        )
+    ).scalar() or 0
+    latest = (
+        await session.execute(
+            select(WritingSubmission)
+            .where(WritingSubmission.user_id == user_id, WritingSubmission.overall_band.is_not(None))
+            .order_by(WritingSubmission.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if latest is None:
+        return count, None
+    items = latest.annotations or []
+    mistake_counts = None
+    # Old-format rows always annotate every sentence, so an empty list can
+    # only be a new-format report with no mistakes.
+    if all(isinstance(i, dict) and "criterion" in i for i in items):
+        mistake_counts = {}
+        for item in items:
+            mistake_counts[item["criterion"]] = mistake_counts.get(item["criterion"], 0) + 1
+    return count, {
+        "band": latest.overall_band,
+        "criteria_scores": latest.criteria_scores or {},
+        "mistake_counts": mistake_counts,
+    }
 
 
 async def _spend_one_credit(session: AsyncSession, user_id: int) -> None:

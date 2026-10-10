@@ -1,11 +1,26 @@
-"""Writing (Task 1 / Task 2) grading against the IELTS Writing Band Descriptors."""
+"""Writing (Task 1 / Task 2) grading against the IELTS Writing Band Descriptors -
+the "Feedback Coach". Returns structured JSON (services/ai/schemas.py's
+WritingFeedback) that services/ai/essay_marking.py validates against the
+student's original essay and services/pdf/report_builder.py renders; the
+model never produces layout (report redesign, 2026-10).
+"""
 from __future__ import annotations
 
 import base64
+import logging
 
 from bot.config import settings
+from services.ai.essay_marking import (
+    MIN_ANCHORED_SHARE,
+    MIN_USABLE_SHARE,
+    WritingReport,
+    align_segments,
+    build_report,
+)
 from services.ai.openai_client import client
-from services.ai.schemas import WritingGradingResult
+from services.ai.schemas import WritingFeedback
+
+logger = logging.getLogger(__name__)
 
 # Condensed, paraphrased summary of the public IELTS Writing Band Descriptors
 # (Task Achievement/Response, Coherence & Cohesion, Lexical Resource,
@@ -88,7 +103,20 @@ def _task_instructions(task_type: str) -> str:
     )
 
 
-def _system_prompt(task_type: str) -> str:
+REPORT_LANGUAGES = {"uz": "Uzbek (Latin script)", "ru": "Russian"}
+
+# Standard Uzbek grammar terms - without them the model e.g. renders
+# "articles" as "maqola" (a newspaper article).
+UZ_TERMS = (
+    " Use the usual Uzbek terms: article = artikl, tense = zamon, preposition = predlog, "
+    "collocation = so'z birikmasi, word choice = so'z tanlash, linking words = bog'lovchilar, "
+    "punctuation = tinish belgilari, sentence structure = gap tuzilishi, agreement = moslashuv."
+)
+
+
+def _system_prompt(task_type: str, lang: str) -> str:
+    report_language = REPORT_LANGUAGES.get(lang, REPORT_LANGUAGES["uz"])
+    first = "Task Achievement" if task_type == "task1" else "Task Response"
     return f"""You are a certified, meticulous IELTS Writing examiner AND a warm, encouraging ESL \
 tutor. Grade according to the IELTS Writing Band Descriptors below AND the ESL-calibrated scoring \
 note that follows them - the goal is an honest, diagnostic score a student can actually trust and \
@@ -101,22 +129,81 @@ IELTS WRITING BAND DESCRIPTORS (summary):
 
 {ESL_CALIBRATION}
 
-Your job, in order:
-1. Read the prompt and the student's answer in full.
-2. Score each of the 4 criteria from 0-9 in 0.5 increments per the ESL-calibrated approach above, \
-then set the overall band to their average rounded to the nearest 0.5 (standard IELTS rounding).
-3. Walk through the answer and annotate it sentence by sentence (or clause by clause for long \
-sentences): GREEN for genuinely strong/advanced language, YELLOW for acceptable-but-improvable \
-language OR an isolated, minor, understandable slip (say exactly how to improve it), RED only for \
-an error frequent or severe enough to actually interfere with meaning or fluency (give the \
-correction). Cover the whole answer, in the original order.
-4. Extract 6-10 useful, topic-specific words/phrases (band 7+ level) the student could use for \
-this exact topic, each with a meaning and an example sentence.
-5. Write an engaging, encouraging feedback summary in a warm human tone, 150-300 words — never a \
-robotic error list. Acknowledge what's working before addressing weaknesses, end on an \
-actionable, motivating note, and include one short sentence noting this is a supportive estimate \
-calibrated for ESL learners, not a literal examiner reading of the descriptors.
-6. Produce a short topic label (3-6 words) for this essay/report."""
+Your output is rendered into a feedback report by software, so follow the field rules exactly.
+
+1. mistakes - every real mistake in the essay, in essay order, ids 1, 2, 3...:
+   - wrong: ONLY the part that matters (a few words up to one clause), copied exactly as written.
+   - correct: the corrected version of that same part. Always keep the student's meaning. Never \
+leave it empty: if words must be deleted, include a few surrounding words in both wrong and correct.
+   - why: one plain-English line, 25 words or fewer.
+   - criterion: LR (word choice, collocation, spelling, repetition, register), GRA (grammar, \
+tense, articles, agreement, punctuation, sentence structure), CC (linking, referencing, \
+paragraphing, logical flow), TR_or_TA (task coverage, position, idea development, overview/data).
+   - If you can't tell what the student meant, don't guess silently: set unclear=true, say in \
+`why` that the meaning is unclear, give the most likely intended meaning in likely_meaning \
+(short, in {report_language}), and put the correction for that meaning in `correct`. Otherwise \
+unclear=false and likely_meaning=null.
+   - Never list something that is already correct.
+2. essay - the student's essay copied EXACTLY (every character, typo and punctuation mark, in \
+order), as a list of paragraphs (as in the original), each split into segments:
+   - "good": 2-5 genuinely strong phrases in the whole essay worth keeping.
+   - "error": the exact text of a mistake with its mistake_id. fix = the replacement for that \
+text if it is 6 words or fewer (empty string to delete it), otherwise null.
+   - "text": everything else.
+   Joining all segment texts must give back the original essay: copy punctuation exactly even \
+when it is wrong or missing, and never add, drop or repeat words between segments. Never \
+correct anything inside "text" or "good" segments, and don't number anything in the essay.
+3. scores - TR_or_TA ({first}), CC, LR, GRA, each 0-9 in 0.5 steps, per the ESL-calibrated \
+approach above. (The overall band is computed by the software from these four.)
+4. criterion_notes - one short line per criterion (about 4-10 words) in {report_language}, \
+saying what drives that score.{UZ_TERMS if lang == 'uz' else ''}
+5. strength - 1-2 specific English sentences about what this essay genuinely does well. This is \
+the only praise in the report.
+6. focus - at most 3 items for the next essay, most important first: title (2-5 English words), \
+rule (one English line with the key correct forms), criterion, and mistake_ids (the ids from \
+`mistakes` that show this problem; an empty list if none). Don't repeat examples in the rule.
+7. vocabulary - 10-12 words/phrases useful for this topic, about one band above the student's \
+level: term, plain-English meaning, English example sentence on this topic.
+8. topic - a 3-6 word English label for the essay's topic.
+
+All explanations (why, strength, focus, vocabulary) are in English. Only criterion_notes and \
+likely_meaning are in {report_language}."""
+
+
+def _user_content(prompt_text: str, answer_text: str, prompt_images: list[tuple[bytes, str]] | None):
+    user_text = f"QUESTION PROMPT:\n{prompt_text}\n\nSTUDENT'S ANSWER:\n{answer_text}"
+    if not prompt_images:
+        return user_text
+    return [
+        {
+            "type": "text",
+            "text": user_text + "\n\nThe attached image(s) are the visual this task is "
+            "based on - check the student's data, comparisons and overview against them.",
+        },
+        *(
+            {
+                "type": "image_url",
+                "image_url": {"url": f"data:{mime};base64,{base64.b64encode(data).decode()}"},
+            }
+            for data, mime in prompt_images
+        ),
+    ]
+
+
+async def _feedback_call(task_type, prompt_text, answer_text, prompt_images, lang) -> WritingFeedback:
+    response = await client.beta.chat.completions.parse(
+        model=settings.openai_model_grading,
+        messages=[
+            {"role": "system", "content": _system_prompt(task_type, lang)},
+            {"role": "user", "content": _user_content(prompt_text, answer_text, prompt_images)},
+        ],
+        response_format=WritingFeedback,
+        # No `temperature` override - see services/ai/ocr.py's comment.
+    )
+    result = response.choices[0].message.parsed
+    if result is None:
+        raise RuntimeError("Grading model returned no parsable result")
+    return result
 
 
 async def grade_writing(
@@ -124,38 +211,28 @@ async def grade_writing(
     prompt_text: str,
     answer_text: str,
     prompt_images: list[tuple[bytes, str]] | None = None,
-) -> WritingGradingResult:
+    lang: str = "uz",
+) -> WritingReport:
     """`prompt_images` - (bytes, mime) pairs of the Task 1 chart/diagram, so
     the grader can check the student's figures and overview against the
-    actual visual instead of just its text description."""
-    user_text = f"QUESTION PROMPT:\n{prompt_text}\n\nSTUDENT'S ANSWER:\n{answer_text}"
-    user_content: str | list[dict] = user_text
-    if prompt_images:
-        user_content = [
-            {
-                "type": "text",
-                "text": user_text + "\n\nThe attached image(s) are the visual this task is "
-                "based on - check the student's data, comparisons and overview against them.",
-            },
-            *(
-                {
-                    "type": "image_url",
-                    "image_url": {"url": f"data:{mime};base64,{base64.b64encode(data).decode()}"},
-                }
-                for data, mime in prompt_images
-            ),
-        ]
+    actual visual instead of just its text description.
 
-    response = await client.beta.chat.completions.parse(
-        model=settings.openai_model_grading,
-        messages=[
-            {"role": "system", "content": _system_prompt(task_type)},
-            {"role": "user", "content": user_content},
-        ],
-        response_format=WritingGradingResult,
-        # No `temperature` override - see services/ai/ocr.py's comment.
-    )
-    result = response.choices[0].message.parsed
-    if result is None:
-        raise RuntimeError("Grading model returned no parsable result")
-    return result
+    The report always shows the student's original essay; the model's marks
+    are located in it (services/ai/essay_marking.py). If too few can be
+    found, the model is asked once more, and if that doesn't help the report
+    shows the plain essay without marks - never an altered one."""
+    feedback = await _feedback_call(task_type, prompt_text, answer_text, prompt_images, lang)
+    alignment = align_segments(answer_text, feedback.essay)
+    if alignment.share < MIN_ANCHORED_SHARE:
+        logger.warning(
+            "Only %d/%d essay marks found in the original - retrying the feedback call once",
+            alignment.anchored, alignment.marked,
+        )
+        retry = await _feedback_call(task_type, prompt_text, answer_text, prompt_images, lang)
+        retry_alignment = align_segments(answer_text, retry.essay)
+        if retry_alignment.share > alignment.share:
+            feedback, alignment = retry, retry_alignment
+    spans = alignment.spans if alignment.share >= MIN_USABLE_SHARE else None
+    if spans is None:
+        logger.warning("Essay marks still don't line up - report shows the plain essay")
+    return build_report(task_type, answer_text, feedback, spans)

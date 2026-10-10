@@ -16,6 +16,7 @@ the same turn, not separately-dispatched events.
 """
 from __future__ import annotations
 
+import asyncio
 import html
 import logging
 import mimetypes
@@ -44,18 +45,18 @@ from bot.utils.mock_test_flow import record_mock_test_part
 from bot.utils.quota import check_quota, send_paywall
 from db import crud
 from db.database import get_session
-from db.models import BookTaskType, SourceType
-from services.ai.rag_book_search import find_authentic_sample, get_style_reference_samples
-from services.ai.sample_analyzer import analyze_sample, analyze_style
+from db.models import SourceType
+from services.ai.sample_bank import build_sample_section
+from services.ai.schemas import VocabularyItem
 from services.ai.writing_grader import grade_writing
-from services.pdf.report_builder import build_feedback_pdf
+from services.pdf.report_builder import build_writing_report_pdf, progress_note
 from services.storage.file_storage import read_file, save_report
 
 logger = logging.getLogger(__name__)
 router = Router(name="writing")
 
 MIN_ANSWER_WORDS = {"task1": 150, "task2": 250}
-TASK_LABELS = {"task1": "Writing Task 1 (Report)", "task2": "Writing Task 2 (Essay)"}
+
 MAX_PROMPT_IMAGES = 3
 
 
@@ -213,44 +214,46 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
     processing_msg = await message.answer(t("writing.grading_in_progress", lang))
 
     try:
+        async with get_session() as session:
+            earlier_essays, previous = await crud.get_writing_history(session, user_id)
         prompt_images = None
         if data["task_type"] == "task1":
             prompt_images = _load_prompt_images(data.get("prompt_image_paths") or [])
-        result = await grade_writing(
-            task_type=data["task_type"],
-            prompt_text=data["prompt_text"],
-            answer_text=data["answer_text"],
-            prompt_images=prompt_images,
+
+        # The Sample section only needs the question, so it's written while
+        # the essay is being graded.
+        report, sample = await asyncio.gather(
+            grade_writing(
+                task_type=data["task_type"],
+                prompt_text=data["prompt_text"],
+                answer_text=data["answer_text"],
+                prompt_images=prompt_images,
+                lang=lang,
+            ),
+            build_sample_section(
+                task_type=data["task_type"],
+                question=data["prompt_text"],
+                prompt_images=prompt_images,
+                seed=user_id + earlier_essays,
+            ),
+            return_exceptions=True,
         )
-        book_task_type = BookTaskType(f"writing_{data['task_type']}")
-        book_sample = await find_authentic_sample(
-            topic=result.topic,
-            task_type=book_task_type,
-            min_band=result.overall_band + 1.0,
-        )
-        sample_analysis = None
-        style_analysis = None
-        if book_sample is not None:
-            sample_analysis = await analyze_sample(
-                book_sample.content_text, TASK_LABELS[data["task_type"]]
-            )
-        else:
-            # No topic match at all for this task type - fall back to a
-            # general style analysis instead of an apology (Revision Brief
-            # v2, Section 4).
-            style_samples = await get_style_reference_samples(book_task_type)
-            if style_samples:
-                style_analysis = await analyze_style(
-                    [s.content_text for s in style_samples], TASK_LABELS[data["task_type"]]
-                )
-        pdf_bytes = build_feedback_pdf(
-            student_name=message.chat.full_name,
-            task_label=TASK_LABELS[data["task_type"]],
-            answer_text=data["answer_text"],
-            grading=result,
-            book_sample=book_sample,
-            sample_analysis=sample_analysis,
-            style_analysis=style_analysis,
+        if isinstance(report, BaseException):
+            raise report
+        if isinstance(sample, BaseException):
+            logger.error("Sample section failed for user %s - report goes out without it", user_id, exc_info=sample)
+            sample = None
+
+        # WeasyPrint is CPU-bound for a few seconds - off the event loop, so
+        # other students' messages aren't held up while a report renders.
+        pdf_bytes = await asyncio.to_thread(
+            build_writing_report_pdf,
+            report,
+            sample,
+            progress_note(lang, report, previous),
+            message.chat.full_name,
+            earlier_essays + 1,
+            lang,
         )
     except Exception:
         logger.exception("Writing grading failed for user %s", user_id)
@@ -261,6 +264,11 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
         return
 
     pdf_path = save_report(user_id, pdf_bytes, ".pdf")
+    # Report vocabulary also feeds the student's flashcards ("Lug'atim").
+    vocabulary = [
+        VocabularyItem(word_or_phrase=v.term, meaning=v.meaning, example_sentence=v.example)
+        for v in report.vocabulary
+    ]
 
     async with get_session() as session:
         submission = await crud.save_writing_submission(
@@ -275,8 +283,11 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
                 "prompt": data.get("prompt_file_path"),
                 "answer": data.get("answer_file_path"),
             },
-            result=result,
-            book_sample_ref=book_sample.id if book_sample else None,
+            overall_band=report.overall_band,
+            criteria_scores=report.criteria_scores(),
+            annotations=report.mistakes_json(),
+            vocabulary=vocabulary,
+            book_sample_ref=sample.source_id if sample is not None else None,
             feedback_pdf_path=pdf_path,
             practice_question_id=data.get("practice_question_id"),
             spend_credit=data.get("spend_credit", False),
@@ -289,13 +300,13 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
                 submission_id=submission.id,
                 submission_type="writing",
             )
-        await crud.add_vocabulary_entries(session, user_id, result.vocabulary, source="writing")
+        await crud.add_vocabulary_entries(session, user_id, vocabulary, source="writing")
         await crud.reward_referrer_if_eligible(session, user_id)
 
     await processing_msg.delete()
     await message.answer_document(
         BufferedInputFile(pdf_bytes, filename="IELTS_Feedback.pdf"),
-        caption=t("writing.done_caption", lang, band=result.overall_band),
+        caption=t("writing.done_caption", lang, band=report.overall_band),
         reply_markup=share_card_kb("writing", submission.id, lang),
     )
 
@@ -305,7 +316,7 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
             state,
             submission_id=submission.id,
             submission_type="writing",
-            band=result.overall_band,
+            band=report.overall_band,
         )
     else:
         await state.clear()
