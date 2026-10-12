@@ -52,6 +52,7 @@ from bot.utils.speaking_questions import split_questions
 from db import crud
 from db.database import get_session
 from db.models import BookTaskType, SourceType
+from services.ai import usage
 from services.ai.rag_book_search import find_authentic_sample, get_style_reference_samples
 from services.ai.sample_analyzer import analyze_sample, analyze_style
 from services.ai.speaking_grader import grade_speaking
@@ -268,20 +269,21 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
 
     try:
         clips = [await ensure_mp3(read_file(a["path"]), a["filename"]) for a in answers]
-        transcripts = list(await asyncio.gather(*(transcribe_mp3(c) for c in clips)))
-        mp3_bytes = await concat_mp3(clips)
-        question_text, transcript_text = _combine(questions, transcripts)
-        result = await grade_speaking(
-            part=data["part"],
-            question_text=question_text,
-            mp3_audio_bytes=mp3_bytes,
-            transcript_text=transcript_text,
-        )
-        book_sample = await find_authentic_sample(
-            topic=result.topic,
-            task_type=BookTaskType.speaking,
-            min_band=result.overall_band + 1.0,
-        )
+        with usage.track(f"speaking {data['part']} user={user_id}"):
+            transcripts = list(await asyncio.gather(*(transcribe_mp3(c) for c in clips)))
+            mp3_bytes = await concat_mp3(clips)
+            question_text, transcript_text = _combine(questions, transcripts)
+            result = await grade_speaking(
+                part=data["part"],
+                question_text=question_text,
+                mp3_audio_bytes=mp3_bytes,
+                transcript_text=transcript_text,
+            )
+            book_sample = await find_authentic_sample(
+                topic=result.topic,
+                task_type=BookTaskType.speaking,
+                min_band=result.overall_band + 1.0,
+            )
         sample_analysis = None
         style_analysis = None
         if book_sample is not None:

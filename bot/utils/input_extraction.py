@@ -25,6 +25,7 @@ from PIL import Image
 from bot.i18n import t
 from bot.utils.album import collect_album
 from db.models import SourceType
+from services.ai import usage
 from services.ai.document_parser import extract_text_from_docx, extract_text_from_pdf
 from services.ai.ocr import extract_text_from_image
 from services.ai.transcription import ensure_mp3, transcribe_mp3
@@ -71,7 +72,8 @@ async def read_text_input(message: Message, lang: str) -> ExtractedInput | None:
     result: ExtractedInput | None = None
     error: str | None = None
     try:
-        result = await _extract_text(messages, message.bot, message.from_user.id, lang)
+        with usage.track(f"input user={message.from_user.id}"):
+            result = await _extract_text(messages, message.bot, message.from_user.id, lang)
     except UnsupportedInputError as e:
         error = str(e)
     except TelegramBadRequest as e:

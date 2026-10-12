@@ -28,7 +28,14 @@ class Settings(BaseSettings):
     # these again - this is the fastest-moving part of OpenAI's API surface.
     openai_api_key: str
     openai_model_grading: str = "gpt-5"
+    # Book-style "Namuna" samples, writer style profiles and book-library
+    # classification: a cheaper model is enough there (the grade itself stays
+    # on openai_model_grading).
+    openai_model_sample: str = "gpt-5-mini"
     openai_model_vision: str = "gpt-5"
+    # Reasoning effort for OCR: transcribing a photo needs little reasoning, and
+    # reasoning tokens are billed as output.
+    openai_ocr_reasoning_effort: str = "low"
     openai_model_audio: str = "gpt-audio-1.5"
     openai_model_transcribe: str = "whisper-1"
     openai_embedding_model: str = "text-embedding-3-small"

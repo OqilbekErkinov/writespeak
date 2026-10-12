@@ -46,6 +46,7 @@ from bot.utils.quota import check_quota, send_paywall
 from db import crud
 from db.database import get_session
 from db.models import SourceType
+from services.ai import usage
 from services.ai.sample_bank import build_sample_section
 from services.ai.schemas import VocabularyItem
 from services.ai.writing_grader import grade_writing
@@ -222,22 +223,23 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
 
         # The Sample section only needs the question, so it's written while
         # the essay is being graded.
-        report, sample = await asyncio.gather(
-            grade_writing(
-                task_type=data["task_type"],
-                prompt_text=data["prompt_text"],
-                answer_text=data["answer_text"],
-                prompt_images=prompt_images,
-                lang=lang,
-            ),
-            build_sample_section(
-                task_type=data["task_type"],
-                question=data["prompt_text"],
-                prompt_images=prompt_images,
-                seed=user_id + earlier_essays,
-            ),
-            return_exceptions=True,
-        )
+        with usage.track(f"writing {data['task_type']} user={user_id}"):
+            report, sample = await asyncio.gather(
+                grade_writing(
+                    task_type=data["task_type"],
+                    prompt_text=data["prompt_text"],
+                    answer_text=data["answer_text"],
+                    prompt_images=prompt_images,
+                    lang=lang,
+                ),
+                build_sample_section(
+                    task_type=data["task_type"],
+                    question=data["prompt_text"],
+                    prompt_images=prompt_images,
+                    seed=user_id + earlier_essays,
+                ),
+                return_exceptions=True,
+            )
         if isinstance(report, BaseException):
             raise report
         if isinstance(sample, BaseException):

@@ -17,6 +17,7 @@ one of them as if it were topic-relevant.
 from __future__ import annotations
 
 from bot.config import settings
+from services.ai import usage
 from services.ai.openai_client import client
 from services.ai.schemas import SampleAnalysis, StyleAnalysis
 
@@ -49,6 +50,7 @@ async def analyze_sample(sample_text: str, task_label: str) -> SampleAnalysis:
         response_format=SampleAnalysis,
         # No `temperature` override - see services/ai/ocr.py's comment.
     )
+    usage.record("sample_analysis", response)
     result = response.choices[0].message.parsed
     if result is None:
         raise RuntimeError("Sample analysis model returned no parsable result")
@@ -90,6 +92,7 @@ async def analyze_style(sample_texts: list[str], task_label: str) -> StyleAnalys
         response_format=StyleAnalysis,
         # No `temperature` override - see services/ai/ocr.py's comment.
     )
+    usage.record("style_analysis", response)
     result = response.choices[0].message.parsed
     if result is None:
         raise RuntimeError("Style analysis model returned no parsable result")

@@ -13,6 +13,7 @@ import tempfile
 from pathlib import Path
 
 from bot.config import settings
+from services.ai import usage
 from services.ai.openai_client import client
 
 async def ensure_mp3(audio_bytes: bytes, filename: str) -> bytes:
@@ -79,5 +80,8 @@ async def transcribe_mp3(mp3_bytes: bytes) -> str:
     response = await client.audio.transcriptions.create(
         model=settings.openai_model_transcribe,
         file=("audio.mp3", io.BytesIO(mp3_bytes)),
+        response_format="verbose_json",  # adds the audio duration, which Whisper is billed by
     )
+    # openai 1.57 types `duration` as a string
+    usage.record_minutes("transcribe", settings.openai_model_transcribe, float(getattr(response, "duration", 0) or 0))
     return response.text.strip()

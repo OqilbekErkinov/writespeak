@@ -40,6 +40,7 @@ from sqlalchemy import select
 from bot.config import settings
 from db.database import get_session
 from db.models import BookChunk
+from services.ai import usage
 from services.ai.openai_client import client
 from services.ai.rag_book_search import embed_text
 from services.ai.schemas import GeneratedSample, StyleProfile
@@ -55,7 +56,7 @@ SAME_KIND_BONUS = 0.05
 # shown for exact question matches (citing the book) but never imitated as a style.
 STYLE_EXCLUDED_AUTHORS = {"Diyorbek's IELTS team"}
 PROFILE_SAMPLES = 8
-GENERATION_ATTEMPTS = 3
+GENERATION_ATTEMPTS = 2
 DEFAULT_BAND = 8.0
 
 _WORD_RE = re.compile(r"[A-Za-z0-9]+(?:['’-][A-Za-z0-9]+)*")
@@ -272,7 +273,7 @@ async def get_style_profile(author: str, task_type: str, author_samples: list[Li
         f"--- Sample {i} ---\nQuestion: {s.question}\n\n{s.essay}" for i, s in enumerate(chosen, 1)
     )
     response = await client.beta.chat.completions.parse(
-        model=settings.openai_model_grading,
+        model=settings.openai_model_sample,
         messages=[
             {
                 "role": "system",
@@ -290,6 +291,7 @@ async def get_style_profile(author: str, task_type: str, author_samples: list[Li
         ],
         response_format=StyleProfile,
     )
+    usage.record("style_profile", response)
     profile = response.choices[0].message.parsed
     if profile is None:
         raise RuntimeError("Style profile call returned no parsable result")
@@ -353,18 +355,20 @@ async def _write_sample(
         style = (
             f"Write in the style of {author} - one writer only: every reference below is theirs.\n\n"
             "STYLE PROFILE:\n"
-            f"{json.dumps(profile.model_dump(), ensure_ascii=False, indent=1)}\n\n"
+            # The writer's usual length is left out: the sample has its own word range.
+            f"{json.dumps(profile.model_dump(exclude={'typical_word_count'}), ensure_ascii=False, indent=1)}\n\n"
             f"{author.upper()}'S OWN ANSWERS - style references only:\n{refs}\n\n"
             "Follow this author's introduction, body-paragraph pattern, linkers, sentence style, "
             f"register and conclusion pattern, in {paragraphs} paragraphs like theirs. Match the "
             "vocabulary level and sentence complexity of the references - don't write in a more "
             "academic or sophisticated way than they do. Do NOT copy sentences from the "
-            "references; reusing short functional phrases like the signature phrases is fine."
+            "references; reusing short functional phrases like the signature phrases is fine.\n\n"
+            f"LENGTH: {lo}-{hi} words, whatever the length of the references."
         )
     system = (
         "You write original IELTS Writing model answers for students to learn from.\n\n"
         f"{_task_rules(task_type)}\nWrite at IELTS band {band:.1f} - not above it. Length: {lo}-{hi} "
-        "words. Support ideas the way IELTS essays do: with general, realistic examples and "
+        f"words (aim for about {(lo + hi) // 2}; count before answering). Support ideas the way IELTS essays do: with general, realistic examples and "
         "explanations (e.g. 'in many cities', 'a student who...'). Never cite named programmes, "
         "studies, statistics, dates or other specific facts that could be wrong. Return only the "
         "answer's paragraphs - no title, labels or notes.\n\n" + style
@@ -383,8 +387,9 @@ async def _write_sample(
     best_problems = None
     for attempt in range(GENERATION_ATTEMPTS):
         response = await client.beta.chat.completions.parse(
-            model=settings.openai_model_grading, messages=messages, response_format=GeneratedSample
+            model=settings.openai_model_sample, messages=messages, response_format=GeneratedSample
         )
+        usage.record("sample", response)
         parsed = response.choices[0].message.parsed
         if parsed is None or not parsed.paragraphs:
             continue

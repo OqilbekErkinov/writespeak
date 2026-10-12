@@ -17,6 +17,7 @@ from services.ai.essay_marking import (
     align_segments,
     build_report,
 )
+from services.ai import usage
 from services.ai.openai_client import client
 from services.ai.schemas import WritingFeedback
 
@@ -200,6 +201,7 @@ async def _feedback_call(task_type, prompt_text, answer_text, prompt_images, lan
         response_format=WritingFeedback,
         # No `temperature` override - see services/ai/ocr.py's comment.
     )
+    usage.record("feedback", response)
     result = response.choices[0].message.parsed
     if result is None:
         raise RuntimeError("Grading model returned no parsable result")

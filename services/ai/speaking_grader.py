@@ -33,10 +33,15 @@ import base64
 import logging
 
 from bot.config import settings
+from services.ai import usage
 from services.ai.openai_client import client
 from services.ai.schemas import SpeakingGradingResult
 
 logger = logging.getLogger(__name__)
+
+# Below this many transcribed words there is too little speech to judge
+# pronunciation, so the (billed) audio-listening call is skipped.
+MIN_WORDS_TO_LISTEN = 15
 
 BAND_DESCRIPTORS = """
 Band 9 — Speaks fluently with only rare, content-related hesitation; wide range of natural, \
@@ -168,6 +173,10 @@ async def grade_speaking(
     (so Pronunciation reflects real sound, not just word choice); falls back
     to grading from the transcript alone if the audio-listening step fails
     for any reason - see the module docstring."""
+    if len(transcript_text.split()) < MIN_WORDS_TO_LISTEN:
+        # Too little speech for pronunciation notes - the audio model tends to
+        # return nothing for these and is billed anyway.
+        return await _grade_from_transcript(part, question_text, transcript_text)
     try:
         audio_notes = await _listen_to_audio(part, question_text, mp3_audio_bytes)
     except Exception:
@@ -206,9 +215,14 @@ async def _listen_to_audio(part: str, question_text: str, mp3_audio_bytes: bytes
         # possibly gpt-audio-1.5 too) only accept the default; see
         # services/ai/ocr.py's comment.
     )
-    notes = response.choices[0].message.content
+    usage.record("audio_listen", response)
+    choice = response.choices[0]
+    notes = choice.message.content
     if not notes:
-        raise RuntimeError("Audio-listening model returned no content")
+        raise RuntimeError(
+            f"Audio-listening model returned no content (finish_reason={choice.finish_reason}, "
+            f"refusal={getattr(choice.message, 'refusal', None)!r})"
+        )
     return notes
 
 
@@ -229,6 +243,7 @@ async def _grade_with_audio_notes(
         response_format=SpeakingGradingResult,
         # No `temperature` override - see services/ai/ocr.py's comment.
     )
+    usage.record("speaking_grade", response)
     result = response.choices[0].message.parsed
     if result is None:
         raise RuntimeError("Speaking grading model returned no parsable result")
@@ -251,6 +266,7 @@ async def _grade_from_transcript(
         response_format=SpeakingGradingResult,
         # No `temperature` override - see services/ai/ocr.py's comment.
     )
+    usage.record("speaking_grade", response)
     result = response.choices[0].message.parsed
     if result is None:
         raise RuntimeError("Speaking grading model returned no parsable result (transcript fallback)")

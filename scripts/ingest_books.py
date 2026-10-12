@@ -180,7 +180,7 @@ class _Classification(BaseModel):
 async def _classify_chunk(text: str) -> _Classification:
     """Fills in task_type/topic_tags/band_level for a chunk the reviewer left null."""
     response = await client.beta.chat.completions.parse(
-        model=settings.openai_model_grading,
+        model=settings.openai_model_sample,
         messages=[
             {
                 "role": "system",

@@ -8,6 +8,7 @@ from __future__ import annotations
 import base64
 
 from bot.config import settings
+from services.ai import usage
 from services.ai.openai_client import client
 
 OCR_SYSTEM_PROMPT = (
@@ -38,5 +39,8 @@ async def extract_text_from_image(image_bytes: bytes, mime_type: str = "image/jp
         # No `temperature` override: gpt-5-family models only accept the
         # default value (1) and reject any other, per a live 400 test on
         # 2026-08-28 - see bot/config.py's model comment.
+        # Sent as extra_body: openai 1.57 has no reasoning_effort argument yet.
+        extra_body={"reasoning_effort": settings.openai_ocr_reasoning_effort},
     )
+    usage.record("ocr", response)
     return (response.choices[0].message.content or "").strip()

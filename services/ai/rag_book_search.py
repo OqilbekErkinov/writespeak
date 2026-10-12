@@ -17,6 +17,7 @@ from sqlalchemy import select
 from bot.config import settings
 from db.database import get_session
 from db.models import BookChunk, BookTaskType
+from services.ai import usage
 from services.ai.openai_client import client
 
 logger = logging.getLogger(__name__)
@@ -24,6 +25,7 @@ logger = logging.getLogger(__name__)
 
 async def embed_text(text: str) -> list[float]:
     response = await client.embeddings.create(model=settings.openai_embedding_model, input=text)
+    usage.record("embedding", response)
     return response.data[0].embedding
 
 
