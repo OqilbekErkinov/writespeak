@@ -67,6 +67,8 @@ class Settings(BaseSettings):
     payment_card_holder: str = "F.I.Sh."
     # Monthly unlimited-checks subscription price, in so'm.
     subscription_price_monthly: int = 99000
+    # Test window - see the checks_only_for_ids property. Empty = off.
+    checks_only_for: str = ""
 
     # --- Vocabulary bank (bot/handlers/vocabulary.py) ---
     # Tashkent hour (0-23) of the daily "words to review" reminder
@@ -87,6 +89,14 @@ class Settings(BaseSettings):
     # Teachers' web cabinet (webapp/cabinet.py), e.g. https://writespeak.uz/cabinet
     # - the bot's "Web-kabinet" button signs them in there. Empty = button hidden.
     cabinet_base_url: str = ""
+
+    @property
+    def checks_only_for_ids(self) -> set[int]:
+        """A test window (CHECKS_ONLY_FOR, comma-separated Telegram IDs): while
+        set, only these users and the admins can start checks - free of charge -
+        and everyone else's free checks, credits and subscriptions are kept but
+        paused (bot/utils/quota.py). Empty = normal operation."""
+        return {int(x.strip()) for x in self.checks_only_for.split(",") if x.strip()}
 
     @property
     def admin_ids(self) -> set[int]:

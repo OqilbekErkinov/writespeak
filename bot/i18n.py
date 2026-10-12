@@ -99,6 +99,13 @@ _T: dict[str, dict[str, str]] = {
         "них. Бесплатные проверки даются только один раз, поэтому отправьте настоящее задание "
         "IELTS и полный ответ.",
     },
+    # Shown during a test window (settings.checks_only_for) to everyone else.
+    "quota.paused": {
+        "uz": "🛠 Tekshiruvlar vaqtincha to'xtatilgan — bot yangilanmoqda. Tez orada qayta "
+        "yoqiladi. Bepul tekshiruvlaringiz, kreditlaringiz va obunangiz saqlanib qoladi.",
+        "ru": "🛠 Проверки временно приостановлены — бот обновляется. Скоро всё снова "
+        "заработает. Ваши бесплатные проверки, кредиты и подписка сохранятся.",
+    },
     # --- Payments (bot/handlers/payments.py, bot/keyboards/payment_kb.py) ---
     "pay.bundle_button": {
         "uz": "{n} ta tekshiruv — {price} so'm",
@@ -251,9 +258,36 @@ _T: dict[str, dict[str, str]] = {
         "ru": "В каком разделе хотите потренироваться?",
     },
     "practice.module_header": {
-        "uz": "{label}\n\nBajarilgan: {done}/{total}\nSavolni tanlang:",
-        "ru": "{label}\n\nВыполнено: {done}/{total}\nВыберите вопрос:",
+        "uz": "<b>{label}</b>\n✅ Bajarilgan: {done}/{total}",
+        "ru": "<b>{label}</b>\n✅ Выполнено: {done}/{total}",
     },
+    "practice.filter_line": {
+        "uz": "🔎 Turi: {kind} — {count} ta savol",
+        "ru": "🔎 Тип: {kind} — вопросов: {count}",
+    },
+    "practice.legend_hot": {
+        "uz": "🔥 imtihonda ko'p tushgan",
+        "ru": "🔥 часто попадается на экзамене",
+    },
+    "practice.legend_new": {
+        "uz": "🆕 so'nggi 2 haftada tushgan",
+        "ru": "🆕 был на экзамене за последние 2 недели",
+    },
+    "practice.legend_season": {
+        "uz": "🆕 yangi mavsum savollari",
+        "ru": "🆕 вопросы нового сезона",
+    },
+    "practice.pick_hint": {
+        "uz": "👇 Savol raqamini tanlang",
+        "ru": "👇 Выберите номер вопроса",
+    },
+    "practice.btn_random": {"uz": "🎲 Tasodifiy savol", "ru": "🎲 Случайный вопрос"},
+    "practice.btn_filter": {"uz": "🔎 Turi bo'yicha", "ru": "🔎 По типу"},
+    "practice.choose_kind": {
+        "uz": "<b>{label}</b>\n\nQaysi turdagi savollarni ko'rsatay?",
+        "ru": "<b>{label}</b>\n\nВопросы какого типа показать?",
+    },
+    "practice.kind_all": {"uz": "📚 Barchasi", "ru": "📚 Все"},
     "practice.question_not_found": {
         "uz": "Savol topilmadi, iltimos qaytadan tanlang.",
         "ru": "Вопрос не найден, выберите ещё раз.",
@@ -271,8 +305,8 @@ _T: dict[str, dict[str, str]] = {
         "ru": "В этом разделе пока нет вопросов.",
     },
     "practice.all_done": {
-        "uz": "🎉 Bu bo'limdagi oxirgi savol edi! Ro'yxatdan boshqa savolni tanlashingiz mumkin.",
-        "ru": "🎉 Это был последний вопрос в разделе! Можете выбрать другой вопрос из списка.",
+        "uz": "🎉 Bu bo'limdagi barcha savollarni bajardingiz! Xohlagan savolni qayta ishlashingiz mumkin.",
+        "ru": "🎉 Вы выполнили все вопросы этого раздела! Любой из них можно пройти ещё раз.",
     },
     # --- My Works (bot/handlers/my_works.py) ---
     "mywork.title": {

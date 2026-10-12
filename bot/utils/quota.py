@@ -40,8 +40,19 @@ async def free_checks_left(session, user_id: int) -> int:
     return max(0, settings.free_checks - await crud.get_total_submission_count(session, user_id))
 
 
+def checks_paused_for(user_id: int) -> bool:
+    """True during a test window (settings.checks_only_for_ids) for everyone
+    but the listed users and the admins."""
+    allowed = settings.checks_only_for_ids
+    return bool(allowed) and user_id not in allowed | settings.admin_ids
+
+
 async def check_quota(user_id: int, assignment_group_id: int | None = None) -> Quota:
     """`assignment_group_id`: the check answers that group's assignment."""
+    if settings.checks_only_for_ids:
+        # Test window: the testers check free of charge, nobody else at all.
+        # Nothing is changed in the database, so ending it restores everyone.
+        return Quota(not checks_paused_for(user_id), False)
     async with get_session() as session:
         if await crud.has_active_subscription(session, user_id):
             return Quota(True, False)
@@ -68,6 +79,9 @@ def free_check_note(quota: Quota, lang: str) -> str:
 
 
 async def send_paywall(message: Message, lang: str = "uz") -> None:
+    if checks_paused_for(message.chat.id):
+        await message.answer(t("quota.paused", lang))
+        return
     await message.answer(
         t(
             "quota.paywall",

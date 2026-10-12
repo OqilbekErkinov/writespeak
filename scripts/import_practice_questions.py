@@ -8,6 +8,7 @@ Usage (inside the bot container):
   python scripts/import_practice_questions.py --limit 20           # first 20 unread Writing posts
   python scripts/import_practice_questions.py --replace-old        # delete non-imported questions first
   python scripts/import_practice_questions.py --merge-duplicates   # fold copies of one Writing question together
+  python scripts/import_practice_questions.py --label-kinds        # give older Writing questions their type
 """
 from __future__ import annotations
 
@@ -33,6 +34,9 @@ async def main(args: argparse.Namespace) -> None:
             merged = await dedupe.merge_existing(module, writing.SOURCE)
             logging.info("%s: merged %d copies", module.value, merged)
         return
+    if args.label_kinds:
+        logging.info("Labelled %d question(s)", await writing.label_missing_kinds())
+        return
     since = datetime.strptime(args.since, "%Y-%m-%d").replace(tzinfo=timezone.utc) if args.since else None
     await run_once(
         do_writing=args.only in (None, "writing"),
@@ -50,4 +54,5 @@ if __name__ == "__main__":
     parser.add_argument("--limit", type=int, help="Writing: read at most this many posts")
     parser.add_argument("--replace-old", action="store_true", help="delete questions not imported from a channel")
     parser.add_argument("--merge-duplicates", action="store_true", help="merge copies of one Writing question, then stop")
+    parser.add_argument("--label-kinds", action="store_true", help="label Writing questions that have no type, then stop")
     asyncio.run(main(parser.parse_args()))

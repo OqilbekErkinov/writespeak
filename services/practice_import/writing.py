@@ -39,10 +39,12 @@ from db.models import PracticeModule, PracticeQuestion
 from services.ai import usage
 from services.ai.openai_client import client
 from services.ai.rag_book_search import embed_text
+from services.ai.sample_bank import regex_subtype
+from services.ai.schemas import Task1Subtype, Task2Subtype
 from services.practice_import import dedupe
 from services.practice_import import telegram_preview as tg
 from services.practice_import.watermark import remove_watermark
-from services.storage.file_storage import save_practice_image
+from services.storage.file_storage import read_file, save_practice_image
 
 logger = logging.getLogger(__name__)
 
@@ -65,12 +67,14 @@ _WRITING_HINT = re.compile(
 class Task1Question(BaseModel):
     question_text: str = Field(description="Full Task 1 prompt in standard IELTS wording")
     topic: str = Field(description="1-4 lowercase words")
+    kind: Task1Subtype
     visual_images: list[int] = Field(description="1-based numbers of the photos that show the Task 1 visual")
 
 
 class Task2Question(BaseModel):
     question_text: str = Field(description="The full Task 2 essay question")
     topic: str = Field(description="1-4 lowercase words")
+    kind: Task2Subtype
 
 
 class PostQuestions(BaseModel):
@@ -89,6 +93,8 @@ Rules:
 - visual_images lists the photos (numbered from 1 in the order given) that show the Task 1 visual itself. Leave out screenshots of a chat or messenger and photos of a computer or phone screen (even when a chart shows inside them), photos of rooms or people, ads and Reading/Listening pages. Use [] if no photo shows it.
 - task2: question_text is the essay question as reported, with obvious typos fixed, keeping its instruction line (e.g. "To what extent do you agree or disagree?") as given. Never invent a question that is not in the post.
 - Leave out dates, hashtags, @mentions, links, channel footers and comments in Uzbek or Russian.
+- kind (Task 1): the visual as the photos show it - line (line graph), bar (bar chart), pie (pie charts), table, map (maps or plans of a place), process (a process, life cycle or how something works or is made), mixed (two or more different kinds together).
+- kind (Task 2): opinion (agree/disagree, to what extent, positive or negative development), discussion (discuss both views), advantages_disadvantages, problem_solution (problems or causes, and solutions), two_part (two separate direct questions that fit none of these).
 - topic: 1-4 lowercase English words naming the subject, e.g. "household recycling", "free university education".
 - exam_date: the exam date if the post states one (e.g. "JUNE 19" -> that day in the post's year), else null."""
 
@@ -159,6 +165,7 @@ async def _save_question(
     seen_at: datetime,
     ref: str,
     image: bytes | None,
+    kind: str,
 ) -> str:
     """Adds the question, or marks an earlier copy of it as seen again.
     Returns what happened, for the log."""
@@ -177,6 +184,7 @@ async def _save_question(
                 question.seen_at = seen_at
             if image is not None and not question.image_path:
                 question.image_path = save_practice_image(image)
+            question.kind = question.kind or kind
             await session.commit()
             return f"seen again as #{question.id} ({how})"
         if module == PracticeModule.writing_task1 and image is None:
@@ -192,6 +200,7 @@ async def _save_question(
             seen_at=seen_at,
             times_seen=1,
             embedding=embedding,
+            kind=kind,
             order_index=0,
         )
         session.add(question)
@@ -212,6 +221,7 @@ async def _process(post: tg.ChannelPost, parsed: PostQuestions, images: list[byt
             seen_at,
             f"{post.id}:t2",
             None,
+            parsed.task2.kind,
         )
         results.append(f"T2 {outcome}")
     if parsed.task1 is not None and parsed.task1.question_text.strip():
@@ -230,6 +240,7 @@ async def _process(post: tg.ChannelPost, parsed: PostQuestions, images: list[byt
             seen_at,
             f"{post.id}:t1",
             image,
+            parsed.task1.kind,
         )
         results.append(f"T1 {outcome}")
     return "; ".join(results) or "skipped: empty questions"
@@ -296,3 +307,65 @@ async def import_new_posts(since: datetime | None = None, limit: int | None = No
         for module in (PracticeModule.writing_task1, PracticeModule.writing_task2):
             await crud.order_practice_module_by_recency(session, module)
     return counts
+
+
+class ChartKind(BaseModel):
+    kind: Task1Subtype
+
+
+async def _chart_kind(question: PracticeQuestion) -> str:
+    """A Task 1 question's visual type, seen from its chart."""
+    try:
+        b64 = base64.b64encode(read_file(question.image_path)).decode("ascii")
+        response = await client.beta.chat.completions.parse(
+            model=settings.openai_model_sample,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "Name the kind of this IELTS Academic Writing Task 1 visual: line (line graph), bar "
+                    "(bar chart), pie (pie charts), table, map (maps or plans of a place), process (a process, life "
+                    "cycle or how something works or is made), mixed (two or more different kinds together).",
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": question.question_text},
+                        {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}", "detail": "low"}},
+                    ],
+                },
+            ],
+            response_format=ChartKind,
+            # Sent as extra_body: openai 1.57 has no reasoning_effort argument yet.
+            extra_body={"reasoning_effort": "low"},
+        )
+        usage.record("practice import kind", response)
+        if response.choices[0].message.parsed is not None:
+            return response.choices[0].message.parsed.kind
+    except Exception:
+        logger.exception("Could not label question #%s from its chart - using the wording", question.id)
+    return regex_subtype(question.question_text, "task1_academic")
+
+
+async def label_missing_kinds() -> int:
+    """Gives questions imported before types were kept their type: Task 1
+    from the chart, Task 2 from the wording. Returns how many were labelled."""
+    async with get_session() as session:
+        questions = [q for q in await crud.get_imported_questions(session, SOURCE) if q.kind is None]
+
+    async def kind_of(question: PracticeQuestion) -> str:
+        if question.module == PracticeModule.writing_task1 and question.image_path:
+            return await _chart_kind(question)
+        task = "task1_academic" if question.module == PracticeModule.writing_task1 else "task2"
+        return regex_subtype(question.question_text, task)
+
+    with usage.track("practice import kinds"):
+        for start in range(0, len(questions), PARSE_BATCH):
+            batch = questions[start : start + PARSE_BATCH]
+            kinds = await asyncio.gather(*(kind_of(q) for q in batch))
+            async with get_session() as session:
+                for question, kind in zip(batch, kinds):
+                    row = await session.get(PracticeQuestion, question.id)
+                    if row is not None:
+                        row.kind = kind
+                await session.commit()
+    return len(questions)

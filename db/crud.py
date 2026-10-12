@@ -820,23 +820,30 @@ async def get_practice_question(session: AsyncSession, question_id: int) -> Prac
 
 
 async def get_next_practice_question(
-    session: AsyncSession, current: PracticeQuestion
+    session: AsyncSession, current: PracticeQuestion, user_id: int
 ) -> PracticeQuestion | None:
-    """The question after `current` in its module's list order, if any."""
+    """The first question after `current` in its module's list order -
+    wrapping round to the top - that the student hasn't done yet, if any."""
+    questions = await get_practice_questions(session, current.module)
+    done = await get_completed_question_ids(session, user_id, current.module)
+    index = next((i for i, q in enumerate(questions) if q.id == current.id), -1)
+    for question in questions[index + 1 :] + questions[: max(index, 0)]:
+        if question.id not in done:
+            return question
+    return None
+
+
+async def get_practice_stats(session: AsyncSession, user_id: int) -> dict[PracticeModule, tuple[int, int]]:
+    """(questions done, questions in all) per module, for the module picker."""
+    totals = await get_practice_question_counts(session)
     stmt = (
-        select(PracticeQuestion)
-        .where(
-            PracticeQuestion.module == current.module,
-            or_(
-                PracticeQuestion.order_index > current.order_index,
-                (PracticeQuestion.order_index == current.order_index)
-                & (PracticeQuestion.id > current.id),
-            ),
-        )
-        .order_by(PracticeQuestion.order_index, PracticeQuestion.id)
-        .limit(1)
+        select(PracticeQuestion.module, func.count())
+        .join(PracticeProgress, PracticeProgress.practice_question_id == PracticeQuestion.id)
+        .where(PracticeProgress.user_id == user_id)
+        .group_by(PracticeQuestion.module)
     )
-    return (await session.execute(stmt)).scalar_one_or_none()
+    done = dict((await session.execute(stmt)).all())
+    return {module: (done.get(module, 0), totals.get(module, 0)) for module in PracticeModule}
 
 
 # Practice question management (web admin panel, webapp/main.py) ------------

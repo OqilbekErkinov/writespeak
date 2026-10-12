@@ -242,6 +242,12 @@ class PracticeQuestion(Base):
     times_seen: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
     # Writing questions only: finds the same question reported again.
     embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBEDDING_DIM), nullable=True)
+    # Writing question type the Practice list filters by - Task 1: bar, line,
+    # pie, table, map, process, mixed; Task 2: opinion, discussion,
+    # advantages_disadvantages, problem_solution, two_part (the names of
+    # services/ai/schemas.py's Task1Subtype / Task2Subtype). Set by the
+    # importer, which sees the chart; None = judge from the wording.
+    kind: Mapped[str | None] = mapped_column(String(30), nullable=True)
 
 
 class PracticeImportPost(Base):
