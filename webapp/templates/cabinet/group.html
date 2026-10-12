@@ -1,0 +1,71 @@
+{% extends "cabinet/base.html" %}
+{% block title %}{{ group.name }} — Ustoz kabineti{% endblock %}
+{% block content %}
+<div class="crumbs"><a href="/cabinet/">Guruhlar</a> / {{ group.name }}</div>
+<h1>{{ group.name }}</h1>
+<p class="sub">O'qituvchi: {{ teacher.full_name if teacher else "—" }} · {% if group.sponsor_checks %}tekshiruvlarni guruh to'laydi{% if group.daily_limit %}, kuniga {{ group.daily_limit }} tagacha{% endif %}{% else %}talabalar o'zlari to'laydi{% endif %}</p>
+
+<div class="btns">
+  <a class="btn btn-primary" href="/cabinet/group/{{ group.id }}/export.xlsx">📥 Excel</a>
+  <a class="btn" href="/cabinet/group/{{ group.id }}/report.pdf">📄 PDF hisobot</a>
+</div>
+
+<div class="tiles">
+  <div class="tile"><div class="n">{{ overview.members }}</div><div class="l">Talabalar</div></div>
+  <div class="tile"><div class="n">{{ overview.active_week }}</div><div class="l">7 kunda faol</div></div>
+  <div class="tile"><div class="n">{{ overview.summary.total }}</div><div class="l">Tekshiruvlar (W {{ overview.summary.writing }} · S {{ overview.summary.speaking }})</div></div>
+  <div class="tile"><div class="n">{{ band(overview.summary.writing_avg) }} / {{ band(overview.summary.speaking_avg) }}</div><div class="l">Writing / Speaking o'rtacha</div></div>
+  <div class="tile"><div class="n" style="font-size:16px">{{ weakest(overview.summary.weakest) }}</div><div class="l">Guruhning zaif mezoni</div></div>
+</div>
+
+{% if chart %}<div class="card chart"><img src="{{ chart }}" alt="Ballar dinamikasi"></div>{% endif %}
+
+<div class="card">
+  <h2>Talabalar</h2>
+  {% if rows %}
+  <div class="table-scroll"><table>
+    <tr><th>Talaba</th><th>Qo'shilgan</th><th class="n">Writing</th><th class="n">W o'rt.</th><th class="n">Speaking</th><th class="n">S o'rt.</th><th>Zaif mezon</th><th class="n">🔥</th><th>Oxirgi faollik</th></tr>
+    {% for r in rows %}
+    <tr>
+      <td class="name"><a href="/cabinet/group/{{ group.id }}/student/{{ r.user.id }}">{{ r.user.full_name }}</a></td>
+      <td>{{ day(r.joined) }}</td>
+      <td class="n">{{ r.s.writing }}</td><td class="n">{{ band(r.s.writing_avg) }}</td>
+      <td class="n">{{ r.s.speaking }}</td><td class="n">{{ band(r.s.speaking_avg) }}</td>
+      <td>{% if r.s.total %}{{ weakest(r.s.weakest) }}{% else %}<span class="muted">hali ish yo'q</span>{% endif %}</td>
+      <td class="n">{{ r.streak or "" }}</td>
+      <td>{{ day(r.s.last_active) }}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  {% else %}
+  <p class="muted">Hali talaba yo'q — botdagi taklif havolasi yoki QR-kodni talabalaringizga bering.</p>
+  {% endif %}
+</div>
+
+<div class="two">
+  <div class="card">
+    <h2>Vazifalar</h2>
+    {% if assignments %}
+    <div class="table-scroll"><table>
+      <tr><th>Vazifa</th><th>Muddat</th><th class="n">Bajarildi</th></tr>
+      {% for item in assignments %}
+      <tr>
+        <td class="wrap-text"><a href="/cabinet/group/{{ group.id }}/assignment/{{ item.assignment.id }}">{{ "🎯" if item.assignment.kind == "mock" else "📝" }} {{ item.assignment.title }}</a></td>
+        <td>{{ day(item.assignment.due_at) }}{% if item.assignment.due_at < now %} <span class="pill pill-warn">yopilgan</span>{% endif %}</td>
+        <td class="n">{{ item.complete }} / {{ item.members }}</td>
+      </tr>
+      {% endfor %}
+    </table></div>
+    {% else %}
+    <p class="muted">Vazifalar botda beriladi: guruh → 📝 Vazifalar → ➕ Yangi vazifa.</p>
+    {% endif %}
+  </div>
+  <div class="card board">
+    <h2>🏆 Reyting</h2>
+    <p class="muted" style="margin:0 0 4px">Bu hafta eng faol</p>
+    {% if board.week %}<ol>{% for u, n in board.week[:5] %}<li>{{ u.full_name }} — {{ n }} ta</li>{% endfor %}</ol>{% else %}<p class="muted">—</p>{% endif %}
+    <p class="muted" style="margin:10px 0 4px">🚀 Eng ko'p o'sgan (14 kun)</p>
+    {% if board.improved %}<ol>{% for u, d in board.improved[:5] %}<li>{{ u.full_name }} — +{{ "%.1f"|format(d) }}</li>{% endfor %}</ol>{% else %}<p class="muted">—</p>{% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,28 @@
+{% extends "cabinet/base.html" %}
+{% block content %}
+<h1>Guruhlaringiz</h1>
+{% if center %}
+<p class="sub">🏢 Markaz: <b>{{ center.name }}</b>{% if is_owner %} · markaz balansi: <b>{{ balance }}</b> ta kredit{% endif %}</p>
+{% else %}
+<p class="sub">Talabalaringizning faqat guruhga qo'shilganidan keyingi ishlari ko'rsatiladi.</p>
+{% endif %}
+
+{% if cards %}
+<div class="cards">
+  {% for c in cards %}
+  <a class="gcard" href="/cabinet/group/{{ c.group.id }}">
+    <div class="t">{{ c.group.name }}</div>
+    <div class="m">O'qituvchi: {{ c.teacher }}{% if c.group.sponsor_checks %} · <span class="pill pill-good">to'lov: guruh</span>{% endif %}</div>
+    <div class="nums">
+      <div><b>{{ c.students }}</b>talaba</div>
+      <div><b>{{ c.week }}</b>7 kunda</div>
+      <div><b>{{ band(c.summary.writing_avg) }}</b>Writing</div>
+      <div><b>{{ band(c.summary.speaking_avg) }}</b>Speaking</div>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card muted">Hali guruh yo'q. Botda <b>🏫 Guruh → ➕ Yangi guruh</b> orqali oching.</div>
+{% endif %}
+{% endblock %}

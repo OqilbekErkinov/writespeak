@@ -1,0 +1,29 @@
+{% extends "cabinet/base.html" %}
+{% block title %}{{ assignment.title }} — Ustoz kabineti{% endblock %}
+{% block content %}
+<div class="crumbs"><a href="/cabinet/">Guruhlar</a> / <a href="/cabinet/group/{{ group.id }}">{{ group.name }}</a> / vazifa</div>
+<h1>{{ "🎯" if assignment.kind == "mock" else "📝" }} {{ assignment.title }}</h1>
+<p class="sub">Muddat: {{ day(assignment.due_at) }} · to'liq bajargan: <b>{{ results.complete }} / {{ results.rows|length }}</b></p>
+
+<div class="card">
+  <div class="table-scroll"><table>
+    <tr>
+      <th>Talaba</th>
+      {% for label in part_labels %}<th class="n">{{ label }}</th>{% endfor %}
+      {% if assignment.kind == "mock" %}<th class="n">Writing</th><th class="n">Speaking</th><th class="n">Umumiy</th>{% endif %}
+      <th>Holat</th>
+    </tr>
+    {% for r in results.rows|sort(attribute="done", reverse=true) %}
+    <tr>
+      <td class="name"><a href="/cabinet/group/{{ group.id }}/student/{{ r.user.id }}">{{ r.user.full_name }}</a></td>
+      {% for b in r.bands %}<td class="n">{% if b %}<a href="/cabinet/report/{{ b[1] }}/{{ b[2] }}.pdf">{{ band(b[0]) }}</a>{% else %}—{% endif %}</td>{% endfor %}
+      {% if assignment.kind == "mock" %}
+      <td class="n">{{ band(r.mock.writing) }}</td><td class="n">{{ band(r.mock.speaking) }}</td><td class="n"><b>{{ band(r.mock.overall) }}</b></td>
+      {% endif %}
+      <td>{% if r.done == results.parts|length %}<span class="pill pill-good">bajarildi</span>{% elif r.done %}<span class="pill pill-warn">{{ r.done }}/{{ results.parts|length }}</span>{% else %}<span class="pill pill-bad">bajarilmagan</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  {% if assignment.kind == "mock" %}<p class="muted" style="font-size:12.5px">Umumiy — Writing (T1 + 2×T2)/3 va Speaking o'rtachasi asosida taxminiy ball (to'liq 4 ko'nikmali IELTS emas).</p>{% endif %}
+</div>
+{% endblock %}

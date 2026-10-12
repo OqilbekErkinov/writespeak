@@ -26,7 +26,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from bot.config import settings
 from db import crud
 from db.database import get_session
-from db.models import PaymentStatus, PracticeModule
+from db.models import PaymentStatus, PracticeModule, UserRole
 from services.storage.file_storage import delete_file, save_practice_image
 
 app = FastAPI(title="WriteSpeak Admin")
@@ -37,6 +37,12 @@ app.add_middleware(
 )
 
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+
+# Teachers' web cabinet (/cabinet, its own sign-in from the bot) - see webapp/cabinet.py.
+from webapp import cabinet  # noqa: E402
+
+cabinet.templates = templates
+app.include_router(cabinet.router)
 
 # --- tiny in-memory brute-force guard (per client IP, as forwarded by nginx) ---
 _failed_attempts: dict[str, list[float]] = {}
@@ -173,6 +179,53 @@ async def groups_page(request: Request):
     async with get_session() as session:
         groups = await crud.list_groups_with_counts(session)
     return templates.TemplateResponse(request, "groups.html", {"active": "groups", "groups": groups})
+
+
+# --- Teachers and learning centers ------------------------------------------------
+
+
+@app.get("/teachers", response_class=HTMLResponse)
+async def teachers_page(request: Request, done: str | None = None):
+    if (redirect := _require_login(request)) is not None:
+        return redirect
+    async with get_session() as session:
+        teachers = await crud.list_teachers_with_stats(session)
+        centers = await crud.list_centers_with_stats(session)
+    flash = {"center": "Markaz yaratildi.", "revoked": "O'qituvchilik huquqi olindi.", "deleted": "Markaz o'chirildi."}.get(done or "")
+    return templates.TemplateResponse(
+        request, "teachers.html", {"active": "teachers", "teachers": teachers, "centers": centers, "flash": flash}
+    )
+
+
+@app.post("/teachers/{user_id}/center")
+async def make_center(request: Request, user_id: int, name: str = Form(...)):
+    if (redirect := _require_login(request)) is not None:
+        return redirect
+    name = " ".join(name.split())[:100]
+    async with get_session() as session:
+        if name and await crud.get_user_center(session, user_id) is None and await crud.get_user(session, user_id):
+            await crud.create_center(session, user_id, name)
+    return RedirectResponse("/teachers?done=center", status_code=303)
+
+
+@app.post("/teachers/{user_id}/revoke")
+async def revoke_teacher(request: Request, user_id: int):
+    if (redirect := _require_login(request)) is not None:
+        return redirect
+    async with get_session() as session:
+        user = await crud.get_user(session, user_id)
+        if user is not None and user.role == UserRole.teacher:
+            await crud.set_user_role(session, user_id, UserRole.student)
+    return RedirectResponse("/teachers?done=revoked", status_code=303)
+
+
+@app.post("/centers/{center_id}/delete")
+async def delete_center(request: Request, center_id: int):
+    if (redirect := _require_login(request)) is not None:
+        return redirect
+    async with get_session() as session:
+        await crud.delete_center(session, center_id)
+    return RedirectResponse("/teachers?done=deleted", status_code=303)
 
 
 # --- Practice question bank (what the bot's 📝 Practice section serves) ------

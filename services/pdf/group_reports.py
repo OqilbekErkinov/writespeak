@@ -188,28 +188,33 @@ def build_group_excel(group_name: str, members: list[tuple], assignments: list[d
 # --- PDFs ---------------------------------------------------------------------------------------
 
 
-def _chart(works: list[dict], title: str, daily_average: bool = False) -> str | None:
-    """A band-over-time line per skill, as a data URI (None with fewer than 2
-    works). `daily_average`: one point per day (a whole group's work)."""
-    if len(works) < 2:
-        return None
-    fig, ax = plt.subplots(figsize=(7.2, 2.6), dpi=150)
+def band_chart(works: list[dict], title: str, daily_average: bool = False) -> str | None:
+    """A band-over-time line per skill, as a data URI - None with fewer than two
+    points to draw. `daily_average`: one point per day (a whole group's work)."""
+    series = []
     for kind, label, color in (("w", "Writing", "#2a78d6"), ("s", "Speaking", "#0ca30c")):
-        points = sorted((_local(w["created_at"]), w["band"]) for w in works if w["kind"] == kind)
+        points = sorted((_local(w["created_at"]).replace(tzinfo=None), w["band"]) for w in works if w["kind"] == kind)
         if daily_average:
             days: dict = {}
             for when, band in points:
                 days.setdefault(when.date(), []).append(band)
             points = [(datetime(d.year, d.month, d.day), sum(b) / len(b)) for d, b in sorted(days.items())]
         if points:
-            ax.plot([p[0] for p in points], [p[1] for p in points], marker="o", linewidth=2, label=label, color=color)
+            series.append((label, color, points))
+    times = [when for _, _, points in series for when, _ in points]
+    if len(times) < 2:
+        return None
+    fig, ax = plt.subplots(figsize=(7.2, 2.6), dpi=150)
+    for label, color, points in series:
+        ax.plot([p[0] for p in points], [p[1] for p in points], marker="o", linewidth=2, label=label, color=color)
     ax.set_ylim(3.5, 9)
     ax.set_title(title, fontsize=10, loc="left")
     ax.grid(alpha=0.25)
     ax.legend(fontsize=8, loc="lower right")
     ax.tick_params(labelsize=8)
-    ax.xaxis.set_major_locator(mdates.AutoDateLocator(minticks=3, maxticks=8))
-    ax.xaxis.set_major_formatter(mdates.DateFormatter("%d.%m"))
+    short = max(times) - min(times) < timedelta(days=2)  # everything within a day or two: show the hour too
+    ax.xaxis.set_major_locator(mdates.AutoDateLocator(minticks=3, maxticks=5 if short else 8))
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%d.%m %H:%M" if short else "%d.%m"))
     fig.tight_layout()
     buffer = io.BytesIO()
     fig.savefig(buffer, format="png")
@@ -250,7 +255,7 @@ def build_group_pdf(
         overview=overview, rows=rows, assignments=assignment_rows,
         writing_avg=_band(summary["writing_avg"]), speaking_avg=_band(summary["speaking_avg"]),
         weakest=names.get(summary["weakest"][0], summary["weakest"][0]) if summary["weakest"] else "—",
-        chart=_chart(all_works, L["band_trend"], daily_average=True),
+        chart=band_chart(all_works, L["band_trend"], daily_average=True),
     )
 
 
@@ -294,5 +299,5 @@ def build_parent_report_pdf(
         month=month, prev=prev, band=_band, criteria_rows=criteria_rows,
         weakest=names.get(month["weakest"][0], month["weakest"][0]) if month["weakest"] else None,
         tip=tip, comments=comment_rows, assignments_done=assignments_done, assignments_total=assignments_total,
-        chart=_chart(works_month, L["band_trend"]),
+        chart=band_chart(works_month, L["band_trend"]),
     )

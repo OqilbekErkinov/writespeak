@@ -1,0 +1,53 @@
+{% extends "cabinet/base.html" %}
+{% block title %}{{ student.full_name }} — Ustoz kabineti{% endblock %}
+{% block content %}
+<div class="crumbs"><a href="/cabinet/">Guruhlar</a> / <a href="/cabinet/group/{{ group.id }}">{{ group.name }}</a> / {{ student.full_name }}</div>
+<h1>{{ student.full_name }}</h1>
+<p class="sub">Guruhga qo'shilgan: {{ day(joined) }} · oxirgi faollik: {{ day(s.last_active) }}{% if streak %} · 🔥 ketma-ket {{ streak }} kun{% endif %}</p>
+
+<div class="btns">
+  <a class="btn btn-primary" href="/cabinet/group/{{ group.id }}/student/{{ student.id }}/monthly.pdf">👨‍👩‍👧 Ota-ona uchun oylik hisobot (PDF)</a>
+</div>
+
+<div class="tiles">
+  <div class="tile"><div class="n">{{ s.writing }}</div><div class="l">Writing · o'rtacha {{ band(s.writing_avg) }}</div></div>
+  <div class="tile"><div class="n">{{ s.speaking }}</div><div class="l">Speaking · o'rtacha {{ band(s.speaking_avg) }}</div></div>
+  <div class="tile"><div class="n" style="font-size:16px">{{ weakest(s.weakest) }}</div><div class="l">Eng zaif mezon</div></div>
+</div>
+
+{% if chart %}<div class="card chart"><img src="{{ chart }}" alt="Ballar dinamikasi"></div>{% endif %}
+
+<div class="two">
+  <div class="card">
+    <h2>Ishlar</h2>
+    {% if works %}
+    <div class="table-scroll"><table>
+      <tr><th>Sana</th><th>Turi</th><th class="n">Ball</th><th>Hisobot</th></tr>
+      {% for w in works %}
+      <tr>
+        <td>{{ day(w.created_at) }}</td>
+        <td class="wrap-text">{{ w.label }}{% if w.assignment_part_id %} <span class="pill pill-good">vazifa</span>{% endif %}
+          {% for c in comments.get((w.kind, w.id), []) %}<div class="comment">💬 {{ c.text }}{% if c.band is not none %} <b>· {{ band(c.band) }}</b>{% endif %}</div>{% endfor %}
+        </td>
+        <td class="n">{{ band(w.band) }}</td>
+        <td>{% if w.has_pdf %}<a href="/cabinet/report/{{ w.kind }}/{{ w.id }}.pdf">PDF</a>{% else %}—{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </table></div>
+    {% else %}
+    <p class="muted">Guruhga qo'shilganidan beri hali ish topshirmagan.</p>
+    {% endif %}
+  </div>
+  <div class="card">
+    <h2>Mezonlar bo'yicha o'rtacha</h2>
+    {% if criteria %}
+    <table>
+      {% for name, value in criteria %}
+      <tr><td>{{ name }}</td><td class="n"><b>{{ band(value) }}</b></td></tr>
+      {% endfor %}
+    </table>
+    {% else %}<p class="muted">—</p>{% endif %}
+    <p class="muted" style="font-size:12.5px; margin-top:10px">Izohni botda yozasiz: talaba kartasi → ish → 💬 Izoh yozish.</p>
+  </div>
+</div>
+{% endblock %}

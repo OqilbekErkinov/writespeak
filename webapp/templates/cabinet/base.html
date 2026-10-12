@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>{% block title %}Ustoz kabineti — WriteSpeak{% endblock %}</title>
+<style>
+  :root {
+    --navy: #0f1c3f; --navy-2: #172a5c; --accent: #2a78d6; --paper: #f5f7fb; --surface: #ffffff;
+    --border: #e1e5f0; --ink: #1c2333; --ink-soft: #5a6274; --ink-faint: #8991ac;
+    --good: #0b8a0b; --warn: #a6720a; --bad: #c93636;
+    --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: var(--font); background: var(--paper); color: var(--ink); font-size: 15px; line-height: 1.5; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .topbar { background: var(--navy); color: #fff; padding: 0 16px; }
+  .topbar .in { max-width: 1120px; margin: 0 auto; display: flex; align-items: center; gap: 12px; min-height: 56px; flex-wrap: wrap; }
+  .topbar .brand { font-weight: 700; font-size: 16px; color: #fff; }
+  .topbar .brand span { opacity: .6; font-weight: 500; }
+  .topbar .who { margin-left: auto; font-size: 13px; color: rgba(255,255,255,.75); }
+  .topbar .who a { color: rgba(255,255,255,.75); margin-left: 10px; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 22px 16px 60px; }
+  .crumbs { font-size: 13px; color: var(--ink-faint); margin-bottom: 10px; }
+  h1 { font-size: 22px; margin: 0 0 6px; }
+  .sub { color: var(--ink-soft); font-size: 14px; margin: 0 0 18px; }
+  h2 { font-size: 15px; margin: 0 0 12px; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 18px; }
+  .tile { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
+  .tile .n { font-size: 24px; font-weight: 700; color: var(--navy-2); font-variant-numeric: tabular-nums; }
+  .tile .l { font-size: 12.5px; color: var(--ink-soft); }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; margin-bottom: 18px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+  .gcard { display: block; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; color: var(--ink); }
+  .gcard:hover { border-color: var(--accent); text-decoration: none; }
+  .gcard .t { font-weight: 700; font-size: 16px; }
+  .gcard .m { color: var(--ink-soft); font-size: 13px; margin-top: 4px; }
+  .gcard .nums { display: flex; gap: 16px; margin-top: 12px; font-size: 13px; color: var(--ink-soft); }
+  .gcard .nums b { display: block; font-size: 18px; color: var(--navy-2); }
+  .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-faint); font-weight: 600; padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  td { padding: 9px 10px; border-bottom: 1px solid var(--border); color: var(--ink-soft); white-space: nowrap; }
+  td.name { color: var(--ink); font-weight: 600; }
+  td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
+  td.wrap-text { white-space: normal; min-width: 220px; }
+  tr:last-child td { border-bottom: none; }
+  .pill { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 100px; }
+  .pill-good { color: var(--good); background: #e4f5e4; } .pill-warn { color: var(--warn); background: #fbf0da; } .pill-bad { color: var(--bad); background: #fbe9e7; }
+  .btns { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
+  .btn { display: inline-block; font-size: 13.5px; font-weight: 600; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--ink); }
+  .btn:hover { background: var(--paper); text-decoration: none; }
+  .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn-primary:hover { background: #2368bd; }
+  .chart img { width: 100%; height: auto; display: block; }
+  .muted { color: var(--ink-faint); }
+  .two { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; }
+  .board ol { margin: 0; padding-left: 20px; } .board li { margin: 3px 0; }
+  .comment { background: #f2f6fd; border-left: 3px solid var(--accent); border-radius: 6px; padding: 6px 10px; margin-top: 6px; white-space: normal; color: var(--ink); }
+  @media (max-width: 560px) { h1 { font-size: 19px; } .tile .n { font-size: 20px; } }
+</style>
+</head>
+<body>
+  <div class="topbar"><div class="in">
+    <a class="brand" href="/cabinet/">WriteSpeak <span>· Ustoz kabineti</span></a>
+    {% if user_name %}<div class="who">{{ user_name }}<a href="/cabinet/logout">Chiqish</a></div>{% endif %}
+  </div></div>
+  <div class="wrap">
+    {% block content %}{% endblock %}
+  </div>
+</body>
+</html>
