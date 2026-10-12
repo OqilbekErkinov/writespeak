@@ -13,6 +13,7 @@ from bot.config import settings
 from bot.i18n import t
 from bot.keyboards.lang_kb import CB_LANG_CHANGE_PREFIX, CB_LANG_ONBOARD_PREFIX
 from bot.keyboards.main_menu_kb import main_menu_kb
+from bot.utils.group_invite import joined_notice
 from bot.utils.quota import format_som
 from bot.utils.sample_report import build_sample_report_pdf
 from db import crud
@@ -51,6 +52,15 @@ async def onboard_set_language(callback: CallbackQuery) -> None:
     await callback.message.answer(
         t("start.free_checks", lang, total=settings.free_checks, price=format_som(settings.price_per_check))
     )
+    # Joined a group through an invite link before picking the language
+    # (bot/handlers/start.py): confirm it now, in their language.
+    async with get_session() as session:
+        groups = await crud.get_member_groups(session, callback.from_user.id)
+    if groups:
+        group, teacher = groups[0]
+        await callback.message.answer(
+            joined_notice(group.name, teacher.full_name if teacher is not None else "", lang)
+        )
 
 
 @router.callback_query(F.data.startswith(CB_LANG_CHANGE_PREFIX))

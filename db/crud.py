@@ -852,6 +852,20 @@ async def get_admin_stats(session: AsyncSession) -> dict:
 
 
 # --- Groups (B2B: teachers / language centers) --------------------------------
+# A teacher (role `teacher`, granted by an admin - bot/handlers/group.py) owns
+# one group; students join through a signed invite link
+# (bot/utils/group_invite.py). Everything a teacher sees about a student covers
+# only work submitted after the student joined - joining is when they agreed to
+# share it.
+
+
+async def set_user_role(session: AsyncSession, user_id: int, role: UserRole) -> User | None:
+    user = await session.get(User, user_id)
+    if user is None:
+        return None
+    user.role = role
+    await session.commit()
+    return user
 
 
 async def create_group(session: AsyncSession, teacher_id: int, name: str) -> Group:
@@ -871,28 +885,54 @@ async def get_owned_group(session: AsyncSession, teacher_id: int) -> Group | Non
     return (await session.execute(stmt)).scalar_one_or_none()
 
 
-async def get_group_for_member(session: AsyncSession, user_id: int) -> Group | None:
-    """The most recently joined group this user is a student in, if any."""
+async def get_member_groups(session: AsyncSession, user_id: int) -> list[tuple[Group, User | None]]:
+    """The groups this user is a student in (newest first), each with its teacher."""
     stmt = (
-        select(Group)
+        select(Group, User)
         .join(GroupMembership, GroupMembership.group_id == Group.id)
+        .outerjoin(User, User.id == Group.teacher_id)
         .where(GroupMembership.user_id == user_id)
         .order_by(GroupMembership.joined_at.desc())
     )
-    return (await session.execute(stmt)).scalars().first()
+    return [(group, teacher) for group, teacher in (await session.execute(stmt)).all()]
 
 
-async def join_group(session: AsyncSession, group_id: int, user_id: int) -> None:
-    """Idempotent - tapping the same invite link twice is a no-op, not an
-    error, since the unique constraint would otherwise raise."""
-    existing = await session.execute(
-        select(GroupMembership).where(
+async def get_membership(session: AsyncSession, group_id: int, user_id: int) -> GroupMembership | None:
+    stmt = select(GroupMembership).where(
+        GroupMembership.group_id == group_id, GroupMembership.user_id == user_id
+    )
+    return (await session.execute(stmt)).scalar_one_or_none()
+
+
+async def join_group(session: AsyncSession, group_id: int, user_id: int) -> bool:
+    """True when a new membership was created; False when the user is already
+    in the group or is its own teacher (a teacher opening their own invite
+    link must not end up as a student of their group)."""
+    group = await session.get(Group, group_id)
+    if group is None or group.teacher_id == user_id:
+        return False
+    if await get_membership(session, group_id, user_id) is not None:
+        return False
+    session.add(GroupMembership(group_id=group_id, user_id=user_id))
+    await session.commit()
+    return True
+
+
+async def leave_group(session: AsyncSession, group_id: int, user_id: int) -> bool:
+    """Removes one membership (a student leaving, or their teacher removing them)."""
+    result = await session.execute(
+        delete(GroupMembership).where(
             GroupMembership.group_id == group_id, GroupMembership.user_id == user_id
         )
     )
-    if existing.scalar_one_or_none() is not None:
-        return
-    session.add(GroupMembership(group_id=group_id, user_id=user_id))
+    await session.commit()
+    return result.rowcount > 0
+
+
+async def delete_group(session: AsyncSession, group_id: int) -> None:
+    """Deletes a group and its memberships; students keep their work and credits."""
+    await session.execute(delete(GroupMembership).where(GroupMembership.group_id == group_id))
+    await session.execute(delete(Group).where(Group.id == group_id))
     await session.commit()
 
 
@@ -903,67 +943,168 @@ async def get_group_member_count(session: AsyncSession, group_id: int) -> int:
     return result.scalar() or 0
 
 
-async def get_group_members(session: AsyncSession, group_id: int, limit: int = 30) -> list[User]:
+async def get_group_members(
+    session: AsyncSession, group_id: int, offset: int = 0, limit: int | None = None
+) -> list[tuple[User, datetime]]:
+    """(student, joined_at) pairs in joining order - all of them unless paged."""
     stmt = (
-        select(User)
+        select(User, GroupMembership.joined_at)
         .join(GroupMembership, GroupMembership.user_id == User.id)
         .where(GroupMembership.group_id == group_id)
-        .order_by(GroupMembership.joined_at)
-        .limit(limit)
+        .order_by(GroupMembership.joined_at, User.id)
+        .offset(offset)
     )
-    return list((await session.execute(stmt)).scalars().all())
+    if limit is not None:
+        stmt = stmt.limit(limit)
+    return [(user, joined_at) for user, joined_at in (await session.execute(stmt)).all()]
 
 
-async def get_member_activity(session: AsyncSession, user_id: int) -> dict:
-    """Summary used in a teacher's group view: total checks, average band,
-    and the most recent submission date, across Writing+Speaking."""
-    w_rows = (
+async def get_works_since(session: AsyncSession, user_id: int, since: datetime) -> list[dict]:
+    """A student's graded Writing+Speaking work from `since` on, newest first."""
+    writing = (
         await session.execute(
-            select(WritingSubmission.overall_band, WritingSubmission.created_at).where(
-                WritingSubmission.user_id == user_id, WritingSubmission.overall_band.is_not(None)
+            select(WritingSubmission).where(
+                WritingSubmission.user_id == user_id,
+                WritingSubmission.overall_band.is_not(None),
+                WritingSubmission.created_at >= since,
             )
         )
-    ).all()
-    s_rows = (
+    ).scalars().all()
+    speaking = (
         await session.execute(
-            select(SpeakingSubmission.overall_band, SpeakingSubmission.created_at).where(
-                SpeakingSubmission.user_id == user_id, SpeakingSubmission.overall_band.is_not(None)
+            select(SpeakingSubmission).where(
+                SpeakingSubmission.user_id == user_id,
+                SpeakingSubmission.overall_band.is_not(None),
+                SpeakingSubmission.created_at >= since,
             )
         )
-    ).all()
-    all_rows = [*w_rows, *s_rows]
+    ).scalars().all()
+    works = [
+        {
+            "kind": "w",
+            "id": w.id,
+            "label": f"Writing Task {w.task_type.value[-1]}",
+            "band": w.overall_band,
+            "criteria": w.criteria_scores or {},
+            "created_at": w.created_at,
+            "has_pdf": bool(w.feedback_pdf_path),
+        }
+        for w in writing
+    ] + [
+        {
+            "kind": "s",
+            "id": s.id,
+            "label": f"Speaking Part {s.part.value[-1]}",
+            "band": s.overall_band,
+            "criteria": s.criteria_scores or {},
+            "created_at": s.created_at,
+            "has_pdf": bool(s.feedback_pdf_path),
+        }
+        for s in speaking
+    ]
+    return sorted(works, key=lambda w: w["created_at"], reverse=True)
+
+
+def summarize_works(works: list[dict]) -> dict:
+    """Counts, average bands per skill, the weakest criterion (key, average)
+    and the last activity date of a list from get_works_since."""
+
+    def average(items: list[dict]) -> float | None:
+        return sum(w["band"] for w in items) / len(items) if items else None
+
+    writing = [w for w in works if w["kind"] == "w"]
+    speaking = [w for w in works if w["kind"] == "s"]
+    sums: dict[str, float] = {}
+    counts: dict[str, int] = {}
+    for work in works:
+        for key, value in work["criteria"].items():
+            if value is not None:
+                sums[key] = sums.get(key, 0.0) + value
+                counts[key] = counts.get(key, 0) + 1
+    criteria = {key: sums[key] / counts[key] for key in sums}
     return {
-        "total": len(all_rows),
-        "avg_band": (sum(r[0] for r in all_rows) / len(all_rows)) if all_rows else None,
-        "last_active": max((r[1] for r in all_rows), default=None),
+        "total": len(works),
+        "average": average(works),
+        "writing": len(writing),
+        "writing_avg": average(writing),
+        "speaking": len(speaking),
+        "speaking_avg": average(speaking),
+        "weakest": min(criteria.items(), key=lambda kv: kv[1]) if criteria else None,
+        "last_active": max((w["created_at"] for w in works), default=None),
     }
 
 
-async def gift_credits(session: AsyncSession, *, teacher_id: int, student_id: int, amount: int) -> bool:
-    """Transfers `amount` credits from the teacher's own balance to a
-    student's - only if the teacher actually owns the group that student
-    belongs to, and has enough balance. Returns whether the transfer
-    happened, so the handler can tell the teacher why it didn't if not."""
+async def get_group_overview(session: AsyncSession, group_id: int) -> dict:
+    members = await get_group_members(session, group_id)
+    week_ago = datetime.now(timezone.utc) - timedelta(days=7)
+    per_student = []
+    all_works: list[dict] = []
+    for user, joined_at in members:
+        works = await get_works_since(session, user.id, joined_at)
+        all_works += works
+        per_student.append((user, summarize_works(works)))
+    most_active = sorted((p for p in per_student if p[1]["total"]), key=lambda p: -p[1]["total"])[:3]
+    return {
+        "members": len(members),
+        "active_week": sum(1 for _, s in per_student if s["last_active"] and s["last_active"] >= week_ago),
+        "inactive": sum(1 for _, s in per_student if not s["total"]),
+        "summary": summarize_works(all_works),
+        "most_active": [(user.full_name, s["total"]) for user, s in most_active],
+    }
+
+
+async def get_member_report_pdf(
+    session: AsyncSession, teacher_id: int, kind: str, submission_id: int
+) -> str | None:
+    """Path of a student's report PDF - only for the teacher of a group the
+    student is in, and only for work submitted after they joined it."""
+    model = WritingSubmission if kind == "w" else SpeakingSubmission
+    submission = await session.get(model, submission_id)
     group = await get_owned_group(session, teacher_id)
-    if group is None:
-        return False
-    membership = await session.execute(
-        select(GroupMembership).where(
-            GroupMembership.group_id == group.id, GroupMembership.user_id == student_id
-        )
+    if submission is None or group is None or not submission.feedback_pdf_path:
+        return None
+    membership = await get_membership(session, group.id, submission.user_id)
+    if membership is None or submission.created_at < membership.joined_at:
+        return None
+    return submission.feedback_pdf_path
+
+
+async def gift_credits(
+    session: AsyncSession, *, teacher_id: int, student_ids: list[int], amount: int
+) -> list[User] | None:
+    """Moves `amount` credits from the teacher's own balance to each student in
+    `student_ids`, all in one transaction - only if every one of them is in
+    the teacher's group and the balance covers them all. Returns the students
+    credited, or None if nothing was transferred."""
+    group = await get_owned_group(session, teacher_id)
+    if group is None or amount <= 0 or not student_ids:
+        return None
+    members = set(
+        (
+            await session.execute(
+                select(GroupMembership.user_id).where(
+                    GroupMembership.group_id == group.id, GroupMembership.user_id.in_(student_ids)
+                )
+            )
+        ).scalars().all()
     )
-    if membership.scalar_one_or_none() is None:
-        return False
-
-    teacher = await session.get(User, teacher_id)
-    student = await session.get(User, student_id)
-    if teacher is None or student is None or teacher.credit_balance < amount:
-        return False
-
-    teacher.credit_balance -= amount
-    student.credit_balance += amount
+    if members != set(student_ids):
+        return None
+    # Row locks: two quick taps must not both spend the same balance.
+    teacher = (
+        await session.execute(select(User).where(User.id == teacher_id).with_for_update())
+    ).scalar_one_or_none()
+    if teacher is None or teacher.credit_balance < amount * len(members):
+        await session.rollback()
+        return None
+    students = list(
+        (await session.execute(select(User).where(User.id.in_(members)).with_for_update())).scalars().all()
+    )
+    teacher.credit_balance -= amount * len(students)
+    for student in students:
+        student.credit_balance += amount
     await session.commit()
-    return True
+    return students
 
 
 # --- Web admin panel (webapp/main.py) ------------------------------------------

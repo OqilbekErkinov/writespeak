@@ -344,80 +344,215 @@ _T: dict[str, dict[str, str]] = {
         "<b>1 бесплатную проверку</b> (приглашено: {count}):\n{link}",
     },
     "account.language_button": {"uz": "🌐 Til / Язык", "ru": "🌐 Til / Язык"},
-    # --- Groups / B2B (bot/handlers/group.py) ---
-    "group.title": {"uz": "🏫 Guruh", "ru": "🏫 Группа"},
-    "group.no_group_prompt": {
-        "uz": "Siz hali hech qanday guruhga a'zo emassiz.\n\nAgar o'qituvchi bo'lsangiz, o'z "
-        "guruhingizni ochib, talabalaringizni taklif qilishingiz va ularning natijalarini "
-        "kuzatishingiz mumkin.",
-        "ru": "Вы пока не состоите ни в одной группе.\n\nЕсли вы преподаватель, вы можете "
-        "создать свою группу, пригласить учеников и отслеживать их результаты.",
+    # --- Groups / B2B (bot/handlers/group.py, bot/handlers/start.py) ---
+    "group.no_group": {
+        "uz": "🏫 <b>Guruh</b>\n\nSiz hali hech qanday guruhda emassiz.\n\n"
+        "• <b>Talaba bo'lsangiz:</b> o'qituvchingiz bergan taklif havolasini bosing.\n"
+        "• <b>O'qituvchi bo'lsangiz:</b> o'z guruhingizni oching — talabalaringizning "
+        "natijalari va hisobotlarini kuzatasiz, ularga kredit ulashasiz.",
+        "ru": "🏫 <b>Группа</b>\n\nВы пока не состоите ни в одной группе.\n\n"
+        "• <b>Если вы ученик:</b> откройте ссылку-приглашение от преподавателя.\n"
+        "• <b>Если вы преподаватель:</b> создайте свою группу — будете видеть результаты и "
+        "отчёты учеников и сможете дарить им кредиты.",
     },
     "group.btn_create": {"uz": "➕ Guruh yaratish", "ru": "➕ Создать группу"},
+    "group.teachers_only": {
+        "uz": "🏫 Guruh ochish <b>o'qituvchilar</b> uchun.\n\nO'qituvchi ekaningizni "
+        "tasdiqlash uchun so'rov yuboring — admin tasdiqlagach, sizga xabar keladi va guruh "
+        "ochishingiz mumkin bo'ladi.",
+        "ru": "🏫 Создавать группы могут <b>преподаватели</b>.\n\nОтправьте запрос — после "
+        "подтверждения администратором вы получите сообщение и сможете создать группу.",
+    },
+    "group.btn_request": {"uz": "📨 So'rov yuborish", "ru": "📨 Отправить запрос"},
+    "group.request_sent": {
+        "uz": "✅ So'rovingiz adminga yuborildi. Tasdiqlangach, sizga xabar keladi.",
+        "ru": "✅ Запрос отправлен администратору. После подтверждения вы получите сообщение.",
+    },
+    "group.teacher_approved": {
+        "uz": "🎉 Siz <b>o'qituvchi</b> sifatida tasdiqlandingiz!\n\nEndi 🏫 Guruh → ➕ Guruh "
+        "yaratish orqali guruhingizni ochishingiz mumkin.",
+        "ru": "🎉 Вы подтверждены как <b>преподаватель</b>!\n\nТеперь создайте группу: "
+        "🏫 Группа → ➕ Создать группу.",
+    },
+    "group.teacher_rejected": {
+        "uz": "Afsuski, o'qituvchi bo'lish so'rovingiz tasdiqlanmadi. Savollar bo'lsa, admin "
+        "bilan bog'laning.",
+        "ru": "К сожалению, ваш запрос преподавателя не подтверждён. Если есть вопросы, "
+        "свяжитесь с администратором.",
+    },
     "group.ask_name": {
-        "uz": "Guruh nomini kiriting (masalan: \"IELTS kechki guruh\"):",
-        "ru": "Введите название группы (например: \"IELTS вечерняя группа\"):",
+        "uz": "Guruh nomini yozing (masalan: \"IELTS kechki guruh\"):",
+        "ru": "Напишите название группы (например: \"IELTS вечерняя группа\"):",
     },
-    "group.created": {
-        "uz": "✅ \"{name}\" guruhi yaratildi!\n\nTalabalaringizni taklif qilish uchun shu "
-        "havolani ulashing:\n{link}",
-        "ru": "✅ Группа \"{name}\" создана!\n\nОтправьте эту ссылку ученикам, чтобы они "
-        "присоединились:\n{link}",
-    },
-    "group.teacher_view": {
-        "uz": "🏫 <b>{name}</b>\n👥 A'zolar: {count}\n\nTaklif havolasi:\n{link}",
-        "ru": "🏫 <b>{name}</b>\n👥 Участников: {count}\n\nСсылка-приглашение:\n{link}",
+    "group.created": {"uz": "✅ Guruh yaratildi!", "ru": "✅ Группа создана!"},
+    "group.teacher_home": {
+        "uz": "🏫 <b>{name}</b>\n👥 Talabalar: {count}\n💳 Kredit balansingiz: {balance} ta\n\n"
+        "🔗 <b>Taklif havolasi</b> (bosib nusxa oling va talabalaringizga yuboring):\n"
+        "<code>{link}</code>\n\n"
+        "ℹ️ Talabaning faqat guruhga qo'shilganidan keyingi ishlarini ko'rasiz.",
+        "ru": "🏫 <b>{name}</b>\n👥 Учеников: {count}\n💳 Ваш баланс: {balance} кредитов\n\n"
+        "🔗 <b>Ссылка-приглашение</b> (нажмите, чтобы скопировать, и отправьте ученикам):\n"
+        "<code>{link}</code>\n\n"
+        "ℹ️ Вы видите работы ученика только с момента его вступления в группу.",
     },
     "group.btn_stats": {"uz": "📊 Statistika", "ru": "📊 Статистика"},
-    "group.btn_gift": {"uz": "🎁 Kredit ulashish", "ru": "🎁 Подарить кредиты"},
-    "group.stats_header": {
-        "uz": "🏫 <b>{name}</b> — statistika\n",
-        "ru": "🏫 <b>{name}</b> — статистика\n",
+    "group.btn_students": {"uz": "👥 Talabalar", "ru": "👥 Ученики"},
+    "group.btn_gift_all": {"uz": "🎁 Hammaga kredit ulashish", "ru": "🎁 Подарить кредиты всем"},
+    "group.btn_delete": {"uz": "🗑 Guruhni o'chirish", "ru": "🗑 Удалить группу"},
+    "group.btn_cancel": {"uz": "Bekor qilish", "ru": "Отмена"},
+    "group.member_home_title": {"uz": "🏫 <b>Guruhlaringiz</b>\n", "ru": "🏫 <b>Ваши группы</b>\n"},
+    "group.member_home_row": {
+        "uz": "• <b>{name}</b> — o'qituvchi: {teacher}",
+        "ru": "• <b>{name}</b> — преподаватель: {teacher}",
     },
-    "group.stats_empty": {
-        "uz": "Guruhingizda hali a'zo yo'q. Yuqoridagi havolani talabalaringizga yuboring.",
-        "ru": "В группе пока нет участников. Отправьте ссылку выше своим ученикам.",
+    "group.member_home_note": {
+        "uz": "\nℹ️ O'qituvchingiz guruhga qo'shilganingizdan keyingi natijalaringiz va "
+        "hisobotlaringizni ko'radi.",
+        "ru": "\nℹ️ Преподаватель видит ваши результаты и отчёты с момента вступления в группу.",
     },
-    "group.stats_row": {
-        "uz": "{name} — {total} ta ish, o'rtacha {avg:.1f}, oxirgi faollik: {last_active}",
-        "ru": "{name} — {total} работ, средний балл {avg:.1f}, последняя активность: {last_active}",
+    "group.btn_leave": {"uz": "🚪 Chiqish: {name}", "ru": "🚪 Выйти: {name}"},
+    "group.no_students": {
+        "uz": "Guruhingizda hali talaba yo'q. Taklif havolasini talabalaringizga yuboring.",
+        "ru": "В группе пока нет учеников. Отправьте им ссылку-приглашение.",
     },
-    "group.stats_row_no_work": {
-        "uz": "{name} — hali ish topshirmagan",
-        "ru": "{name} — пока не сдал ни одной работы",
+    "group.stats": {
+        "uz": "📊 <b>{name}</b> — umumiy statistika\n"
+        "<i>Talabalar guruhga qo'shilgandan keyingi ishlar</i>\n\n"
+        "👥 Talabalar: {members} · so'nggi 7 kunda faol: {active}\n"
+        "📝 Tekshiruvlar: {total} (Writing {writing}, Speaking {speaking})\n"
+        "📈 O'rtacha ball: Writing {writing_avg} · Speaking {speaking_avg}\n"
+        "📉 Guruhning eng zaif mezoni: {weakest}\n"
+        "🏆 Eng faol: {most_active}\n"
+        "😴 Hali ish topshirmagan: {inactive} ta",
+        "ru": "📊 <b>{name}</b> — общая статистика\n"
+        "<i>Работы с момента вступления учеников в группу</i>\n\n"
+        "👥 Учеников: {members} · активны за 7 дней: {active}\n"
+        "📝 Проверок: {total} (Writing {writing}, Speaking {speaking})\n"
+        "📈 Средний балл: Writing {writing_avg} · Speaking {speaking_avg}\n"
+        "📉 Самый слабый критерий группы: {weakest}\n"
+        "🏆 Самые активные: {most_active}\n"
+        "😴 Ещё не сдали работ: {inactive}",
     },
-    "group.member_view": {
-        "uz": "Siz \"{group_name}\" guruhidasiz (o'qituvchi: {teacher_name}).",
-        "ru": "Вы состоите в группе \"{group_name}\" (преподаватель: {teacher_name}).",
+    "group.students_title": {
+        "uz": "👥 <b>Talabalar</b> ({count}) — {page}/{pages}-sahifa\n\nTalabani tanlang:",
+        "ru": "👥 <b>Ученики</b> ({count}) — страница {page}/{pages}\n\nВыберите ученика:",
     },
-    "group.gift_no_students": {
-        "uz": "Guruhingizda hali a'zo yo'q.",
-        "ru": "В вашей группе пока нет участников.",
+    "group.student_row": {
+        "uz": "{name} · {total} ta ish · {avg}",
+        "ru": "{name} · работ: {total} · {avg}",
     },
-    "group.gift_choose_student": {
-        "uz": "Kimga kredit sovg'a qilmoqchisiz? (Balansingiz: {balance} ta)",
-        "ru": "Кому подарить кредиты? (Ваш баланс: {balance})",
+    "group.student_card": {
+        "uz": "👤 <b>{name}</b>\n📅 Guruhga qo'shilgan: {joined}\n\n"
+        "✍️ Writing: {writing} ta · o'rtacha {writing_avg}\n"
+        "🎙 Speaking: {speaking} ta · o'rtacha {speaking_avg}\n"
+        "📉 Eng zaif mezon: {weakest}\n"
+        "🕒 Oxirgi faollik: {last}",
+        "ru": "👤 <b>{name}</b>\n📅 В группе с: {joined}\n\n"
+        "✍️ Writing: {writing} · средний {writing_avg}\n"
+        "🎙 Speaking: {speaking} · средний {speaking_avg}\n"
+        "📉 Самый слабый критерий: {weakest}\n"
+        "🕒 Последняя активность: {last}",
     },
-    "group.gift_choose_amount": {
-        "uz": "{name}ga nechta kredit berasiz?",
-        "ru": "Сколько кредитов подарить пользователю {name}?",
+    "group.reports_hint": {
+        "uz": "📄 Oxirgi ishlari — hisobotini olish uchun bosing:",
+        "ru": "📄 Последние работы — нажмите, чтобы получить отчёт:",
     },
-    "group.gift_insufficient": {
-        "uz": "Balansingizda yetarli kredit yo'q.",
-        "ru": "На вашем балансе недостаточно кредитов.",
+    "group.no_works_yet": {
+        "uz": "Guruhga qo'shilganidan beri hali ish topshirmagan.",
+        "ru": "С момента вступления в группу ещё не сдал ни одной работы.",
     },
-    "group.gift_success": {
-        "uz": "✅ {name}ga {amount} ta kredit berildi!",
-        "ru": "✅ Пользователю {name} подарено {amount} кредитов!",
+    "group.report_unavailable": {
+        "uz": "Bu hisobot mavjud emas.",
+        "ru": "Этот отчёт недоступен.",
+    },
+    "group.btn_gift_one": {"uz": "🎁 Kredit berish", "ru": "🎁 Подарить кредиты"},
+    "group.btn_kick": {"uz": "🚪 Guruhdan chiqarish", "ru": "🚪 Исключить"},
+    "group.gift_one": {
+        "uz": "🎁 <b>{name}</b>ga nechta kredit berasiz?\nBalansingiz: {balance} ta",
+        "ru": "🎁 Сколько кредитов подарить: <b>{name}</b>?\nВаш баланс: {balance}",
+    },
+    "group.gift_all": {
+        "uz": "🎁 Har bir talabaga nechta kredit berasiz?\nTalabalar: {count} · balansingiz: {balance} ta",
+        "ru": "🎁 Сколько кредитов подарить каждому ученику?\nУчеников: {count} · ваш баланс: {balance}",
+    },
+    "group.gift_no_balance": {
+        "uz": "Balansingizda kredit yo'q. Talabalarga ulashish uchun avval kredit sotib oling:",
+        "ru": "На балансе нет кредитов. Чтобы дарить их ученикам, сначала купите кредиты:",
+    },
+    "group.gift_all_not_enough": {
+        "uz": "Hammaga kamida 1 tadan berish uchun {count} ta kredit kerak, balansingizda "
+        "{balance} ta. Kredit sotib oling:",
+        "ru": "Чтобы дать всем хотя бы по 1, нужно {count} кредитов, у вас {balance}. Купите кредиты:",
+    },
+    "group.gift_failed": {
+        "uz": "Kredit berilmadi: balans yetarli emas yoki talaba guruhda emas.",
+        "ru": "Кредиты не переданы: недостаточно баланса или ученик не в группе.",
+    },
+    "group.gift_done_one": {
+        "uz": "✅ <b>{name}</b>ga {amount} ta kredit berildi!",
+        "ru": "✅ Подарено {amount} кредитов: <b>{name}</b>!",
+    },
+    "group.gift_done_all": {
+        "uz": "✅ {count} ta talabaga {amount} tadan kredit berildi (jami {total} ta).",
+        "ru": "✅ {count} ученикам подарено по {amount} кредитов (всего {total}).",
     },
     "group.gift_notify_student": {
-        "uz": "🎁 O'qituvchingiz sizga {amount} ta bepul tekshiruv sovg'a qildi!",
-        "ru": "🎁 Ваш преподаватель подарил вам {amount} бесплатных проверок!",
+        "uz": "🎁 O'qituvchingiz sizga {amount} ta tekshiruv sovg'a qildi!",
+        "ru": "🎁 Ваш преподаватель подарил вам {amount} проверок!",
     },
-    "group.not_found": {"uz": "Guruh topilmadi.", "ru": "Группа не найдена."},
+    "group.kick_confirm": {
+        "uz": "🚪 <b>{name}</b>ni guruhdan chiqarasizmi?\n\nUning ishlari va kreditlari o'zida "
+        "qoladi, siz endi uning natijalarini ko'rmaysiz.",
+        "ru": "🚪 Исключить <b>{name}</b> из группы?\n\nЕго работы и кредиты останутся у него, "
+        "но вы больше не будете видеть его результаты.",
+    },
+    "group.btn_kick_yes": {"uz": "Ha, chiqarish", "ru": "Да, исключить"},
+    "group.kick_done": {
+        "uz": "✅ <b>{name}</b> guruhdan chiqarildi.",
+        "ru": "✅ <b>{name}</b> исключён из группы.",
+    },
+    "group.kicked_notify": {
+        "uz": "ℹ️ Siz \"{group}\" guruhidan chiqarildingiz.",
+        "ru": "ℹ️ Вы исключены из группы \"{group}\".",
+    },
+    "group.delete_confirm": {
+        "uz": "🗑 \"<b>{name}</b>\" guruhini o'chirasizmi?\n\nBarcha talabalar guruhdan "
+        "chiqariladi (ularning ishlari va kreditlari o'zlarida qoladi). Bu amalni qaytarib "
+        "bo'lmaydi.",
+        "ru": "🗑 Удалить группу \"<b>{name}</b>\"?\n\nВсе ученики будут исключены (их работы "
+        "и кредиты останутся у них). Это действие нельзя отменить.",
+    },
+    "group.btn_delete_yes": {"uz": "Ha, o'chirish", "ru": "Да, удалить"},
+    "group.deleted": {"uz": "✅ Guruh o'chirildi.", "ru": "✅ Группа удалена."},
+    "group.leave_confirm": {
+        "uz": "🚪 \"<b>{name}</b>\" guruhidan chiqasizmi? O'qituvchingiz endi natijalaringizni "
+        "ko'rmaydi.",
+        "ru": "🚪 Выйти из группы \"<b>{name}</b>\"? Преподаватель больше не будет видеть ваши "
+        "результаты.",
+    },
+    "group.btn_leave_yes": {"uz": "Ha, chiqish", "ru": "Да, выйти"},
+    "group.left": {"uz": "✅ Guruhdan chiqdingiz.", "ru": "✅ Вы вышли из группы."},
+    "group.left_notify_teacher": {
+        "uz": "ℹ️ <b>{name}</b> guruhingizdan chiqdi.",
+        "ru": "ℹ️ <b>{name}</b> вышел(а) из вашей группы.",
+    },
     "group.joined_notice": {
-        "uz": "✅ Siz \"{name}\" guruhiga qo'shildingiz!",
-        "ru": "✅ Вы присоединились к группе \"{name}\"!",
+        "uz": "✅ Siz \"<b>{name}</b>\" guruhiga qo'shildingiz (o'qituvchi: {teacher}).\n\n"
+        "ℹ️ O'qituvchingiz bundan keyingi natijalaringiz va hisobotlaringizni ko'ra oladi.",
+        "ru": "✅ Вы вступили в группу \"<b>{name}</b>\" (преподаватель: {teacher}).\n\n"
+        "ℹ️ Преподаватель будет видеть ваши результаты и отчёты с этого момента.",
+    },
+    "group.join_own_link": {
+        "uz": "ℹ️ Bu sizning guruhingizning taklif havolasi — uni talabalaringizga yuboring.",
+        "ru": "ℹ️ Это ссылка-приглашение вашей группы — отправьте её ученикам.",
+    },
+    "group.join_expired": {
+        "uz": "⚠️ Bu taklif havolasi eskirgan yoki noto'g'ri. O'qituvchingizdan yangi havolani so'rang.",
+        "ru": "⚠️ Эта ссылка-приглашение устарела или неверна. Попросите у преподавателя новую.",
+    },
+    "group.new_member_notify": {
+        "uz": "👋 Guruhingizga yangi talaba qo'shildi: <b>{name}</b> (jami: {count}).",
+        "ru": "👋 В вашу группу вступил новый ученик: <b>{name}</b> (всего: {count}).",
     },
     # --- Vocabulary (bot/handlers/vocabulary.py) ---
     "vocab.title": {"uz": "📚 Lug'atim", "ru": "📚 Мой словарь"},

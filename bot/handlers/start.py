@@ -4,16 +4,20 @@ bot/handlers/language.py, which continues their onboarding with the welcome
 message + sample report), and drops returning users straight into the main
 menu. Also handles two deep-link payloads (https://t.me/<bot>?start=<arg>):
 `ref_<id>` (bot/handlers/account.py's referral link, signup-only - the
-reward comes later, on the referred user's first check) and `group_<id>`
-(bot/handlers/group.py's B2B class invite link, works for new AND existing
+reward comes later, on the referred user's first check) and a group invite
+(bot/utils/group_invite.py's signed `g<id>_<sig>`; works for new AND existing
 users, since a current student's teacher may share one after they've
-already been using the bot on their own).
+already been using the bot on their own). Old unsigned `group_<id>` links
+are refused with a "ask your teacher for a new link" note.
 
 (A user can still be manually blocked by setting their row's status to
 UserStatus.denied - see bot/middlewares/access_control.py - but nothing in
 this flow does that automatically any more.)
 """
 from __future__ import annotations
+
+import html
+from dataclasses import dataclass
 
 from aiogram import Router
 from aiogram.filters import CommandObject, CommandStart
@@ -24,6 +28,7 @@ from bot.config import settings
 from bot.i18n import t
 from bot.keyboards.lang_kb import CB_LANG_ONBOARD_PREFIX, lang_picker_kb
 from bot.keyboards.main_menu_kb import main_menu_kb
+from bot.utils.group_invite import is_invite_payload, joined_notice, parse_invite
 from db import crud
 from db.database import get_session
 
@@ -48,14 +53,19 @@ async def cmd_start(message: Message, command: CommandObject, lang: str) -> None
             referrer_id = await _parse_referrer(session, command.args, new_user_id=tg.id)
             await crud.create_user(session, tg.id, tg.username, tg.full_name, referred_by=referrer_id)
 
-        joined_group_name = await _maybe_join_group(session, command.args, user_id=tg.id)
+        join = await _maybe_join_group(session, command.args, user_id=tg.id)
+
+    if join is not None and join.status == "joined":
+        await _notify_teacher(message, join)
 
     if is_new:
         # Language not chosen yet - bot/handlers/language.py's onboarding
         # handler continues with the welcome message + sample report once
-        # they tap a flag below. A group join (if any) already happened
-        # above regardless of language, silently - the teacher will see
-        # them show up in their group's member list either way.
+        # they tap a flag below, and confirms a group join (if any) then.
+        if join is not None and join.status == "expired":
+            await message.answer(
+                t("group.join_expired", "uz") + "\n\n" + t("group.join_expired", "ru")
+            )
         await message.answer(
             "🌐 Tilni tanlang / Выберите язык:",
             reply_markup=lang_picker_kb(CB_LANG_ONBOARD_PREFIX),
@@ -63,8 +73,13 @@ async def cmd_start(message: Message, command: CommandObject, lang: str) -> None
         return
 
     await message.answer(t("start.welcome", lang, name=tg.full_name), reply_markup=main_menu_kb(lang))
-    if joined_group_name:
-        await message.answer(t("group.joined_notice", lang, name=joined_group_name))
+    if join is not None:
+        if join.status == "joined":
+            await message.answer(joined_notice(join.group_name, join.teacher_name, lang))
+        elif join.status == "own":
+            await message.answer(t("group.join_own_link", lang))
+        elif join.status == "expired":
+            await message.answer(t("group.join_expired", lang))
 
 
 async def _parse_referrer(session: AsyncSession, args: str | None, *, new_user_id: int) -> int | None:
@@ -83,23 +98,49 @@ async def _parse_referrer(session: AsyncSession, args: str | None, *, new_user_i
     return referrer.id if referrer is not None else None
 
 
-async def _maybe_join_group(session: AsyncSession, args: str | None, *, user_id: int) -> str | None:
-    """Deep-link payload from https://t.me/<bot>?start=group_<id> (see
-    bot/handlers/group.py). Returns the group's name if a join happened,
-    so the caller can confirm it - None if there was no such payload, the
-    group doesn't exist, or they were already a member (join_group is a
-    no-op then, and we don't want to re-announce it every /start)."""
-    if not args or not args.startswith("group_"):
+@dataclass
+class GroupJoin:
+    status: str  # "joined" | "already" | "own" (their own group's link) | "expired"
+    group_name: str = ""
+    teacher_id: int | None = None
+    teacher_name: str = ""
+    member_count: int = 0
+
+
+async def _maybe_join_group(session: AsyncSession, args: str | None, *, user_id: int) -> GroupJoin | None:
+    """Deep-link payload of a group invite (bot/utils/group_invite.py). None
+    when there's no invite payload at all; "already" isn't re-announced on
+    every /start."""
+    if not is_invite_payload(args):
         return None
-    try:
-        group_id = int(args.removeprefix("group_"))
-    except ValueError:
-        return None
-    group = await crud.get_group(session, group_id)
+    group_id = parse_invite(args)
+    group = await crud.get_group(session, group_id) if group_id is not None else None
     if group is None:
-        return None
-    existing_membership = await crud.get_group_for_member(session, user_id)
-    if existing_membership is not None and existing_membership.id == group.id:
-        return None
-    await crud.join_group(session, group_id=group.id, user_id=user_id)
-    return group.name
+        return GroupJoin("expired")
+    teacher = await crud.get_user(session, group.teacher_id)
+    teacher_name = teacher.full_name if teacher is not None else ""
+    if group.teacher_id == user_id:
+        return GroupJoin("own", group.name)
+    if not await crud.join_group(session, group_id=group.id, user_id=user_id):
+        return GroupJoin("already", group.name)
+    count = await crud.get_group_member_count(session, group.id)
+    return GroupJoin("joined", group.name, group.teacher_id, teacher_name, count)
+
+
+async def _notify_teacher(message: Message, join: GroupJoin) -> None:
+    async with get_session() as session:
+        teacher = await crud.get_user(session, join.teacher_id)
+    if teacher is None:
+        return
+    try:
+        await message.bot.send_message(
+            teacher.id,
+            t(
+                "group.new_member_notify",
+                teacher.language or "uz",
+                name=html.escape(message.from_user.full_name, quote=False),
+                count=join.member_count,
+            ),
+        )
+    except Exception:
+        pass  # the teacher may have blocked the bot - joining still worked

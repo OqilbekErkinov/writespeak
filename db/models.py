@@ -43,6 +43,7 @@ class UserStatus(str, enum.Enum):
 class UserRole(str, enum.Enum):
     student = "student"
     admin = "admin"
+    teacher = "teacher"  # may open a group (bot/handlers/group.py); granted by an admin
 
 
 class SourceType(str, enum.Enum):
@@ -308,9 +309,9 @@ class MockTestPart(Base):
 
 class Group(Base):
     """A teacher's class (B2B: language centers/teachers) - see
-    bot/handlers/group.py. MVP is deliberately 1 group per teacher
-    (`teacher_id` unique) to keep the UI simple; a teacher who needs more
-    than one class today just runs a second bot account.
+    bot/handlers/group.py. Deliberately 1 group per teacher (`teacher_id`
+    unique) to keep the UI simple. Only users with role `teacher` (granted by
+    an admin) or admins can open one.
     """
 
     __tablename__ = "groups"
@@ -322,8 +323,9 @@ class Group(Base):
 
 
 class GroupMembership(Base):
-    """A student joining via https://t.me/<bot>?start=group_<id> (same
-    deep-link mechanism as referrals, see bot/handlers/start.py)."""
+    """A student joining via the group's signed invite link
+    (bot/utils/group_invite.py, handled in bot/handlers/start.py). The
+    teacher sees only work submitted after `joined_at`."""
 
     __tablename__ = "group_memberships"
     __table_args__ = (UniqueConstraint("group_id", "user_id", name="uq_group_member"),)
