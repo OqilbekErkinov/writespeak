@@ -3,13 +3,13 @@
 
 The report always shows the student's ORIGINAL text. The model returns its
 copy of the essay split into segments (text / good / error); `essay_matches`
-checks that the copy joins back to the original (whitespace-normalised) and
-the caller asks the model once more if it doesn't. Either way only the marked
-segments are located in the original and drawn on it, so a model copy that
-adds a full stop or "fixes" a typo can never reach the PDF. If even the marks
-can't be found, the essay is shown without them. (Showing the plain essay
-whenever the copy differs at all was tried on 2026-10-09 and failed on two
-attempts out of two on the reference essay.)
+checks that the copy joins back to the original (whitespace-normalised).
+Either way only the marked segments are located in the original and drawn
+on it, so a model copy that adds a full stop or "fixes" a typo can never
+reach the PDF; the caller asks the model once more only when too few of its
+marks can be placed. If even then they can't, the essay is shown without
+them. (Showing the plain essay whenever the copy differs at all was tried on
+2026-10-09 and failed on two attempts out of two on the reference essay.)
 
 Enforced here, not left to the prompt:
   * text copied from the question (8+ words in a row) is found by code, shown
@@ -298,27 +298,24 @@ def creates_double(original: str, start: int, end: int, replacement: str) -> boo
     return bool(_double_words(new) - _double_words(old))
 
 
-def assess(fb: WritingFeedback, original: str, question: str) -> list[str]:
-    """Problems with the model's output that are worth one more model call."""
+def assess(fb: WritingFeedback, original: str) -> list[str]:
+    """Problems worth paying for one more model call: the marks can't be
+    placed on the essay, or a section of the report would be short. Smaller
+    faults (an essay copy that differs slightly, a priority with one mistake,
+    praise without a quote, copied text without its Task mistake) are
+    repaired in build_report and only noted - each retry costs as much as the
+    first call (owner's decision, 2026-10-13)."""
     problems = []
     if not essay_matches(original, fb.essay):
-        problems.append("the essay copy differs from the original")
-    by_id = {m.id: m for m in fb.mistakes}
+        share = align_segments(original, fb.essay).share
+        if share < MIN_ANCHORED_SHARE:
+            problems.append(f"only {share:.0%} of the marks can be placed on the essay")
     if len(fb.priorities) < PRIORITY_COUNT:
         problems.append(f"{len(fb.priorities)} priorities instead of {PRIORITY_COUNT}")
-    for i, p in enumerate(fb.priorities[:PRIORITY_COUNT], 1):
-        matching = {x for x in p.mistake_ids if x in by_id and by_id[x].criterion in p.criteria}
-        if len(matching) < PRIORITY_IDS[0]:
-            problems.append(f"priority {i} has {len(matching)} mistakes with its tags")
     if len(fb.vocabulary) < VOCAB_RANGE[0]:
         problems.append(f"{len(fb.vocabulary)} vocabulary items")
     if len(fb.checklist) < CHECKLIST_RANGE[0]:
         problems.append(f"{len(fb.checklist)} checklist lines")
-    if not _quoted_phrases(fb.strength, original):
-        problems.append("the strength quotes no phrase from the essay")
-    for start, end in find_copied_spans(original, question):
-        if _copy_mistake_index(original[start:end], fb.mistakes) is None:
-            problems.append("copied text has no Task mistake")
     return problems
 
 

@@ -46,6 +46,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
+import openai
 
 from bot.config import settings
 from services.ai import usage
@@ -65,6 +66,7 @@ PROFILE_SAMPLES = 8
 GENERATION_ATTEMPTS = 3
 SELF_CHECK_MARGIN = 0.5
 DEFAULT_BAND = 8.0
+ANSWER_MAX_TOKENS = 8000  # a ~300-word answer needs ~2-4k with reasoning; stops a runaway
 INDEX_FIELDS = ("id", "author", "book", "task_type", "subtype", "topic", "question", "band", "word_count", "text")
 
 
@@ -541,9 +543,16 @@ async def _write(
     best: list[str] | None = None
     best_problems: list[str] = []
     for attempt in range(GENERATION_ATTEMPTS):
-        response = await client.beta.chat.completions.parse(
-            model=settings.openai_model_sample, messages=messages, response_format=GeneratedSample
-        )
+        try:
+            response = await client.beta.chat.completions.parse(
+                model=settings.openai_model_sample, messages=messages, response_format=GeneratedSample,
+                max_completion_tokens=ANSWER_MAX_TOKENS,
+            )
+        except openai.LengthFinishReasonError as e:
+            if getattr(e, "completion", None) is not None:
+                usage.record("model_answer", e.completion)
+            logger.warning("Model answer attempt %d ran past %d output tokens", attempt + 1, ANSWER_MAX_TOKENS)
+            continue
         usage.record("model_answer", response)
         parsed = response.choices[0].message.parsed
         if parsed is None or not parsed.paragraphs:

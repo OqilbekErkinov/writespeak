@@ -6,18 +6,25 @@ the "Feedback Coach" (final report, 2026-10-12):
      writes a Task mistake with a paraphrase for it;
   2. the feedback call returns WritingFeedback (services/ai/schemas.py) - JSON
      only, the model never produces layout. If essay_marking's `assess` finds
-     problems (the essay copy doesn't join back to the original, not 3
-     priorities, ...) the call is made once more and the better answer kept;
+     a problem worth paying for (its marks can't be placed on the essay, a
+     section would be short) or the answer runs past its token limit, the
+     call is made once more and the better answer kept;
   3. a second call whose only job is to find mistakes the first one missed;
   4. essay_marking.build_report validates everything and assembles the report.
 
 `score_writing` is the same examiner returning scores only - the model
 answer's self-check (services/ai/sample_bank.py).
+
+All three run gpt-5 at settings.openai_grading_reasoning_effort, and each has
+an output-token limit: on 2026-10-13 a feedback call ran on to 52k tokens
+(normal: ~8k at low effort), taking 4.5 minutes and $0.53.
 """
 from __future__ import annotations
 
 import base64
 import logging
+
+import openai
 
 from bot.config import settings
 from services.ai import usage
@@ -35,6 +42,12 @@ from services.ai.openai_client import client
 from services.ai.schemas import CriterionScores, Mistake, MissedMistake, MissedMistakes, WritingFeedback
 
 logger = logging.getLogger(__name__)
+
+# Output-token limits (reasoning included) - about twice what a long, weak
+# essay needs at low effort, so only a runaway answer is cut off.
+FEEDBACK_MAX_TOKENS = 20000
+MISSED_MAX_TOKENS = 8000
+SCORE_MAX_TOKENS = 4000
 
 # Condensed, paraphrased summary of the public IELTS Writing Band Descriptors
 # (Task Achievement/Response, Coherence & Cohesion, Lexical Resource,
@@ -256,18 +269,40 @@ def _copied_note(copied: list[str]) -> str:
     )
 
 
-async def _feedback_call(task_type, prompt_text, answer_text, prompt_images, copied) -> WritingFeedback:
+async def _parse(purpose: str, max_tokens: int, messages: list[dict], response_format):
+    """A gpt-5 call at the grading reasoning effort with an output-token limit.
+    A call cut off at the limit raises openai.LengthFinishReasonError; its
+    cost is logged all the same."""
+    try:
+        response = await client.beta.chat.completions.parse(
+            model=settings.openai_model_grading,
+            messages=messages,
+            response_format=response_format,
+            max_completion_tokens=max_tokens,
+            # No `temperature` override - see services/ai/ocr.py's comment.
+            # Sent as extra_body: openai 1.57 has no reasoning_effort argument yet.
+            extra_body={"reasoning_effort": settings.openai_grading_reasoning_effort},
+        )
+    except openai.LengthFinishReasonError as e:
+        if getattr(e, "completion", None) is not None:
+            usage.record(purpose, e.completion)
+        raise
+    usage.record(purpose, response)
+    return response
+
+
+async def _feedback_call(task_type, prompt_text, answer_text, prompt_images, copied) -> WritingFeedback | None:
+    """None when the answer ran past FEEDBACK_MAX_TOKENS."""
     text = f"QUESTION PROMPT:\n{prompt_text}\n\nSTUDENT'S ANSWER:\n{answer_text}{_copied_note(copied)}"
-    response = await client.beta.chat.completions.parse(
-        model=settings.openai_model_grading,
-        messages=[
-            {"role": "system", "content": _system_prompt(task_type)},
-            {"role": "user", "content": _with_images(text, prompt_images)},
-        ],
-        response_format=WritingFeedback,
-        # No `temperature` override - see services/ai/ocr.py's comment.
-    )
-    usage.record("feedback", response)
+    messages = [
+        {"role": "system", "content": _system_prompt(task_type)},
+        {"role": "user", "content": _with_images(text, prompt_images)},
+    ]
+    try:
+        response = await _parse("feedback", FEEDBACK_MAX_TOKENS, messages, WritingFeedback)
+    except openai.LengthFinishReasonError:
+        logger.warning("Feedback ran past %d output tokens - cut off", FEEDBACK_MAX_TOKENS)
+        return None
     result = response.choices[0].message.parsed
     if result is None:
         raise RuntimeError("Grading model returned no parsable result")
@@ -282,15 +317,11 @@ async def _missed_errors_call(
         f"QUESTION PROMPT:\n{prompt_text}\n\nSTUDENT'S ANSWER:\n{answer_text}\n\n"
         f"MISTAKES ALREADY LISTED:\n{listed}"
     )
-    response = await client.beta.chat.completions.parse(
-        model=settings.openai_model_grading,
-        messages=[
-            {"role": "system", "content": _missed_prompt(task_type)},
-            {"role": "user", "content": _with_images(text, prompt_images)},
-        ],
-        response_format=MissedMistakes,
-    )
-    usage.record("missed_errors", response)
+    messages = [
+        {"role": "system", "content": _missed_prompt(task_type)},
+        {"role": "user", "content": _with_images(text, prompt_images)},
+    ]
+    response = await _parse("missed_errors", MISSED_MAX_TOKENS, messages, MissedMistakes)
     parsed = response.choices[0].message.parsed
     return parsed.mistakes if parsed is not None else []
 
@@ -313,13 +344,16 @@ async def grade_writing(
     are located in it (services/ai/essay_marking.py), never an altered copy."""
     copied = [answer_text[s:e] for s, e in find_copied_spans(answer_text, prompt_text)]
     feedback = await _feedback_call(task_type, prompt_text, answer_text, prompt_images, copied)
-    problems = assess(feedback, answer_text, prompt_text)
+    problems = assess(feedback, answer_text) if feedback else ["the answer ran past its token limit"]
     if problems:
         logger.warning("Feedback needs another try: %s", "; ".join(problems))
         retry = await _feedback_call(task_type, prompt_text, answer_text, prompt_images, copied)
-        retry_problems = assess(retry, answer_text, prompt_text)
-        if _rank(retry, retry_problems, answer_text) < _rank(feedback, problems, answer_text):
-            feedback, problems = retry, retry_problems
+        if retry is not None:
+            retry_problems = assess(retry, answer_text)
+            if feedback is None or _rank(retry, retry_problems, answer_text) < _rank(feedback, problems, answer_text):
+                feedback, problems = retry, retry_problems
+        if feedback is None:
+            raise RuntimeError("Feedback ran past its token limit twice")
         if problems:
             logger.warning("Feedback still has problems after the retry: %s", "; ".join(problems))
 
@@ -351,15 +385,11 @@ async def score_writing(
         "0-9 in 0.5 steps."
     )
     text = f"QUESTION PROMPT:\n{prompt_text}\n\nANSWER:\n{answer_text}"
-    response = await client.beta.chat.completions.parse(
-        model=settings.openai_model_grading,
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": _with_images(text, prompt_images)},
-        ],
-        response_format=CriterionScores,
-    )
-    usage.record("self_check", response)
+    messages = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": _with_images(text, prompt_images)},
+    ]
+    response = await _parse("self_check", SCORE_MAX_TOKENS, messages, CriterionScores)
     scores = response.choices[0].message.parsed
     if scores is None:
         raise RuntimeError("Scoring model returned no parsable result")

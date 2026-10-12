@@ -36,6 +36,11 @@ class Settings(BaseSettings):
     # Reasoning effort for OCR: transcribing a photo needs little reasoning, and
     # reasoning tokens are billed as output.
     openai_ocr_reasoning_effort: str = "low"
+    # Reasoning effort for Writing grading (feedback, missed-errors pass,
+    # model-answer self-check). Measured 2026-10-13 against the approved
+    # report's 25 mistakes: "low" found 24/25 with the same bands as the
+    # default, at about half the cost and time.
+    openai_grading_reasoning_effort: str = "low"
     openai_model_audio: str = "gpt-audio-1.5"
     openai_model_transcribe: str = "whisper-1"
     openai_embedding_model: str = "text-embedding-3-small"
