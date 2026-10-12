@@ -935,10 +935,17 @@ async def get_imported_questions(session: AsyncSession, source: str) -> list[Pra
     return list((await session.execute(stmt)).scalars().all())
 
 
-async def nearest_imported_question(
-    session: AsyncSession, module: PracticeModule, source: str, embedding: list[float]
-) -> tuple[PracticeQuestion, float] | None:
-    """The closest question from `source` in `module`, with its cosine distance."""
+async def nearest_imported_questions(
+    session: AsyncSession,
+    module: PracticeModule,
+    source: str,
+    embedding: list[float],
+    *,
+    limit: int,
+    max_distance: float,
+) -> list[tuple[PracticeQuestion, float]]:
+    """The questions from `source` in `module` closest to `embedding`, with
+    their cosine distance, closest first."""
     distance = PracticeQuestion.embedding.cosine_distance(embedding)
     stmt = (
         select(PracticeQuestion, distance)
@@ -946,12 +953,45 @@ async def nearest_imported_question(
             PracticeQuestion.module == module,
             PracticeQuestion.source == source,
             PracticeQuestion.embedding.is_not(None),
+            distance <= max_distance,
         )
         .order_by(distance)
-        .limit(1)
+        .limit(limit)
     )
-    row = (await session.execute(stmt)).first()
-    return (row[0], float(row[1])) if row else None
+    return [(row[0], float(row[1])) for row in (await session.execute(stmt)).all()]
+
+
+async def merge_practice_questions(session: AsyncSession, keep_id: int, drop_id: int) -> str | None:
+    """Folds a copy of a question into the one kept: times seen add up, the
+    latest date wins, ✅ marks and past submissions move over, the copy goes.
+    Returns the copy's image path if nothing uses it any more (for the
+    caller to delete, like delete_practice_question)."""
+    keep = await session.get(PracticeQuestion, keep_id)
+    drop = await session.get(PracticeQuestion, drop_id)
+    if keep is None or drop is None:
+        return None
+    keep.times_seen = (keep.times_seen or 1) + (drop.times_seen or 1)
+    if drop.seen_at and (keep.seen_at is None or drop.seen_at > keep.seen_at):
+        keep.seen_at = drop.seen_at
+    leftover_image = drop.image_path
+    if not keep.image_path and drop.image_path:
+        keep.image_path, leftover_image = drop.image_path, None
+    already_done = select(PracticeProgress.user_id).where(PracticeProgress.practice_question_id == keep_id)
+    await session.execute(
+        delete(PracticeProgress).where(
+            PracticeProgress.practice_question_id == drop_id, PracticeProgress.user_id.in_(already_done)
+        )
+    )
+    await session.execute(
+        update(PracticeProgress).where(PracticeProgress.practice_question_id == drop_id).values(practice_question_id=keep_id)
+    )
+    for model in (WritingSubmission, SpeakingSubmission):
+        await session.execute(
+            update(model).where(model.practice_question_id == drop_id).values(practice_question_id=keep_id)
+        )
+    await session.delete(drop)
+    await session.commit()
+    return leftover_image
 
 
 async def order_practice_module_by_recency(session: AsyncSession, module: PracticeModule) -> None:

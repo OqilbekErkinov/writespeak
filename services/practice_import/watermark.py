@@ -214,12 +214,22 @@ def _mark_mask(image: np.ndarray, hsv: np.ndarray, quad: np.ndarray) -> tuple[np
     x1, y1 = int(min(width, poly[:, 0].max())), int(min(height, poly[:, 1].max()))
 
     if share > 0.45:
-        # Light text on a coloured box: mask the box it sits on.
-        count, labels = cv2.connectedComponents(colourful.astype(np.uint8))
-        for label in set(np.unique(labels[inside & colourful])) - {0}:
+        # Light text on a coloured box: mask the box it sits on - pixels of the
+        # box's own colour (a warm-lit photo of paper is "colourful" all over),
+        # never reaching further than a little beyond the text.
+        hist = np.bincount(hue[inside & colourful], minlength=180).astype(float)
+        dominant = int(np.argmax(np.convolve(np.r_[hist[-5:], hist, hist[:5]], np.ones(11), "valid")))
+        distance = np.minimum(np.abs(hue - dominant), 180 - np.abs(hue - dominant))
+        box_s = float(np.median(sat[inside & colourful]))
+        boxlike = (distance <= 10) & (sat >= max(60.0, 0.6 * box_s)) & (val >= 90)
+        reach = int(1.5 * text_h)
+        bx0, by0 = max(0, x0 - reach), max(0, y0 - reach)
+        bx1, by1 = min(width, x1 + reach), min(height, y1 + reach)
+        count, labels = cv2.connectedComponents(boxlike.astype(np.uint8))
+        for label in set(np.unique(labels[inside & boxlike])) - {0}:
             ys, xs = np.nonzero(labels == label)
             if len(xs) > 0.2 * inside.sum():
-                mask[ys.min() : ys.max() + 1, xs.min() : xs.max() + 1] = 255
+                mask[max(by0, ys.min()) : min(by1, ys.max() + 1), max(bx0, xs.min()) : min(bx1, xs.max() + 1)] = 255
         mask[inside] = 255
     elif share > 0.02:
         # Coloured text: its dominant hue (circular, so red wraps around 0/180).

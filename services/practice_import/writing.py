@@ -12,9 +12,9 @@ For each post not read before (practice_import_posts):
 2. Task 1 photos get the channel mark removed (watermark.py) and are joined
    into one image; a Task 1 without any visual is skipped - it can't be
    practised;
-3. a question reported before (embedding distance below
-   DUPLICATE_DISTANCE) is not added again - the existing one is marked as
-   seen again (seen_at, times_seen) and gets the image if it had none.
+3. a question reported before (dedupe.py: wording, the same picture, or
+   the model's judgement) is not added again - the existing one is marked
+   as seen again (seen_at, times_seen) and gets the image if it had none.
 
 The first run reads posts from FIRST_RUN_SINCE on; later runs read the
 posts newer than the last one read, and retry failed posts a few times.
@@ -39,6 +39,7 @@ from db.models import PracticeModule, PracticeQuestion
 from services.ai import usage
 from services.ai.openai_client import client
 from services.ai.rag_book_search import embed_text
+from services.practice_import import dedupe
 from services.practice_import import telegram_preview as tg
 from services.practice_import.watermark import remove_watermark
 from services.storage.file_storage import save_practice_image
@@ -48,9 +49,6 @@ logger = logging.getLogger(__name__)
 CHANNEL = "cdireport"
 SOURCE = "cdireport"
 FIRST_RUN_SINCE = datetime(2026, 4, 1, tzinfo=timezone.utc)
-# Cosine distance below which two reported questions are the same question
-# (paraphrased reports of one question land around 0.02-0.06).
-DUPLICATE_DISTANCE = 0.07
 MAX_ATTEMPTS = 3
 # Shorter than this is a title, not a question (e.g. a Reading passage name).
 MIN_WORDS = {PracticeModule.writing_task1: 10, PracticeModule.writing_task2: 12}
@@ -88,7 +86,7 @@ Rules:
 - exam_report is true only if the post reports real exam Writing questions. Ads, mock-test announcements, greetings, Reading/Listening/Speaking reports and questions to the admin are not: return exam_report=false, task1=null, task2=null.
 - In this channel "Part 1" / "P1" / "Task 1" / "T1" is Writing Task 1 and "Part 2" / "Task 2" / "T2" is Writing Task 2. When a post also lists Listening or Reading parts (P1-P4 there are their sections), take only the Writing section's tasks. A post may give Task 1 only as a photo, with no text. A list of short titles such as "P1 Desertification / P2 Dying languages / P3 ..." is a Reading report, not Writing. A task given only as a topic word or title (not a full question) is null.
 - task1 (Academic, a chart / graph / table / map / diagram / process): question_text is the complete prompt in standard IELTS wording, e.g. "The bar chart below shows ... Summarise the information by selecting and reporting the main features, and make comparisons where relevant." Use the wording printed on the photo when the photo shows the prompt; otherwise turn the post's description into that form. It must describe what the photos actually show (if the post says the exam version differed slightly, describe the photo). Do not add "Write at least 150 words". A General Training letter is not a task1: return null.
-- visual_images lists the photos (numbered from 1 in the order given) that show the Task 1 visual itself. Leave out chat screenshots, photos of rooms or people, ads and Reading/Listening pages. Use [] if no photo shows it.
+- visual_images lists the photos (numbered from 1 in the order given) that show the Task 1 visual itself. Leave out screenshots of a chat or messenger and photos of a computer or phone screen (even when a chart shows inside them), photos of rooms or people, ads and Reading/Listening pages. Use [] if no photo shows it.
 - task2: question_text is the essay question as reported, with obvious typos fixed, keeping its instruction line (e.g. "To what extent do you agree or disagree?") as given. Never invent a question that is not in the post.
 - Leave out dates, hashtags, @mentions, links, channel footers and comments in Uzbek or Russian.
 - topic: 1-4 lowercase English words naming the subject, e.g. "household recycling", "free university education".
@@ -168,16 +166,19 @@ async def _save_question(
         return f"skipped: not a full question ({text[:60]!r})"
     embedding = await embed_text(text)
     async with get_session() as session:
-        nearest = await crud.nearest_imported_question(session, module, SOURCE, embedding)
-        if nearest is not None and nearest[1] <= DUPLICATE_DISTANCE:
-            question = nearest[0]
+        candidates = await crud.nearest_imported_questions(
+            session, module, SOURCE, embedding, limit=dedupe.CANDIDATES, max_distance=dedupe.NEAR_DISTANCE
+        )
+        same = await dedupe.find_same(module, text, image, candidates)
+        if same is not None:
+            question, how = same
             question.times_seen = (question.times_seen or 1) + 1
             if question.seen_at is None or seen_at > question.seen_at:
                 question.seen_at = seen_at
             if image is not None and not question.image_path:
                 question.image_path = save_practice_image(image)
             await session.commit()
-            return f"seen again as #{question.id} ({nearest[1]:.3f})"
+            return f"seen again as #{question.id} ({how})"
         if module == PracticeModule.writing_task1 and image is None:
             return "skipped: Task 1 without a chart"
         question = PracticeQuestion(
