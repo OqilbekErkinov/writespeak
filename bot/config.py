@@ -91,5 +91,13 @@ class Settings(BaseSettings):
         p.mkdir(parents=True, exist_ok=True)
         return p
 
+    @property
+    def sample_library_dir(self) -> Path:
+        """The model-answer library (index.json, embeddings.json, styles/),
+        next to the books so it sits on the same mounted volume."""
+        p = Path(self.books_path).parent / "sample_library"
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+
 
 settings = Settings()

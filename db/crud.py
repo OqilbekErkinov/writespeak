@@ -32,6 +32,7 @@ from db.models import (
     VocabularyEntry,
     WritingSubmission,
 )
+from services.ai.essay_marking import count_words
 from services.ai.schemas import SpeakingGradingResult, VocabularyItem
 
 # --- Users / access control -------------------------------------------------
@@ -192,11 +193,15 @@ async def save_speaking_submission(
     return submission
 
 
-async def get_writing_history(session: AsyncSession, user_id: int) -> tuple[int, dict | None]:
-    """(number of the student's earlier Writing submissions, their latest one
-    as {"band", "criteria_scores", "mistake_counts"}) for the report's essay
-    number and progress note. mistake_counts is None for reports made before
-    the 2026-10 redesign, whose annotations carry no criterion."""
+async def get_writing_history(
+    session: AsyncSession, user_id: int, task_type: str
+) -> tuple[int, dict | None]:
+    """(number of the student's earlier Writing submissions, their latest
+    graded one of the same task type as {"band", "criteria_scores",
+    "mistake_counts", "words"}) for the report's essay number and progress
+    page. mistake_counts is None for reports made before the 2026-10
+    redesign, whose annotations carry no criterion; words comes from the
+    stored answer text."""
     count = (
         await session.execute(
             select(func.count()).select_from(WritingSubmission).where(WritingSubmission.user_id == user_id)
@@ -205,7 +210,11 @@ async def get_writing_history(session: AsyncSession, user_id: int) -> tuple[int,
     latest = (
         await session.execute(
             select(WritingSubmission)
-            .where(WritingSubmission.user_id == user_id, WritingSubmission.overall_band.is_not(None))
+            .where(
+                WritingSubmission.user_id == user_id,
+                WritingSubmission.task_type == task_type,
+                WritingSubmission.overall_band.is_not(None),
+            )
             .order_by(WritingSubmission.created_at.desc())
             .limit(1)
         )
@@ -224,6 +233,7 @@ async def get_writing_history(session: AsyncSession, user_id: int) -> tuple[int,
         "band": latest.overall_band,
         "criteria_scores": latest.criteria_scores or {},
         "mistake_counts": mistake_counts,
+        "words": count_words(latest.answer_text) if latest.answer_text else None,
     }
 
 

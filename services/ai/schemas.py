@@ -57,12 +57,15 @@ class WritingGradingResult(BaseModel):
     )
 
 
-# --- Writing feedback (2026-10 report redesign) --------------------------------
-# The Feedback Coach returns this JSON; services/ai/essay_marking.py validates
-# it against the student's original essay and services/pdf/report_builder.py
-# renders it deterministically (the model never produces layout).
+# --- Writing feedback (final report, 2026-10-12) --------------------------------
+# The Feedback Coach returns this JSON - the data contract of the final report
+# prompt, minus what code adds itself (task type, question, overall band,
+# copied-from-the-question spans, stats, progress).
+# services/ai/essay_marking.py validates it against the student's original
+# essay and services/pdf/report_builder.py renders it; the model never
+# produces layout.
 
-WritingCriterion = Literal["TR_or_TA", "CC", "LR", "GRA"]
+MistakeCriterion = Literal["LR", "GRA", "CC", "TR"]
 
 
 class EssaySegment(BaseModel):
@@ -87,24 +90,49 @@ class Mistake(BaseModel):
         description="Only the part that matters, copied exactly from the essay (not the whole "
         "sentence unless needed)."
     )
-    correct: str = Field(description="The corrected version of that part, keeping the student's meaning.")
+    correct: str = Field(
+        description="The corrected version of that part, keeping the student's meaning. Put in "
+        "place of `wrong`, the sentence must read correctly."
+    )
     why: str = Field(description="One plain-English line, 25 words or fewer.")
-    criterion: WritingCriterion
+    criterion: MistakeCriterion
     unclear: bool = Field(
         description="True when the student's meaning can't be determined; then `correct` is for "
         "the most likely meaning."
     )
-    likely_meaning: Optional[str] = Field(
-        description="Only when unclear: the most likely intended meaning, short, in the report "
-        "language; null otherwise."
+    if_you_meant: Optional[str] = Field(
+        description="Only when unclear: the most likely intended meaning, short, in English; null "
+        "otherwise."
     )
 
 
-class FocusItem(BaseModel):
-    title: str = Field(description="2-5 English words, e.g. 'Word partners'.")
-    rule: str = Field(description="One English line with the key correct forms.")
-    criterion: WritingCriterion
-    mistake_ids: list[int] = Field(description="Ids from `mistakes` that show this problem; may be empty.")
+class MissedMistake(BaseModel):
+    """A mistake found by the second, missed-errors-only pass."""
+
+    wrong: str = Field(description="Copied exactly from the essay, long enough to be found once.")
+    correct: str
+    why: str = Field(description="One plain-English line, 25 words or fewer.")
+    criterion: MistakeCriterion
+    unclear: bool
+    if_you_meant: Optional[str]
+
+
+class MissedMistakes(BaseModel):
+    mistakes: list[MissedMistake]
+
+
+class Priority(BaseModel):
+    title: str = Field(description="2-6 words naming ONE specific pattern, e.g. 'Say it with one word'.")
+    rule: str = Field(description="One line.")
+    example_wrong: str = Field(description="A short piece copied exactly from the student's text.")
+    example_right: str = Field(description="The same piece, corrected.")
+    criteria: list[MistakeCriterion]
+    mistake_ids: list[int] = Field(description="2-5 ids from `mistakes` that show this pattern.")
+
+
+class Strength(BaseModel):
+    text: str = Field(description="1-2 sentences quoting 1-2 of the student's strong phrases.")
+    quoted_phrases: list[str] = Field(description="The quoted phrases, exactly as in the essay.")
 
 
 class CriterionScores(BaseModel):
@@ -127,6 +155,11 @@ class VocabEntry(BaseModel):
     example: str = Field(description="An English example sentence on this topic.")
 
 
+class ChecklistItem(BaseModel):
+    text: str
+    ref: str = Field(description='"Priority 01".."Priority 03", or "Mistake <id>" with an id from `mistakes`.')
+
+
 class WritingFeedback(BaseModel):
     mistakes: list[Mistake]
     essay: list[list[EssaySegment]] = Field(
@@ -134,26 +167,45 @@ class WritingFeedback(BaseModel):
     )
     scores: CriterionScores
     criterion_notes: CriterionNotes
-    strength: str = Field(description="1-2 specific English sentences - the only praise in the report.")
-    focus: list[FocusItem]
+    strength: Strength
+    priorities: list[Priority]
     vocabulary: list[VocabEntry]
-    topic: str = Field(description="A short 3-6 word English topic label.")
+    checklist: list[ChecklistItem]
+
+
+# --- Model answer (services/ai/sample_bank.py) ------------------------------------
 
 
 class StyleProfile(BaseModel):
-    """One library author's writing style, derived from their own samples and
-    cached on disk (services/ai/sample_bank.py)."""
+    """One library writer's style for one task type, derived from their own
+    samples only and cached in data/sample_library/styles/."""
 
-    introduction: str = Field(description="How they paraphrase the question and state the thesis.")
-    body_paragraphs: str = Field(description="Their body-paragraph pattern and how they use examples.")
+    introduction: str = Field(
+        description="How they paraphrase the question and state the thesis (Task 1: the overview)."
+    )
+    body_paragraphs: str = Field(description="Their body-paragraph pattern.")
+    examples: str = Field(description="How they give examples and support ideas (Task 1: data).")
     linkers: list[str] = Field(description="Their typical linking words and phrases.")
     sentences: str = Field(description="Typical sentence length and complexity.")
     vocabulary_register: str = Field(description="Their vocabulary register and tone.")
     conclusion: str = Field(description="Their conclusion pattern.")
-    typical_word_count: int
     signature_phrases: list[str] = Field(
         description="5-10 short functional phrases they habitually use (frames, not content)."
     )
+
+
+Task2Subtype = Literal["opinion", "discussion", "advantages_disadvantages", "problem_solution", "two_part"]
+Task1Subtype = Literal["line", "bar", "pie", "table", "map", "process", "mixed"]
+
+
+class Task2Label(BaseModel):
+    subtype: Task2Subtype
+    topic: str = Field(description="One or two lowercase words, e.g. education, advertising, environment.")
+
+
+class Task1Label(BaseModel):
+    subtype: Task1Subtype
+    topic: str = Field(description="One or two lowercase words, e.g. population, energy, transport.")
 
 
 class GeneratedSample(BaseModel):

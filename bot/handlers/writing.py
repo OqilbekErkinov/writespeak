@@ -47,10 +47,10 @@ from db import crud
 from db.database import get_session
 from db.models import SourceType
 from services.ai import usage
-from services.ai.sample_bank import build_sample_section
+from services.ai.sample_bank import build_model_answer
 from services.ai.schemas import VocabularyItem
 from services.ai.writing_grader import grade_writing
-from services.pdf.report_builder import build_writing_report_pdf, progress_note
+from services.pdf.report_builder import build_progress, build_writing_report_pdf
 from services.storage.file_storage import read_file, save_report
 
 logger = logging.getLogger(__name__)
@@ -218,46 +218,49 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
 
     try:
         async with get_session() as session:
-            earlier_essays, previous = await crud.get_writing_history(session, user_id)
+            earlier_essays, previous = await crud.get_writing_history(session, user_id, data["task_type"])
         prompt_images = None
         if data["task_type"] == "task1":
             prompt_images = _load_prompt_images(data.get("prompt_image_paths") or [])
 
-        # The Sample section only needs the question, so it's written while
-        # the essay is being graded.
+        # The model answer only needs the question, so it's written while the
+        # essay is being graded.
         with usage.track(f"writing {data['task_type']} user={user_id}"):
-            report, sample = await asyncio.gather(
+            report, answer = await asyncio.gather(
                 grade_writing(
                     task_type=data["task_type"],
                     prompt_text=data["prompt_text"],
                     answer_text=data["answer_text"],
                     prompt_images=prompt_images,
-                    lang=lang,
                 ),
-                build_sample_section(
-                    task_type=data["task_type"],
-                    question=data["prompt_text"],
-                    prompt_images=prompt_images,
-                    seed=user_id + earlier_essays,
+                build_model_answer(
+                    data["task_type"], data["prompt_text"], prompt_images, seed=user_id + earlier_essays
                 ),
                 return_exceptions=True,
             )
-        if isinstance(report, BaseException):
-            raise report
-        if isinstance(sample, BaseException):
-            logger.error("Sample section failed for user %s - report goes out without it", user_id, exc_info=sample)
-            sample = None
+            if isinstance(report, BaseException):
+                raise report
+            if isinstance(answer, BaseException):
+                # The model answer page is never left empty: one more try.
+                logger.error("Model answer failed for user %s - trying once more", user_id, exc_info=answer)
+                try:
+                    answer = await build_model_answer(
+                        data["task_type"], data["prompt_text"], prompt_images, seed=user_id + earlier_essays
+                    )
+                except Exception:
+                    logger.exception("Model answer failed again for user %s - report goes out without it", user_id)
+                    answer = None
 
         # WeasyPrint is CPU-bound for a few seconds - off the event loop, so
         # other students' messages aren't held up while a report renders.
         pdf_bytes = await asyncio.to_thread(
             build_writing_report_pdf,
             report,
-            sample,
-            progress_note(lang, report, previous),
+            answer,
+            build_progress(report, previous),
             message.chat.full_name,
             earlier_essays + 1,
-            lang,
+            prompt_images,
         )
     except Exception:
         logger.exception("Writing grading failed for user %s", user_id)
@@ -291,7 +294,7 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
             criteria_scores=report.criteria_scores(),
             annotations=report.mistakes_json(),
             vocabulary=vocabulary,
-            book_sample_ref=sample.source_id if sample is not None else None,
+            book_sample_ref=None,  # the model answer is always newly written
             feedback_pdf_path=pdf_path,
             practice_question_id=data.get("practice_question_id"),
             spend_credit=data.get("spend_credit", False),

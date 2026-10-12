@@ -5,7 +5,8 @@
 #
 # Each run writes /opt/writespeak_backups/daily/<YYYYmmdd-HHMM>/ with:
 #   db.dump        pg_dump custom format (compressed; restore with pg_restore)
-#   storage.tar.gz data/storage + data/books (uploads, PDF reports, practice images)
+#   storage.tar.gz data/storage + data/books + data/sample_library (uploads, PDF reports,
+#                  practice images, sample books and the model-answer library)
 #   env            copy of /opt/writespeak/.env (bot token, API keys)
 #   SHA256SUMS     checksums of the three files above
 # The directory is built as <name>.partial and renamed only once complete and
@@ -98,7 +99,9 @@ fi
 cleanup
 
 # 3. Files and config.
-tar -C "$APP/data" -czf "$WORK/storage.tar.gz" storage books
+dirs="storage books"
+[ -d "$APP/data/sample_library" ] && dirs="$dirs sample_library"
+tar -C "$APP/data" -czf "$WORK/storage.tar.gz" $dirs
 cp "$APP/.env" "$WORK/env"
 (cd "$WORK" && sha256sum db.dump storage.tar.gz env > SHA256SUMS)
 

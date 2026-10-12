@@ -2,8 +2,8 @@
 
 Ochiq (istalgan foydalanuvchi kirishi mumkin) Telegram bot: Writing (Task 1/2) va Speaking
 (Part 1/2/3) ishlarini rasmiy IELTS Band Descriptors asosida baholaydi, rangli tahlil bilan
-chiroyli PDF hisobot beradi, o'quv kitoblaridan haqiqiy namuna topadi va o'quvchi progressini
-kuzatadi. Har bir foydalanuvchiga ro'yxatdan o'tgach bir martalik 2 ta bepul tekshiruv, undan
+chiroyli PDF hisobot beradi, o'quv kitoblaridagi bitta muallif uslubida yangi model javob yozadi va
+o'quvchi progressini kuzatadi. Har bir foydalanuvchiga ro'yxatdan o'tgach bir martalik 2 ta bepul tekshiruv, undan
 ko'pi pullik (karta orqali, admin tasdiqlaydi) — qarang: [Narxlash va to'lov](#narxlash-va-tolov).
 
 To'liq arxitektura va bosqichma-bosqich reja: `PROJECT MASTERPIECE` spec asosida qurilgan (admin
@@ -25,7 +25,8 @@ services/storage/  Fayllarni diskda saqlash
 db/             SQLAlchemy modellari, CRUD, Alembic migratsiyalar
 services/practice_import/  Practice savollarini Telegram kanallardan import qilish (importer servisi)
 data/books/     O'zingizning IELTS namuna kitoblaringiz (PDF) shu yerga qo'yiladi
-scripts/        import_practice_questions.py, ingest_books.py
+data/sample_library/  Model answer kutubxonasi: index.json, embeddings.json, styles/ (gitignore)
+scripts/        import_practice_questions.py, ingest_books.py, build_sample_index.py
 landing/        writespeak.uz landing sahifasi (statik, nginx beradi)
 branding/       Logo, Telegram bot avatari va bot tavsif rasmi (BotFather uchun)
 deploy/nginx/   Serverdagi nginx sozlamasi nusxasi
@@ -81,18 +82,22 @@ deploy/nginx/   Serverdagi nginx sozlamasi nusxasi
      qoldirilsa, `load` bosqichida GPT taxmin qiladi (bu — hech qanday hallyutsinatsiya xavfi
      yo'q, oddiy klassifikatsiya, muallif kabi jiddiy emas).
 
-   So'ng:
+   So'ng Writing hisobotidagi **Model answer** kutubxonasini quring (yangi kitob qo'shilganda yoki
+   review fayl o'zgarganda qayta ishga tushiring — o'zgarmagan namunalar uchun API qayta
+   chaqirilmaydi):
    ```
-   docker compose exec bot python scripts/ingest_books.py load
+   docker compose exec bot python scripts/build_sample_index.py --styles
    ```
+   U `data/sample_library/index.json`ga har bir namunani (muallif, kitob, task turi, subtype,
+   mavzu, savol, kitobdagi band, so'z soni, matn), `embeddings.json`ga savollarning
+   embeddinglarini, `styles/<muallif>.json`ga har bir muallifning Task 1 va Task 2 uslub
+   profilini yozadi. Muallifi yoki bandi yo'q namunalar ro'yxat qilib ko'rsatiladi va kiritilmaydi;
+   per-insho muallifi yozilmagan kitob (IELTS Writing Recap 2023) skriptdagi `BOOK_DEFAULTS`da
+   bitta "jamoa" muallifi, band 8.5 sifatida berilgan. (`ingest_books.py load` Writing uchun endi
+   kerak emas — u faqat `book_chunks` jadvalini to'ldiradi.)
 
-   > **Eslatma:** Ushbu loyihaga allaqachon 2 ta kitob uchun tayyor review JSON qo'shilgan —
-   > `data/books/_review/Task 2 Essay Collection.HardQuestionsAnswered.json` (Christina
-   > Khafizova va Dilshodbek Ravshanov, har bir mavzuga ikkala muallifdan alohida-alohida
-   > namuna, 20 ta chunk) va `data/books/_review/Task 2 Essays by Jurabek Sanokulov.json`
-   > (30 ta chunk). Ularni ko'rib chiqib to'g'ridan-to'g'ri `load` buyrug'ini ishga
-   > tushirishingiz mumkin — original PDF fayllarni `data/books/`ga qo'yish shart emas, chunki
-   > matn allaqachon qo'lda tekshirilib chiqarilgan.
+   > Tekshirilgan review fayllar (6 kitob, 302 namuna) faqat serverda va kompyuterda saqlanadi
+   > (gitignore) — mualliflik huquqi bilan himoyalangan matnlar repoga qo'yilmaydi.
 5. Botga Telegram'da `/start` yozing — `.env`dagi ID(lar) avtomatik admin hisoblanadi, qolgan
    har bir kishi darhol to'liq foydalana boshlaydi (tasdiqlash kutilmaydi).
 
@@ -141,9 +146,9 @@ Baza porti (5433) faqat serverning o'zida ochiq. Kompyuterdan ulanish uchun SSH-
   natijasi emas (bu hisobotlarda ham ko'rsatilgan).
 - Speaking'dagi "Pronunciation" bahosi audio-input model orqali baholanadi, lekin rasmiy imtihon
   darajasidagi fonetik tahlil emas.
-- Kitoblardan namuna qidirish sifat jihatdan `ingest_books.py`dagi chunking va sizning qo'lda
-  ko'rib chiqishingizga bog'liq — yangi kitob qo'shganda review faylini albatta tekshiring.
-- Har bir `book_chunks` yozuvi aynan bitta muallifning bitta ishiga tegishli (hech qachon ikki
-  muallif matni bitta chunk'ga aralashtirilmaydi); RAG qidiruv shu mavzu bo'yicha eng mos
-  keladigan bitta namunani tanlaydi va PDF hisobotda muallif ismi aniq ko'rsatiladi (`services
-  /pdf/templates/feedback_report.html`dagi Sample bo'limi).
+- Model answer sifati `data/books/_review` fayllarining to'g'riligiga bog'liq — yangi kitob
+  qo'shganda review faylini albatta tekshiring.
+- Har bir model answer bitta muallif uslubida yangidan yoziladi (`services/ai/sample_bank.py`):
+  savol turi bo'yicha filtr, keyin eng yaqin mavzu, teng bo'lsa namunasi ko'proq muallif. Muallif
+  va kitob nomi hisobotda hech qachon ko'rsatilmaydi — tanlov faqat bot logida
+  (`Model answer: {...}` qatori).

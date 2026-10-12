@@ -1,51 +1,68 @@
-"""Turns the Feedback Coach's JSON into a validated, render-ready Writing report.
+"""Turns the Feedback Coach's JSON into a validated, render-ready Writing report
+(final report design, 2026-10-12).
 
-The model returns the essay split into segments (text / good / error). It is
-never trusted to reproduce the essay: the report always renders the
-student's ORIGINAL text, and only the marked segments (good / error) are
-located in it, in order. A model copy that adds a full stop, repeats a word
-or "fixes" a typo can therefore never reach the PDF - at worst one mark is
-not shown (its mistake is still listed in Batafsil tahlil). Requiring the
-model's full copy to match character for character failed on real essays
-(acceptance test, 2026-10-09: two attempts out of two on the reference
-essay), so the caller only retries when fewer than MIN_ANCHORED_SHARE of the
-marks can be found, and shows the plain essay if a retry doesn't help.
+The report always shows the student's ORIGINAL text. The model returns its
+copy of the essay split into segments (text / good / error); `essay_matches`
+checks that the copy joins back to the original (whitespace-normalised) and
+the caller asks the model once more if it doesn't. Either way only the marked
+segments are located in the original and drawn on it, so a model copy that
+adds a full stop or "fixes" a typo can never reach the PDF. If even the marks
+can't be found, the essay is shown without them. (Showing the plain essay
+whenever the copy differs at all was tried on 2026-10-09 and failed on two
+attempts out of two on the reference essay.)
 
-Also enforced here (not left to the prompt): mistakes are numbered in essay
-order, mistakes whose correction changes nothing are dropped, at most 5
-"good" highlights, inline fixes only when 6 words or fewer, focus items only
-point at mistakes that exist, and the overall band / next target are computed
-with the same rule the rubric states (mean of the criteria, nearest 0.5).
+Enforced here, not left to the prompt:
+  * text copied from the question (8+ words in a row) is found by code, shown
+    grey and listed as a Task mistake (find_copied_spans);
+  * strong phrases never sit on a mistake or on copied text, at most 5;
+  * every mistake is marked in the essay - located by its `wrong` text when
+    the model didn't mark it - or dropped, and mistakes are numbered in essay
+    order; the second, missed-errors pass is merged the same way;
+  * a correction that would double a word when put back into its sentence
+    ("argue that that") is repaired, or not shown inline;
+  * 3 priorities whose 2-5 mistake numbers carry the priority's tags, 10-12
+    vocabulary items, 5-6 checklist lines;
+  * the overall band (IELTS rounding), the target, criterion chips and stats.
+`assess` lists the problems worth one more model call.
 """
 from __future__ import annotations
 
+import difflib
 import html
 import math
 import re
 from dataclasses import dataclass, field
 
-from services.ai.schemas import EssaySegment, Mistake, VocabEntry, WritingFeedback
+from services.ai.schemas import EssaySegment, MissedMistake, Strength, VocabEntry, WritingFeedback
 
 INLINE_FIX_MAX_WORDS = 6
 MAX_GOOD_HIGHLIGHTS = 5
+COPY_MIN_WORDS = 8
+PRIORITY_COUNT = 3
+PRIORITY_IDS = (2, 5)
+VOCAB_RANGE = (10, 12)
+CHECKLIST_RANGE = (5, 6)
 
+SCORE_KEYS = ("TR_or_TA", "CC", "LR", "GRA")
 CRITERION_NAMES = {
     "TR_or_TA": {"task1": "Task Achievement", "task2": "Task Response"},
     "CC": "Coherence & Cohesion",
     "LR": "Lexical Resource",
     "GRA": "Grammatical Range & Accuracy",
 }
-# Tag label + CSS class shown next to each mistake / focus item.
-CRITERION_TAGS = {
-    "LR": ("Lexical", "lr"),
-    "GRA": ("Grammar", "gra"),
-    "CC": ("Coherence", "cc"),
-    "TR_or_TA": ("Task", "tr"),
-}
+# Mistake / priority tag: label + CSS class.
+TAGS = {"LR": ("Lexical", "lr"), "GRA": ("Grammar", "gra"), "CC": ("Coherence", "cc"), "TR": ("Task", "task")}
 # db criteria_scores keys (kept stable for history/statistics).
 DB_KEYS = {"TR_or_TA": "TA", "CC": "CC", "LR": "LR", "GRA": "GRA"}
 
-_CANON = str.maketrans({"’": "'", "‘": "'", "`": "'", "“": '"', "”": '"', "–": "-", "—": "-", " ": " "})
+COPY_WHY = (
+    "This is copied word for word from the question. Examiners do not count copied words, so "
+    "paraphrase the question in your own words."
+)
+
+_CANON = str.maketrans({"’": "'", "‘": "'", "`": "'", "“": '"', "”": '"', "–": "-", "—": "-", " ": " "})
+WORD_RE = re.compile(r"[A-Za-z0-9]+(?:['’-][A-Za-z0-9]+)*")
+_QUOTES = "\"“”‘’'"
 
 
 def canon(text: str) -> str:
@@ -53,7 +70,11 @@ def canon(text: str) -> str:
     return re.sub(r"\s+", " ", text.translate(_CANON)).strip()
 
 
-# --- Scores ----------------------------------------------------------------------
+def count_words(text: str) -> int:
+    return len(WORD_RE.findall(text))
+
+
+# --- Scores ------------------------------------------------------------------------------
 
 
 def snap_band(value: float) -> float:
@@ -61,8 +82,8 @@ def snap_band(value: float) -> float:
 
 
 def overall_band(criteria: list[float]) -> float:
-    """Mean of the four criteria rounded to the nearest 0.5 (.25 and .75 round
-    up) - the rule the grading rubric states."""
+    """Mean of the four criteria, rounded the IELTS way: .25 up to .5, .75 up
+    to the next whole band."""
     mean = sum(criteria) / len(criteria)
     return math.floor(mean * 2 + 0.5) / 2
 
@@ -71,18 +92,52 @@ def target_band(overall: float) -> float:
     return min(9.0, overall + 0.5)
 
 
-# --- Segment alignment -------------------------------------------------------------
+# --- Copied from the question --------------------------------------------------------------
+
+
+def _word_key(word: str) -> str:
+    return word.lower().replace("’", "'")
+
+
+def find_copied_spans(essay: str, question: str, min_words: int = COPY_MIN_WORDS) -> list[tuple[int, int]]:
+    """Character ranges of the essay that repeat `min_words` or more consecutive
+    words of the question (case and punctuation ignored)."""
+    words = [(_word_key(m.group()), m.start(), m.end()) for m in WORD_RE.finditer(essay)]
+    q = [_word_key(w) for w in WORD_RE.findall(question)]
+    grams = {tuple(q[i : i + min_words]) for i in range(len(q) - min_words + 1)}
+    copied = [False] * len(words)
+    for i in range(len(words) - min_words + 1):
+        if tuple(w for w, _, _ in words[i : i + min_words]) in grams:
+            copied[i : i + min_words] = [True] * min_words
+    spans = []
+    i = 0
+    while i < len(words):
+        if not copied[i]:
+            i += 1
+            continue
+        j = i
+        while j + 1 < len(words) and copied[j + 1]:
+            j += 1
+        start, end = words[i][1], words[j][2]
+        if essay[end : end + 1] in (".", "!", "?"):  # the copied sentence's full stop
+            end += 1
+        spans.append((start, end))
+        i = j + 1
+    return spans
+
+
+# --- Locating text in the original ------------------------------------------------------------
 
 
 MIN_ANCHORED_SHARE = 0.8  # below this the caller asks the model once more
-MIN_USABLE_SHARE = 0.5  # below this the essay is shown without marks
+MIN_USABLE_SHARE = 0.5  # below this the essay is shown without the model's marks
 
 
 @dataclass
 class Span:
     start: int
     end: int
-    type: str  # "good" | "error" (plain text isn't stored)
+    type: str  # "good" | "error"
     fix: str | None = None
     mistake_id: int | None = None
 
@@ -133,14 +188,20 @@ def _find_word_aligned(text: str, target: str, pos: int) -> int:
 
 def align_segments(original: str, essay: list[list[EssaySegment]]) -> Alignment:
     """Locates the model's good/error segments in the original essay, in
-    order. Plain text segments are ignored - the original is what's shown."""
+    order. A plain text segment only moves the search on when it matches
+    right where the previous segment ended, so a short mark like "the" lands
+    on the right "the" wherever the model's copy is exact, and an altered
+    copy can't push the search past later marks."""
     text, index = _canon_index(original)
     pos, spans, marked = 0, [], 0
     for seg in (s for paragraph in essay for s in paragraph):
-        if seg.type not in ("good", "error"):
-            continue
         target = canon(seg.text)
         if not target:
+            continue
+        if seg.type not in ("good", "error"):
+            k = text.find(target, pos)
+            if k != -1 and k - pos <= 2:
+                pos = k + len(target)
             continue
         marked += 1
         k = _find_word_aligned(text, target, pos)
@@ -160,95 +221,299 @@ def align_segments(original: str, essay: list[list[EssaySegment]]) -> Alignment:
     return Alignment(spans, marked, len(spans))
 
 
-# --- Essay rendering ------------------------------------------------------------------
+def locate(original: str, needle: str, near: int = 0) -> tuple[int, int] | None:
+    """Where `needle` occurs in `original` (whitespace/quote-insensitive, then
+    case-insensitive), the occurrence closest to `near`."""
+    target = canon(needle)
+    if not target:
+        return None
+    text, index = _canon_index(original)
+    for hay, tgt in ((text, target), (text.lower(), target.lower())):
+        if len(hay) != len(text):
+            continue
+        hits = []
+        k = _find_word_aligned(hay, tgt, 0)
+        while k != -1:
+            hits.append(k)
+            k = _find_word_aligned(hay, tgt, k + 1)
+        if hits:
+            k = min(hits, key=lambda h: abs(index[h] - near))
+            return index[k], index[k + len(tgt) - 1] + 1
+    return None
+
+
+def _squash(text: str) -> str:
+    return re.sub(r"\s+", "", text.translate(_CANON))
+
+
+def essay_matches(original: str, essay: list[list[EssaySegment]]) -> bool:
+    """Do the model's segments join back into the original (whitespace-normalised)?"""
+    return _squash("".join(seg.text for paragraph in essay for seg in paragraph)) == _squash(original)
+
+
+# --- Checks shared by `assess` and `build_report` --------------------------------------------
+
+
+def _quoted_phrases(strength: Strength, original: str) -> list[str]:
+    """The strength's quoted phrases that really occur in the essay."""
+    essay = canon(original).lower()
+    found = []
+    for phrase in strength.quoted_phrases:
+        core = canon(phrase).strip(_QUOTES + " .,").lower()
+        if len(core.split()) >= 2 and core in essay:
+            found.append(phrase.strip().strip(_QUOTES + " .,"))
+    return found
+
+
+def _shared_run(a: str, b: str, n: int = 5) -> bool:
+    """Do two texts share a run of n words (or is the shorter one inside the other)?"""
+    wa, wb = [_word_key(w) for w in WORD_RE.findall(a)], [_word_key(w) for w in WORD_RE.findall(b)]
+    if not wa or not wb:
+        return False
+    short, long_ = (wa, wb) if len(wa) <= len(wb) else (wb, wa)
+    if len(short) < n:
+        return " ".join(short) in " ".join(long_)
+    grams = {tuple(long_[i : i + n]) for i in range(len(long_) - n + 1)}
+    return any(tuple(short[i : i + n]) in grams for i in range(len(short) - n + 1))
+
+
+def _copy_mistake_index(copied_text: str, mistakes: list) -> int | None:
+    """Index of the Task mistake the model wrote for a copied span, if any."""
+    for i, m in enumerate(mistakes):
+        if m.criterion == "TR" and _shared_run(m.wrong, copied_text):
+            return i
+    return None
+
+
+def _double_words(text: str) -> set[str]:
+    return {m.group(1).lower() for m in re.finditer(r"\b([A-Za-z']+)\s+\1\b", text, re.IGNORECASE)}
+
+
+def creates_double(original: str, start: int, end: int, replacement: str) -> bool:
+    """Would putting `replacement` in place of original[start:end] create a
+    doubled word ("that that", "the the") that wasn't there before?"""
+    before, after = original[max(0, start - 60) : start], original[end : end + 60]
+    new = canon(before + replacement + after)
+    old = canon(before + original[start:end] + after)
+    return bool(_double_words(new) - _double_words(old))
+
+
+def assess(fb: WritingFeedback, original: str, question: str) -> list[str]:
+    """Problems with the model's output that are worth one more model call."""
+    problems = []
+    if not essay_matches(original, fb.essay):
+        problems.append("the essay copy differs from the original")
+    by_id = {m.id: m for m in fb.mistakes}
+    if len(fb.priorities) < PRIORITY_COUNT:
+        problems.append(f"{len(fb.priorities)} priorities instead of {PRIORITY_COUNT}")
+    for i, p in enumerate(fb.priorities[:PRIORITY_COUNT], 1):
+        matching = {x for x in p.mistake_ids if x in by_id and by_id[x].criterion in p.criteria}
+        if len(matching) < PRIORITY_IDS[0]:
+            problems.append(f"priority {i} has {len(matching)} mistakes with its tags")
+    if len(fb.vocabulary) < VOCAB_RANGE[0]:
+        problems.append(f"{len(fb.vocabulary)} vocabulary items")
+    if len(fb.checklist) < CHECKLIST_RANGE[0]:
+        problems.append(f"{len(fb.checklist)} checklist lines")
+    if not _quoted_phrases(fb.strength, original):
+        problems.append("the strength quotes no phrase from the essay")
+    for start, end in find_copied_spans(original, question):
+        if _copy_mistake_index(original[start:end], fb.mistakes) is None:
+            problems.append("copied text has no Task mistake")
+    return problems
+
+
+# --- Formatting helpers ---------------------------------------------------------------------------
+
+
+def _esc(text: str) -> str:
+    return html.escape(text, quote=False)
+
+
+def inline_format(text: str) -> str:
+    """Escapes model text, then turns **bold** and *italic* into tags - the
+    only markup the model may use."""
+    s = _esc(text)
+    s = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", s)
+    return re.sub(r"(?<![\w*])\*(?!\s)(.+?)(?<!\s)\*(?![\w*])", r"<i>\1</i>", s)
+
+
+def _strength_html(strength: Strength, phrases: list[str], original: str) -> str:
+    """The praise with the student's own phrases set in bold quotes - the
+    validated phrases, and any other quotation in it that shares 4 words in a
+    row with the essay (the model sometimes shortens a quote slightly)."""
+    text = _esc(strength.text.strip())
+    shown = 0
+    for phrase in phrases:
+        core = _esc(phrase)
+        # a full stop or comma the model put inside the closing quote goes after it
+        pattern = re.compile(f"[{_QUOTES}]?({re.escape(core)})([.,;:!?]?)[{_QUOTES}]?", re.IGNORECASE)
+        text, hits = pattern.subn(lambda m: f"<b>“{m.group(1)}”</b>{m.group(2)}", text, count=1)
+        shown += hits
+
+    def quoted(m: re.Match) -> str:
+        nonlocal shown
+        inner = m.group(2)
+        if len(inner.split()) >= 3 and _shared_run(html.unescape(inner), original, 4):
+            shown += 1
+            return f"<b>“{inner}”</b>"
+        return m.group(0)
+
+    text = re.sub(r"(?<!<b>)([“\"])([^“”\"<]+)([”\"])", quoted, text)
+    if not shown and phrases:
+        text += " Phrases like " + " and ".join(f"<b>“{_esc(p)}”</b>" for p in phrases[:2]) + " show this."
+    return text
+
+
+def _changed(old: str, new: str) -> str:
+    """One changed place of an inline fix, wrapped in the amber mark."""
+    if old and new and len(old.split()) == 1 == len(new.split()):
+        if new.startswith(old) and not any(c.isalnum() for c in new[len(old):]):
+            return f'{_esc(old)}<span class="err"><ins>{_esc(new[len(old):])}</ins></span>'
+        if old.startswith(new) and not any(c.isalnum() for c in old[len(new):]):
+            return f'{_esc(new)}<span class="err"><s>{_esc(old[len(new):])}</s></span>'
+    parts = []
+    if old:
+        parts.append(f"<s>{_esc(old)}</s>")
+    if new:
+        parts.append(f"<ins>{_esc(new)}</ins>")
+    return f'<span class="err">{" ".join(parts)}</span>'
+
+
+def _punctuation_only(old: list[str], new: list[str]) -> bool:
+    strip = lambda words: [re.sub(r"[^\w'-]", "", x) for x in words]
+    return len(old) == len(new) == 1 and strip(old) == strip(new)
+
+
+def fix_is_inline(wrong: str, fix: str) -> bool:
+    """Short fixes, and fixes that only add or remove punctuation, are shown
+    inside the essay; longer problems are only underlined."""
+    if len(fix.split()) <= INLINE_FIX_MAX_WORDS:
+        return True
+    w, f = wrong.split(), fix.split()
+    matcher = difflib.SequenceMatcher(None, [canon(x) for x in w], [canon(x) for x in f], autojunk=False)
+    return all(
+        op == "equal" or _punctuation_only(w[i1:i2], f[j1:j2]) for op, i1, i2, j1, j2 in matcher.get_opcodes()
+    )
+
+
+def inline_fix_html(wrong: str, fix: str) -> str:
+    """The amber mark with the fix shown inline: one change marks just that
+    place ('leading car' -> leading <ins>to</ins> car), several commas are
+    each inserted where they go, anything else is struck through as a whole
+    and replaced ('make customers informed' -> 'inform customers')."""
+    w, f = wrong.split(), fix.split()
+    matcher = difflib.SequenceMatcher(None, [canon(x) for x in w], [canon(x) for x in f], autojunk=False)
+    ops = matcher.get_opcodes()
+    changes = [op for op in ops if op[0] != "equal"]
+    if not changes:
+        return f'<span class="err">{_esc(wrong)}</span>'
+    if len(changes) > 1 and not all(_punctuation_only(w[i1:i2], f[j1:j2]) for _, i1, i2, j1, j2 in changes):
+        pre = 0
+        while pre < min(len(w), len(f)) and canon(w[pre]) == canon(f[pre]):
+            pre += 1
+        suf = 0
+        while suf < min(len(w), len(f)) - pre and canon(w[-1 - suf]) == canon(f[-1 - suf]):
+            suf += 1
+        ops = [("equal", 0, pre, 0, pre), ("replace", pre, len(w) - suf, pre, len(f) - suf),
+               ("equal", len(w) - suf, len(w), len(f) - suf, len(f))]
+    out = []
+    for op, i1, i2, j1, j2 in ops:
+        if op == "equal":
+            if i2 > i1:
+                out.append(_esc(" ".join(w[i1:i2])))
+        else:
+            out.append(_changed(" ".join(w[i1:i2]), " ".join(f[j1:j2])))
+    return " ".join(out)
+
+
+# --- Report assembly ------------------------------------------------------------------------------
+
+
+@dataclass(eq=False)
+class _Mistake:
+    wrong: str
+    correct: str
+    why: str
+    criterion: str
+    unclear: bool
+    if_you_meant: str | None
+    model_id: int | None = None
+    copy: bool = False
+    pos: float = math.inf
+    n: int = 0
+
+
+@dataclass(eq=False)
+class _Mark:
+    start: int
+    end: int
+    kind: str  # "good" | "error" | "copy"
+    fix: str | None = None
+    mistake: _Mistake | None = None
+
+
+def _overlaps(start: int, end: int, marks: list[_Mark]) -> bool:
+    return any(start < k.end and k.start < end for k in marks)
 
 
 def _paragraph_ranges(text: str) -> list[tuple[int, int]]:
     """Each line of the original is a paragraph (students often separate
     paragraphs with a single newline in Telegram)."""
-    ranges = []
-    for m in re.finditer(r"[^\n]+", text):
-        if m.group().strip():
-            ranges.append((m.start(), m.end()))
-    return ranges
+    return [(m.start(), m.end()) for m in re.finditer(r"[^\n]+", text) if m.group().strip()]
 
 
-def _inline_fix_html(wrong: str, fix: str) -> str:
-    """'interest to' + 'interest in' -> interest <s>to</s> <ins>in</ins>: only
-    the words that actually change are struck through / inserted."""
-    w, f = wrong.split(), fix.split()
-    pre = 0
-    while pre < min(len(w), len(f)) and canon(w[pre]) == canon(f[pre]):
-        pre += 1
-    suf = 0
-    while suf < min(len(w), len(f)) - pre and canon(w[-1 - suf]) == canon(f[-1 - suf]):
-        suf += 1
-    head, old = w[:pre], w[pre : len(w) - suf]
-    new, tail = f[pre : len(f) - suf], w[len(w) - suf :]
-    parts = []
-    if head:
-        parts.append(html.escape(" ".join(head)))
-    if old:
-        parts.append(f"<s>{html.escape(' '.join(old))}</s>")
-    if new:
-        parts.append(f"<ins>{html.escape(' '.join(new))}</ins>")
-    if tail:
-        parts.append(html.escape(" ".join(tail)))
-    return " ".join(parts)
-
-
-def render_essay(original: str, spans: list[Span] | None) -> list[str]:
+def render_essay(original: str, marks: list[_Mark]) -> list[str]:
     """One HTML string per paragraph. Text always comes from `original`."""
     paragraphs = []
     for p_start, p_end in _paragraph_ranges(original):
         out, pos = [], p_start
-        for span in spans or []:
-            start, end = max(span.start, p_start), min(span.end, p_end)
+        for k in marks:
+            start, end = max(k.start, p_start), min(k.end, p_end)
             if start >= end or start < pos:
                 continue
-            out.append(html.escape(original[pos:start]))
+            out.append(_esc(original[pos:start]))
             piece = original[start:end]
-            whole = start == span.start and end == span.end
-            if span.type == "good":
-                out.append(f'<span class="good">{html.escape(piece)}</span>')
-            elif whole and span.fix is not None and len(span.fix.split()) <= INLINE_FIX_MAX_WORDS:
-                out.append(f'<span class="err">{_inline_fix_html(piece, span.fix)}</span>')
+            if k.kind == "good":
+                out.append(f'<span class="good">{_esc(piece)}</span>')
+            elif k.kind == "copy":
+                out.append(f'<span class="copy">{_esc(piece)}</span>')
+            elif (start, end) == (k.start, k.end) and k.fix is not None:
+                out.append(inline_fix_html(piece, k.fix))
             else:
-                out.append(f'<span class="err">{html.escape(piece)}</span>')
+                out.append(f'<span class="err">{_esc(piece)}</span>')
             pos = end
-        out.append(html.escape(original[pos:p_end]))
+        out.append(_esc(original[pos:p_end]))
         paragraphs.append("".join(out))
     return paragraphs
-
-
-# --- Report assembly ---------------------------------------------------------------------
 
 
 @dataclass
 class WritingReport:
     task_type: str  # "task1" | "task2"
+    question: str
     overall_band: float
     target_band: float
-    criteria: list[dict]  # key, name, band, note, cls
-    strength: str
-    focus: list[dict]  # title, rule, tag, tag_cls, ids
+    criteria: list[dict]  # key, name, band, note, chip, cls
+    stats: dict  # words, paragraphs, fixes, strong
+    strength_html: str
+    priorities: list[dict]  # n, title, rule_html, ex_wrong, ex_right, tags, ids
     essay_paragraphs: list[str]  # rendered HTML
     essay_marked: bool
-    mistakes: list[dict]  # n, wrong, correct, why, criterion, tag, tag_cls, unclear, likely_meaning
+    has_copy: bool
+    mistakes: list[dict]  # n, wrong, correct, why, why_html, criterion, tag, tag_cls, unclear, if_you_meant
     vocabulary: list[VocabEntry]
-    topic: str
-    raw: WritingFeedback | None = field(default=None, repr=False)
+    checklist: list[dict]  # html, ref
+    word_count: int
+    notes: list[str] = field(default_factory=list)  # what validation repaired (logged)
 
     def criteria_scores(self) -> dict[str, float]:
         return {DB_KEYS[c["key"]]: c["band"] for c in self.criteria}
 
     def mistakes_json(self) -> list[dict]:
-        """Stored in writing_submissions.annotations - the progress tracker
-        compares these per-criterion counts with the next essay."""
-        return [
-            {k: m[k] for k in ("n", "wrong", "correct", "why", "criterion", "unclear", "likely_meaning")}
-            for m in self.mistakes
-        ]
+        """Stored in writing_submissions.annotations - the progress page
+        compares their per-criterion counts with the next essay."""
+        keys = ("n", "wrong", "correct", "why", "criterion", "unclear", "if_you_meant")
+        return [{k: m[k] for k in keys} for m in self.mistakes]
 
     def mistake_counts(self) -> dict[str, int]:
         counts: dict[str, int] = {}
@@ -257,83 +522,244 @@ class WritingReport:
         return counts
 
 
-def _mistake_position(m: Mistake, original: str, segment_pos: dict[int, int]) -> float:
-    if m.id in segment_pos:
-        return segment_pos[m.id]
-    idx = canon(original).lower().find(canon(m.wrong).lower())
-    return idx if idx >= 0 else math.inf
+def _from_model(m) -> _Mistake:
+    return _Mistake(
+        wrong=m.wrong.strip(),
+        correct=m.correct.strip(),
+        why=m.why.strip(),
+        criterion=m.criterion,
+        unclear=bool(m.unclear and m.if_you_meant),
+        if_you_meant=m.if_you_meant.strip() if m.unclear and m.if_you_meant else None,
+        model_id=getattr(m, "id", None),
+    )
 
 
-def build_report(task_type: str, original: str, fb: WritingFeedback, spans: list[Span] | None) -> WritingReport:
-    # Where each mistake first appears in the essay (from the anchored marks).
-    segment_pos: dict[int, int] = {}
-    for span in spans or []:
-        if span.mistake_id is not None:
-            segment_pos.setdefault(span.mistake_id, span.start)
+def _is_noop(m) -> bool:
+    return not m.unclear and canon(m.wrong).lower() == canon(m.correct).lower()
 
-    kept = [
-        m for m in fb.mistakes
-        if m.unclear or canon(m.wrong).lower() != canon(m.correct).lower()
-    ]
-    kept.sort(key=lambda m: _mistake_position(m, original, segment_pos))
-    renumber = {m.id: n for n, m in enumerate(kept, 1)}
 
-    mistakes = []
-    for m in kept:
-        tag, tag_cls = CRITERION_TAGS[m.criterion]
-        mistakes.append(
+def _repair_doubles(original: str, m: _Mistake, near: int, notes: list[str]) -> None:
+    """If `correct` put in place of `wrong` doubles a word at either edge
+    ("argue that" + "that street advertising..."), the doubled word is moved
+    into `wrong` so the pair reads correctly."""
+    loc = locate(original, m.wrong, near)
+    if loc is None or not m.correct:
+        return
+    start, end = loc
+    if not creates_double(original, start, end, m.correct):
+        return
+    first, last = m.correct.split()[0], m.correct.split()[-1]
+    before = re.search(r"([A-Za-z']+)(\s+)$", original[:start])
+    after = re.match(r"(\s+)([A-Za-z']+)", original[end:])
+    if before and before.group(1).lower() == first.lower():
+        start = before.start(1)
+    elif after and after.group(2).lower() == last.lower():
+        end = end + after.end(2)
+    if creates_double(original, start, end, m.correct):
+        notes.append(f"correction still doubles a word: {m.wrong!r} -> {m.correct!r}")
+        return
+    m.wrong = original[start:end]
+
+
+def _ref(ref: str, by_model_id: dict[int, _Mistake], priorities: int) -> str:
+    p = re.search(r"priority\D*(\d+)", ref, re.IGNORECASE)
+    if p and 1 <= int(p.group(1)) <= priorities:
+        return f"Priority {int(p.group(1)):02d}"
+    m = re.search(r"mistake\D*(\d+)", ref, re.IGNORECASE)
+    if m and int(m.group(1)) in by_model_id:
+        return f"Mistake {by_model_id[int(m.group(1))].n}"
+    return ""
+
+
+def build_report(
+    task_type: str,
+    question: str,
+    original: str,
+    fb: WritingFeedback,
+    missed: list[MissedMistake] | tuple = (),
+) -> WritingReport:
+    notes: list[str] = []
+
+    mistakes: list[_Mistake] = []
+    seen_ids = set()
+    for m in fb.mistakes:
+        if _is_noop(m) or m.id in seen_ids:
+            notes.append(f"dropped mistake {m.id} (no change or repeated id)")
+            continue
+        seen_ids.add(m.id)
+        mistakes.append(_from_model(m))
+
+    # Text copied from the question: grey, with its own Task mistake.
+    marks: list[_Mark] = []
+    for start, end in find_copied_spans(original, question):
+        text = original[start:end]
+        free = [m for m in mistakes if not m.copy]
+        i = _copy_mistake_index(text, free)
+        if i is None:
+            notes.append("copied text had no Task mistake - added one")
+            m = _Mistake(text, "", COPY_WHY, "TR", False, None)
+            mistakes.append(m)
+        else:
+            m = free[i]
+            m.wrong = text
+        m.copy = True
+        marks.append(_Mark(start, end, "copy", mistake=m))
+
+    alignment = align_segments(original, fb.essay)
+    marked = alignment.share >= MIN_USABLE_SHARE
+    by_model_id = {m.model_id: m for m in mistakes if m.model_id is not None}
+
+    if marked:
+        for span in (s for s in alignment.spans if s.type == "error"):
+            m = by_model_id.get(span.mistake_id)
+            if m is None or m.copy or _overlaps(span.start, span.end, marks):
+                continue
+            marks.append(_Mark(span.start, span.end, "error", fix=span.fix, mistake=m))
+        # Mistakes the model listed but didn't mark: find their text, or drop
+        # them. Text already under another mark counts as marked.
+        for m in list(mistakes):
+            if m.copy or any(k.mistake is m for k in marks):
+                continue
+            loc = locate(original, m.wrong)
+            if loc is None:
+                notes.append(f"dropped unmarkable mistake {m.wrong!r}")
+                mistakes.remove(m)
+            elif _overlaps(*loc, marks):
+                m.pos = loc[0]
+            else:
+                marks.append(_Mark(*loc, "error", fix=m.correct, mistake=m))
+    else:
+        notes.append(f"essay shown without marks ({alignment.anchored}/{alignment.marked} found)")
+
+    # The second, missed-errors pass.
+    for x in missed:
+        if _is_noop(x) or any(_shared_run(x.wrong, m.wrong, 3) for m in mistakes):
+            continue
+        loc = locate(original, x.wrong)
+        if loc is None or _overlaps(*loc, marks):
+            continue
+        m = _from_model(x)
+        mistakes.append(m)
+        if marked:
+            marks.append(_Mark(*loc, "error", fix=m.correct, mistake=m))
+        notes.append(f"second pass added {x.wrong!r} -> {x.correct!r}")
+
+    # Strong phrases: never on a mistake or copied text, at most 5.
+    if marked:
+        wrongs = [canon(m.wrong).lower() for m in mistakes]
+        good = []
+        for span in (s for s in alignment.spans if s.type == "good"):
+            text = canon(original[span.start : span.end]).lower()
+            if _overlaps(span.start, span.end, marks + good) or any(w and w in text for w in wrongs):
+                continue
+            if len(good) < MAX_GOOD_HIGHLIGHTS:
+                good.append(_Mark(span.start, span.end, "good"))
+        marks += good
+    marks.sort(key=lambda k: k.start)
+
+    # Inline fixes: 6 words or fewer (or punctuation only), never doubling a word.
+    for k in marks:
+        if k.kind == "error" and k.fix is not None:
+            piece = original[k.start : k.end]
+            if not fix_is_inline(piece, k.fix) or creates_double(original, k.start, k.end, k.fix):
+                k.fix = None
+
+    # Number the mistakes in essay order.
+    for k in marks:
+        if k.mistake is not None and k.mistake.pos == math.inf:
+            k.mistake.pos = k.start
+    for m in mistakes:
+        if m.pos == math.inf:
+            loc = locate(original, m.wrong)
+            m.pos = loc[0] if loc else math.inf
+    mistakes.sort(key=lambda m: (m.pos, m.model_id or 10**6))
+    for n, m in enumerate(mistakes, 1):
+        m.n = n
+        if not m.copy:
+            _repair_doubles(original, m, 0 if m.pos == math.inf else int(m.pos), notes)
+    by_model_id = {m.model_id: m for m in mistakes if m.model_id is not None}
+
+    priorities = []
+    for i, p in enumerate(fb.priorities[:PRIORITY_COUNT], 1):
+        tags = [c for c in dict.fromkeys(p.criteria) if c in TAGS]
+        chosen = {x: by_model_id[x] for x in p.mistake_ids if x in by_model_id and by_model_id[x].criterion in tags}
+        ids = sorted(chosen.values(), key=lambda m: m.n)[: PRIORITY_IDS[1]]
+        used = [c for c in tags if any(m.criterion == c for m in ids)] or tags
+        if len(ids) < PRIORITY_IDS[0]:
+            notes.append(f"priority {i} has {len(ids)} matching mistakes")
+        if len(used) == 1 and len(ids) >= 3 and len(ids) == sum(m.criterion == used[0] for m in mistakes):
+            notes.append(f"priority {i} lists every {used[0]} mistake")
+        if p.example_wrong.strip() and locate(original, p.example_wrong.strip(" .…")) is None:
+            notes.append(f"priority {i} example is not from the essay: {p.example_wrong!r}")
+        priorities.append(
             {
-                "n": renumber[m.id],
-                "wrong": m.wrong,
-                "correct": m.correct,
-                "why": m.why,
-                "criterion": m.criterion,
-                "tag": tag,
-                "tag_cls": tag_cls,
-                "unclear": bool(m.unclear and m.likely_meaning),
-                "likely_meaning": m.likely_meaning if m.unclear else None,
+                "n": f"{i:02d}",
+                "title": p.title.strip(),
+                "rule_html": inline_format(p.rule.strip()),
+                "ex_wrong": p.example_wrong.strip(),
+                "ex_right": p.example_right.strip(),
+                "tags": [TAGS[c] for c in used],
+                "ids": [m.n for m in ids],
             }
         )
 
-    focus = []
-    for item in fb.focus[:3]:
-        tag, tag_cls = CRITERION_TAGS[item.criterion]
-        ids = sorted({renumber[i] for i in item.mistake_ids if i in renumber})
-        focus.append({"title": item.title, "rule": item.rule, "tag": tag, "tag_cls": tag_cls, "ids": ids})
+    checklist = [
+        {"html": inline_format(item.text.strip()), "ref": _ref(item.ref, by_model_id, len(priorities))}
+        for item in fb.checklist[: CHECKLIST_RANGE[1]]
+    ]
 
-    # At most MAX_GOOD_HIGHLIGHTS green phrases; extras render as plain text.
-    if spans is not None:
-        good_seen = 0
-        trimmed = []
-        for span in spans:
-            if span.type == "good":
-                good_seen += 1
-                if good_seen > MAX_GOOD_HIGHLIGHTS:
-                    continue
-            trimmed.append(span)
-        spans = trimmed
-
-    bands = {key: snap_band(getattr(fb.scores, key)) for key in ("TR_or_TA", "CC", "LR", "GRA")}
+    bands = {key: snap_band(getattr(fb.scores, key)) for key in SCORE_KEYS}
     overall = overall_band(list(bands.values()))
+    top = max(bands.values())
+    single_top = list(bands.values()).count(top) == 1
     criteria = []
     for key, band in bands.items():
+        if band > overall:
+            chip, cls = ("Strongest" if band == top and single_top else "Strong"), "top"
+        elif band == overall:
+            chip, cls = "On track", "ok"
+        else:
+            chip, cls = "Focus", "focus"
         name = CRITERION_NAMES[key][task_type] if isinstance(CRITERION_NAMES[key], dict) else CRITERION_NAMES[key]
-        cls = "strong" if band > overall else "ok" if band == overall else "weak"
         criteria.append(
-            {"key": key, "name": name, "band": band, "note": getattr(fb.criterion_notes, key), "cls": cls}
+            {"key": key, "name": name, "band": band, "note": getattr(fb.criterion_notes, key).strip(),
+             "chip": chip, "cls": cls}
+        )
+
+    phrases = _quoted_phrases(fb.strength, original)
+    if not phrases:
+        notes.append("strength quotes no phrase from the essay")
+    mistake_rows = []
+    for m in mistakes:
+        tag, tag_cls = TAGS[m.criterion]
+        mistake_rows.append(
+            {
+                "n": m.n, "wrong": m.wrong, "correct": m.correct, "why": m.why, "why_html": inline_format(m.why),
+                "criterion": m.criterion, "tag": tag, "tag_cls": tag_cls,
+                "unclear": m.unclear, "if_you_meant": m.if_you_meant,
+            }
         )
 
     return WritingReport(
         task_type=task_type,
+        question=question,
         overall_band=overall,
         target_band=target_band(overall),
         criteria=criteria,
-        strength=fb.strength,
-        focus=focus,
-        essay_paragraphs=render_essay(original, spans),
-        essay_marked=spans is not None,
-        mistakes=mistakes,
-        vocabulary=fb.vocabulary[:12],
-        topic=fb.topic,
-        raw=fb,
+        stats={
+            "words": count_words(original),
+            "paragraphs": len(_paragraph_ranges(original)),
+            "fixes": len(mistakes),
+            "strong": sum(k.kind == "good" for k in marks),
+        },
+        strength_html=_strength_html(fb.strength, phrases, original),
+        priorities=priorities,
+        essay_paragraphs=render_essay(original, marks),
+        essay_marked=marked,
+        has_copy=any(k.kind == "copy" for k in marks),
+        mistakes=mistake_rows,
+        vocabulary=fb.vocabulary[: VOCAB_RANGE[1]],
+        checklist=checklist,
+        word_count=count_words(original),
+        notes=notes,
     )

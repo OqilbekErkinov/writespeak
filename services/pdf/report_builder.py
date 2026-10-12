@@ -1,6 +1,8 @@
-"""Builds the WriteSpeak PDF feedback report: Jinja2 HTML -> WeasyPrint PDF.
+"""Builds the WriteSpeak PDF feedback reports: Jinja2 HTML -> WeasyPrint PDF.
 
-Section order follows the spec exactly: Score -> Color-Coded Analysis ->
+Writing reports: build_writing_report_pdf at the end of this file (the final
+design, templates/writing_report.html). Speaking reports, build_feedback_pdf:
+section order follows the spec exactly: Score -> Color-Coded Analysis ->
 Detailed Feedback -> Useful Vocabulary -> Authentic Book Sample (itself
 highlighted + analyzed, see services/ai/sample_analyzer.py) - or, when no
 sample matches the topic closely enough, a general style-analysis fallback
@@ -10,7 +12,10 @@ services/ai/sample_analyzer.py's analyze_style).
 """
 from __future__ import annotations
 
+import base64
 import html as html_lib
+import logging
+import math
 import re
 from datetime import datetime
 from pathlib import Path
@@ -21,7 +26,7 @@ from weasyprint import HTML
 
 from db.models import BookChunk
 from services.ai.essay_marking import WritingReport
-from services.ai.sample_bank import SampleSection
+from services.ai.sample_bank import ModelAnswer, names_in
 from services.ai.schemas import (
     Annotation,
     SampleAnalysis,
@@ -30,6 +35,8 @@ from services.ai.schemas import (
     StyleAnalysis,
     WritingGradingResult,
 )
+
+logger = logging.getLogger(__name__)
 
 TEMPLATE_DIR = Path(__file__).parent / "templates"
 _env = Environment(
@@ -234,177 +241,151 @@ def build_feedback_pdf(
     return HTML(string=html_str).write_pdf()
 
 
-# --- Writing report (2026-10 redesign) ------------------------------------------------
-# Writing reports use templates/writing_report.html (the approved reference
-# design); build_feedback_pdf above still renders Speaking reports unchanged.
+# --- Writing report (final design, 2026-10-12) ------------------------------------------
+# templates/writing_report.html is the approved Appendix A design, English
+# only; build_feedback_pdf above still renders Speaking reports.
 
-_RU_MONTHS = (
-    "января", "февраля", "марта", "апреля", "мая", "июня",
-    "июля", "августа", "сентября", "октября", "ноября", "декабря",
-)
-
-WRITING_LABELS: dict[str, dict] = {
-    "uz": {
-        "title_task1": "Writing Task 1 — Report",
-        "title_task2": "Writing Task 2 — Essay",
-        "essay_number": "{n}-insho",
-        "overall": "Umumiy ball",
-        "next_goal": "Keyingi maqsad: {x}",
-        "tick_legend": "▮ chiziq = {x} maqsad",
-        "strength": "Kuchli tomoningiz",
-        "focus": "{x} uchun asosiy e'tibor",
-        "essay_h": "Inshongiz",
-        "essay_sub": "Qisqa tuzatishlar matn ichida. Har bir xatoning tushuntirishi — Batafsil tahlil bo'limida.",
-        "legend_good": "Kuchli ibora — saqlang",
-        "legend_err": "Xato",
-        "legend_word": "so'z",
-        "legend_fix": "tuzatish",
-        "unmarked": "Bu safar matnni belgilab bo'lmadi, shuning uchun inshongiz o'zgarishsiz ko'rsatilgan. Barcha xatolar — Batafsil tahlil bo'limida.",
-        "mist_h": "Batafsil tahlil",
-        "mist_sub": "Faqat xatolar ko'rsatilgan. To'g'ri yozilgan gaplar takrorlanmaydi.",
-        "no_mistakes": "Bu inshoda tuzatish talab qiladigan xato topilmadi.",
-        "ask_prefix": "Agar \"{meaning}\" demoqchi bo'lsangiz:",
-        "voc_h": "Foydali lug'at",
-        "voc_sub": "Shu mavzudagi insholar uchun foydali so'z va iboralar.",
-        "voc_term": "So'z / Ibora",
-        "voc_meaning": "Ma'nosi",
-        "voc_example": "Misol jumla",
-        "sample_book_h": "Kitobdan namuna",
-        "sample_h": "Namuna",
-        "style_en": "{author} uslubida",
-        "question": "Savol:",
-        "source": "Manba: {author}, «{book}»",
-        "source_page": ", {page}-bet",
-        "style_note": "Bu namuna kitobdagi asl matn emas. U {author}ning yozish uslubi asosida aynan sizning savolingiz uchun tayyorlangan.",
-        "generic_note": "Bu namuna kitobdagi asl matn emas. U aynan sizning savolingiz uchun tayyorlangan.",
-        "words": "~{n} so'z",
-        "progress": "Rivojlanish kuzatuvi.",
-        "progress_first": "Bu sizning birinchi inshongiz — natija saqlandi. Keyingi hisobotda {areas} xatolaringiz qanday o'zgarganini ko'rsatamiz.",
-        "progress_band": "Oldingi inshoga nisbatan umumiy ball: <b>{prev} → {now}</b>.",
-        "progress_counts": "Xatolar soni: {items}.",
-        "progress_criteria": "Mezonlar: {items}.",
-        "progress_later": "Xatolar turlari bo'yicha solishtirish keyingi inshodan boshlanadi.",
-        "and": "va",
-        "areas": {"LR": "so'z tanlash", "GRA": "grammatika", "CC": "bog'lanish", "TR_or_TA": "topshiriq"},
-        # Kept exactly as in the previous report.
-        "disclaimer": "Ushbu ball — AI tomonidan IELTS Band Descriptors asosida, ESL (ikkinchi til sifatida ingliz tili) o'quvchilari uchun moslashtirilgan holda baholangan taxminiy, qo'llab-quvvatlovchi natija bo'lib, rasmiy IELTS imtihon natijasi emas.",
-    },
-    "ru": {
-        "title_task1": "Writing Task 1 — Report",
-        "title_task2": "Writing Task 2 — Essay",
-        "essay_number": "эссе №{n}",
-        "overall": "Общий балл",
-        "next_goal": "Следующая цель: {x}",
-        "tick_legend": "▮ отметка = цель {x}",
-        "strength": "Ваша сильная сторона",
-        "focus": "Главное для {x}",
-        "essay_h": "Ваше эссе",
-        "essay_sub": "Короткие исправления — прямо в тексте. Объяснение каждой ошибки — в разделе «Подробный разбор».",
-        "legend_good": "Сильная фраза — сохраните",
-        "legend_err": "Ошибка",
-        "legend_word": "слово",
-        "legend_fix": "исправление",
-        "unmarked": "В этот раз текст не удалось разметить, поэтому эссе показано без изменений. Все ошибки — в разделе «Подробный разбор».",
-        "mist_h": "Подробный разбор",
-        "mist_sub": "Показаны только ошибки. Правильные предложения не повторяются.",
-        "no_mistakes": "В этом эссе не найдено ошибок, требующих исправления.",
-        "ask_prefix": "Если вы хотели сказать «{meaning}»:",
-        "voc_h": "Полезная лексика",
-        "voc_sub": "Полезные слова и выражения для эссе на эту тему.",
-        "voc_term": "Слово / выражение",
-        "voc_meaning": "Значение",
-        "voc_example": "Пример",
-        "sample_book_h": "Образец из книги",
-        "sample_h": "Образец",
-        "style_en": "в стиле {author}",
-        "question": "Вопрос:",
-        "source": "Источник: {author}, «{book}»",
-        "source_page": ", стр. {page}",
-        "style_note": "Это не текст из книги. Образец написан именно для вашего вопроса на основе стиля автора {author}.",
-        "generic_note": "Это не текст из книги. Образец написан именно для вашего вопроса.",
-        "words": "~{n} слов",
-        "progress": "Отслеживание прогресса.",
-        "progress_first": "Это ваше первое эссе — результат сохранён. В следующем отчёте покажем, как изменилось число ошибок в {areas}.",
-        "progress_band": "По сравнению с прошлым эссе общий балл: <b>{prev} → {now}</b>.",
-        "progress_counts": "Число ошибок: {items}.",
-        "progress_criteria": "Критерии: {items}.",
-        "progress_later": "Сравнение по типам ошибок начнётся со следующего эссе.",
-        "and": "и",
-        "areas": {"LR": "лексике", "GRA": "грамматике", "CC": "связности", "TR_or_TA": "выполнении задания"},
-        "disclaimer": "Этот балл — ориентировочная поддерживающая оценка ИИ по IELTS Band Descriptors, адаптированная для изучающих английский как второй язык (ESL); это не официальный результат экзамена IELTS.",
-    },
-}
-
-_TAG_NAMES = {"LR": "Lexical", "GRA": "Grammar", "CC": "Coherence", "TR_or_TA": "Task"}
-_DB_TO_CRITERION = {"TA": "TR_or_TA", "CC": "CC", "LR": "LR", "GRA": "GRA"}
+FONT_SANS = "Inter, InterExt, InterCyr, Noto Sans, sans-serif"
+FONT_SERIF = "Fraunces, FrauncesExt, Noto Serif, serif"
+RING_RADIUS = 52  # the score ring's circle in the 130x130 SVG
+RING_TICK = (43, 61)  # the target tick runs between these radii
 
 
-def _format_date(when: datetime, lang: str) -> str:
-    if lang == "ru":
-        return f"{when.day:02d} {_RU_MONTHS[when.month - 1]} {when.year}"
-    return when.strftime("%d %B %Y")
+def _ring(overall: float, target: float) -> dict:
+    """SVG numbers for the cover's score ring: filled to overall/9, a tick at the target."""
+    circumference = 2 * math.pi * RING_RADIUS
+    angle = target / 9 * 2 * math.pi  # clockwise from the top
+    (r1, r2), sin, cos = RING_TICK, math.sin(angle), math.cos(angle)
+    return {
+        "dash": round(overall / 9 * circumference, 1),
+        "circ": round(circumference, 1),
+        "x1": round(65 + r1 * sin, 1), "y1": round(65 - r1 * cos, 1),
+        "x2": round(65 + r2 * sin, 1), "y2": round(65 - r2 * cos, 1),
+    }
 
 
-def progress_note(
-    lang: str,
-    report: WritingReport,
-    previous: dict | None,
-) -> str:
-    """HTML for the 'Rivojlanish kuzatuvi' box. `previous` is the student's
-    previous Writing submission: {"band", "criteria_scores", "mistake_counts"}
-    (mistake_counts is None for reports made before the 2026-10 redesign)."""
-    L = WRITING_LABELS.get(lang, WRITING_LABELS["uz"])
+def _name_size(name: str) -> int:
+    """Font size that keeps the student's name clear of the score ring
+    (longer names still wrap inside their 118mm column)."""
+    n = len(name)
+    return 40 if n <= 12 else 34 if n <= 16 else 28 if n <= 20 else 23 if n <= 26 else 19
+
+
+def _piece(task_type: str) -> str:
+    return "report" if task_type == "task1" else "essay"
+
+
+def _chip(change: float, higher_is_better: bool) -> dict:
+    if change == 0:
+        return {"chip": "= no change" if higher_is_better else "= same", "cls": "eq"}
+    better = change > 0 if higher_is_better else change < 0
+    if higher_is_better:
+        return {"chip": "✓ higher", "cls": "up"} if better else {"chip": "↓ lower", "cls": "down"}
+    return {"chip": "✓ fewer", "cls": "up"} if better else {"chip": "↑ more", "cls": "down"}
+
+
+def build_progress(report: WritingReport, previous: dict | None) -> dict:
+    """The progress page, computed here: the student's previous Writing report
+    of the same task type ({"band", "mistake_counts", "words"}; mistake_counts
+    is None for reports made before 2026-10, words None when unknown) against
+    this one."""
+    piece = _piece(report.task_type)
     if previous is None:
-        counts = report.mistake_counts()
-        top = sorted(counts, key=lambda k: -counts[k])[:2] or ["LR", "GRA"]
-        areas = f" {L['and']} ".join(L["areas"][k] for k in top)
-        return html_lib.escape(L["progress_first"].format(areas=areas)).replace("&lt;b&gt;", "<b>")
-
-    parts = [L["progress_band"].format(prev=f"{previous['band']:.1f}", now=f"{report.overall_band:.1f}")]
-    prev_counts = previous.get("mistake_counts")
-    if prev_counts is not None:
+        return {
+            "first": True,
+            "note": f"This is your first {piece}. Your results are saved, and your next report will "
+            "show your progress.",
+        }
+    before, now = float(previous["band"]), report.overall_band
+    rows = [{"label": "Overall band", "value": f"{before:.1f} → {now:.1f}", **_chip(now - before, True)}]
+    gains = []  # (size, sentence) - the biggest is named first
+    if now > before:
+        gains.append(((now - before) / 2, f"your overall band rose from {before:.1f} to {now:.1f}"))
+    counts = previous.get("mistake_counts")
+    if counts is not None:
         now_counts = report.mistake_counts()
-        items = []
-        for key in ("LR", "GRA", "CC", "TR_or_TA"):
-            before, after = prev_counts.get(key, 0), now_counts.get(key, 0)
-            if before or after:
-                arrow = " ↓" if after < before else " ↑" if after > before else ""
-                items.append(f"{_TAG_NAMES[key]} {before} → {after}{arrow}")
-        if items:
-            parts.append(L["progress_counts"].format(items=" · ".join(items)))
+        per_100 = bool(previous.get("words")) and report.word_count > 0
+        for key, label, noun in (("GRA", "Grammar", "grammar"), ("LR", "Vocabulary", "vocabulary")):
+            old_n, new_n = counts.get(key, 0), now_counts.get(key, 0)
+            if per_100:
+                old_v = round(old_n * 100 / previous["words"], 1)
+                new_v = round(new_n * 100 / report.word_count, 1)
+                rows.append({"label": f"{label} mistakes per 100 words", "value": f"{old_v:.1f} → {new_v:.1f}",
+                             **_chip(new_v - old_v, False)})
+                unit = " per 100 words"
+            else:
+                old_v, new_v = old_n, new_n
+                rows.append({"label": f"{label} mistakes (total)", "value": f"{old_v} → {new_v}",
+                             **_chip(new_v - old_v, False)})
+                unit = ""
+            if new_v < old_v:
+                gains.append(((old_v - new_v) / old_v, f"your {noun} mistakes dropped from {old_v} to {new_v}{unit}"))
+    if gains:
+        note = f"Great work: {max(gains)[1]}."
+    elif now == before:
+        note = f"Your band held steady at {now:.1f}."
     else:
-        now_scores = report.criteria_scores()
-        items = [
-            f"{_TAG_NAMES[_DB_TO_CRITERION[k]]} {float(v):.1f} → {float(now_scores[k]):.1f}"
-            for k, v in (previous.get("criteria_scores") or {}).items()
-            if k in now_scores
-        ]
-        if items:
-            parts.append(L["progress_criteria"].format(items=" · ".join(items)))
-        parts.append(L["progress_later"])
-    return " ".join(parts)
+        note = "Scores move up and down from one essay to the next - keep going."
+    if report.priorities:
+        note += f" Next time, focus on “{report.priorities[0]['title']}” (priority 01)."
+    return {"first": False, "rows": rows, "note": note}
+
+
+def _format_date(when: datetime) -> str:
+    return f"{when.day} {when.strftime('%B %Y')}"
+
+
+def _generated_text(report: WritingReport, answer: ModelAnswer | None) -> str:
+    """Everything in the report the models wrote (not the student's own text)."""
+    parts = [c["note"] for c in report.criteria] + [report.strength_html]
+    parts += [f"{p['title']} {p['rule_html']} {p['ex_right']}" for p in report.priorities]
+    parts += [f"{m['correct']} {m['why']} {m['if_you_meant'] or ''}" for m in report.mistakes]
+    parts += [f"{v.term} {v.meaning} {v.example}" for v in report.vocabulary]
+    parts += [c["html"] for c in report.checklist]
+    if answer is not None:
+        parts += answer.paragraphs
+    return "\n".join(parts)
 
 
 def build_writing_report_pdf(
     report: WritingReport,
-    sample: SampleSection | None,
-    progress_html: str,
+    answer: ModelAnswer | None,
+    progress: dict,
     student_name: str,
     essay_number: int | None,
-    lang: str = "uz",
+    chart_images: list[tuple[bytes, str]] | None = None,
     when: datetime | None = None,
 ) -> bytes:
-    labels = WRITING_LABELS.get(lang, WRITING_LABELS["uz"])
-    template = _env.get_template("writing_report.html")
-    html_str = template.render(
-        L=labels,
-        lang=lang,
-        title=labels["title_task1"] if report.task_type == "task1" else labels["title_task2"],
+    leaked = names_in(_generated_text(report, answer))
+    if leaked:
+        logger.error("Writing report names the source (%s) - check the model output", ", ".join(leaked))
+    context = dict(
+        sans=FONT_SANS,
+        serif=FONT_SERIF,
+        piece=_piece(report.task_type),
+        task_label="Task 1 Report" if report.task_type == "task1" else "Task 2 Essay",
         student_name=student_name,
-        date_str=_format_date(when or datetime.now(), lang),
+        name_size=_name_size(student_name),
+        date_str=_format_date(when or datetime.now()),
         essay_number=essay_number,
         report=report,
-        sample=sample,
-        progress_html=progress_html,
+        ring=_ring(report.overall_band, report.target_band),
+        answer=answer,
+        chart_images=[
+            f"data:{mime};base64,{base64.b64encode(data).decode()}" for data, mime in chart_images or []
+        ],
+        progress=progress,
     )
-    return HTML(string=html_str).write_pdf()
+    template = _env.get_template("writing_report.html")
+    document = HTML(string=template.render(**context), base_url=str(TEMPLATE_DIR)).render()
+    if _page_of(document, "s-essay") != 1:  # the cover ran onto a second page
+        logger.warning("Report cover overflowed - rendering it compact")
+        document = HTML(string=template.render(**context, compact=True), base_url=str(TEMPLATE_DIR)).render()
+    return document.write_pdf()
+
+
+def _page_of(document, anchor: str) -> int | None:
+    for i, page in enumerate(document.pages):
+        if anchor in page.anchors:
+            return i
+    return None

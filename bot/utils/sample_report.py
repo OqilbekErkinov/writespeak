@@ -2,24 +2,26 @@
 first /start, before they've spent a single check - so they see exactly
 what they'd get before committing anything (see bot/handlers/language.py).
 Built from hardcoded example data in the same report format real Writing
-checks use (2026-10 redesign), no OpenAI call involved - purely illustrative,
-never used for real grading. The marked essay still goes through the real
-segment validation (services/ai/essay_marking.py).
+checks use (final report design, 2026-10-12), no OpenAI call involved -
+purely illustrative, never used for real grading. The data goes through the
+real validation (services/ai/essay_marking.py).
 """
 from __future__ import annotations
 
-from services.ai.essay_marking import align_segments, build_report
-from services.ai.sample_bank import SampleSection
+from services.ai.essay_marking import build_report
+from services.ai.sample_bank import ModelAnswer
 from services.ai.schemas import (
+    ChecklistItem,
     CriterionNotes,
     CriterionScores,
     EssaySegment,
-    FocusItem,
     Mistake,
+    Priority,
+    Strength,
     VocabEntry,
     WritingFeedback,
 )
-from services.pdf.report_builder import build_writing_report_pdf, progress_note
+from services.pdf.report_builder import build_progress, build_writing_report_pdf
 
 _QUESTION = (
     "Some people believe that modern technology has made life more complicated, while others "
@@ -34,8 +36,8 @@ _ESSAY = (
     "On the one hand, critics of modern technology point out that constant connectivity often leads "
     "to stress and information overload. Many people feel obligated to check their phones throughout "
     "the day, and some even make an addiction to social media. Furthermore, the rapid pace of "
-    "technological change mean that people must continuously learn new systems, which older people "
-    "especially find overwhelming.\n\n"
+    "technological change mean that people must continuously learn new systems, which the older "
+    "people especially find overwhelming.\n\n"
     "On the other hand, supporters of technology highlight the enormous convenience it provides. "
     "Tasks that once took hours, such as paying bills, can now be completed in second. In addition, "
     "technology made it possible for families to stay in touch regardless of distance. This also "
@@ -52,6 +54,7 @@ _MARKS = [
     ("good", "constant connectivity often leads to stress and information overload", None, None),
     ("error", "make an addiction to", "develop an addiction to", 1),
     ("error", "mean", "means", 2),
+    ("error", "the older people", "older people", 8),
     ("error", "in second", "in seconds", 3),
     ("error", "technology made it possible", "technology has made it possible", 4),
     ("error", "This also gives a chance for lonely people.", None, 5),
@@ -62,40 +65,22 @@ _MARKS = [
 
 _MISTAKES = [
     (1, "some even make an addiction to social media", "some even develop an addiction to social media",
-     "\"Addiction\" collocates with develop or have, never make.", "LR", False),
+     "“Addiction” goes with **develop** or **have**, never *make*.", "LR", False),
     (2, "the rapid pace of technological change mean", "the rapid pace of technological change means",
-     "The subject is \"the pace\" (singular), so the verb needs -s.", "GRA", False),
+     "The subject is “the pace” (singular), so the verb needs **-s**.", "GRA", False),
+    (8, "which the older people especially find overwhelming", "which older people especially find overwhelming",
+     "No “the” when you mean older people in general.", "GRA", False),
     (3, "can now be completed in second", "can now be completed in seconds",
-     "\"In seconds\" is a fixed phrase meaning very quickly; it is always plural.", "LR", False),
+     "“In seconds” is a fixed phrase meaning very quickly; it is always plural.", "LR", False),
     (4, "technology made it possible", "technology has made it possible",
-     "A change that started in the past and still matters now takes the present perfect.", "GRA", False),
+     "A change that started in the past and still matters now takes the **present perfect**.", "GRA", False),
     (5, "This also gives a chance for lonely people.", "This also gives lonely people a chance to stay connected.",
      "The meaning is unclear: a chance to do what? Say what the chance is for.", "CC", True),
     (6, "When it used thoughtfully", "When it is used thoughtfully",
-     "A passive needs a form of \"be\": it is used.", "GRA", False),
+     "A passive needs a form of **be**: *it is used*.", "GRA", False),
     (7, "a positive force in the modern life", "a positive force in modern life",
-     "General ideas such as \"modern life\" take no article.", "GRA", False),
+     "General ideas such as “modern life” take no article.", "GRA", False),
 ]
-
-_LIKELY_MEANING = {
-    "uz": "yolg'iz odamlarga boshqalar bilan aloqada bo'lish imkonini beradi",
-    "ru": "даёт одиноким людям возможность оставаться на связи",
-}
-
-_NOTES = {
-    "uz": CriterionNotes(
-        TR_or_TA="Ikkala fikr va aniq pozitsiya bor",
-        CC="Mantiqiy tartib, bitta noaniq gap",
-        LR="Mavzuga mos so'zlar, ikki kollokatsiya xatosi",
-        GRA="Zamon va moslashuv xatolari",
-    ),
-    "ru": CriterionNotes(
-        TR_or_TA="Обе точки зрения и ясная позиция",
-        CC="Логичный порядок, одно неясное предложение",
-        LR="Лексика по теме, две ошибки сочетаемости",
-        GRA="Ошибки времени и согласования",
-    ),
-}
 
 _VOCABULARY = [
     ("digital fatigue", "Tiredness caused by spending too much time using devices.",
@@ -161,32 +146,47 @@ def _segments() -> list[list[EssaySegment]]:
 
 
 def build_sample_report_pdf(lang: str = "uz") -> bytes:
+    """`lang` is kept for the caller; the report itself is English only."""
     feedback = WritingFeedback(
         mistakes=[
             Mistake(id=i, wrong=w, correct=c, why=why, criterion=crit, unclear=unclear,
-                    likely_meaning=_LIKELY_MEANING.get(lang, _LIKELY_MEANING["uz"]) if unclear else None)
+                    if_you_meant="it gives lonely people a way to stay in touch with others" if unclear else None)
             for i, w, c, why, crit, unclear in _MISTAKES
         ],
         essay=_segments(),
         scores=CriterionScores(TR_or_TA=7.0, CC=7.0, LR=6.5, GRA=6.0),
-        criterion_notes=_NOTES.get(lang, _NOTES["uz"]),
-        strength="You discuss both views and give a clear opinion, and each paragraph has one "
-        "clear purpose. Phrases like \"constant connectivity\" and \"information overload\" show "
-        "good topic vocabulary.",
-        focus=[
-            FocusItem(title="Verb forms", rule="the pace means; technology has made; it is used",
-                      criterion="GRA", mistake_ids=[2, 4, 6]),
-            FocusItem(title="Word partners", rule="develop an addiction; in seconds",
-                      criterion="LR", mistake_ids=[1, 3]),
-            FocusItem(title="Say exactly what you mean", rule="Name the purpose: a chance to stay connected",
-                      criterion="CC", mistake_ids=[5]),
+        criterion_notes=CriterionNotes(
+            TR_or_TA="Both views covered and a clear opinion.",
+            CC="Logical order, but one unclear sentence.",
+            LR="Good topic words; two word-partner mistakes.",
+            GRA="Verb forms and articles need attention.",
+        ),
+        strength=Strength(
+            text="You discuss both views and give a clear opinion. Phrases like “constant connectivity "
+            "often leads to stress and information overload” and “deeply embedded in almost every aspect "
+            "of daily life” show strong topic vocabulary.",
+            quoted_phrases=[
+                "constant connectivity often leads to stress and information overload",
+                "deeply embedded in almost every aspect of daily life",
+            ],
+        ),
+        priorities=[
+            Priority(title="Match the verb to its subject", rule="Singular subjects take **-s**; a change that still matters takes **has/have**; a passive needs **be**.",
+                     example_wrong="When it used", example_right="When it is used", criteria=["GRA"], mistake_ids=[2, 4, 6]),
+            Priority(title="Learn word partners", rule="Learn nouns together with their usual verbs and fixed phrases.",
+                     example_wrong="make an addiction to", example_right="develop an addiction to", criteria=["LR"], mistake_ids=[1, 3]),
+            Priority(title="No “the” for things in general", rule="Use no article when you mean a whole group or idea.",
+                     example_wrong="the modern life", example_right="modern life", criteria=["GRA"], mistake_ids=[8, 7]),
         ],
         vocabulary=[VocabEntry(term=t, meaning=m, example=e) for t, m, e in _VOCABULARY],
-        topic="Technology and modern life",
+        checklist=[
+            ChecklistItem(text="Every verb **matches its subject**: *the pace means*.", ref="Priority 01"),
+            ChecklistItem(text="Changes that still matter use **has/have + past participle**.", ref="Priority 01"),
+            ChecklistItem(text="Nouns come with their **usual verb**: *develop an addiction*.", ref="Priority 02"),
+            ChecklistItem(text="No **“the”** before general ideas: *modern life, older people*.", ref="Priority 03"),
+            ChecklistItem(text="Each sentence says **exactly what I mean** - a chance to do what?", ref="Mistake 5"),
+        ],
     )
-    report = build_report("task2", _ESSAY, feedback, align_segments(_ESSAY, feedback.essay).spans)
-    sample = SampleSection(kind="generic", question=_QUESTION, paragraphs=_SAMPLE)
-    student = "Namuna Talaba" if lang != "ru" else "Пример Студент"
-    return build_writing_report_pdf(
-        report, sample, progress_note(lang, report, None), student, essay_number=None, lang=lang
-    )
+    report = build_report("task2", _QUESTION, _ESSAY, feedback)
+    answer = ModelAnswer(question=_QUESTION, paragraphs=_SAMPLE, band=8.0)
+    return build_writing_report_pdf(report, answer, build_progress(report, None), "Sample Student", essay_number=None)

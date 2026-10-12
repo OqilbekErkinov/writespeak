@@ -7,6 +7,7 @@ data/storage/
 data/books/*.pdf
 data/books/_review/
 data/books/style_profiles/
+data/sample_library/
 *.egg-info/
 .pytest_cache/
 

@@ -177,8 +177,8 @@ _T: dict[str, dict[str, str]] = {
         "ru": "✅ Принято.\n\n✏️ Теперь отправьте свой ответ (минимум {min_words} слов).",
     },
     "writing.grading_in_progress": {
-        "uz": "⏳ Tahlil qilinmoqda, biroz kuting...",
-        "ru": "⏳ Идёт анализ, немного подождите...",
+        "uz": "⏳ Tahlil qilinmoqda — bu 1-2 daqiqa davom etadi, biroz kuting...",
+        "ru": "⏳ Идёт анализ — это займёт 1-2 минуты, немного подождите...",
     },
     "writing.grading_failed": {
         "uz": "❌ Kechirasiz, tahlil qilishda xatolik yuz berdi. Birozdan so'ng qayta "
