@@ -66,8 +66,9 @@ async def advance_mock_test(message: Message, state: FSMContext, mock_session_id
         await _finish(message, state, mock_session_id, parts)
         return
 
-    allowed, spend_credit = await check_quota(message.chat.id)
-    if not allowed:
+    quota = await check_quota(message.chat.id)
+    spend_credit = quota.spend_credit
+    if not quota.allowed:
         await state.clear()
         await message.answer(
             "🎯 Mock Test davom etishi uchun imkoniyat yetmadi. Kredit sotib olib, "

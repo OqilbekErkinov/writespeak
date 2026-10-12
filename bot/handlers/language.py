@@ -13,6 +13,7 @@ from bot.config import settings
 from bot.i18n import t
 from bot.keyboards.lang_kb import CB_LANG_CHANGE_PREFIX, CB_LANG_ONBOARD_PREFIX
 from bot.keyboards.main_menu_kb import main_menu_kb
+from bot.utils.quota import format_som
 from bot.utils.sample_report import build_sample_report_pdf
 from db import crud
 from db.database import get_session
@@ -44,7 +45,11 @@ async def onboard_set_language(callback: CallbackQuery) -> None:
     pdf_bytes = await asyncio.to_thread(build_sample_report_pdf, lang)
     await callback.message.answer_document(
         BufferedInputFile(pdf_bytes, filename="Namuna_Hisobot.pdf"),
-        caption=t("start.sample_caption", lang, free_limit=settings.free_daily_limit),
+        caption=t("start.sample_caption", lang),
+    )
+    # The free checks are a one-off: say so plainly, so they go on real tasks.
+    await callback.message.answer(
+        t("start.free_checks", lang, total=settings.free_checks, price=format_som(settings.price_per_check))
     )
 
 

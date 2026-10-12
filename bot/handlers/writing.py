@@ -42,7 +42,7 @@ from bot.states.writing_states import WritingStates
 from bot.utils.input_extraction import read_text_input
 from bot.utils.messages import show_screen, strip_buttons
 from bot.utils.mock_test_flow import record_mock_test_part
-from bot.utils.quota import check_quota, send_paywall
+from bot.utils.quota import check_quota, free_check_note, send_paywall
 from db import crud
 from db.database import get_session
 from db.models import SourceType
@@ -78,8 +78,8 @@ async def back_to_writing_menu(callback: CallbackQuery, state: FSMContext, lang:
 async def choose_task(callback: CallbackQuery, state: FSMContext, lang: str) -> None:
     await callback.answer()
 
-    allowed, spend_credit = await check_quota(callback.from_user.id)
-    if not allowed:
+    quota = await check_quota(callback.from_user.id)
+    if not quota.allowed:
         await send_paywall(callback.message, lang)
         return
 
@@ -90,9 +90,11 @@ async def choose_task(callback: CallbackQuery, state: FSMContext, lang: str) -> 
     # normal flow, since open_writing_menu already cleared state.
     await state.clear()
     task_type = "task1" if callback.data == CB_TASK1 else "task2"
-    await state.update_data(task_type=task_type, spend_credit=spend_credit)
+    await state.update_data(task_type=task_type, spend_credit=quota.spend_credit)
     await state.set_state(WritingStates.awaiting_prompt)
-    await show_screen(callback, t("writing.send_prompt", lang), back_kb(lang, CB_WRITING_MENU))
+    await show_screen(
+        callback, free_check_note(quota, lang) + t("writing.send_prompt", lang), back_kb(lang, CB_WRITING_MENU)
+    )
 
 
 @router.message(WritingStates.awaiting_prompt, ~F.text.in_(MENU_BUTTON_TEXTS))

@@ -3,8 +3,8 @@
 Ochiq (istalgan foydalanuvchi kirishi mumkin) Telegram bot: Writing (Task 1/2) va Speaking
 (Part 1/2/3) ishlarini rasmiy IELTS Band Descriptors asosida baholaydi, rangli tahlil bilan
 chiroyli PDF hisobot beradi, o'quv kitoblaridan haqiqiy namuna topadi va o'quvchi progressini
-kuzatadi. Har bir foydalanuvchiga kuniga 2 ta bepul tekshiruv, undan ko'pi pullik (karta orqali,
-admin tasdiqlaydi) — qarang: [Narxlash va to'lov](#narxlash-va-tolov).
+kuzatadi. Har bir foydalanuvchiga ro'yxatdan o'tgach bir martalik 2 ta bepul tekshiruv, undan
+ko'pi pullik (karta orqali, admin tasdiqlaydi) — qarang: [Narxlash va to'lov](#narxlash-va-tolov).
 
 To'liq arxitektura va bosqichma-bosqich reja: `PROJECT MASTERPIECE` spec asosida qurilgan (admin
 bilan kelishilgan reja faylida saqlangan).
@@ -99,9 +99,10 @@ docker compose up -d --build
 
 ## Narxlash va to'lov
 
-Har bir foydalanuvchiga so'nggi 24 soatda **`FREE_DAILY_LIMIT`** ta (standart: 2) bepul tekshiruv
-beriladi — Writing va Speaking bitta umumiy hisobga kiradi (OpenAI xarajatini nazorat qilish
-uchun). Shundan ko'pi uchun har bir tekshiruv **`PRICE_PER_CHECK`** so'm (standart: 5000) turadi:
+Har bir foydalanuvchiga ro'yxatdan o'tgach **bir marta** **`FREE_CHECKS`** ta (standart: 2) bepul
+tekshiruv beriladi (har kuni yangilanmaydi) — Writing va Speaking bitta umumiy hisobga kiradi,
+tekshiruv hisobot tayyor bo'lgandagina hisoblanadi. Bu haqda bot ro'yxatdan o'tishda alohida
+tushuntiradi. Shundan ko'pi uchun har bir tekshiruv **`PRICE_PER_CHECK`** so'm (standart: 5000) turadi:
 
 1. Limit tugaganda bot foydalanuvchiga miqdor tanlash tugmalarini (1/3/5/10 ta) ko'rsatadi.
 2. Foydalanuvchi `PAYMENT_CARD_NUMBER`ga o'tkazma qiladi va chek skrinshotini botga yuboradi.

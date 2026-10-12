@@ -40,9 +40,35 @@ _T: dict[str, dict[str, str]] = {
     },
     "start.sample_caption": {
         "uz": "📄 Mana shunday batafsil hisobot olasiz — har bir Writing yoki Speaking "
-        "tekshiruvi uchun! Sizga kuniga {free_limit} ta tekshiruv bepul.",
+        "tekshiruvi uchun!",
         "ru": "📄 Именно такой подробный отчёт вы получите за каждую проверку Writing или "
-        "Speaking! Вам доступно {free_limit} бесплатных проверок в день.",
+        "Speaking!",
+    },
+    "start.free_checks": {
+        "uz": "🎁 <b>Sizga {total} ta bepul tekshiruv berildi!</b>\n\n"
+        "Bu imkoniyat <b>faqat bir marta</b> beriladi — har kuni yangilanmaydi. Ularni "
+        "xohlaganingizcha ishlatishingiz mumkin:\n"
+        "• 1 ta Writing + 1 ta Speaking\n"
+        "• yoki 2 ta Writing\n"
+        "• yoki 2 ta Speaking\n\n"
+        "❗️ <b>Iltimos, ularni shunchaki sinab ko'rish uchun tasodifiy matn yoki bir-ikki gap "
+        "yuborib sarflab qo'ymang.</b> Haqiqiy IELTS savolini oling (Writing Task 1, Task 2 "
+        "yoki Speaking savoli) va javobingizni imtihondagidek to'liq yozing yoki gapiring — "
+        "shundagina hisobot sizga haqiqiy foyda beradi.\n\n"
+        "ℹ️ Tekshiruv faqat hisobot tayyor bo'lganda hisoblanadi. Bepul tekshiruvlar tugagach, "
+        "har bir tekshiruv — {price} so'm.",
+        "ru": "🎁 <b>Вам доступно {total} бесплатные проверки!</b>\n\n"
+        "Они даются <b>только один раз</b> — каждый день не обновляются. Распределите их как "
+        "удобно:\n"
+        "• 1 Writing + 1 Speaking\n"
+        "• или 2 Writing\n"
+        "• или 2 Speaking\n\n"
+        "❗️ <b>Пожалуйста, не тратьте их на проверку «просто посмотреть» — случайный текст или "
+        "пару фраз.</b> Возьмите настоящее задание IELTS (Writing Task 1, Task 2 или вопрос "
+        "Speaking) и ответьте полностью, как на экзамене — только тогда отчёт принесёт "
+        "реальную пользу.\n\n"
+        "ℹ️ Проверка засчитывается, только когда отчёт готов. Когда бесплатные проверки "
+        "закончатся, каждая проверка стоит {price} сум.",
     },
     # --- main_menu.py ---
     "menu.shown": {
@@ -58,12 +84,20 @@ _T: dict[str, dict[str, str]] = {
     "nav.what_next": {"uz": "Davom etamizmi? 👇", "ru": "Продолжим? 👇"},
     # --- Quota / paywall (bot/utils/quota.py) ---
     "quota.paywall": {
-        "uz": "⚠️ Bugungi {free_limit} ta bepul tekshiruv imkoniyatingiz tugadi.\n\nDavom "
-        "etish uchun har bir tekshiruv (Writing yoki Speaking) — <b>{price} so'm</b>.\n"
-        "Xohlagan miqdorni tanlang:",
-        "ru": "⚠️ Ваши {free_limit} бесплатных проверки на сегодня закончились.\n\nЧтобы "
-        "продолжить, каждая проверка (Writing или Speaking) стоит <b>{price} сум</b>.\n"
-        "Выберите нужное количество:",
+        "uz": "⚠️ {free_limit} ta bepul tekshiruvingiz ishlatib bo'lingan (ular bir martalik "
+        "edi).\n\nDavom etish uchun har bir tekshiruv (Writing yoki Speaking) — "
+        "<b>{price} so'm</b>.\nXohlagan miqdorni tanlang:",
+        "ru": "⚠️ Ваши {free_limit} бесплатные проверки уже использованы (они даются один "
+        "раз).\n\nЧтобы продолжить, каждая проверка (Writing или Speaking) стоит "
+        "<b>{price} сум</b>.\nВыберите нужное количество:",
+    },
+    "quota.free_note": {
+        "uz": "🆓 <b>Bepul tekshiruv</b> — sizda {left}/{total} ta qoldi, bu ulardan biri. "
+        "Bepul tekshiruvlar faqat bir marta beriladi, shuning uchun haqiqiy IELTS savoli va "
+        "to'liq javobingizni yuboring.",
+        "ru": "🆓 <b>Бесплатная проверка</b> — у вас осталось {left}/{total}, эта — одна из "
+        "них. Бесплатные проверки даются только один раз, поэтому отправьте настоящее задание "
+        "IELTS и полный ответ.",
     },
     # --- Payments (bot/handlers/payments.py, bot/keyboards/payment_kb.py) ---
     "pay.bundle_button": {
@@ -281,8 +315,8 @@ _T: dict[str, dict[str, str]] = {
         "ru": "♾️ Подписка активна — ещё {days} дн.",
     },
     "account.free_remaining": {
-        "uz": "🆓 Bugungi bepul tekshiruvlar: <b>{remaining}/{total}</b> qoldi",
-        "ru": "🆓 Бесплатных проверок сегодня: осталось <b>{remaining}/{total}</b>",
+        "uz": "🆓 Bepul tekshiruvlar (bir martalik): <b>{remaining}/{total}</b> qoldi",
+        "ru": "🆓 Бесплатные проверки (разовые): осталось <b>{remaining}/{total}</b>",
     },
     "account.credit_balance": {
         "uz": "💳 Kredit balansi: <b>{credits} ta</b> tekshiruv (muddatsiz)",

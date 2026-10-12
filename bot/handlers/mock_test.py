@@ -9,7 +9,7 @@ from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
-from bot.config import settings
+from bot.utils.quota import free_checks_left
 from bot.keyboards.main_menu_kb import BTN_MOCK_TEST
 from bot.keyboards.payment_kb import buy_credits_kb
 from bot.utils.mock_test_flow import advance_mock_test
@@ -30,9 +30,8 @@ async def start_mock_test(message: Message, state: FSMContext) -> None:
         has_subscription = await crud.has_active_subscription(session, user_id)
         enough = has_subscription
         if not has_subscription:
-            used_today = await crud.get_daily_submission_count(session, user_id)
+            remaining_free = await free_checks_left(session, user_id)
             user = await crud.get_user(session, user_id)
-            remaining_free = max(0, settings.free_daily_limit - used_today)
             credit_balance = user.credit_balance if user is not None else 0
             enough = (remaining_free + credit_balance) >= PART_COUNT
 

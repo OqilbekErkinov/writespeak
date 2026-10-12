@@ -250,24 +250,10 @@ async def get_speaking_submission(
     return (await session.execute(stmt)).scalar_one_or_none()
 
 
-async def get_daily_submission_count(session: AsyncSession, user_id: int) -> int:
-    since = datetime.now(timezone.utc) - timedelta(hours=24)
-    w = await session.execute(
-        select(func.count())
-        .select_from(WritingSubmission)
-        .where(WritingSubmission.user_id == user_id, WritingSubmission.created_at >= since)
-    )
-    s = await session.execute(
-        select(func.count())
-        .select_from(SpeakingSubmission)
-        .where(SpeakingSubmission.user_id == user_id, SpeakingSubmission.created_at >= since)
-    )
-    return (w.scalar() or 0) + (s.scalar() or 0)
-
-
 async def get_total_submission_count(session: AsyncSession, user_id: int) -> int:
-    """Lifetime count, no time window - used to detect a user's very first
-    completed check (see reward_referrer_if_eligible)."""
+    """Lifetime count of delivered checks - the free-check quota
+    (bot/utils/quota.py) and the referral reward's "first completed check"
+    (see reward_referrer_if_eligible) both go by it."""
     w = await session.execute(
         select(func.count()).select_from(WritingSubmission).where(WritingSubmission.user_id == user_id)
     )

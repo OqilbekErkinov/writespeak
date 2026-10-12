@@ -34,7 +34,7 @@ from bot.keyboards.practice_kb import (
 )
 from bot.states.writing_states import WritingStates
 from bot.utils.messages import remove_message, show_screen
-from bot.utils.quota import check_quota, send_paywall
+from bot.utils.quota import check_quota, free_check_note, send_paywall
 from db import crud
 from db.database import get_session
 from db.models import PracticeModule, PracticeQuestion
@@ -153,10 +153,11 @@ async def _start_practice_question(
         await callback.message.answer(t("practice.question_not_found", lang))
         return
 
-    allowed, spend_credit = await check_quota(callback.from_user.id)
-    if not allowed:
+    quota = await check_quota(callback.from_user.id)
+    if not quota.allowed:
         await send_paywall(callback.message, lang)
         return
+    spend_credit = quota.spend_credit
 
     # See the matching comment in bot/handlers/writing.py's choose_task.
     await state.clear()
@@ -164,6 +165,9 @@ async def _start_practice_question(
     await remove_message(callback.message)
     message = callback.message
     module = question.module
+    note = free_check_note(quota, lang)
+    if note:
+        await message.answer(note.strip())
 
     if module in WRITING_MODULES:
         task_type = module.value.removeprefix("writing_")  # "task1" | "task2"

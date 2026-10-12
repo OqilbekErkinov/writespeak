@@ -47,7 +47,7 @@ from bot.utils.input_extraction import (
 )
 from bot.utils.messages import show_screen, strip_buttons
 from bot.utils.mock_test_flow import record_mock_test_part
-from bot.utils.quota import check_quota, send_paywall
+from bot.utils.quota import check_quota, free_check_note, send_paywall
 from bot.utils.speaking_questions import split_questions
 from db import crud
 from db.database import get_session
@@ -89,16 +89,18 @@ async def back_to_speaking_menu(callback: CallbackQuery, state: FSMContext, lang
 async def choose_part(callback: CallbackQuery, state: FSMContext, lang: str) -> None:
     await callback.answer()
 
-    allowed, spend_credit = await check_quota(callback.from_user.id)
-    if not allowed:
+    quota = await check_quota(callback.from_user.id)
+    if not quota.allowed:
         await send_paywall(callback.message, lang)
         return
 
     # See the matching comment in bot/handlers/writing.py's choose_task.
     await state.clear()
-    await state.update_data(part=PART_CALLBACKS[callback.data], spend_credit=spend_credit)
+    await state.update_data(part=PART_CALLBACKS[callback.data], spend_credit=quota.spend_credit)
     await state.set_state(SpeakingStates.awaiting_question)
-    await show_screen(callback, t("speaking.send_question", lang), back_kb(lang, CB_SPEAKING_MENU))
+    await show_screen(
+        callback, free_check_note(quota, lang) + t("speaking.send_question", lang), back_kb(lang, CB_SPEAKING_MENU)
+    )
 
 
 @router.message(SpeakingStates.awaiting_question, ~F.text.in_(MENU_BUTTON_TEXTS))

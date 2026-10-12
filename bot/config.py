@@ -52,9 +52,10 @@ class Settings(BaseSettings):
     books_path: str = "./data/books"
 
     # --- Limits & payments ---
-    # Free Writing+Speaking checks per user per rolling 24h (combined pool).
-    free_daily_limit: int = 2
-    # Price in so'm for one check beyond the free daily quota.
+    # Free checks each user gets once, after registering (any mix of Writing
+    # and Speaking) - see bot/utils/quota.py.
+    free_checks: int = 2
+    # Price in so'm for one check beyond the free ones.
     price_per_check: int = 5000
     # Card shown to students for the manual top-up flow (bot/handlers/payments.py).
     payment_card_number: str = "0000 0000 0000 0000"
