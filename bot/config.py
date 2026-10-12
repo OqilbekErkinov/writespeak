@@ -79,6 +79,9 @@ class Settings(BaseSettings):
     # Session cookie only sent over HTTPS - true in production, false for a
     # local http:// run (otherwise login can't stick).
     web_cookie_secure: bool = False
+    # Teachers' web cabinet (webapp/cabinet.py), e.g. https://writespeak.uz/cabinet
+    # - the bot's "Web-kabinet" button signs them in there. Empty = button hidden.
+    cabinet_base_url: str = ""
 
     @property
     def admin_ids(self) -> set[int]:

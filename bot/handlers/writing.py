@@ -27,6 +27,7 @@ from aiogram.types import BufferedInputFile, CallbackQuery, Message
 
 from bot.i18n import t
 from bot.keyboards.confirm_kb import CB_CONFIRM, CB_EDIT, confirm_edit_kb
+from bot.keyboards.group_kb import CB_MY_ASSIGNMENTS, assignment_after_kb
 from bot.keyboards.main_menu_kb import BTN_WRITING, MENU_BUTTON_TEXTS
 from bot.keyboards.nav_kb import CB_BACK_MAIN, back_kb, check_again_kb
 from bot.keyboards.practice_kb import CB_BACK_TO_LIST_PREFIX, after_result_kb
@@ -90,7 +91,7 @@ async def choose_task(callback: CallbackQuery, state: FSMContext, lang: str) -> 
     # normal flow, since open_writing_menu already cleared state.
     await state.clear()
     task_type = "task1" if callback.data == CB_TASK1 else "task2"
-    await state.update_data(task_type=task_type, spend_credit=quota.spend_credit)
+    await state.update_data(task_type=task_type, spend_credit=quota.spend_credit, payer_id=quota.payer_id)
     await state.set_state(WritingStates.awaiting_prompt)
     await show_screen(
         callback, free_check_note(quota, lang) + t("writing.send_prompt", lang), back_kb(lang, CB_WRITING_MENU)
@@ -115,6 +116,8 @@ def _back_target(data: dict, field: str) -> str:
         return CB_WRITING_MENU
     if data.get("practice_question_id"):
         return f"{CB_BACK_TO_LIST_PREFIX}{data['practice_question_id']}"
+    if data.get("assignment_part_id"):
+        return CB_MY_ASSIGNMENTS
     return TASK_CALLBACKS[data["task_type"]]  # re-asks for the prompt
 
 
@@ -298,6 +301,8 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
             feedback_pdf_path=pdf_path,
             practice_question_id=data.get("practice_question_id"),
             spend_credit=data.get("spend_credit", False),
+            assignment_part_id=data.get("assignment_part_id"),
+            payer_id=data.get("payer_id"),
         )
         if data.get("practice_question_id"):
             await crud.mark_practice_complete(
@@ -334,6 +339,8 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
 
 
 def _after_result_kb(data: dict, lang: str):
+    if data.get("assignment_part_id"):
+        return assignment_after_kb(data.get("next_part_id"), lang)
     if data.get("practice_question_id"):
         return after_result_kb(data["practice_question_id"], lang)
     return check_again_kb(TASK_CALLBACKS[data["task_type"]], lang)

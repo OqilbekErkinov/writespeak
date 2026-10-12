@@ -28,7 +28,13 @@ from bot.config import settings
 from bot.i18n import t
 from bot.keyboards.lang_kb import CB_LANG_ONBOARD_PREFIX, lang_picker_kb
 from bot.keyboards.main_menu_kb import main_menu_kb
-from bot.utils.group_invite import is_invite_payload, joined_notice, parse_invite
+from bot.utils.group_invite import (
+    is_center_payload,
+    is_invite_payload,
+    joined_notice,
+    parse_center_invite,
+    parse_invite,
+)
 from db import crud
 from db.database import get_session
 
@@ -54,9 +60,12 @@ async def cmd_start(message: Message, command: CommandObject, lang: str) -> None
             await crud.create_user(session, tg.id, tg.username, tg.full_name, referred_by=referrer_id)
 
         join = await _maybe_join_group(session, command.args, user_id=tg.id)
+        center_join = await _maybe_join_center(session, command.args, user_id=tg.id)
 
     if join is not None and join.status == "joined":
         await _notify_teacher(message, join)
+    if center_join is not None and center_join[0] == "joined":
+        await _notify_center_owner(message, center_join[1])
 
     if is_new:
         # Language not chosen yet - bot/handlers/language.py's onboarding
@@ -66,6 +75,8 @@ async def cmd_start(message: Message, command: CommandObject, lang: str) -> None
             await message.answer(
                 t("group.join_expired", "uz") + "\n\n" + t("group.join_expired", "ru")
             )
+        if center_join is not None:
+            await message.answer(_center_notice(center_join, "uz") + "\n\n" + _center_notice(center_join, "ru"))
         await message.answer(
             "🌐 Tilni tanlang / Выберите язык:",
             reply_markup=lang_picker_kb(CB_LANG_ONBOARD_PREFIX),
@@ -80,6 +91,8 @@ async def cmd_start(message: Message, command: CommandObject, lang: str) -> None
             await message.answer(t("group.join_own_link", lang))
         elif join.status == "expired":
             await message.answer(t("group.join_expired", lang))
+    if center_join is not None:
+        await message.answer(_center_notice(center_join, lang))
 
 
 async def _parse_referrer(session: AsyncSession, args: str | None, *, new_user_id: int) -> int | None:
@@ -125,6 +138,39 @@ async def _maybe_join_group(session: AsyncSession, args: str | None, *, user_id:
         return GroupJoin("already", group.name)
     count = await crud.get_group_member_count(session, group.id)
     return GroupJoin("joined", group.name, group.teacher_id, teacher_name, count)
+
+
+async def _maybe_join_center(session: AsyncSession, args: str | None, *, user_id: int):
+    """A center's teacher invite (bot/utils/group_invite.py): (status, center)
+    with status "joined" | "already" | "owner" | "other" | "expired"; None
+    when the payload isn't a center invite at all."""
+    if not is_center_payload(args):
+        return None
+    center_id = parse_center_invite(args)
+    center = await crud.get_center(session, center_id) if center_id is not None else None
+    if center is None:
+        return "expired", None
+    return await crud.join_center(session, center.id, user_id), center
+
+
+def _center_notice(center_join, lang: str) -> str:
+    status, center = center_join
+    name = html.escape(center.name, quote=False) if center is not None else ""
+    return t(f"group.center_join_{status}", lang, name=name)
+
+
+async def _notify_center_owner(message: Message, center) -> None:
+    async with get_session() as session:
+        owner = await crud.get_user(session, center.owner_id)
+    if owner is None:
+        return
+    try:
+        await message.bot.send_message(
+            owner.id,
+            t("group.center_new_teacher", owner.language or "uz", name=html.escape(message.from_user.full_name, quote=False)),
+        )
+    except Exception:
+        pass
 
 
 async def _notify_teacher(message: Message, join: GroupJoin) -> None:

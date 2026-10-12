@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+<meta charset="utf-8">
+<style>
+{% for family, subset in (("Inter", "latin"), ("InterExt", "latin-ext"), ("InterCyr", "cyrillic")) %}
+@font-face { font-family: {{ family }}; src: url(fonts/inter-{{ subset }}-400-normal.woff); font-weight: 400; }
+@font-face { font-family: {{ family }}; src: url(fonts/inter-{{ subset }}-600-normal.woff); font-weight: 600; }
+@font-face { font-family: {{ family }}; src: url(fonts/inter-{{ subset }}-700-normal.woff); font-weight: 700; }
+{% endfor %}
+@page { size: A4; margin: 14mm 14mm 16mm; @bottom-center { content: "WriteSpeak"; font: 8pt Inter, InterExt, InterCyr, sans-serif; color: #8991ac; } }
+* { box-sizing: border-box; }
+body { font-family: Inter, InterExt, InterCyr, sans-serif; font-size: 10pt; color: #1c2333; margin: 0; }
+.head { background: #0f1c3f; color: #fff; border-radius: 3mm; padding: 6mm 7mm; margin-bottom: 6mm; }
+.head .k { font-size: 8.5pt; letter-spacing: .06em; text-transform: uppercase; opacity: .7; }
+.head h1 { font-size: 20pt; margin: 1mm 0 1.5mm; }
+.head .m { font-size: 9pt; opacity: .88; line-height: 1.5; }
+.tile { display: inline-block; vertical-align: top; width: 41.5mm; border: 1px solid #e1e5f0; border-radius: 2.5mm; padding: 3mm 4mm; margin-right: 2mm; margin-bottom: 2.5mm; }
+.tile b { display: block; font-size: 15pt; color: #172a5c; }
+.tile span { font-size: 8pt; color: #5a6274; }
+.tile i { font-style: normal; font-size: 8pt; color: #8991ac; }
+h2 { font-size: 12pt; margin: 6mm 0 2.5mm; color: #0f1c3f; }
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; font-size: 7.5pt; text-transform: uppercase; letter-spacing: .04em; color: #8991ac; border-bottom: 1px solid #e1e5f0; padding: 2mm; }
+td { padding: 2mm; border-bottom: 1px solid #eef0f6; }
+td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
+.up { color: #0ca30c; font-weight: 600; } .down { color: #d03b3b; font-weight: 600; }
+.chart img { width: 100%; }
+.tip { background: #f2f6fd; border-left: 3px solid #2a78d6; border-radius: 2mm; padding: 3.5mm 4.5mm; }
+.cmt { border: 1px solid #e1e5f0; border-radius: 2.5mm; padding: 3mm 4mm; margin-bottom: 2.5mm; page-break-inside: avoid; }
+.cmt .h { font-size: 8.5pt; color: #5a6274; margin-bottom: 1mm; }
+.muted { color: #8991ac; }
+</style>
+</head>
+<body>
+<div class="head">
+  <div class="k">WriteSpeak · {{ L.parent_title }}</div>
+  <h1>{{ student_name }}</h1>
+  <div class="m">{{ L.group }}: {{ group_name }} · {{ L.teacher }}: {{ teacher_name }}<br>{{ L.period }}: {{ period }}</div>
+</div>
+
+{% if month.total %}
+<div>
+  <div class="tile"><b>{{ month.total }}</b><span>{{ L.checks }}</span><br><i>{{ L.prev_month }}: {{ prev.total }}</i></div>
+  <div class="tile"><b>{{ band(month.writing_avg) }}</b><span>{{ L.writing }} ({{ month.writing }})</span><br><i>{{ L.prev_month }}: {{ band(prev.writing_avg) }}</i></div>
+  <div class="tile"><b>{{ band(month.speaking_avg) }}</b><span>{{ L.speaking }} ({{ month.speaking }})</span><br><i>{{ L.prev_month }}: {{ band(prev.speaking_avg) }}</i></div>
+  <div class="tile"><b>{{ assignments_done }} / {{ assignments_total }}</b><span>{{ L.assignments_done }}</span></div>
+</div>
+
+{% if chart %}<div class="chart"><img src="{{ chart }}"></div>{% endif %}
+
+{% if criteria_rows %}
+<h2>{{ L.criteria }}</h2>
+<table>
+  <tr><th>{{ L.criterion }}</th><th class="n">{{ L.this_month }}</th><th class="n">{{ L.prev_month }}</th><th class="n"></th></tr>
+  {% for c in criteria_rows %}
+  <tr>
+    <td>{{ c.name }}</td><td class="n">{{ c.now }}</td><td class="n">{{ c.prev }}</td>
+    <td class="n">{% if c.delta is not none and c.delta >= 0.25 %}<span class="up">▲ {{ "%.1f"|format(c.delta) }}</span>{% elif c.delta is not none and c.delta <= -0.25 %}<span class="down">▼ {{ "%.1f"|format(-c.delta) }}</span>{% endif %}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endif %}
+
+{% if tip %}
+<h2>{{ L.recommendation }}</h2>
+<div class="tip"><b>{{ weakest }}:</b> {{ tip }}</div>
+{% endif %}
+{% else %}
+<p class="tip">{{ L.no_works_month }}</p>
+{% endif %}
+
+{% if comments %}
+<h2>{{ L.comments }}</h2>
+{% for c in comments %}
+<div class="cmt">
+  <div class="h">{{ c.date }} · {{ c.label }} · {{ L.band }} {{ c.band }}{% if c.teacher_band %} → {{ c.teacher_band }}{% endif %}</div>
+  {{ c.text }}
+</div>
+{% endfor %}
+{% endif %}
+<p class="muted" style="margin-top:6mm; font-size:8pt">{{ L.disclaimer }}</p>
+</body>
+</html>

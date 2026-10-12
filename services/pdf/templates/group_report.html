@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+<meta charset="utf-8">
+<style>
+{% for family, subset in (("Inter", "latin"), ("InterExt", "latin-ext"), ("InterCyr", "cyrillic")) %}
+@font-face { font-family: {{ family }}; src: url(fonts/inter-{{ subset }}-400-normal.woff); font-weight: 400; }
+@font-face { font-family: {{ family }}; src: url(fonts/inter-{{ subset }}-600-normal.woff); font-weight: 600; }
+@font-face { font-family: {{ family }}; src: url(fonts/inter-{{ subset }}-700-normal.woff); font-weight: 700; }
+{% endfor %}
+@page { size: A4; margin: 14mm 13mm 16mm; @bottom-center { content: "WriteSpeak · " counter(page) " / " counter(pages); font: 8pt Inter, InterExt, InterCyr, sans-serif; color: #8991ac; } }
+* { box-sizing: border-box; }
+body { font-family: Inter, InterExt, InterCyr, sans-serif; font-size: 9.5pt; color: #1c2333; margin: 0; }
+.head { background: #0f1c3f; color: #fff; border-radius: 3mm; padding: 6mm 7mm; margin-bottom: 6mm; }
+.head .k { font-size: 8.5pt; letter-spacing: .06em; text-transform: uppercase; opacity: .7; }
+.head h1 { font-size: 19pt; margin: 1mm 0 1.5mm; }
+.head .m { font-size: 9pt; opacity: .85; }
+.tiles { margin-bottom: 6mm; }
+.tile { display: inline-block; vertical-align: top; width: 41.5mm; border: 1px solid #e1e5f0; border-radius: 2.5mm; padding: 3mm 4mm; margin-right: 2mm; margin-bottom: 2.5mm; }
+.tile b { display: block; font-size: 15pt; color: #172a5c; }
+.tile span { font-size: 8pt; color: #5a6274; }
+h2 { font-size: 11.5pt; margin: 5mm 0 2.5mm; color: #0f1c3f; }
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; font-size: 7.5pt; text-transform: uppercase; letter-spacing: .04em; color: #8991ac; border-bottom: 1px solid #e1e5f0; padding: 1.8mm 1.5mm; }
+td { padding: 1.8mm 1.5mm; border-bottom: 1px solid #eef0f6; }
+td.n { font-variant-numeric: tabular-nums; text-align: right; }
+th.n { text-align: right; }
+tr { page-break-inside: avoid; }
+.chart img { width: 100%; }
+.muted { color: #8991ac; }
+</style>
+</head>
+<body>
+<div class="head">
+  <div class="k">WriteSpeak · {{ L.group_title }}</div>
+  <h1>{{ group_name }}</h1>
+  <div class="m">{{ L.teacher }}: {{ teacher_name }} · {{ L.generated }}: {{ generated }}</div>
+</div>
+
+<div class="tiles">
+  <div class="tile"><b>{{ overview.members }}</b><span>{{ L.members }}</span></div>
+  <div class="tile"><b>{{ overview.active_week }}</b><span>{{ L.active_week }}</span></div>
+  <div class="tile"><b>{{ overview.summary.total }}</b><span>{{ L.checks }} (W {{ overview.summary.writing }} · S {{ overview.summary.speaking }})</span></div>
+  <div class="tile"><b>{{ writing_avg }} / {{ speaking_avg }}</b><span>{{ L.writing }} / {{ L.speaking }} · {{ L.avg }}</span></div>
+</div>
+<p><b>{{ L.group_weakest }}:</b> {{ weakest }}</p>
+
+{% if chart %}<div class="chart"><img src="{{ chart }}"></div>{% endif %}
+
+<h2>{{ L.students }}</h2>
+<table>
+  <tr><th>{{ L.name }}</th><th>{{ L.joined }}</th><th class="n">W</th><th class="n">W {{ L.avg }}</th><th class="n">S</th><th class="n">S {{ L.avg }}</th><th>{{ L.weakest }}</th><th>{{ L.last }}</th></tr>
+  {% for r in rows %}
+  <tr>
+    <td>{{ r.name }}</td><td>{{ r.joined }}</td>
+    <td class="n">{{ r.writing }}</td><td class="n">{{ r.writing_avg }}</td>
+    <td class="n">{{ r.speaking }}</td><td class="n">{{ r.speaking_avg }}</td>
+    <td>{% if r.total %}{{ r.weakest }}{% else %}<span class="muted">{{ L.no_work }}</span>{% endif %}</td><td>{{ r.last }}</td>
+  </tr>
+  {% endfor %}
+</table>
+
+{% if assignments %}
+<h2>{{ L.assignments }}</h2>
+<table>
+  <tr><th>{{ L.assignment }}</th><th>{{ L.due }}</th><th class="n">{{ L.assignments_done }}</th></tr>
+  {% for a in assignments %}
+  <tr><td>{{ a.title }}</td><td>{{ a.due }}</td><td class="n">{{ a.complete }} / {{ a.members }}</td></tr>
+  {% endfor %}
+</table>
+{% endif %}
+<p class="muted" style="margin-top:6mm; font-size:8pt">{{ L.disclaimer }}</p>
+</body>
+</html>

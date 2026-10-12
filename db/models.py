@@ -143,8 +143,12 @@ class User(Base):
     vocab_reminders: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     vocab_reminded_on: Mapped[date | None] = mapped_column(Date, nullable=True)
 
-    writing_submissions: Mapped[list["WritingSubmission"]] = relationship(back_populates="user")
-    speaking_submissions: Mapped[list["SpeakingSubmission"]] = relationship(back_populates="user")
+    writing_submissions: Mapped[list["WritingSubmission"]] = relationship(
+        back_populates="user", foreign_keys="WritingSubmission.user_id"
+    )
+    speaking_submissions: Mapped[list["SpeakingSubmission"]] = relationship(
+        back_populates="user", foreign_keys="SpeakingSubmission.user_id"
+    )
 
 
 class WritingSubmission(Base):
@@ -170,9 +174,15 @@ class WritingSubmission(Base):
     practice_question_id: Mapped[int | None] = mapped_column(
         ForeignKey("practice_questions.id"), nullable=True
     )
+    # The group assignment part this answers (bot/handlers/group_assignments.py).
+    assignment_part_id: Mapped[int | None] = mapped_column(
+        ForeignKey("assignment_parts.id", ondelete="SET NULL"), nullable=True
+    )
+    # Who paid for a check sponsored by a group's teacher/center (else NULL).
+    paid_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    user: Mapped["User"] = relationship(back_populates="writing_submissions")
+    user: Mapped["User"] = relationship(back_populates="writing_submissions", foreign_keys=[user_id])
 
 
 class SpeakingSubmission(Base):
@@ -196,9 +206,13 @@ class SpeakingSubmission(Base):
     practice_question_id: Mapped[int | None] = mapped_column(
         ForeignKey("practice_questions.id"), nullable=True
     )
+    assignment_part_id: Mapped[int | None] = mapped_column(
+        ForeignKey("assignment_parts.id", ondelete="SET NULL"), nullable=True
+    )
+    paid_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    user: Mapped["User"] = relationship(back_populates="speaking_submissions")
+    user: Mapped["User"] = relationship(back_populates="speaking_submissions", foreign_keys=[user_id])
 
 
 class PracticeQuestion(Base):
@@ -367,18 +381,49 @@ class MockTestPart(Base):
     band: Mapped[float | None] = mapped_column(Float, nullable=True)
 
 
+class Center(Base):
+    """A learning center (B2B): its owner - made a center owner by an admin in
+    the web panel - invites teachers with a signed link, sees all of their
+    groups, and pays for the center's sponsored checks and gifts from their
+    own credit balance (bot/handlers/group.py)."""
+
+    __tablename__ = "centers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(255))
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class CenterTeacher(Base):
+    __tablename__ = "center_teachers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    center_id: Mapped[int] = mapped_column(ForeignKey("centers.id"))
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), unique=True)  # one center per teacher
+    joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class Group(Base):
     """A teacher's class (B2B: language centers/teachers) - see
-    bot/handlers/group.py. Deliberately 1 group per teacher (`teacher_id`
-    unique) to keep the UI simple. Only users with role `teacher` (granted by
-    an admin) or admins can open one.
+    bot/handlers/group.py. A teacher may run several; only users with role
+    `teacher` (granted by an admin or a center) or admins can open one.
+    `center_id` ties it to a learning center, whose owner then manages it too
+    and pays for it.
     """
 
     __tablename__ = "groups"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(255))
-    teacher_id: Mapped[int] = mapped_column(ForeignKey("users.id"), unique=True)
+    teacher_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    center_id: Mapped[int | None] = mapped_column(ForeignKey("centers.id"), nullable=True)
+    # The teacher/center pays for students' checks, at most `daily_limit` per
+    # student per day (None = no limit; assignments are never limited).
+    sponsor_checks: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    daily_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    leaderboard_on: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    digest_week: Mapped[str | None] = mapped_column(String(10), nullable=True)  # ISO week of the last digest
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -394,3 +439,49 @@ class GroupMembership(Base):
     group_id: Mapped[int] = mapped_column(ForeignKey("groups.id"))
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Assignment(Base):
+    """Homework (one part) or a group mock test (five parts: Writing Task 1/2,
+    Speaking Part 1-3) set by a group's teacher - see
+    bot/handlers/group_assignments.py."""
+
+    __tablename__ = "assignments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    group_id: Mapped[int] = mapped_column(ForeignKey("groups.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(20))  # "homework" | "mock"
+    title: Mapped[str] = mapped_column(String(255))
+    due_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    reminded: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class AssignmentPart(Base):
+    __tablename__ = "assignment_parts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    assignment_id: Mapped[int] = mapped_column(ForeignKey("assignments.id", ondelete="CASCADE"), index=True)
+    position: Mapped[int] = mapped_column(Integer)
+    module: Mapped[str] = mapped_column(String(32))  # a PracticeModule value
+    prompt_text: Mapped[str] = mapped_column(Text)
+    image_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    practice_question_id: Mapped[int | None] = mapped_column(
+        ForeignKey("practice_questions.id", ondelete="SET NULL"), nullable=True
+    )
+
+
+class SubmissionComment(Base):
+    """A teacher's comment, and optionally their own band, on a student's work."""
+
+    __tablename__ = "submission_comments"
+    __table_args__ = (Index("ix_submission_comments_work", "kind", "submission_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    kind: Mapped[str] = mapped_column(String(1))  # "w" | "s"
+    submission_id: Mapped[int] = mapped_column(Integer)
+    teacher_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    text: Mapped[str] = mapped_column(Text)
+    band: Mapped[float | None] = mapped_column(Float, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

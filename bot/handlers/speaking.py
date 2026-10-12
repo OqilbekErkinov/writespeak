@@ -28,6 +28,7 @@ from aiogram.types import BufferedInputFile, CallbackQuery, Message
 
 from bot.i18n import t
 from bot.keyboards.confirm_kb import CB_CONFIRM, CB_EDIT, confirm_edit_kb
+from bot.keyboards.group_kb import CB_MY_ASSIGNMENTS, assignment_after_kb
 from bot.keyboards.main_menu_kb import BTN_SPEAKING, MENU_BUTTON_TEXTS
 from bot.keyboards.nav_kb import CB_BACK_MAIN, back_kb, check_again_kb
 from bot.keyboards.practice_kb import CB_BACK_TO_LIST_PREFIX, after_result_kb
@@ -96,7 +97,7 @@ async def choose_part(callback: CallbackQuery, state: FSMContext, lang: str) -> 
 
     # See the matching comment in bot/handlers/writing.py's choose_task.
     await state.clear()
-    await state.update_data(part=PART_CALLBACKS[callback.data], spend_credit=quota.spend_credit)
+    await state.update_data(part=PART_CALLBACKS[callback.data], spend_credit=quota.spend_credit, payer_id=quota.payer_id)
     await state.set_state(SpeakingStates.awaiting_question)
     await show_screen(
         callback, free_check_note(quota, lang) + t("speaking.send_question", lang), back_kb(lang, CB_SPEAKING_MENU)
@@ -158,6 +159,8 @@ def _back_target(data: dict) -> str:
         return CB_BACK_MAIN
     if data.get("practice_question_id"):
         return f"{CB_BACK_TO_LIST_PREFIX}{data['practice_question_id']}"
+    if data.get("assignment_part_id"):
+        return CB_MY_ASSIGNMENTS
     return PART_TO_CALLBACK[data["part"]]  # asks for a new question set
 
 
@@ -332,6 +335,8 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
             feedback_pdf_path=pdf_path,
             practice_question_id=data.get("practice_question_id"),
             spend_credit=data.get("spend_credit", False),
+            assignment_part_id=data.get("assignment_part_id"),
+            payer_id=data.get("payer_id"),
         )
         if data.get("practice_question_id"):
             await crud.mark_practice_complete(
@@ -368,6 +373,8 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
 
 
 def _after_result_kb(data: dict, lang: str):
+    if data.get("assignment_part_id"):
+        return assignment_after_kb(data.get("next_part_id"), lang)
     if data.get("practice_question_id"):
         return after_result_kb(data["practice_question_id"], lang)
     return check_again_kb(PART_TO_CALLBACK[data["part"]], lang)

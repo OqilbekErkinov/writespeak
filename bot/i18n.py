@@ -385,16 +385,6 @@ _T: dict[str, dict[str, str]] = {
         "ru": "Напишите название группы (например: \"IELTS вечерняя группа\"):",
     },
     "group.created": {"uz": "✅ Guruh yaratildi!", "ru": "✅ Группа создана!"},
-    "group.teacher_home": {
-        "uz": "🏫 <b>{name}</b>\n👥 Talabalar: {count}\n💳 Kredit balansingiz: {balance} ta\n\n"
-        "🔗 <b>Taklif havolasi</b> (bosib nusxa oling va talabalaringizga yuboring):\n"
-        "<code>{link}</code>\n\n"
-        "ℹ️ Talabaning faqat guruhga qo'shilganidan keyingi ishlarini ko'rasiz.",
-        "ru": "🏫 <b>{name}</b>\n👥 Учеников: {count}\n💳 Ваш баланс: {balance} кредитов\n\n"
-        "🔗 <b>Ссылка-приглашение</b> (нажмите, чтобы скопировать, и отправьте ученикам):\n"
-        "<code>{link}</code>\n\n"
-        "ℹ️ Вы видите работы ученика только с момента его вступления в группу.",
-    },
     "group.btn_stats": {"uz": "📊 Statistika", "ru": "📊 Статистика"},
     "group.btn_students": {"uz": "👥 Talabalar", "ru": "👥 Ученики"},
     "group.btn_gift_all": {"uz": "🎁 Hammaga kredit ulashish", "ru": "🎁 Подарить кредиты всем"},
@@ -446,16 +436,12 @@ _T: dict[str, dict[str, str]] = {
         "✍️ Writing: {writing} ta · o'rtacha {writing_avg}\n"
         "🎙 Speaking: {speaking} ta · o'rtacha {speaking_avg}\n"
         "📉 Eng zaif mezon: {weakest}\n"
-        "🕒 Oxirgi faollik: {last}",
+        "🕒 Oxirgi faollik: {last} · 🔥 ketma-ket {streak} kun",
         "ru": "👤 <b>{name}</b>\n📅 В группе с: {joined}\n\n"
         "✍️ Writing: {writing} · средний {writing_avg}\n"
         "🎙 Speaking: {speaking} · средний {speaking_avg}\n"
         "📉 Самый слабый критерий: {weakest}\n"
-        "🕒 Последняя активность: {last}",
-    },
-    "group.reports_hint": {
-        "uz": "📄 Oxirgi ishlari — hisobotini olish uchun bosing:",
-        "ru": "📄 Последние работы — нажмите, чтобы получить отчёт:",
+        "🕒 Последняя активность: {last} · 🔥 дней подряд: {streak}",
     },
     "group.no_works_yet": {
         "uz": "Guruhga qo'shilganidan beri hali ish topshirmagan.",
@@ -554,6 +540,303 @@ _T: dict[str, dict[str, str]] = {
         "uz": "👋 Guruhingizga yangi talaba qo'shildi: <b>{name}</b> (jami: {count}).",
         "ru": "👋 В вашу группу вступил новый ученик: <b>{name}</b> (всего: {count}).",
     },
+    # --- Groups: teacher home, one group, centers (bot/handlers/group.py) ---
+    "group.teacher_home_title": {"uz": "🏫 <b>Guruhlaringiz</b>", "ru": "🏫 <b>Ваши группы</b>"},
+    "group.teacher_home_hint": {
+        "uz": "Guruhni tanlang yoki yangisini oching:",
+        "ru": "Выберите группу или создайте новую:",
+    },
+    "group.teacher_no_groups": {
+        "uz": "Sizda hali guruh yo'q. Birinchi guruhingizni oching:",
+        "ru": "У вас пока нет групп. Создайте первую:",
+    },
+    "group.group_button": {"uz": "{name} · {count} talaba", "ru": "{name} · {count} уч."},
+    "group.btn_new_group": {"uz": "➕ Yangi guruh", "ru": "➕ Новая группа"},
+    "group.btn_center": {"uz": "🏢 Markaz", "ru": "🏢 Центр"},
+    "group.btn_cabinet": {"uz": "🖥 Web-kabinet", "ru": "🖥 Веб-кабинет"},
+    "group.btn_my_groups_student": {"uz": "🎓 Men a'zo bo'lgan guruhlar", "ru": "🎓 Группы, где я ученик"},
+    "group.center_line": {"uz": "🏢 Markaz: <b>{name}</b>", "ru": "🏢 Центр: <b>{name}</b>"},
+    "group.teacher_line": {"uz": "👨‍🏫 O'qituvchi: {name}", "ru": "👨‍🏫 Преподаватель: {name}"},
+    "group.group_title": {"uz": "🏫 <b>{name}</b>\n👥 Talabalar: {count}", "ru": "🏫 <b>{name}</b>\n👥 Учеников: {count}"},
+    "group.sponsor_on_line": {
+        "uz": "💳 Tekshiruvlarni guruh to'laydi · balans: {balance} ta · kunlik limit: {limit}",
+        "ru": "💳 Проверки оплачивает группа · баланс: {balance} · лимит в день: {limit}",
+    },
+    "group.sponsor_off_line": {
+        "uz": "💳 Talabalar tekshiruvlarni o'zlari to'laydi",
+        "ru": "💳 Ученики оплачивают проверки сами",
+    },
+    "group.invite_line": {
+        "uz": "\n🔗 <b>Taklif havolasi</b> (bosib nusxa oling):\n<code>{link}</code>",
+        "ru": "\n🔗 <b>Ссылка-приглашение</b> (нажмите, чтобы скопировать):\n<code>{link}</code>",
+    },
+    "group.btn_assignments": {"uz": "📝 Vazifalar", "ru": "📝 Задания"},
+    "group.btn_top": {"uz": "🏆 Reyting", "ru": "🏆 Рейтинг"},
+    "group.btn_top_named": {"uz": "🏆 {name}", "ru": "🏆 {name}"},
+    "group.btn_announce": {"uz": "📢 E'lon", "ru": "📢 Объявление"},
+    "group.btn_qr": {"uz": "🔳 QR-kod", "ru": "🔳 QR-код"},
+    "group.btn_excel": {"uz": "📥 Excel", "ru": "📥 Excel"},
+    "group.btn_group_pdf": {"uz": "📄 PDF hisobot", "ru": "📄 PDF-отчёт"},
+    "group.btn_settings": {"uz": "⚙️ Sozlamalar", "ru": "⚙️ Настройки"},
+    "group.btn_my_assignments": {"uz": "📝 Vazifalarim", "ru": "📝 Мои задания"},
+    "group.btn_parent_report": {"uz": "👨‍👩‍👧 Ota-ona uchun oylik hisobot", "ru": "👨‍👩‍👧 Отчёт за месяц для родителей"},
+    "group.btn_report_pdf": {"uz": "📄 Hisobot (PDF)", "ru": "📄 Отчёт (PDF)"},
+    "group.btn_comment": {"uz": "💬 Izoh yozish", "ru": "💬 Написать комментарий"},
+    "group.btn_keep_ai_band": {"uz": "Ballni o'zgartirmaslik", "ru": "Балл не менять"},
+    "group.btn_send": {"uz": "✅ Yuborish", "ru": "✅ Отправить"},
+    "group.btn_sponsor_on": {"uz": "💳 Tekshiruvlarni men to'layman: yoqish", "ru": "💳 Я оплачиваю проверки: включить"},
+    "group.btn_sponsor_off": {"uz": "💳 Tekshiruvlarni men to'layman: o'chirish", "ru": "💳 Я оплачиваю проверки: выключить"},
+    "group.btn_board_on": {"uz": "🏆 Reytingni talabalarga ko'rsatish", "ru": "🏆 Показывать рейтинг ученикам"},
+    "group.btn_board_off": {"uz": "🏆 Reytingni talabalardan yashirish", "ru": "🏆 Скрыть рейтинг от учеников"},
+    "group.btn_open_cabinet": {"uz": "🖥 Kabinetni ochish", "ru": "🖥 Открыть кабинет"},
+    "group.on": {"uz": "✅ yoqilgan", "ru": "✅ включено"},
+    "group.off": {"uz": "❌ o'chirilgan", "ru": "❌ выключено"},
+    "group.limit_none": {"uz": "cheksiz", "ru": "без лимита"},
+    "group.settings": {
+        "uz": "⚙️ <b>{name}</b> — sozlamalar\n\n"
+        "💳 <b>Tekshiruvlarni men to'layman:</b> {sponsor}\n"
+        "Yoqilsa, talabalar o'z bepul tekshiruvlarini ishlatib bo'lgach, tekshiruvlari sizning "
+        "balansingizdan yechiladi.\n"
+        "📏 <b>Kunlik limit</b> (har bir talabaga): {limit}. Vazifalar limitga kirmaydi.\n\n"
+        "🏆 <b>Reyting talabalarga ko'rinadi:</b> {board}",
+        "ru": "⚙️ <b>{name}</b> — настройки\n\n"
+        "💳 <b>Я оплачиваю проверки:</b> {sponsor}\n"
+        "Если включено, после бесплатных проверок проверки учеников списываются с вашего "
+        "баланса.\n"
+        "📏 <b>Лимит в день</b> (на ученика): {limit}. Задания в лимит не входят.\n\n"
+        "🏆 <b>Рейтинг виден ученикам:</b> {board}",
+    },
+    "group.center_owner_pays": {
+        "uz": "ℹ️ Bu markaz guruhi: kredit va to'lov sozlamalarini markaz rahbari boshqaradi.",
+        "ru": "ℹ️ Это группа центра: кредиты и оплату настраивает руководитель центра.",
+    },
+    "group.preparing": {"uz": "⏳ Tayyorlanyapti…", "ru": "⏳ Готовлю…"},
+    "group.parent_report_caption": {
+        "uz": "👨‍👩‍👧 <b>{name}</b> — oxirgi 30 kunlik hisobot. Ota-onasiga yuborishingiz mumkin.",
+        "ru": "👨‍👩‍👧 <b>{name}</b> — отчёт за последние 30 дней. Можно отправить родителям.",
+    },
+    "group.works_hint": {
+        "uz": "📄 Oxirgi ishlari — hisobot va izoh uchun bosing:",
+        "ru": "📄 Последние работы — нажмите для отчёта и комментария:",
+    },
+    "group.work_card": {
+        "uz": "📄 <b>{label}</b> · {date}\nAI bahosi: <b>{band}</b>\nMezonlar: {criteria}",
+        "ru": "📄 <b>{label}</b> · {date}\nОценка ИИ: <b>{band}</b>\nКритерии: {criteria}",
+    },
+    "group.work_comment": {"uz": "\n💬 {date}{band}: {text}", "ru": "\n💬 {date}{band}: {text}"},
+    "group.ask_comment": {
+        "uz": "💬 Talabaga izohingizni yozing — u sizning ismingiz bilan yuboriladi:",
+        "ru": "💬 Напишите комментарий ученику — он придёт от вашего имени:",
+    },
+    "group.ask_comment_band": {
+        "uz": "O'zingiz ham ball qo'yasizmi? Tanlang yoki AI bahosini qoldiring:",
+        "ru": "Поставите свой балл? Выберите или оставьте оценку ИИ:",
+    },
+    "group.comment_saved": {
+        "uz": "✅ Izoh saqlandi va talabaga yuborildi.",
+        "ru": "✅ Комментарий сохранён и отправлен ученику.",
+    },
+    "group.comment_notify": {
+        "uz": "💬 <b>O'qituvchingiz izohi</b> ({teacher})\n{label} · {date}\n\n{text}{band_line}",
+        "ru": "💬 <b>Комментарий преподавателя</b> ({teacher})\n{label} · {date}\n\n{text}{band_line}",
+    },
+    "group.comment_band_line": {"uz": "\n\nO'qituvchi bahosi: <b>{band}</b>", "ru": "\n\nОценка преподавателя: <b>{band}</b>"},
+    "group.board": {
+        "uz": "🏆 <b>{name}</b> — reyting\n\n<b>Bu hafta eng faol:</b>\n{week}\n\n"
+        "<b>🔥 Ketma-ket faol kunlar:</b>\n{streaks}\n\n<b>🚀 Eng ko'p o'sgan</b> (14 kun):\n{improved}",
+        "ru": "🏆 <b>{name}</b> — рейтинг\n\n<b>Самые активные на этой неделе:</b>\n{week}\n\n"
+        "<b>🔥 Дней подряд:</b>\n{streaks}\n\n<b>🚀 Самый большой рост</b> (14 дней):\n{improved}",
+    },
+    "group.board_checks": {"uz": "{n} ta tekshiruv", "ru": "проверок: {n}"},
+    "group.board_days": {"uz": "{n} kun", "ru": "дней: {n}"},
+    "group.board_you": {"uz": "siz", "ru": "вы"},
+    "group.board_hidden": {
+        "uz": "O'qituvchi reytingni yashirgan.",
+        "ru": "Преподаватель скрыл рейтинг.",
+    },
+    "group.ask_announcement": {
+        "uz": "📢 \"<b>{name}</b>\" guruhiga e'lon: xabarni yuboring (matn, rasm, fayl yoki ovozli xabar):",
+        "ru": "📢 Объявление для группы \"<b>{name}</b>\": отправьте сообщение (текст, фото, файл или голосовое):",
+    },
+    "group.announce_confirm": {
+        "uz": "Shu xabar {count} ta talabaga yuborilsinmi?",
+        "ru": "Отправить это сообщение {count} ученикам?",
+    },
+    "group.announce_sending": {"uz": "📤 {count} ta talabaga yuborilyapti…", "ru": "📤 Отправляю {count} ученикам…"},
+    "group.announce_header": {
+        "uz": "📢 <b>{group}</b> — o'qituvchingiz {teacher} e'loni:",
+        "ru": "📢 <b>{group}</b> — объявление преподавателя {teacher}:",
+    },
+    "group.announce_done": {
+        "uz": "✅ E'lon {sent} ta talabaga yuborildi. {failed} ta talabaga yetib bormadi (botni bloklagan).",
+        "ru": "✅ Объявление отправлено {sent} ученикам. Не доставлено: {failed} (заблокировали бота).",
+    },
+    "group.qr_caption": {
+        "uz": "🔳 <b>{name}</b> — taklif QR-kodi.\nDarsda ekranga yoki doskaga qo'ying: talabalar telefon "
+        "kamerasi bilan skanerlab, guruhga qo'shiladi.\n\n{link}",
+        "ru": "🔳 <b>{name}</b> — QR-код приглашения.\nПокажите его на уроке: ученики сканируют камерой "
+        "телефона и вступают в группу.\n\n{link}",
+    },
+    "group.center_home": {
+        "uz": "🏢 <b>{name}</b> — markaz\n\n👨‍🏫 O'qituvchilar: {teachers}\n🏫 Guruhlar: {groups}\n"
+        "👥 Talabalar: {students}\n💳 Markaz balansi: {balance} ta kredit\n"
+        "<i>Markaz guruhlarining kreditlari va to'lovlari shu balansdan.</i>\n\n"
+        "{teacher_lines}\n\n🔗 <b>O'qituvchi taklif havolasi</b> (bosib nusxa oling):\n<code>{link}</code>\n\n"
+        "O'qituvchini markazdan chiqarish uchun pastdagi tugmani bosing.",
+        "ru": "🏢 <b>{name}</b> — центр\n\n👨‍🏫 Преподавателей: {teachers}\n🏫 Групп: {groups}\n"
+        "👥 Учеников: {students}\n💳 Баланс центра: {balance} кредитов\n"
+        "<i>Кредиты и оплаты групп центра — с этого баланса.</i>\n\n"
+        "{teacher_lines}\n\n🔗 <b>Ссылка для преподавателей</b> (нажмите, чтобы скопировать):\n<code>{link}</code>\n\n"
+        "Чтобы исключить преподавателя, нажмите кнопку ниже.",
+    },
+    "group.center_teacher_row": {"uz": "• {name} — {groups} ta guruh", "ru": "• {name} — групп: {groups}"},
+    "group.center_teacher_view": {
+        "uz": "🏢 Siz <b>{name}</b> markazining o'qituvchisisiz (rahbar: {owner}).\n\nGuruhlaringizning "
+        "kreditlari va to'lovlarini markaz rahbari boshqaradi.",
+        "ru": "🏢 Вы преподаватель центра <b>{name}</b> (руководитель: {owner}).\n\nКредиты и оплату "
+        "ваших групп настраивает руководитель центра.",
+    },
+    "group.center_kick_confirm": {
+        "uz": "❌ <b>{name}</b>ni markazdan chiqarasizmi? Uning guruhlari o'zida qoladi, lekin endi markaz "
+        "tarkibida bo'lmaydi.",
+        "ru": "❌ Исключить <b>{name}</b> из центра? Его группы останутся у него, но выйдут из центра.",
+    },
+    "group.center_removed_notify": {
+        "uz": "ℹ️ Siz \"{name}\" markazidan chiqarildingiz. Guruhlaringiz o'zingizda qoladi.",
+        "ru": "ℹ️ Вы исключены из центра \"{name}\". Ваши группы остаются у вас.",
+    },
+    "group.center_new_teacher": {
+        "uz": "👋 Markazingizga yangi o'qituvchi qo'shildi: <b>{name}</b>.",
+        "ru": "👋 В ваш центр вступил новый преподаватель: <b>{name}</b>.",
+    },
+    "group.center_join_joined": {
+        "uz": "✅ Siz \"<b>{name}</b>\" markazining o'qituvchisi bo'ldingiz! Endi 🏫 Guruh → ➕ Yangi guruh "
+        "orqali guruh ochishingiz mumkin.",
+        "ru": "✅ Вы стали преподавателем центра \"<b>{name}</b>\"! Создайте группу: 🏫 Группа → ➕ Новая группа.",
+    },
+    "group.center_join_already": {
+        "uz": "ℹ️ Siz allaqachon \"<b>{name}</b>\" markazidasiz.",
+        "ru": "ℹ️ Вы уже в центре \"<b>{name}</b>\".",
+    },
+    "group.center_join_owner": {
+        "uz": "ℹ️ Bu sizning markazingizning o'qituvchi taklif havolasi — uni o'qituvchilarga yuboring.",
+        "ru": "ℹ️ Это ссылка вашего центра для преподавателей — отправьте её им.",
+    },
+    "group.center_join_other": {
+        "uz": "⚠️ Siz boshqa markaz tarkibidasiz. Avval u markaz rahbaridan sizni chiqarishini so'rang.",
+        "ru": "⚠️ Вы уже в другом центре. Попросите его руководителя сначала исключить вас.",
+    },
+    "group.center_join_expired": {
+        "uz": "⚠️ Bu markaz havolasi noto'g'ri yoki eskirgan.",
+        "ru": "⚠️ Эта ссылка центра неверна или устарела.",
+    },
+    "group.cabinet_text": {
+        "uz": "🖥 <b>Web-kabinet</b> — guruhlaringiz, talabalar jadvali, vazifalar natijalari va hisobotlar "
+        "katta ekranda.\n\nHavola 10 daqiqa amal qiladi va faqat siz uchun.",
+        "ru": "🖥 <b>Веб-кабинет</b> — ваши группы, таблица учеников, результаты заданий и отчёты на "
+        "большом экране.\n\nСсылка действует 10 минут и только для вас.",
+    },
+    "quota.sponsored_note": {
+        "uz": "🏫 Bu tekshiruvni o'qituvchingiz yoki o'quv markazingiz to'laydi.",
+        "ru": "🏫 Эту проверку оплачивает ваш преподаватель или учебный центр.",
+    },
+    # --- Weekly digest (bot/utils/group_scheduler.py) ---
+    "gr.digest": {
+        "uz": "📬 <b>{name}</b> — haftalik hisobot ({start}–{end})\n\n"
+        "👥 Faol talabalar: {active}/{members}\n"
+        "📝 Tekshiruvlar: {total} (Writing {writing}, Speaking {speaking})\n"
+        "📈 O'rtacha ball: {avg}{trend}\n"
+        "🏆 Eng faol: {top}\n"
+        "🚀 Eng ko'p o'sgan: {improved}\n"
+        "📉 Zaif mezon: {weakest}\n"
+        "😴 Bu hafta ishlamaganlar: {inactive}",
+        "ru": "📬 <b>{name}</b> — отчёт за неделю ({start}–{end})\n\n"
+        "👥 Активных учеников: {active}/{members}\n"
+        "📝 Проверок: {total} (Writing {writing}, Speaking {speaking})\n"
+        "📈 Средний балл: {avg}{trend}\n"
+        "🏆 Самые активные: {top}\n"
+        "🚀 Самый большой рост: {improved}\n"
+        "📉 Слабый критерий: {weakest}\n"
+        "😴 Не занимались на неделе: {inactive}",
+    },
+    "gr.digest_assignment": {
+        "uz": "📝 {title}: {complete}/{members} bajardi",
+        "ru": "📝 {title}: выполнили {complete}/{members}",
+    },
+    "gr.digest_balance": {
+        "uz": "💳 To'lov balansi: {balance} ta kredit",
+        "ru": "💳 Баланс для оплаты: {balance} кредитов",
+    },
+    # --- Assignments (bot/handlers/group_assignments.py) ---
+    "as.list": {"uz": "📝 <b>{name}</b> — vazifalar\n\nNatijani ko'rish uchun vazifani tanlang:", "ru": "📝 <b>{name}</b> — задания\n\nВыберите задание, чтобы увидеть результаты:"},
+    "as.list_empty": {"uz": "📝 <b>{name}</b> — hali vazifa yo'q.\n\nBirinchi uy vazifasi yoki mock testni bering:", "ru": "📝 <b>{name}</b> — заданий пока нет.\n\nДайте первое домашнее задание или mock-тест:"},
+    "as.closed": {"uz": "yopilgan", "ru": "закрыто"},
+    "as.btn_new": {"uz": "➕ Yangi vazifa", "ru": "➕ Новое задание"},
+    "as.btn_mock": {"uz": "🎯 Mock test (Writing 1+2, Speaking 1–3)", "ru": "🎯 Mock-тест (Writing 1+2, Speaking 1–3)"},
+    "as.choose_type": {"uz": "Qanday vazifa berasiz?", "ru": "Какое задание дадите?"},
+    "as.choose_source": {"uz": "<b>{label}</b> — savolni qayerdan olamiz?", "ru": "<b>{label}</b> — откуда взять вопрос?"},
+    "as.btn_bank": {"uz": "📚 Savollar bankidan", "ru": "📚 Из банка вопросов"},
+    "as.btn_own": {"uz": "✍️ O'z savolim", "ru": "✍️ Свой вопрос"},
+    "as.bank_empty": {"uz": "Bankda bu turdagi savol topilmadi. O'z savolingizni yozing.", "ru": "В банке нет вопросов этого типа. Напишите свой."},
+    "as.picked": {"uz": "Tanlangan savol(lar):", "ru": "Выбранные вопросы:"},
+    "as.btn_use": {"uz": "✅ Shu savol", "ru": "✅ Этот вопрос"},
+    "as.btn_another": {"uz": "🔄 Boshqasi", "ru": "🔄 Другой"},
+    "as.ask_own": {"uz": "✍️ Savol matnini yuboring:", "ru": "✍️ Отправьте текст вопроса:"},
+    "as.ask_own_task1": {
+        "uz": "✍️ Grafik/diagramma rasmini yuboring va <b>rasm ostiga savol matnini</b> yozing (yoki faqat matn):",
+        "ru": "✍️ Отправьте фото графика/диаграммы и <b>текст вопроса в подписи</b> (или только текст):",
+    },
+    "as.ask_own_speaking": {
+        "uz": "✍️ Savollarni yuboring — har birini yangi qatorda:",
+        "ru": "✍️ Отправьте вопросы — каждый с новой строки:",
+    },
+    "as.own_needs_text": {"uz": "Savol matni kerak — rasm ostiga yoki alohida xabar qilib yozing.", "ru": "Нужен текст вопроса — в подписи к фото или отдельным сообщением."},
+    "as.own_preview": {"uz": "Vazifa savoli:", "ru": "Вопрос задания:"},
+    "as.choose_due": {"uz": "⏰ Muddat qachongacha?", "ru": "⏰ Срок сдачи?"},
+    "as.due_today": {"uz": "Bugun", "ru": "Сегодня"},
+    "as.due_tomorrow": {"uz": "Ertaga", "ru": "Завтра"},
+    "as.due_3": {"uz": "3 kun", "ru": "3 дня"},
+    "as.due_7": {"uz": "1 hafta", "ru": "1 неделя"},
+    "as.created": {"uz": "✅ Vazifa berildi va {sent} ta talabaga yuborildi. Muddat: {due}.", "ru": "✅ Задание создано и отправлено {sent} ученикам. Срок: {due}."},
+    "as.new_notify": {
+        "uz": "📝 <b>Yangi vazifa</b> — {group}\n{title}\n⏰ Muddat: {due}",
+        "ru": "📝 <b>Новое задание</b> — {group}\n{title}\n⏰ Срок: {due}",
+    },
+    "as.new_mock_notify": {
+        "uz": "🎯 <b>Mock test</b> — {group}\nWriting Task 1 + 2 va Speaking Part 1–3, ketma-ket.\n⏰ Muddat: {due}",
+        "ru": "🎯 <b>Mock-тест</b> — {group}\nWriting Task 1 + 2 и Speaking Part 1–3, по порядку.\n⏰ Срок: {due}",
+    },
+    "as.btn_do": {"uz": "✍️ Bajarish", "ru": "✍️ Выполнить"},
+    "as.btn_next_part": {"uz": "➡️ Keyingi qism", "ru": "➡️ Следующая часть"},
+    "as.results": {
+        "uz": "📝 <b>{title}</b>\n⏰ Muddat: {due}\n✅ To'liq bajargan: {complete}/{members}\n",
+        "ru": "📝 <b>{title}</b>\n⏰ Срок: {due}\n✅ Выполнили полностью: {complete}/{members}\n",
+    },
+    "as.mock_legend": {
+        "uz": "\n<i>Tartib: W1 · W2 · S1 · S2 · S3 → Writing+Speaking umumiy taxminiy ball.</i>",
+        "ru": "\n<i>Порядок: W1 · W2 · S1 · S2 · S3 → общий ориентировочный балл Writing+Speaking.</i>",
+    },
+    "as.more_in_excel": {"uz": "… yana {n} ta talaba — to'liq jadval Excel'da.", "ru": "… ещё {n} учеников — полная таблица в Excel."},
+    "as.btn_remind": {"uz": "🔔 Bajarmaganlarga eslatish", "ru": "🔔 Напомнить невыполнившим"},
+    "as.btn_delete": {"uz": "🗑 Vazifani o'chirish", "ru": "🗑 Удалить задание"},
+    "as.reminded": {"uz": "🔔 {n} ta talabaga eslatma yuborildi.", "ru": "🔔 Напоминание отправлено {n} ученикам."},
+    "as.reminder": {
+        "uz": "🔔 <b>Eslatma</b>: \"{title}\" vazifasi ({group}) hali bajarilmagan.\n⏰ Muddat: {due}",
+        "ru": "🔔 <b>Напоминание</b>: задание \"{title}\" ({group}) ещё не выполнено.\n⏰ Срок: {due}",
+    },
+    "as.delete_confirm": {
+        "uz": "🗑 \"<b>{title}</b>\" vazifasini o'chirasizmi? Talabalarning ishlari o'zlarida qoladi.",
+        "ru": "🗑 Удалить задание \"<b>{title}</b>\"? Работы учеников останутся у них.",
+    },
+    "as.my_title": {"uz": "📝 <b>Vazifalarim</b>", "ru": "📝 <b>Мои задания</b>"},
+    "as.my_empty": {"uz": "Hozircha vazifa yo'q.", "ru": "Пока заданий нет."},
+    "as.due": {"uz": "muddat", "ru": "срок"},
+    "as.status_done": {"uz": "✅ bajarildi ({bands})", "ru": "✅ выполнено ({bands})"},
+    "as.status_open": {"uz": "⏳ {done}/{total}", "ru": "⏳ {done}/{total}"},
+    "as.status_late": {"uz": "⚠️ muddati o'tgan ({done}/{total})", "ru": "⚠️ срок прошёл ({done}/{total})"},
+    "as.not_available": {"uz": "Bu vazifa endi mavjud emas.", "ru": "Это задание больше недоступно."},
+    "as.part_header": {"uz": "🎯 <b>{title}</b> — {n}/{total}-qism", "ru": "🎯 <b>{title}</b> — часть {n}/{total}"},
+    "as.homework_header": {"uz": "📝 <b>Vazifa:</b> {title}", "ru": "📝 <b>Задание:</b> {title}"},
     # --- Vocabulary (bot/handlers/vocabulary.py) ---
     "vocab.title": {"uz": "📚 Lug'atim", "ru": "📚 Мой словарь"},
     "vocab.empty": {

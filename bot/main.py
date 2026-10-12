@@ -37,6 +37,7 @@ def build_dispatcher() -> Dispatcher:
     from bot.handlers import (
         account,
         group,
+        group_assignments,
         language,
         main_menu,
         my_works,
@@ -58,6 +59,7 @@ def build_dispatcher() -> Dispatcher:
     dp.include_router(account.router)
     dp.include_router(vocabulary.router)
     dp.include_router(group.router)
+    dp.include_router(group_assignments.router)
     dp.include_router(main_menu.router)
     dp.include_router(writing.router)
     dp.include_router(speaking.router)
@@ -76,15 +78,20 @@ async def main() -> None:
     )
     dp = build_dispatcher()
 
+    from bot.utils.group_scheduler import run_group_jobs
     from bot.utils.vocab_reminders import run_vocab_reminders
 
     logger.info("Starting WriteSpeak bot (polling mode)")
     await bot.delete_webhook(drop_pending_updates=True)
-    reminders = asyncio.create_task(run_vocab_reminders(bot))
+    background = [
+        asyncio.create_task(run_vocab_reminders(bot)),
+        asyncio.create_task(run_group_jobs(bot)),
+    ]
     try:
         await dp.start_polling(bot)
     finally:
-        reminders.cancel()
+        for task in background:
+            task.cancel()
 
 
 if __name__ == "__main__":

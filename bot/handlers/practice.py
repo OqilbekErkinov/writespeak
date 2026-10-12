@@ -181,6 +181,7 @@ async def _start_practice_question(
             prompt_image_paths=[image_path] if image_path else [],
             practice_question_id=question.id,
             spend_credit=spend_credit,
+            payer_id=quota.payer_id,
         )
         await state.set_state(WritingStates.awaiting_answer)
         min_words = "150" if task_type == "task1" else "250"
@@ -208,6 +209,7 @@ async def _start_practice_question(
             part=part,
             practice_question_id=question.id,
             spend_credit=spend_credit,
+            payer_id=quota.payer_id,
         )
         intro = None
         if question.topic:

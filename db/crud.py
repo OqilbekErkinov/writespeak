@@ -15,6 +15,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from db.models import (
+    Assignment,
+    AssignmentPart,
+    Center,
+    CenterTeacher,
     Group,
     GroupMembership,
     MockTestPart,
@@ -29,6 +33,7 @@ from db.models import (
     PracticeProgress,
     PracticeQuestion,
     SpeakingSubmission,
+    SubmissionComment,
     User,
     UserRole,
     UserStatus,
@@ -126,11 +131,15 @@ async def save_writing_submission(
     feedback_pdf_path: str,
     practice_question_id: int | None = None,
     spend_credit: bool = False,
+    assignment_part_id: int | None = None,
+    payer_id: int | None = None,
 ) -> WritingSubmission:
     """`annotations` holds the report's numbered mistakes (each with its
     `criterion`) since the 2026-10 report redesign - get_writing_history
     compares their per-criterion counts with the student's next essay.
-    Older rows hold the previous sentence-annotation format."""
+    Older rows hold the previous sentence-annotation format. With
+    `spend_credit`, the credit comes from `payer_id` (a group's sponsor) when
+    given, else from the student."""
     submission = WritingSubmission(
         user_id=user_id,
         task_type=task_type,
@@ -146,10 +155,12 @@ async def save_writing_submission(
         book_sample_ref=book_sample_ref,
         feedback_pdf_path=feedback_pdf_path,
         practice_question_id=practice_question_id,
+        assignment_part_id=assignment_part_id,
+        paid_by_id=payer_id if spend_credit and payer_id else None,
     )
     session.add(submission)
     if spend_credit:
-        await _spend_one_credit(session, user_id)
+        await _spend_one_credit(session, payer_id or user_id)
     await session.commit()
     await session.refresh(submission)
     return submission
@@ -168,6 +179,8 @@ async def save_speaking_submission(
     feedback_pdf_path: str,
     practice_question_id: int | None = None,
     spend_credit: bool = False,
+    assignment_part_id: int | None = None,
+    payer_id: int | None = None,
 ) -> SpeakingSubmission:
     submission = SpeakingSubmission(
         user_id=user_id,
@@ -187,10 +200,12 @@ async def save_speaking_submission(
         book_sample_ref=book_sample_ref,
         feedback_pdf_path=feedback_pdf_path,
         practice_question_id=practice_question_id,
+        assignment_part_id=assignment_part_id,
+        paid_by_id=payer_id if spend_credit and payer_id else None,
     )
     session.add(submission)
     if spend_credit:
-        await _spend_one_credit(session, user_id)
+        await _spend_one_credit(session, payer_id or user_id)
     await session.commit()
     await session.refresh(submission)
     return submission
@@ -1260,12 +1275,28 @@ async def get_admin_stats(session: AsyncSession) -> dict:
     }
 
 
-# --- Groups (B2B: teachers / language centers) --------------------------------
-# A teacher (role `teacher`, granted by an admin - bot/handlers/group.py) owns
-# one group; students join through a signed invite link
-# (bot/utils/group_invite.py). Everything a teacher sees about a student covers
-# only work submitted after the student joined - joining is when they agreed to
+# --- Groups, centers, assignments (B2B: teachers / learning centers) ------------
+# A teacher (role `teacher`, granted by an admin or by joining a center) runs
+# one or more groups; students join through a signed invite link
+# (bot/utils/group_invite.py). A center's owner manages every group of the
+# center and pays for it. Everything a teacher sees about a student covers only
+# work submitted after the student joined - joining is when they agreed to
 # share it.
+
+MOCK_PARTS = (
+    PracticeModule.writing_task1,
+    PracticeModule.writing_task2,
+    PracticeModule.speaking_part1,
+    PracticeModule.speaking_part2,
+    PracticeModule.speaking_part3,
+)
+
+
+def week_start_tashkent_as_utc(weeks_ago: int = 0) -> datetime:
+    """Monday 00:00 Tashkent of this week (or `weeks_ago` weeks before), in UTC."""
+    today = _today_start_tashkent_as_utc()
+    weekday = (today + _TASHKENT_OFFSET).weekday()
+    return today - timedelta(days=weekday + 7 * weeks_ago)
 
 
 async def set_user_role(session: AsyncSession, user_id: int, role: UserRole) -> User | None:
@@ -1277,8 +1308,106 @@ async def set_user_role(session: AsyncSession, user_id: int, role: UserRole) -> 
     return user
 
 
+# --- centers ---
+
+
+async def get_center(session: AsyncSession, center_id: int) -> Center | None:
+    return await session.get(Center, center_id)
+
+
+async def get_owned_center(session: AsyncSession, user_id: int) -> Center | None:
+    return (await session.execute(select(Center).where(Center.owner_id == user_id))).scalar_one_or_none()
+
+
+async def get_user_center(session: AsyncSession, user_id: int) -> Center | None:
+    """The center this user owns or teaches at, if any."""
+    owned = await get_owned_center(session, user_id)
+    if owned is not None:
+        return owned
+    stmt = select(Center).join(CenterTeacher, CenterTeacher.center_id == Center.id).where(CenterTeacher.user_id == user_id)
+    return (await session.execute(stmt)).scalar_one_or_none()
+
+
+async def create_center(session: AsyncSession, owner_id: int, name: str) -> Center:
+    """Makes `owner_id` a center owner (and a teacher); their groups join the center."""
+    center = Center(owner_id=owner_id, name=name)
+    session.add(center)
+    await session.flush()
+    owner = await session.get(User, owner_id)
+    if owner is not None and owner.role == UserRole.student:
+        owner.role = UserRole.teacher
+    await session.execute(delete(CenterTeacher).where(CenterTeacher.user_id == owner_id))
+    await session.execute(update(Group).where(Group.teacher_id == owner_id).values(center_id=center.id))
+    await session.commit()
+    await session.refresh(center)
+    return center
+
+
+async def delete_center(session: AsyncSession, center_id: int) -> None:
+    """Groups stay with their teachers; only the center link goes."""
+    await session.execute(update(Group).where(Group.center_id == center_id).values(center_id=None))
+    await session.execute(delete(CenterTeacher).where(CenterTeacher.center_id == center_id))
+    await session.execute(delete(Center).where(Center.id == center_id))
+    await session.commit()
+
+
+async def join_center(session: AsyncSession, center_id: int, user_id: int) -> str:
+    """"joined" | "already" | "owner" | "other" (teaches at another center).
+    Joining makes a student a teacher and moves their groups into the center."""
+    center = await session.get(Center, center_id)
+    if center is None:
+        return "other"
+    if center.owner_id == user_id:
+        return "owner"
+    if await get_owned_center(session, user_id) is not None:
+        return "other"
+    existing = (await session.execute(select(CenterTeacher).where(CenterTeacher.user_id == user_id))).scalar_one_or_none()
+    if existing is not None:
+        return "already" if existing.center_id == center_id else "other"
+    session.add(CenterTeacher(center_id=center_id, user_id=user_id))
+    user = await session.get(User, user_id)
+    if user is not None and user.role == UserRole.student:
+        user.role = UserRole.teacher
+    await session.execute(update(Group).where(Group.teacher_id == user_id).values(center_id=center_id))
+    await session.commit()
+    return "joined"
+
+
+async def remove_center_teacher(session: AsyncSession, center_id: int, user_id: int) -> bool:
+    result = await session.execute(
+        delete(CenterTeacher).where(CenterTeacher.center_id == center_id, CenterTeacher.user_id == user_id)
+    )
+    await session.execute(
+        update(Group).where(Group.teacher_id == user_id, Group.center_id == center_id).values(center_id=None)
+    )
+    await session.commit()
+    return result.rowcount > 0
+
+
+async def list_center_teachers(session: AsyncSession, center_id: int) -> list[tuple[User, int]]:
+    """(teacher, number of their groups in the center) - the owner first."""
+    center = await session.get(Center, center_id)
+    ids = [center.owner_id] if center else []
+    ids += list((await session.execute(
+        select(CenterTeacher.user_id).where(CenterTeacher.center_id == center_id).order_by(CenterTeacher.joined_at)
+    )).scalars().all())
+    result = []
+    for user_id in ids:
+        user = await session.get(User, user_id)
+        count = (await session.execute(
+            select(func.count()).select_from(Group).where(Group.teacher_id == user_id, Group.center_id == center_id)
+        )).scalar() or 0
+        if user is not None:
+            result.append((user, count))
+    return result
+
+
+# --- groups ---
+
+
 async def create_group(session: AsyncSession, teacher_id: int, name: str) -> Group:
-    group = Group(teacher_id=teacher_id, name=name)
+    center = await get_user_center(session, teacher_id)
+    group = Group(teacher_id=teacher_id, name=name, center_id=center.id if center else None)
     session.add(group)
     await session.commit()
     await session.refresh(group)
@@ -1289,9 +1418,44 @@ async def get_group(session: AsyncSession, group_id: int) -> Group | None:
     return await session.get(Group, group_id)
 
 
-async def get_owned_group(session: AsyncSession, teacher_id: int) -> Group | None:
-    stmt = select(Group).where(Group.teacher_id == teacher_id)
-    return (await session.execute(stmt)).scalar_one_or_none()
+async def get_managed_groups(session: AsyncSession, user_id: int) -> list[Group]:
+    """Groups this user teaches, plus every group of the center they own."""
+    conditions = [Group.teacher_id == user_id]
+    center = await get_owned_center(session, user_id)
+    if center is not None:
+        conditions.append(Group.center_id == center.id)
+    stmt = select(Group).where(or_(*conditions)).order_by(Group.created_at)
+    return list((await session.execute(stmt)).scalars().all())
+
+
+async def can_manage_group(session: AsyncSession, user_id: int, group: Group | None) -> bool:
+    if group is None:
+        return False
+    if group.teacher_id == user_id:
+        return True
+    if group.center_id is not None:
+        center = await session.get(Center, group.center_id)
+        return center is not None and center.owner_id == user_id
+    return False
+
+
+async def get_group_payer_id(session: AsyncSession, group: Group) -> int:
+    """Whose credits pay for the group's gifts and sponsored checks."""
+    if group.center_id is not None:
+        center = await session.get(Center, group.center_id)
+        if center is not None:
+            return center.owner_id
+    return group.teacher_id
+
+
+async def update_group(session: AsyncSession, group_id: int, **fields) -> Group | None:
+    group = await session.get(Group, group_id)
+    if group is None:
+        return None
+    for key, value in fields.items():
+        setattr(group, key, value)
+    await session.commit()
+    return group
 
 
 async def get_member_groups(session: AsyncSession, user_id: int) -> list[tuple[Group, User | None]]:
@@ -1339,7 +1503,16 @@ async def leave_group(session: AsyncSession, group_id: int, user_id: int) -> boo
 
 
 async def delete_group(session: AsyncSession, group_id: int) -> None:
-    """Deletes a group and its memberships; students keep their work and credits."""
+    """Deletes a group, its memberships and assignments; students keep their
+    work and credits (their submissions just lose the assignment link)."""
+    part_ids = select(AssignmentPart.id).join(Assignment, Assignment.id == AssignmentPart.assignment_id).where(
+        Assignment.group_id == group_id
+    )
+    for model in (WritingSubmission, SpeakingSubmission):
+        await session.execute(update(model).where(model.assignment_part_id.in_(part_ids)).values(assignment_part_id=None))
+    assignment_ids = select(Assignment.id).where(Assignment.group_id == group_id)
+    await session.execute(delete(AssignmentPart).where(AssignmentPart.assignment_id.in_(assignment_ids)))
+    await session.execute(delete(Assignment).where(Assignment.group_id == group_id))
     await session.execute(delete(GroupMembership).where(GroupMembership.group_id == group_id))
     await session.execute(delete(Group).where(Group.id == group_id))
     await session.commit()
@@ -1368,49 +1541,38 @@ async def get_group_members(
     return [(user, joined_at) for user, joined_at in (await session.execute(stmt)).all()]
 
 
-async def get_works_since(session: AsyncSession, user_id: int, since: datetime) -> list[dict]:
+# --- a student's work as their teacher sees it ---
+
+
+def work_info(kind: str, row) -> dict:
+    if kind == "w":
+        label = f"Writing Task {row.task_type.value[-1]}"
+    else:
+        label = f"Speaking Part {row.part.value[-1]}"
+    return {
+        "kind": kind,
+        "id": row.id,
+        "label": label,
+        "band": row.overall_band,
+        "criteria": row.criteria_scores or {},
+        "created_at": row.created_at,
+        "has_pdf": bool(row.feedback_pdf_path),
+        "assignment_part_id": row.assignment_part_id,
+        "paid_by_id": row.paid_by_id,
+    }
+
+
+async def get_works_since(
+    session: AsyncSession, user_id: int, since: datetime, until: datetime | None = None
+) -> list[dict]:
     """A student's graded Writing+Speaking work from `since` on, newest first."""
-    writing = (
-        await session.execute(
-            select(WritingSubmission).where(
-                WritingSubmission.user_id == user_id,
-                WritingSubmission.overall_band.is_not(None),
-                WritingSubmission.created_at >= since,
-            )
-        )
-    ).scalars().all()
-    speaking = (
-        await session.execute(
-            select(SpeakingSubmission).where(
-                SpeakingSubmission.user_id == user_id,
-                SpeakingSubmission.overall_band.is_not(None),
-                SpeakingSubmission.created_at >= since,
-            )
-        )
-    ).scalars().all()
-    works = [
-        {
-            "kind": "w",
-            "id": w.id,
-            "label": f"Writing Task {w.task_type.value[-1]}",
-            "band": w.overall_band,
-            "criteria": w.criteria_scores or {},
-            "created_at": w.created_at,
-            "has_pdf": bool(w.feedback_pdf_path),
-        }
-        for w in writing
-    ] + [
-        {
-            "kind": "s",
-            "id": s.id,
-            "label": f"Speaking Part {s.part.value[-1]}",
-            "band": s.overall_band,
-            "criteria": s.criteria_scores or {},
-            "created_at": s.created_at,
-            "has_pdf": bool(s.feedback_pdf_path),
-        }
-        for s in speaking
-    ]
+    works = []
+    for kind, model in (("w", WritingSubmission), ("s", SpeakingSubmission)):
+        conditions = [model.user_id == user_id, model.overall_band.is_not(None), model.created_at >= since]
+        if until is not None:
+            conditions.append(model.created_at < until)
+        rows = (await session.execute(select(model).where(*conditions))).scalars().all()
+        works += [work_info(kind, row) for row in rows]
     return sorted(works, key=lambda w: w["created_at"], reverse=True)
 
 
@@ -1423,14 +1585,7 @@ def summarize_works(works: list[dict]) -> dict:
 
     writing = [w for w in works if w["kind"] == "w"]
     speaking = [w for w in works if w["kind"] == "s"]
-    sums: dict[str, float] = {}
-    counts: dict[str, int] = {}
-    for work in works:
-        for key, value in work["criteria"].items():
-            if value is not None:
-                sums[key] = sums.get(key, 0.0) + value
-                counts[key] = counts.get(key, 0) + 1
-    criteria = {key: sums[key] / counts[key] for key in sums}
+    criteria = criteria_averages(works)
     return {
         "total": len(works),
         "average": average(works),
@@ -1438,20 +1593,49 @@ def summarize_works(works: list[dict]) -> dict:
         "writing_avg": average(writing),
         "speaking": len(speaking),
         "speaking_avg": average(speaking),
+        "criteria": criteria,
         "weakest": min(criteria.items(), key=lambda kv: kv[1]) if criteria else None,
         "last_active": max((w["created_at"] for w in works), default=None),
     }
 
 
+def criteria_averages(works: list[dict]) -> dict[str, float]:
+    sums: dict[str, float] = {}
+    counts: dict[str, int] = {}
+    for work in works:
+        for key, value in work["criteria"].items():
+            if value is not None:
+                sums[key] = sums.get(key, 0.0) + value
+                counts[key] = counts.get(key, 0) + 1
+    return {key: sums[key] / counts[key] for key in sums}
+
+
+def activity_streak(works: list[dict]) -> int:
+    """Consecutive days (Tashkent), ending today or yesterday, with at least one check."""
+    days = {(w["created_at"] + _TASHKENT_OFFSET).date() for w in works}
+    day = (datetime.now(timezone.utc) + _TASHKENT_OFFSET).date()
+    if day not in days:
+        day -= timedelta(days=1)
+    streak = 0
+    while day in days:
+        streak += 1
+        day -= timedelta(days=1)
+    return streak
+
+
+async def get_group_works(session: AsyncSession, group_id: int) -> list[tuple[User, datetime, list[dict]]]:
+    """Every member with their work since joining."""
+    result = []
+    for user, joined_at in await get_group_members(session, group_id):
+        result.append((user, joined_at, await get_works_since(session, user.id, joined_at)))
+    return result
+
+
 async def get_group_overview(session: AsyncSession, group_id: int) -> dict:
-    members = await get_group_members(session, group_id)
+    members = await get_group_works(session, group_id)
     week_ago = datetime.now(timezone.utc) - timedelta(days=7)
-    per_student = []
-    all_works: list[dict] = []
-    for user, joined_at in members:
-        works = await get_works_since(session, user.id, joined_at)
-        all_works += works
-        per_student.append((user, summarize_works(works)))
+    per_student = [(user, summarize_works(works)) for user, _, works in members]
+    all_works = [w for _, _, works in members for w in works]
     most_active = sorted((p for p in per_student if p[1]["total"]), key=lambda p: -p[1]["total"])[:3]
     return {
         "members": len(members),
@@ -1462,31 +1646,79 @@ async def get_group_overview(session: AsyncSession, group_id: int) -> dict:
     }
 
 
-async def get_member_report_pdf(
-    session: AsyncSession, teacher_id: int, kind: str, submission_id: int
-) -> str | None:
-    """Path of a student's report PDF - only for the teacher of a group the
-    student is in, and only for work submitted after they joined it."""
+async def get_group_leaderboard(session: AsyncSession, group_id: int) -> dict:
+    """This week's most active students, current streaks and biggest band gains
+    (the last 14 days against the 14 before, at least 2 works in each)."""
+    members = await get_group_works(session, group_id)
+    week_start = week_start_tashkent_as_utc()
+    now = datetime.now(timezone.utc)
+    week, streaks, improved = [], [], []
+    for user, _, works in members:
+        this_week = [w for w in works if w["created_at"] >= week_start]
+        if this_week:
+            week.append((user, len(this_week)))
+        streak = activity_streak(works)
+        if streak:
+            streaks.append((user, streak))
+        recent = [w["band"] for w in works if w["created_at"] >= now - timedelta(days=14)]
+        before = [w["band"] for w in works if now - timedelta(days=28) <= w["created_at"] < now - timedelta(days=14)]
+        if len(recent) >= 2 and len(before) >= 2:
+            delta = sum(recent) / len(recent) - sum(before) / len(before)
+            if delta > 0:
+                improved.append((user, delta))
+    return {
+        "week": sorted(week, key=lambda p: -p[1]),
+        "streaks": sorted(streaks, key=lambda p: -p[1]),
+        "improved": sorted(improved, key=lambda p: -p[1]),
+    }
+
+
+async def get_work(session: AsyncSession, kind: str, submission_id: int):
     model = WritingSubmission if kind == "w" else SpeakingSubmission
-    submission = await session.get(model, submission_id)
-    group = await get_owned_group(session, teacher_id)
-    if submission is None or group is None or not submission.feedback_pdf_path:
+    return await session.get(model, submission_id)
+
+
+async def find_managed_membership(
+    session: AsyncSession, manager_id: int, student_id: int
+) -> GroupMembership | None:
+    """The earliest membership of `student_id` in a group `manager_id` manages."""
+    for group in await get_managed_groups(session, manager_id):
+        membership = await get_membership(session, group.id, student_id)
+        if membership is not None:
+            return membership
+    return None
+
+
+async def get_visible_work(session: AsyncSession, manager_id: int, kind: str, submission_id: int):
+    """A student's submission, if `manager_id` manages a group the student is
+    in and the work was submitted after they joined it - else None."""
+    work = await get_work(session, kind, submission_id)
+    if work is None:
         return None
-    membership = await get_membership(session, group.id, submission.user_id)
-    if membership is None or submission.created_at < membership.joined_at:
+    membership = await find_managed_membership(session, manager_id, work.user_id)
+    if membership is None or work.created_at < membership.joined_at:
         return None
-    return submission.feedback_pdf_path
+    return work
+
+
+async def get_member_report_pdf(
+    session: AsyncSession, manager_id: int, kind: str, submission_id: int
+) -> str | None:
+    work = await get_visible_work(session, manager_id, kind, submission_id)
+    return work.feedback_pdf_path if work is not None and work.feedback_pdf_path else None
+
+
+# --- credits ---
 
 
 async def gift_credits(
-    session: AsyncSession, *, teacher_id: int, student_ids: list[int], amount: int
+    session: AsyncSession, *, group: Group, student_ids: list[int], amount: int
 ) -> list[User] | None:
-    """Moves `amount` credits from the teacher's own balance to each student in
-    `student_ids`, all in one transaction - only if every one of them is in
-    the teacher's group and the balance covers them all. Returns the students
-    credited, or None if nothing was transferred."""
-    group = await get_owned_group(session, teacher_id)
-    if group is None or amount <= 0 or not student_ids:
+    """Moves `amount` credits from the group's payer (teacher or center owner)
+    to each student in `student_ids`, in one transaction - only if every one
+    of them is in the group and the payer's balance covers them all. Returns
+    the students credited, or None if nothing was transferred."""
+    if amount <= 0 or not student_ids:
         return None
     members = set(
         (
@@ -1499,21 +1731,323 @@ async def gift_credits(
     )
     if members != set(student_ids):
         return None
+    payer_id = await get_group_payer_id(session, group)
     # Row locks: two quick taps must not both spend the same balance.
-    teacher = (
-        await session.execute(select(User).where(User.id == teacher_id).with_for_update())
-    ).scalar_one_or_none()
-    if teacher is None or teacher.credit_balance < amount * len(members):
+    payer = (await session.execute(select(User).where(User.id == payer_id).with_for_update())).scalar_one_or_none()
+    if payer is None or payer.credit_balance < amount * len(members):
         await session.rollback()
         return None
     students = list(
         (await session.execute(select(User).where(User.id.in_(members)).with_for_update())).scalars().all()
     )
-    teacher.credit_balance -= amount * len(students)
+    payer.credit_balance -= amount * len(students)
     for student in students:
         student.credit_balance += amount
     await session.commit()
     return students
+
+
+async def count_sponsored_today(session: AsyncSession, user_id: int, payer_id: int) -> int:
+    since = _today_start_tashkent_as_utc()
+    total = 0
+    for model in (WritingSubmission, SpeakingSubmission):
+        total += (await session.execute(
+            select(func.count()).select_from(model).where(
+                model.user_id == user_id,
+                model.paid_by_id == payer_id,
+                model.created_at >= since,
+                model.assignment_part_id.is_(None),
+            )
+        )).scalar() or 0
+    return total
+
+
+async def find_sponsor(session: AsyncSession, user_id: int, assignment_group_id: int | None = None) -> int | None:
+    """The payer who covers this student's next check: a sponsored group they
+    are in whose payer still has credit and whose daily limit isn't used up
+    (assignments of that group are never limited). None if nobody does."""
+    for group, _ in await get_member_groups(session, user_id):
+        if not group.sponsor_checks:
+            continue
+        payer_id = await get_group_payer_id(session, group)
+        payer = await session.get(User, payer_id)
+        if payer is None or payer.credit_balance <= 0:
+            continue
+        if assignment_group_id == group.id or group.daily_limit is None:
+            return payer_id
+        if await count_sponsored_today(session, user_id, payer_id) < group.daily_limit:
+            return payer_id
+    return None
+
+
+async def sponsored_spend(session: AsyncSession, payer_id: int, since: datetime) -> int:
+    total = 0
+    for model in (WritingSubmission, SpeakingSubmission):
+        total += (await session.execute(
+            select(func.count()).select_from(model).where(model.paid_by_id == payer_id, model.created_at >= since)
+        )).scalar() or 0
+    return total
+
+
+# --- assignments ---
+
+
+async def pick_practice_question(
+    session: AsyncSession, module: PracticeModule, exclude_ids: list[int] | None = None
+) -> PracticeQuestion | None:
+    stmt = select(PracticeQuestion).where(PracticeQuestion.module == module)
+    if exclude_ids:
+        stmt = stmt.where(PracticeQuestion.id.not_in(exclude_ids))
+    return (await session.execute(stmt.order_by(func.random()).limit(1))).scalar_one_or_none()
+
+
+async def create_assignment(
+    session: AsyncSession,
+    *,
+    group_id: int,
+    kind: str,
+    title: str,
+    due_at: datetime,
+    created_by: int,
+    parts: list[dict],
+) -> Assignment:
+    """`parts`: dicts with module, prompt_text, image_path, practice_question_id."""
+    assignment = Assignment(group_id=group_id, kind=kind, title=title, due_at=due_at, created_by=created_by)
+    session.add(assignment)
+    await session.flush()
+    for position, part in enumerate(parts):
+        session.add(AssignmentPart(assignment_id=assignment.id, position=position, **part))
+    await session.commit()
+    await session.refresh(assignment)
+    return assignment
+
+
+async def get_assignment(session: AsyncSession, assignment_id: int) -> Assignment | None:
+    return await session.get(Assignment, assignment_id)
+
+
+async def get_assignment_parts(session: AsyncSession, assignment_id: int) -> list[AssignmentPart]:
+    stmt = select(AssignmentPart).where(AssignmentPart.assignment_id == assignment_id).order_by(AssignmentPart.position)
+    return list((await session.execute(stmt)).scalars().all())
+
+
+async def get_part(session: AsyncSession, part_id: int) -> tuple[AssignmentPart, Assignment] | None:
+    part = await session.get(AssignmentPart, part_id)
+    if part is None:
+        return None
+    assignment = await session.get(Assignment, part.assignment_id)
+    return (part, assignment) if assignment is not None else None
+
+
+async def delete_assignment(session: AsyncSession, assignment_id: int) -> None:
+    part_ids = select(AssignmentPart.id).where(AssignmentPart.assignment_id == assignment_id)
+    for model in (WritingSubmission, SpeakingSubmission):
+        await session.execute(update(model).where(model.assignment_part_id.in_(part_ids)).values(assignment_part_id=None))
+    await session.execute(delete(AssignmentPart).where(AssignmentPart.assignment_id == assignment_id))
+    await session.execute(delete(Assignment).where(Assignment.id == assignment_id))
+    await session.commit()
+
+
+async def get_part_bands(session: AsyncSession, part_ids: list[int], user_ids: list[int] | None = None) -> dict:
+    """{(user_id, part_id): (band, kind, submission_id)} - the latest answer to each part."""
+    result: dict = {}
+    if not part_ids:
+        return result
+    for kind, model in (("w", WritingSubmission), ("s", SpeakingSubmission)):
+        stmt = select(model).where(model.assignment_part_id.in_(part_ids), model.overall_band.is_not(None))
+        if user_ids is not None:
+            stmt = stmt.where(model.user_id.in_(user_ids))
+        for row in (await session.execute(stmt.order_by(model.created_at))).scalars().all():
+            result[(row.user_id, row.assignment_part_id)] = (row.overall_band, kind, row.id)
+    return result
+
+
+def mock_overall(bands: dict[str, float | None]) -> dict:
+    """Writing = (Task 1 + 2 x Task 2) / 3, Speaking = mean of its parts,
+    overall = their mean - each rounded to the nearest 0.5 (a Writing+Speaking
+    estimate, not a full four-skill IELTS score). `bands` maps module -> band."""
+
+    def half(value: float) -> float:
+        return round(value * 2) / 2
+
+    w1, w2 = bands.get("writing_task1"), bands.get("writing_task2")
+    speaking = [bands[m] for m in ("speaking_part1", "speaking_part2", "speaking_part3") if bands.get(m) is not None]
+    writing = half((w1 + 2 * w2) / 3) if w1 is not None and w2 is not None else None
+    speaking_band = half(sum(speaking) / len(speaking)) if len(speaking) == 3 else None
+    overall = half((writing + speaking_band) / 2) if writing is not None and speaking_band is not None else None
+    return {"writing": writing, "speaking": speaking_band, "overall": overall}
+
+
+async def get_assignment_results(session: AsyncSession, assignment: Assignment) -> dict:
+    """Per member (in joining order): their band for each part and how many parts are done."""
+    parts = await get_assignment_parts(session, assignment.id)
+    members = await get_group_members(session, assignment.group_id)
+    bands = await get_part_bands(session, [p.id for p in parts], [u.id for u, _ in members])
+    rows = []
+    for user, _ in members:
+        part_bands = [bands.get((user.id, p.id)) for p in parts]
+        done = sum(1 for b in part_bands if b is not None)
+        mock = (
+            mock_overall({p.module: (b[0] if b else None) for p, b in zip(parts, part_bands)})
+            if assignment.kind == "mock" else None
+        )
+        rows.append({"user": user, "bands": part_bands, "done": done, "mock": mock})
+    return {"parts": parts, "rows": rows, "complete": sum(1 for r in rows if r["done"] == len(parts))}
+
+
+async def list_group_assignments(session: AsyncSession, group_id: int, limit: int = 20) -> list[dict]:
+    stmt = select(Assignment).where(Assignment.group_id == group_id).order_by(Assignment.created_at.desc()).limit(limit)
+    result = []
+    members = await get_group_member_count(session, group_id)
+    for assignment in (await session.execute(stmt)).scalars().all():
+        results = await get_assignment_results(session, assignment)
+        result.append({"assignment": assignment, "complete": results["complete"], "members": members})
+    return result
+
+
+async def get_student_assignments(session: AsyncSession, user_id: int, closed_days: int = 7) -> list[dict]:
+    """Open assignments of the student's groups, plus those closed in the last
+    `closed_days` days (latest deadline first), each with its parts and the
+    bands of the parts the student has done."""
+    since = datetime.now(timezone.utc) - timedelta(days=closed_days)
+    result = []
+    for group, _ in await get_member_groups(session, user_id):
+        stmt = select(Assignment).where(Assignment.group_id == group.id, Assignment.due_at >= since)
+        for assignment in (await session.execute(stmt)).scalars().all():
+            parts = await get_assignment_parts(session, assignment.id)
+            bands = await get_part_bands(session, [p.id for p in parts], [user_id])
+            result.append({
+                "assignment": assignment,
+                "group": group,
+                "parts": parts,
+                "done": {p.id: bands[(user_id, p.id)][0] for p in parts if (user_id, p.id) in bands},
+            })
+    return sorted(result, key=lambda a: a["assignment"].due_at, reverse=True)
+
+
+async def take_due_reminders(session: AsyncSession, within: timedelta) -> list[dict]:
+    """Assignments due within `within` that haven't been reminded yet - marked
+    reminded here (before sending, so a restart never reminds twice) - with
+    the members who haven't finished them."""
+    now = datetime.now(timezone.utc)
+    stmt = select(Assignment).where(
+        Assignment.reminded.is_(False), Assignment.due_at > now, Assignment.due_at <= now + within
+    )
+    due = list((await session.execute(stmt)).scalars().all())
+    result = []
+    for assignment in due:
+        assignment.reminded = True
+        results = await get_assignment_results(session, assignment)
+        pending = [r["user"] for r in results["rows"] if r["done"] < len(results["parts"])]
+        group = await session.get(Group, assignment.group_id)
+        result.append({"assignment": assignment, "group": group, "parts": results["parts"], "pending": pending})
+    await session.commit()
+    return result
+
+
+# --- teacher comments ---
+
+
+async def add_comment(
+    session: AsyncSession, *, kind: str, submission_id: int, teacher_id: int, text: str, band: float | None
+) -> SubmissionComment:
+    comment = SubmissionComment(kind=kind, submission_id=submission_id, teacher_id=teacher_id, text=text, band=band)
+    session.add(comment)
+    await session.commit()
+    await session.refresh(comment)
+    return comment
+
+
+async def get_comments(session: AsyncSession, kind: str, submission_id: int) -> list[SubmissionComment]:
+    stmt = (
+        select(SubmissionComment)
+        .where(SubmissionComment.kind == kind, SubmissionComment.submission_id == submission_id)
+        .order_by(SubmissionComment.created_at)
+    )
+    return list((await session.execute(stmt)).scalars().all())
+
+
+async def get_comments_for_works(session: AsyncSession, works: list[dict]) -> dict:
+    """{(kind, submission_id): [comments]} for a list from get_works_since."""
+    result: dict = {}
+    for kind in ("w", "s"):
+        ids = [w["id"] for w in works if w["kind"] == kind]
+        if not ids:
+            continue
+        stmt = (
+            select(SubmissionComment)
+            .where(SubmissionComment.kind == kind, SubmissionComment.submission_id.in_(ids))
+            .order_by(SubmissionComment.created_at)
+        )
+        for comment in (await session.execute(stmt)).scalars().all():
+            result.setdefault((kind, comment.submission_id), []).append(comment)
+    return result
+
+
+# --- weekly digest ---
+
+
+async def take_digest_groups(session: AsyncSession, week: str) -> list[Group]:
+    """Groups with at least one member whose digest for `week` hasn't gone out -
+    marked here (before sending, so a restart never sends twice)."""
+    stmt = select(Group).where(or_(Group.digest_week.is_(None), Group.digest_week != week))
+    groups = []
+    for group in (await session.execute(stmt)).scalars().all():
+        group.digest_week = week
+        if await get_group_member_count(session, group.id):
+            groups.append(group)
+    await session.commit()
+    return groups
+
+
+async def list_teachers_with_stats(session: AsyncSession) -> list[dict]:
+    """Every teacher / group owner for the web panel, with their groups,
+    students, center and the last 30 days of their students' checks."""
+    month_ago = datetime.now(timezone.utc) - timedelta(days=30)
+    owners = set((await session.execute(select(Group.teacher_id))).scalars().all())
+    teachers = (await session.execute(
+        select(User).where(or_(User.role == UserRole.teacher, User.id.in_(owners))).order_by(User.created_at)
+    )).scalars().all()
+    result = []
+    for teacher in teachers:
+        groups = (await session.execute(select(Group).where(Group.teacher_id == teacher.id))).scalars().all()
+        students = 0
+        checks = 0
+        for group in groups:
+            for user, joined_at in await get_group_members(session, group.id):
+                students += 1
+                checks += len(await get_works_since(session, user.id, max(joined_at, month_ago)))
+        center = await get_user_center(session, teacher.id)
+        result.append({
+            "user": teacher,
+            "groups": len(groups),
+            "students": students,
+            "checks_30d": checks,
+            "sponsored_30d": await sponsored_spend(session, teacher.id, month_ago),
+            "center": center,
+            "is_owner": center is not None and center.owner_id == teacher.id,
+        })
+    return result
+
+
+async def list_centers_with_stats(session: AsyncSession) -> list[dict]:
+    month_ago = datetime.now(timezone.utc) - timedelta(days=30)
+    result = []
+    for center in (await session.execute(select(Center).order_by(Center.created_at))).scalars().all():
+        owner = await session.get(User, center.owner_id)
+        teachers = await list_center_teachers(session, center.id)
+        groups = (await session.execute(select(Group).where(Group.center_id == center.id))).scalars().all()
+        students = sum([await get_group_member_count(session, g.id) for g in groups])
+        result.append({
+            "center": center,
+            "owner": owner,
+            "teachers": len(teachers),
+            "groups": len(groups),
+            "students": students,
+            "balance": owner.credit_balance if owner else 0,
+            "sponsored_30d": await sponsored_spend(session, center.owner_id, month_ago),
+        })
+    return result
 
 
 # --- Web admin panel (webapp/main.py) ------------------------------------------
