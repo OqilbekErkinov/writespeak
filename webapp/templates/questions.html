@@ -35,6 +35,8 @@
 </div>
 
 <p class="hint" style="margin: 0 0 16px;">{{ hint }}</p>
+<p class="hint" style="margin: -8px 0 16px;">Savollar Telegram kanallardan har 3 soatda avtomatik
+  qo'shiladi va eng yangisi tepada turadi — qo'lda o'zgartirilgan tartib keyingi importda qayta tiziladi.</p>
 
 <div class="card">
   {% if questions %}
@@ -54,6 +56,11 @@
         {% if module in ("speaking_part1", "speaking_part3") %}
           {% set lines = q.question_text.splitlines()|select|list %}
           <div class="q-meta">{{ lines|length }} ta savol birma-bir so'raladi</div>
+        {% endif %}
+        {% if q.source %}
+          <div class="q-meta">{{ source_labels.get(q.source, q.source) }}
+            {%- if q.seen_at %} · {{ q.seen_at.strftime('%Y-%m-%d') }}{% endif %}
+            {%- if q.times_seen and q.times_seen > 1 %} · {{ q.times_seen }} marta tushgan{% endif %}</div>
         {% endif %}
       </td>
       {% if module == "writing_task1" %}

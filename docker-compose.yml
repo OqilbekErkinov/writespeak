@@ -48,6 +48,22 @@ services:
       - ./data:/data
     command: sh -c "alembic upgrade head && python -m bot.main"
 
+  # Imports Practice questions from the Telegram channels every few hours
+  # (services/practice_import/). Separate from the bot so the CPU-heavy
+  # watermark removal never slows replies down. Same ./data volume: the
+  # Task 1 charts it saves are sent by the bot; the LaMa model is kept in
+  # data/models/.
+  importer:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./data:/data
+    command: python -m services.practice_import.runner
+
   admin_web:
     build: .
     restart: unless-stopped

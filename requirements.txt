@@ -26,3 +26,9 @@ fastapi==0.141.1
 uvicorn==0.52.4
 itsdangerous==2.2.0
 python-multipart==0.0.32
+# --- Practice question importer (services/practice_import/) ---
+# OCR finds the channel mark on Task 1 charts, LaMa (onnxruntime) paints it out.
+# rapidocr pulls in opencv-python (not -headless), hence libgl1 in the Dockerfile.
+rapidocr==3.9.2
+onnxruntime==1.30.0
+opencv-python==4.14.0.94

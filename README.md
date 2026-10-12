@@ -23,9 +23,9 @@ services/ai/    OCR, hujjat parsing, transkripsiya, baholash (writing/speaking),
 services/pdf/   Jinja2 shablon + WeasyPrint PDF generator
 services/storage/  Fayllarni diskda saqlash
 db/             SQLAlchemy modellari, CRUD, Alembic migratsiyalar
-data/practice_questions/  Practice uchun boshlang'ich savollar: 50+50 Writing, 40+40+40 Speaking
+services/practice_import/  Practice savollarini Telegram kanallardan import qilish (importer servisi)
 data/books/     O'zingizning IELTS namuna kitoblaringiz (PDF) shu yerga qo'yiladi
-scripts/        seed_practice_questions.py, ingest_books.py
+scripts/        import_practice_questions.py, ingest_books.py
 landing/        writespeak.uz landing sahifasi (statik, nginx beradi)
 branding/       Logo, Telegram bot avatari va bot tavsif rasmi (BotFather uchun)
 deploy/nginx/   Serverdagi nginx sozlamasi nusxasi
@@ -45,20 +45,26 @@ deploy/nginx/   Serverdagi nginx sozlamasi nusxasi
    ```
    Bu avtomatik ravishda Postgres+pgvector va Redis'ni ko'taradi, migratsiyalarni
    (`alembic upgrade head`) qo'llaydi va botni ishga tushiradi.
-3. Practice savollarini yuklang (bir martalik):
+3. Practice savollari Telegram kanallardan **avtomatik** olinadi — `importer` servisi har 3
+   soatda yangilarini qo'shadi (`services/practice_import/`):
+   - **Writing** — [@cdireport](https://t.me/cdireport): imtihondan keyin yuborilgan Task 1 +
+     Task 2. AI (gpt-5-mini) postdan savollarni ajratadi, reklama/boshqa postlarni tashlaydi;
+     Task 1 grafigidagi kanal nomi OCR (RapidOCR) bilan topilib, LaMa bilan o'chiriladi;
+     avval tushgan savol qayta qo'shilmaydi, "yana tushdi" deb belgilanadi. Eng yangilari tepada.
+   - **Speaking** — [@IELTS_Speaking_Assistant_App](https://t.me/IELTS_Speaking_Assistant_App):
+     kanalning "PART 1 QUESTIONS" / "PART 2&3 QUESTIONS" indeks postlaridagi barcha mavzular
+     ko'chiriladi (AI'siz); kanalda o'zgargan mavzu yangilanadi, olib tashlangani o'chadi.
+
+   Birinchi marta (yoki qo'lda) ishga tushirish:
    ```
-   docker compose exec bot python scripts/seed_practice_questions.py
+   docker compose exec importer python scripts/import_practice_questions.py --replace-old
    ```
-   Skript faqat **bo'sh** bo'limlarni to'ldiradi. Shundan keyin savollar web admin panelning
-   **Savollar** sahifasida (`https://admin.writespeak.uz/questions`) boshqariladi: qo'shish,
-   tahrirlash, o'chirish, tartibini o'zgartirish, Writing Task 1 uchun rasm yuklash. Biror
-   bo'limni JSON fayldagi holatga qaytarish kerak bo'lsa (admin o'zgarishlari ustidan yoziladi):
-   ```
-   docker compose exec bot python scripts/seed_practice_questions.py --overwrite speaking_part1 speaking_part2 speaking_part3
-   ```
-   Speaking savollari formati: Part 1/3 da **har bir qator bitta savol**, bot ularni birma-bir
-   so'raydi va oxirida hammasini bitta tekshiruv sifatida baholaydi. Part 2 da butun matn bitta
-   cue card bo'ladi.
+   `--replace-old` kanaldan kelmagan savollarni o'chiradi; `--only writing|speaking`,
+   `--since YYYY-MM-DD`, `--limit N` ham bor. Birinchi Writing importi 2026-04-01 dan beri
+   postlarni o'qiydi. Savollarni admin panelning **Savollar** sahifasida
+   (`https://admin.writespeak.uz/questions`) tahrirlash/o'chirish mumkin. Speaking formati: Part
+   1/3 da **har bir qator bitta savol**, bot ularni birma-bir so'raydi va oxirida hammasini bitta
+   tekshiruv sifatida baholaydi. Part 2 da butun matn bitta cue card bo'ladi.
 4. IELTS namuna kitoblaringizni `data/books/*.pdf` ga qo'ying, so'ng:
    ```
    docker compose exec bot python scripts/ingest_books.py extract

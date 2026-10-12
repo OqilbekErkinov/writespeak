@@ -21,6 +21,7 @@ from db.models import (
     PaymentKind,
     PaymentRequest,
     PaymentStatus,
+    PracticeImportPost,
     PracticeModule,
     PracticeProgress,
     PracticeQuestion,
@@ -622,6 +623,73 @@ async def move_practice_question(session: AsyncSession, question_id: int, offset
     questions.insert(target, questions.pop(index))
     for i, q in enumerate(questions):
         q.order_index = i
+    await session.commit()
+
+
+# Practice questions imported from channels (services/practice_import/) -------
+
+
+async def get_imported_questions(session: AsyncSession, source: str) -> list[PracticeQuestion]:
+    stmt = select(PracticeQuestion).where(PracticeQuestion.source == source)
+    return list((await session.execute(stmt)).scalars().all())
+
+
+async def nearest_imported_question(
+    session: AsyncSession, module: PracticeModule, source: str, embedding: list[float]
+) -> tuple[PracticeQuestion, float] | None:
+    """The closest question from `source` in `module`, with its cosine distance."""
+    distance = PracticeQuestion.embedding.cosine_distance(embedding)
+    stmt = (
+        select(PracticeQuestion, distance)
+        .where(
+            PracticeQuestion.module == module,
+            PracticeQuestion.source == source,
+            PracticeQuestion.embedding.is_not(None),
+        )
+        .order_by(distance)
+        .limit(1)
+    )
+    row = (await session.execute(stmt)).first()
+    return (row[0], float(row[1])) if row else None
+
+
+async def order_practice_module_by_recency(session: AsyncSession, module: PracticeModule) -> None:
+    """Most recently reported questions first; questions without a date keep
+    their order after them."""
+    questions = await get_practice_questions(session, module)
+    dated = sorted((q for q in questions if q.seen_at), key=lambda q: (q.seen_at, q.id), reverse=True)
+    undated = [q for q in questions if not q.seen_at]
+    for i, q in enumerate([*dated, *undated]):
+        q.order_index = i
+    await session.commit()
+
+
+async def clear_practice_progress(session: AsyncSession, question_id: int) -> None:
+    """Drops the ✅ marks of a question whose text changed - it's a new question now."""
+    await session.execute(delete(PracticeProgress).where(PracticeProgress.practice_question_id == question_id))
+
+
+async def get_import_posts(session: AsyncSession, channel: str) -> dict[int, PracticeImportPost]:
+    stmt = select(PracticeImportPost).where(PracticeImportPost.channel == channel)
+    return {row.post_id: row for row in (await session.execute(stmt)).scalars().all()}
+
+
+async def mark_import_post(
+    session: AsyncSession, channel: str, post_id: int, status: str, note: str | None = None
+) -> None:
+    row = (
+        await session.execute(
+            select(PracticeImportPost).where(
+                PracticeImportPost.channel == channel, PracticeImportPost.post_id == post_id
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        row = PracticeImportPost(channel=channel, post_id=post_id, attempts=0)
+        session.add(row)
+    row.status = status
+    row.note = note
+    row.attempts = (row.attempts or 0) + 1
     await session.commit()
 
 

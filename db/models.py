@@ -205,8 +205,40 @@ class PracticeQuestion(Base):
     topic: Mapped[str | None] = mapped_column(String(255), nullable=True)
     order_index: Mapped[int] = mapped_column(Integer, default=0)
     # Chart/diagram for Writing Task 1, uploaded from the web admin panel
-    # (webapp/main.py) - shown to the student and passed to the grader.
+    # (webapp/main.py) or imported from a channel - shown to the student and
+    # passed to the grader.
     image_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    # Questions imported from Telegram channels (services/practice_import/):
+    # `source` names the importer ("cdireport" / "speaking_assistant"; None =
+    # written in the admin panel), `source_ref` the channel post it came from,
+    # `source_hash` the channel text it was last synced from (so an admin's
+    # edit isn't overwritten until the channel itself changes), `seen_at` when
+    # the question was last reported from an exam, `times_seen` how often.
+    source: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
+    source_ref: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    source_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    times_seen: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    # Writing questions only: finds the same question reported again.
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBEDDING_DIM), nullable=True)
+
+
+class PracticeImportPost(Base):
+    """A channel post the practice importer has already looked at, so it is
+    read (and paid for) once - see services/practice_import/writing.py."""
+
+    __tablename__ = "practice_import_posts"
+    __table_args__ = (UniqueConstraint("channel", "post_id", name="uq_import_channel_post"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    channel: Mapped[str] = mapped_column(String(64))
+    post_id: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(16))  # done | skipped | failed
+    attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
 
 
 class PracticeProgress(Base):

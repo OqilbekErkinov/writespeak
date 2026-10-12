@@ -196,6 +196,8 @@ MODULE_HINTS = {
     PracticeModule.speaking_part3: "Har bir qatorga bitta savol yozing — bot ularni imtihondagidek "
     "birma-bir so'raydi, oxirida hammasini birga baholaydi.",
 }
+# Channels the importer (services/practice_import/) brings questions from.
+SOURCE_LABELS = {"cdireport": "@cdireport", "speaking_assistant": "@IELTS_Speaking_Assistant_App"}
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
 
 
@@ -263,6 +265,7 @@ async def questions_page(request: Request, module: str | None = None):
             "modules": {m.value: label for m, label in MODULE_LABELS.items()},
             "counts": {m.value: c for m, c in counts.items()},
             "questions": questions,
+            "source_labels": SOURCE_LABELS,
             "flash": request.session.pop("flash", None),
         },
     )
