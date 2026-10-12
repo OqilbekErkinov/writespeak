@@ -76,9 +76,15 @@ async def main() -> None:
     )
     dp = build_dispatcher()
 
+    from bot.utils.vocab_reminders import run_vocab_reminders
+
     logger.info("Starting WriteSpeak bot (polling mode)")
     await bot.delete_webhook(drop_pending_updates=True)
-    await dp.start_polling(bot)
+    reminders = asyncio.create_task(run_vocab_reminders(bot))
+    try:
+        await dp.start_polling(bot)
+    finally:
+        reminders.cancel()
 
 
 if __name__ == "__main__":

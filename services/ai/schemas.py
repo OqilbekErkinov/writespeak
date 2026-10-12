@@ -268,3 +268,35 @@ class StyleAnalysis(BaseModel):
         "given samples - described in general terms, not presented as a quote from any one of "
         "them."
     )
+
+
+# --- Vocabulary bank (services/ai/vocab_helper.py) ---------------------------------
+
+
+class WordTranslation(BaseModel):
+    id: int
+    translation: str = Field(description="The translation, 1-6 words.")
+
+
+class WordTranslations(BaseModel):
+    items: list[WordTranslation]
+
+
+class DescribedWord(BaseModel):
+    input: str = Field(description="The student's input, exactly as given.")
+    ok: bool = Field(
+        description="False when the input is not a real word or phrase (gibberish, a whole sentence, "
+        "an offensive word)."
+    )
+    term: str = Field(
+        description="The English word or phrase in dictionary form, spelling fixed, lowercase unless "
+        "a proper noun. For Uzbek or Russian input: its most useful English equivalent."
+    )
+    meaning: str = Field(description="Plain-English meaning a B1-B2 learner understands, under 15 words.")
+    example: str = Field(description="One natural IELTS-style English example sentence using the term.")
+    uz: str = Field(description="Uzbek (Latin script) translation, 1-6 words.")
+    ru: str = Field(description="Russian translation, 1-6 words.")
+
+
+class DescribedWords(BaseModel):
+    words: list[DescribedWord]

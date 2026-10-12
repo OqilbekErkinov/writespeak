@@ -63,6 +63,11 @@ class Settings(BaseSettings):
     # Monthly unlimited-checks subscription price, in so'm.
     subscription_price_monthly: int = 99000
 
+    # --- Vocabulary bank (bot/handlers/vocabulary.py) ---
+    # Tashkent hour (0-23) of the daily "words to review" reminder
+    # (bot/utils/vocab_reminders.py); -1 switches the reminders off.
+    vocab_reminder_hour: int = 20
+
     # --- Web admin panel (webapp/main.py) ---
     # Single shared login, not tied to Telegram accounts - see webapp/main.py's
     # module docstring. Served as https://admin.writespeak.uz via the host's

@@ -108,6 +108,20 @@ docker compose up -d --build
 ```
 (Alembic migratsiyalari har safar avtomatik qo'llanadi — schema o'zgarishlari xavfsiz.)
 
+## Lug'atim (shaxsiy lug'at)
+
+Har bir tekshiruv hisobotidagi foydali so'zlar o'quvchining lug'atiga o'zi qo'shiladi (bir xil so'z
+ikki marta saqlanmaydi); o'quvchi o'zi ham so'z qo'shishi mumkin — inglizcha yoki o'zbekcha/ruscha
+yozsa, AI ma'nosi, misol va tarjimasini topadi (kuniga 30 tagacha). Bo'lim (`bot/handlers/vocabulary.py`):
+
+- **🔄 Takrorlash** — Leitner usulidagi oraliqli takrorlash: to'g'ri eslangan so'z 1 → 3 → 7 → 14 kundan
+  keyin qaytadi, 5 marta ketma-ket eslansa o'zlashtirilgan hisoblanadi; unutilgani boshidan boshlanadi.
+- **🎯 Test** — ko'p tanlovli savollar: bo'sh joyni to'ldirish, ma'nosi bo'yicha so'zni topish, tarjima.
+- **📋 So'zlarim** — barcha so'zlar sahifalab, holati bilan; o'chirish va qaytadan o'rganish.
+- Tarjimalar (o'quvchi tiliga) faqat kerak bo'lganda, arzon modelda bir marta olinadi va saqlanadi.
+- **Kunlik eslatma** — `VOCAB_REMINDER_HOUR` da (Toshkent vaqti, standart 20:00, `-1` = o'chiq)
+  kamida 5 ta so'zi takrorlashga tushgan o'quvchiga bitta xabar; o'quvchi menyudan o'chira oladi.
+
 ## Narxlash va to'lov
 
 Har bir foydalanuvchiga ro'yxatdan o'tgach **bir marta** **`FREE_CHECKS`** ta (standart: 2) bepul

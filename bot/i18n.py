@@ -323,7 +323,7 @@ _T: dict[str, dict[str, str]] = {
         "ru": "💳 Баланс: <b>{credits}</b> проверок (бессрочно)",
     },
     "account.vocab_progress": {
-        "uz": "📚 Lug'atim: {learned}/{total} so'z o'rganildi",
+        "uz": "📚 Lug'atim: {learned}/{total} so'z o'zlashtirildi",
         "ru": "📚 Мой словарь: изучено {learned}/{total} слов",
     },
     "account.weakest": {
@@ -557,38 +557,209 @@ _T: dict[str, dict[str, str]] = {
     # --- Vocabulary (bot/handlers/vocabulary.py) ---
     "vocab.title": {"uz": "📚 Lug'atim", "ru": "📚 Мой словарь"},
     "vocab.empty": {
-        "uz": "Hali hech qanday so'z yo'q — Writing yoki Speaking tekshiruvidan so'ng "
-        "foydali so'zlar shu yerga avtomatik qo'shiladi.",
-        "ru": "Пока слов нет — после проверки Writing или Speaking полезные слова будут "
-        "добавляться сюда автоматически.",
+        "uz": "📚 <b>Lug'atim</b>\n\nHali so'z yo'q. Har bir Writing yoki Speaking tekshiruvidan "
+        "so'ng hisobotdagi foydali so'zlar shu yerga o'zi qo'shiladi.\n\nO'zingiz ham so'z "
+        "qo'shishingiz mumkin 👇",
+        "ru": "📚 <b>Мой словарь</b>\n\nПока слов нет. После каждой проверки Writing или Speaking "
+        "полезные слова из отчёта попадают сюда сами.\n\nМожно добавить и свои слова 👇",
     },
     "vocab.summary": {
-        "uz": "📚 <b>Lug'atim</b>\n\nJami: {total} ta so'z, o'rganilgan: {learned} ta.",
-        "ru": "📚 <b>Мой словарь</b>\n\nВсего: {total} слов, изучено: {learned}.",
+        "uz": "📚 <b>Lug'atim</b> — {total} ta so'z\n\n🆕 Yangi: {new}\n🔄 O'rganilmoqda: "
+        "{learning}\n✅ O'zlashtirilgan: {mastered}",
+        "ru": "📚 <b>Мой словарь</b> — {total} слов\n\n🆕 Новые: {new}\n🔄 Изучаются: "
+        "{learning}\n✅ Выучены: {mastered}",
     },
-    "vocab.all_learned": {
-        "uz": "🎉 Barcha so'zlarni o'rgangansiz!",
-        "ru": "🎉 Вы изучили все слова!",
+    "vocab.due_now": {
+        "uz": "⏰ Bugun takrorlash kerak: <b>{due} ta</b>",
+        "ru": "⏰ На повторение сегодня: <b>{due}</b>",
     },
-    "vocab.ready_to_review": {
-        "uz": "Mashq qilish uchun tayyor: {due} ta.",
-        "ru": "Готово к повторению: {due}.",
+    "vocab.next_due": {
+        "uz": "✨ Hozircha takrorlanadigan so'z yo'q. Keyingi takrorlash: <b>{when}</b>",
+        "ru": "✨ Пока повторять нечего. Следующее повторение: <b>{when}</b>",
     },
-    "vocab.none_left": {
-        "uz": "Hozircha mashq qilish uchun so'z qolmadi. 🎉",
-        "ru": "Пока нечего повторять. 🎉",
+    "vocab.all_mastered": {
+        "uz": "🎉 Barcha so'zlarni o'zlashtirgansiz! Yangi tekshiruvlar yangi so'zlar olib keladi.",
+        "ru": "🎉 Вы выучили все слова! Новые проверки принесут новые слова.",
     },
-    "vocab.card_progress": {"uz": "({index}/{total})", "ru": "({index}/{total})"},
-    "vocab.finished": {
-        "uz": "✅ Mashq tugadi! {reviewed} ta so'zni ko'rib chiqdingiz, shundan "
-        "{learned} tasini \"bildim\" deb belgiladingiz.",
-        "ru": "✅ Повторение завершено! Вы просмотрели {reviewed} слов, из них {learned} "
-        "отметили как \"знаю\".",
+    "vocab.how_it_works": {
+        "uz": "<i>💡 So'zlar oraliq bilan takrorlanadi: 1 kun → 3 kun → 1 hafta → 2 hafta. "
+        "Ketma-ket 5 marta eslasangiz — so'z o'zlashtirilgan bo'ladi. Unutsangiz, boshidan "
+        "boshlanadi.</i>",
+        "ru": "<i>💡 Слова повторяются с интервалами: 1 день → 3 дня → неделя → 2 недели. "
+        "Вспомнили 5 раз подряд — слово выучено. Забыли — всё начинается сначала.</i>",
     },
-    "vocab.btn_practice": {"uz": "🔄 Mashq qilish", "ru": "🔄 Повторить"},
+    "vocab.today": {"uz": "bugun", "ru": "сегодня"},
+    "vocab.tomorrow": {"uz": "ertaga", "ru": "завтра"},
+    "vocab.preparing": {"uz": "⏳ Tayyorlanmoqda...", "ru": "⏳ Готовлю..."},
+    "vocab.nothing_due": {
+        "uz": "Hozircha takrorlanadigan so'z yo'q 🎉 Test bilan mashq qilishingiz mumkin.",
+        "ru": "Пока повторять нечего 🎉 Можно потренироваться в тесте.",
+    },
+    "vocab.session_expired": {
+        "uz": "Bu mashg'ulot tugagan — Lug'atim qayta ochildi.",
+        "ru": "Это занятие уже завершено — словарь открыт заново.",
+    },
+    "vocab.remind_on": {"uz": "🔔 Kunlik eslatma yoqildi", "ru": "🔔 Ежедневные напоминания включены"},
+    "vocab.remind_off": {"uz": "🔕 Kunlik eslatma o'chirildi", "ru": "🔕 Ежедневные напоминания выключены"},
+    # Review (flip cards)
+    "vocab.card_front": {
+        "uz": "🔄 Takrorlash · {index}/{total}\n\n📖 <b>{word}</b>\n\n<i>Ma'nosini eslang, so'ng "
+        "o'zingizni tekshiring.</i>",
+        "ru": "🔄 Повторение · {index}/{total}\n\n📖 <b>{word}</b>\n\n<i>Вспомните значение, затем "
+        "проверьте себя.</i>",
+    },
+    "vocab.review_header": {"uz": "🔄 Takrorlash · {index}/{total}", "ru": "🔄 Повторение · {index}/{total}"},
+    "vocab.review_done": {
+        "uz": "✅ <b>Takrorlash tugadi!</b>\n\nSo'zlar: {words} ta\n✅ Esladingiz: {known}\n❌ Qayta "
+        "o'rganasiz: {missed}",
+        "ru": "✅ <b>Повторение завершено!</b>\n\nСлов: {words}\n✅ Вспомнили: {known}\n❌ Повторим "
+        "ещё: {missed}",
+    },
+    "vocab.review_mastered": {
+        "uz": "🏆 {count} ta so'z to'liq o'zlashtirildi!",
+        "ru": "🏆 Полностью выучено слов: {count}!",
+    },
+    "vocab.more_due": {
+        "uz": "⏰ Yana {due} ta so'z takrorlashni kutmoqda.",
+        "ru": "⏰ Ещё {due} слов ждут повторения.",
+    },
+    # Test (multiple choice)
+    "vocab.test_need_words": {
+        "uz": "Test uchun lug'atda kamida {min} ta so'z bo'lishi kerak.",
+        "ru": "Для теста в словаре нужно хотя бы {min} слова.",
+    },
+    "vocab.test_header": {"uz": "🎯 Test · {index}/{total}", "ru": "🎯 Тест · {index}/{total}"},
+    "vocab.q_meaning": {
+        "uz": "Qaysi so'z shu ma'noni beradi?\n\n💬 <i>{meaning}</i>",
+        "ru": "Какое слово имеет это значение?\n\n💬 <i>{meaning}</i>",
+    },
+    "vocab.q_gap": {
+        "uz": "Bo'sh joyga qaysi so'z mos keladi?\n\n✏️ <i>{sentence}</i>",
+        "ru": "Какое слово подходит на место пропуска?\n\n✏️ <i>{sentence}</i>",
+    },
+    "vocab.q_translate": {
+        "uz": "📖 <b>{word}</b> — qaysi tarjima to'g'ri?",
+        "ru": "📖 <b>{word}</b> — какой перевод верный?",
+    },
+    "vocab.correct": {"uz": "✅ <b>To'g'ri!</b>", "ru": "✅ <b>Верно!</b>"},
+    "vocab.wrong": {
+        "uz": "❌ <b>Noto'g'ri.</b> To'g'ri javob: <b>{right}</b>",
+        "ru": "❌ <b>Неверно.</b> Правильный ответ: <b>{right}</b>",
+    },
+    "vocab.test_done": {
+        "uz": "🏁 <b>Test tugadi!</b>\n\nNatija: <b>{correct}/{total}</b> ({percent}%)",
+        "ru": "🏁 <b>Тест завершён!</b>\n\nРезультат: <b>{correct}/{total}</b> ({percent}%)",
+    },
+    "vocab.test_great": {"uz": "🔥 Ajoyib! So'zlarni yaxshi bilasiz.", "ru": "🔥 Отлично! Вы хорошо знаете слова."},
+    "vocab.test_good": {
+        "uz": "👍 Yaxshi natija! Xato qilingan so'zlar takrorlashga qaytarildi.",
+        "ru": "👍 Хороший результат! Слова с ошибками вернулись на повторение.",
+    },
+    "vocab.test_low": {
+        "uz": "💪 Xato qilingan so'zlar takrorlashga qaytarildi — ularni yana ko'rasiz va "
+        "albatta eslab qolasiz.",
+        "ru": "💪 Слова с ошибками вернулись на повторение — вы увидите их снова и обязательно "
+        "запомните.",
+    },
+    # Word list
+    "vocab.list_header": {
+        "uz": "📋 <b>So'zlarim</b> — {total} ta · {page}/{pages}-sahifa\n\n🆕 yangi · 🔄 "
+        "o'rganilmoqda · ✅ o'zlashtirilgan\n\nBatafsil ko'rish uchun so'zni bosing.",
+        "ru": "📋 <b>Мои слова</b> — {total} · стр. {page}/{pages}\n\n🆕 новое · 🔄 изучается · "
+        "✅ выучено\n\nНажмите на слово, чтобы открыть его.",
+    },
+    "vocab.word_source": {"uz": "📍 Manba: {source} · {date}", "ru": "📍 Источник: {source} · {date}"},
+    "vocab.source_writing": {"uz": "Writing hisoboti", "ru": "отчёт Writing"},
+    "vocab.source_speaking": {"uz": "Speaking hisoboti", "ru": "отчёт Speaking"},
+    "vocab.source_manual": {"uz": "o'zingiz qo'shgansiz", "ru": "добавлено вами"},
+    "vocab.status_new": {"uz": "🆕 Yangi — hali takrorlanmagan", "ru": "🆕 Новое — ещё не повторялось"},
+    "vocab.status_learning": {
+        "uz": "🔄 O'rganilmoqda: {box}/{max} bosqich · keyingi takrorlash: {when}",
+        "ru": "🔄 Изучается: этап {box}/{max} · следующее повторение: {when}",
+    },
+    "vocab.status_mastered": {"uz": "✅ O'zlashtirilgan", "ru": "✅ Выучено"},
+    "vocab.delete_confirm": {
+        "uz": "🗑 <b>{word}</b> lug'atdan o'chirilsinmi?",
+        "ru": "🗑 Удалить <b>{word}</b> из словаря?",
+    },
+    "vocab.deleted": {"uz": "O'chirildi", "ru": "Удалено"},
+    "vocab.relearned": {
+        "uz": "So'z qaytadan takrorlash navbatiga qo'shildi",
+        "ru": "Слово снова в очереди на повторение",
+    },
+    # Adding words by hand
+    "vocab.add_prompt": {
+        "uz": "➕ <b>So'z qo'shish</b>\n\nInglizcha so'z yoki iborani yuboring — ma'nosi, misol "
+        "va tarjimasini o'zim topaman. O'zbekcha yoki ruscha yozsangiz, inglizcha muqobilini "
+        "qo'shaman.\n\nBir nechta so'z: har birini yangi qatorda yoki vergul bilan (bir martada "
+        "{max} tagacha).",
+        "ru": "➕ <b>Добавить слово</b>\n\nОтправьте английское слово или выражение — значение, "
+        "пример и перевод я найду сам. Если напишете по-русски или по-узбекски, добавлю "
+        "английский аналог.\n\nНесколько слов: каждое с новой строки или через запятую (до {max} "
+        "за раз).",
+    },
+    "vocab.add_working": {"uz": "⏳ So'zlar tayyorlanmoqda...", "ru": "⏳ Готовлю слова..."},
+    "vocab.add_added": {"uz": "✅ Lug'atga qo'shildi:", "ru": "✅ Добавлено в словарь:"},
+    "vocab.add_exists": {
+        "uz": "📌 Lug'atingizda allaqachon bor: {words}",
+        "ru": "📌 Уже есть в вашем словаре: {words}",
+    },
+    "vocab.add_invalid": {"uz": "⚠️ Tushunmadim: {words}", "ru": "⚠️ Не удалось распознать: {words}"},
+    "vocab.add_truncated": {
+        "uz": "ℹ️ Bir martada {max} tagacha so'z — qolganlarini keyingi xabarda yuboring.",
+        "ru": "ℹ️ За раз — до {max} слов, остальные отправьте следующим сообщением.",
+    },
+    "vocab.add_limit": {
+        "uz": "ℹ️ Kuniga {limit} tagacha so'z qo'shish mumkin — bugungi limit tugadi. Ertaga "
+        "davom eting!",
+        "ru": "ℹ️ В день можно добавить до {limit} слов — на сегодня лимит исчерпан. Продолжим "
+        "завтра!",
+    },
+    "vocab.add_more": {
+        "uz": "Yana so'z yuborishingiz mumkin.",
+        "ru": "Можете отправить ещё слова.",
+    },
+    "vocab.add_failed": {
+        "uz": "⚠️ Hozir so'zlarni tayyorlab bo'lmadi. Birozdan so'ng qayta yuboring.",
+        "ru": "⚠️ Сейчас не получилось подготовить слова. Отправьте их ещё раз чуть позже.",
+    },
+    "vocab.add_text_only": {
+        "uz": "Iltimos, so'zni matn ko'rinishida yuboring.",
+        "ru": "Пожалуйста, отправьте слово текстом.",
+    },
+    # Reminder (bot/utils/vocab_reminders.py) and after a check
+    "vocab.reminder": {
+        "uz": "📚 <b>Takrorlash vaqti!</b>\n\nLug'atingizda {due} ta so'z sizni kutmoqda. 5 daqiqa "
+        "ajrating — so'zlar xotirada mustahkam qoladi va keyingi Writing/Speaking'da o'zi "
+        "esga keladi 💪",
+        "ru": "📚 <b>Время повторить слова!</b>\n\nВ вашем словаре {due} слов ждут повторения. "
+        "Уделите 5 минут — слова закрепятся в памяти и сами придут на ум в следующем "
+        "Writing/Speaking 💪",
+    },
+    "vocab.added_after_check": {
+        "uz": "📚 Lug'atimga {count} ta yangi so'z qo'shildi",
+        "ru": "📚 В «Мой словарь» добавлено новых слов: {count}",
+    },
+    # Buttons
+    "vocab.btn_review": {"uz": "🔄 Takrorlash ({due})", "ru": "🔄 Повторить ({due})"},
+    "vocab.btn_test": {"uz": "🎯 Test", "ru": "🎯 Тест"},
+    "vocab.btn_list": {"uz": "📋 So'zlarim", "ru": "📋 Мои слова"},
+    "vocab.btn_add": {"uz": "➕ So'z qo'shish", "ru": "➕ Добавить слово"},
+    "vocab.btn_remind_on": {"uz": "🔔 Eslatma: yoqilgan", "ru": "🔔 Напоминания: вкл."},
+    "vocab.btn_remind_off": {"uz": "🔕 Eslatma: o'chiq", "ru": "🔕 Напоминания: выкл."},
+    "vocab.btn_remind_stop": {"uz": "🔕 Eslatmani o'chirish", "ru": "🔕 Отключить напоминания"},
     "vocab.btn_reveal": {"uz": "👁 Ma'nosini ko'rish", "ru": "👁 Показать значение"},
     "vocab.btn_know": {"uz": "✅ Bildim", "ru": "✅ Знаю"},
-    "vocab.btn_again": {"uz": "🔁 Keyinroq", "ru": "🔁 Позже"},
+    "vocab.btn_forgot": {"uz": "❌ Bilmadim", "ru": "❌ Не помню"},
+    "vocab.btn_stop": {"uz": "⏹ Tugatish", "ru": "⏹ Завершить"},
+    "vocab.btn_next": {"uz": "➡️ Keyingisi", "ru": "➡️ Дальше"},
+    "vocab.btn_result": {"uz": "🏁 Natija", "ru": "🏁 Результат"},
+    "vocab.btn_back_menu": {"uz": "⬅️ Lug'atim", "ru": "⬅️ Мой словарь"},
+    "vocab.btn_back_list": {"uz": "⬅️ Ro'yxatga", "ru": "⬅️ К списку"},
+    "vocab.btn_delete": {"uz": "🗑 O'chirish", "ru": "🗑 Удалить"},
+    "vocab.btn_delete_yes": {"uz": "✅ Ha, o'chirish", "ru": "✅ Да, удалить"},
+    "vocab.btn_cancel": {"uz": "❌ Bekor qilish", "ru": "❌ Отмена"},
+    "vocab.btn_relearn": {"uz": "↩️ Qaytadan o'rganish", "ru": "↩️ Учить заново"},
     # --- Share (bot/handlers/share.py) ---
     "share.not_found": {"uz": "Bu natija topilmadi.", "ru": "Результат не найден."},
     "share.caption": {

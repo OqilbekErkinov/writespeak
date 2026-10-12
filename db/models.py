@@ -8,17 +8,19 @@ agreed in the plan.
 from __future__ import annotations
 
 import enum
-from datetime import datetime
+from datetime import date, datetime
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     JSON,
     BigInteger,
     Boolean,
+    Date,
     DateTime,
     Enum,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -135,6 +137,11 @@ class User(Base):
     # UI language - "uz" or "ru" (see bot/i18n.py). Chosen once at first
     # /start (bot/handlers/start.py) and changeable from "Hisobim".
     language: Mapped[str] = mapped_column(String(5), default="uz", server_default="uz")
+    # Daily "words to review" reminder (bot/utils/vocab_reminders.py) - on by
+    # default, toggled from the Lug'atim menu; vocab_reminded_on is the
+    # Tashkent date it was last sent, so it goes out at most once a day.
+    vocab_reminders: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    vocab_reminded_on: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     writing_submissions: Mapped[list["WritingSubmission"]] = relationship(back_populates="user")
     speaking_submissions: Mapped[list["SpeakingSubmission"]] = relationship(back_populates="user")
@@ -295,17 +302,38 @@ class PaymentRequest(Base):
 
 
 class VocabularyEntry(Base):
-    """One saved word/phrase from a graded submission's vocabulary list, for
-    the 'Lug'atim' flashcard review flow (bot/handlers/vocabulary.py)."""
+    """One word/phrase in a student's 'Lug'atim' word bank (bot/handlers/
+    vocabulary.py) - from a graded submission's vocabulary list, or typed in
+    by the student. Reviewed with Leitner-style spaced repetition: see
+    db/crud.py's VOCAB_INTERVAL_DAYS for how box/due_at move."""
 
     __tablename__ = "vocabulary_entries"
+    __table_args__ = (
+        UniqueConstraint("user_id", "word_key", name="uq_vocab_user_word"),
+        Index("ix_vocab_user_due", "user_id", "due_at"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     word_or_phrase: Mapped[str] = mapped_column(String(255))
+    # db.crud.vocab_key(word_or_phrase) - keeps one copy of a word per student.
+    word_key: Mapped[str] = mapped_column(String(255))
     meaning: Mapped[str] = mapped_column(Text)
     example_sentence: Mapped[str] = mapped_column(Text)
-    source: Mapped[str] = mapped_column(String(20))  # "writing" | "speaking"
+    source: Mapped[str] = mapped_column(String(20))  # "writing" | "speaking" | "manual"
+    # {"uz": ..., "ru": ...}, filled lazily for the student's UI language
+    # (services/ai/vocab_helper.py).
+    translations: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")
+    # 0 = not yet answered right since it was added (or since it was last
+    # forgotten); VOCAB_MASTERED_BOX = mastered, which also sets is_learned.
+    box: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # Next review; None once mastered.
+    due_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, server_default=func.now()
+    )
+    review_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    lapse_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    last_reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     is_learned: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

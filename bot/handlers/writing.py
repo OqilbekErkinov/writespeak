@@ -307,13 +307,16 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
                 submission_id=submission.id,
                 submission_type="writing",
             )
-        await crud.add_vocabulary_entries(session, user_id, vocabulary, source="writing")
+        new_words = await crud.add_vocabulary_entries(session, user_id, vocabulary, source="writing")
         await crud.reward_referrer_if_eligible(session, user_id)
 
+    caption = t("writing.done_caption", lang, band=report.overall_band)
+    if new_words:
+        caption += "\n" + t("vocab.added_after_check", lang, count=new_words)
     await processing_msg.delete()
     await message.answer_document(
         BufferedInputFile(pdf_bytes, filename="IELTS_Feedback.pdf"),
-        caption=t("writing.done_caption", lang, band=report.overall_band),
+        caption=caption,
         reply_markup=share_card_kb("writing", submission.id, lang),
     )
 

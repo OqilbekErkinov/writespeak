@@ -6,10 +6,13 @@ already-open AsyncSession so callers control the transaction boundary via
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from dataclasses import dataclass
+from datetime import date, datetime, timedelta, timezone
 
-from sqlalchemy import delete, func, or_, select, update
+from sqlalchemy import and_, case, delete, func, or_, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from db.models import (
     Group,
@@ -378,53 +381,341 @@ async def get_referral_count(session: AsyncSession, user_id: int) -> int:
 
 
 # --- Vocabulary bank -----------------------------------------------------------
+# Leitner-style spaced repetition (bot/handlers/vocabulary.py): a word starts
+# in box 0 and is due at once. Each right answer moves it one box up and
+# schedules the next review VOCAB_INTERVAL_DAYS[box] days later (from Tashkent
+# midnight, so "tomorrow" means the whole of tomorrow); reaching
+# VOCAB_MASTERED_BOX marks it learned and takes it out of the queue. A wrong
+# answer sends it back to box 0, due again at once.
+
+VOCAB_INTERVAL_DAYS = {1: 1, 2: 3, 3: 7, 4: 14}
+VOCAB_MASTERED_BOX = 5
+# Words a student may add by hand per Tashkent day - each one is an AI call.
+VOCAB_MANUAL_DAILY_LIMIT = 30
+
+_VOCAB_KEY_STRIP = " .,;:!?\"'"
+
+
+def vocab_key(word: str) -> str:
+    """The form used to spot the same word twice for one student. Must match
+    the backfill SQL in migration 0010."""
+    return " ".join(word.split()).lower().strip(_VOCAB_KEY_STRIP)[:255]
+
+
+def _tashkent_midnight_utc(days_ahead: int) -> datetime:
+    return _today_start_tashkent_as_utc() + timedelta(days=days_ahead)
+
+
+@dataclass
+class VocabularyStats:
+    total: int
+    new: int  # never reviewed
+    learning: int
+    mastered: int
+    due: int  # due now
+    next_due_at: datetime | None  # earliest review among the not-mastered words
+
+
+async def _insert_vocabulary(session: AsyncSession, user_id: int, rows: list[dict]) -> set[str]:
+    """Inserts the rows the student doesn't have yet and returns their
+    word_keys."""
+    now = datetime.now(timezone.utc)
+    values, seen = [], set()
+    for row in rows:
+        word = " ".join(row["word"].split())[:255]
+        key = vocab_key(word)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        values.append(
+            {
+                "user_id": user_id,
+                "word_or_phrase": word,
+                "word_key": key,
+                "meaning": row["meaning"].strip(),
+                "example_sentence": row["example"].strip(),
+                "source": row["source"],
+                "translations": row.get("translations") or {},
+                "due_at": now,
+            }
+        )
+    if not values:
+        return set()
+    stmt = (
+        pg_insert(VocabularyEntry)
+        .values(values)
+        .on_conflict_do_nothing(index_elements=["user_id", "word_key"])
+        .returning(VocabularyEntry.word_key)
+    )
+    added = set((await session.execute(stmt)).scalars().all())
+    await session.commit()
+    return added
 
 
 async def add_vocabulary_entries(
     session: AsyncSession, user_id: int, items: list[VocabularyItem], source: str
-) -> None:
-    for item in items:
-        session.add(
-            VocabularyEntry(
-                user_id=user_id,
-                word_or_phrase=item.word_or_phrase,
-                meaning=item.meaning,
-                example_sentence=item.example_sentence,
-                source=source,
-            )
+) -> int:
+    """Saves a report's words, skipping ones the student already has; returns
+    how many were new."""
+    rows = [
+        {"word": i.word_or_phrase, "meaning": i.meaning, "example": i.example_sentence, "source": source}
+        for i in items
+    ]
+    return len(await _insert_vocabulary(session, user_id, rows))
+
+
+async def add_manual_vocabulary(session: AsyncSession, user_id: int, rows: list[dict]) -> set[str]:
+    """Words the student typed in (rows: word/meaning/example/translations);
+    returns the word_keys actually added."""
+    return await _insert_vocabulary(session, user_id, [{**r, "source": "manual"} for r in rows])
+
+
+async def count_manual_vocabulary_today(session: AsyncSession, user_id: int) -> int:
+    result = await session.execute(
+        select(func.count())
+        .select_from(VocabularyEntry)
+        .where(
+            VocabularyEntry.user_id == user_id,
+            VocabularyEntry.source == "manual",
+            VocabularyEntry.created_at >= _today_start_tashkent_as_utc(),
         )
-    await session.commit()
+    )
+    return result.scalar() or 0
 
 
-async def get_vocabulary_for_review(
+async def get_vocabulary_stats(session: AsyncSession, user_id: int) -> VocabularyStats:
+    now = datetime.now(timezone.utc)
+    learning = VocabularyEntry.is_learned.is_(False)
+    row = (
+        await session.execute(
+            select(
+                func.count(),
+                func.count().filter(VocabularyEntry.is_learned.is_(True)),
+                func.count().filter(learning, VocabularyEntry.review_count == 0),
+                func.count().filter(learning, VocabularyEntry.due_at <= now),
+                func.min(VocabularyEntry.due_at).filter(learning),
+            ).where(VocabularyEntry.user_id == user_id)
+        )
+    ).one()
+    total, mastered, new, due, next_due_at = row
+    return VocabularyStats(
+        total=total,
+        new=new,
+        learning=total - mastered - new,
+        mastered=mastered,
+        due=due,
+        next_due_at=next_due_at,
+    )
+
+
+async def get_vocabulary_counts(session: AsyncSession, user_id: int) -> tuple[int, int]:
+    """Returns (total, mastered)."""
+    stats = await get_vocabulary_stats(session, user_id)
+    return stats.total, stats.mastered
+
+
+async def get_vocabulary_due(
     session: AsyncSession, user_id: int, limit: int = 10
 ) -> list[VocabularyEntry]:
+    """Words due for review: ones already being learned first (oldest due
+    first), then new ones."""
+    now = datetime.now(timezone.utc)
     stmt = (
         select(VocabularyEntry)
-        .where(VocabularyEntry.user_id == user_id, VocabularyEntry.is_learned.is_(False))
+        .where(
+            VocabularyEntry.user_id == user_id,
+            VocabularyEntry.is_learned.is_(False),
+            VocabularyEntry.due_at <= now,
+        )
+        .order_by(
+            (VocabularyEntry.review_count == 0).asc(),
+            VocabularyEntry.due_at,
+            VocabularyEntry.id,
+        )
+        .limit(limit)
+    )
+    return list((await session.execute(stmt)).scalars().all())
+
+
+async def get_vocabulary_for_test(
+    session: AsyncSession, user_id: int, limit: int = 10
+) -> list[VocabularyEntry]:
+    """Test questions: due words first, then other words still being
+    learned, then mastered ones - each group in random order."""
+    now = datetime.now(timezone.utc)
+    learning = VocabularyEntry.is_learned.is_(False)
+    rank = case(
+        (and_(learning, VocabularyEntry.due_at <= now), 0),
+        (learning, 1),
+        else_=2,
+    )
+    stmt = (
+        select(VocabularyEntry)
+        .where(VocabularyEntry.user_id == user_id)
+        .order_by(rank, func.random())
+        .limit(limit)
+    )
+    return list((await session.execute(stmt)).scalars().all())
+
+
+async def get_random_vocabulary(
+    session: AsyncSession, user_id: int, exclude_ids: list[int], limit: int
+) -> list[VocabularyEntry]:
+    """Wrong options for test questions."""
+    stmt = (
+        select(VocabularyEntry)
+        .where(VocabularyEntry.user_id == user_id, VocabularyEntry.id.not_in(exclude_ids or [0]))
         .order_by(func.random())
         .limit(limit)
     )
     return list((await session.execute(stmt)).scalars().all())
 
 
-async def get_vocabulary_counts(session: AsyncSession, user_id: int) -> tuple[int, int]:
-    """Returns (total, learned)."""
-    total = await session.execute(
-        select(func.count()).select_from(VocabularyEntry).where(VocabularyEntry.user_id == user_id)
+async def list_vocabulary(
+    session: AsyncSession, user_id: int, *, offset: int, limit: int
+) -> tuple[list[VocabularyEntry], int]:
+    """A page of the student's words, newest first, and the total count."""
+    total = (
+        await session.execute(
+            select(func.count()).select_from(VocabularyEntry).where(VocabularyEntry.user_id == user_id)
+        )
+    ).scalar() or 0
+    stmt = (
+        select(VocabularyEntry)
+        .where(VocabularyEntry.user_id == user_id)
+        .order_by(VocabularyEntry.created_at.desc(), VocabularyEntry.id.desc())
+        .offset(offset)
+        .limit(limit)
     )
-    learned = await session.execute(
-        select(func.count())
-        .select_from(VocabularyEntry)
-        .where(VocabularyEntry.user_id == user_id, VocabularyEntry.is_learned.is_(True))
-    )
-    return (total.scalar() or 0), (learned.scalar() or 0)
+    return list((await session.execute(stmt)).scalars().all()), total
 
 
-async def mark_vocabulary_learned(session: AsyncSession, entry_id: int, user_id: int) -> None:
+async def get_vocabulary_entry(
+    session: AsyncSession, user_id: int, entry_id: int
+) -> VocabularyEntry | None:
     entry = await session.get(VocabularyEntry, entry_id)
-    if entry is not None and entry.user_id == user_id:
-        entry.is_learned = True
+    return entry if entry is not None and entry.user_id == user_id else None
+
+
+async def delete_vocabulary_entry(session: AsyncSession, user_id: int, entry_id: int) -> bool:
+    result = await session.execute(
+        delete(VocabularyEntry).where(VocabularyEntry.id == entry_id, VocabularyEntry.user_id == user_id)
+    )
+    await session.commit()
+    return result.rowcount > 0
+
+
+async def reset_vocabulary_entry(session: AsyncSession, user_id: int, entry_id: int) -> bool:
+    """'Learn it again': back to box 0, due at once."""
+    entry = await get_vocabulary_entry(session, user_id, entry_id)
+    if entry is None:
+        return False
+    entry.box = 0
+    entry.is_learned = False
+    entry.due_at = datetime.now(timezone.utc)
+    await session.commit()
+    return True
+
+
+async def record_vocabulary_review(
+    session: AsyncSession, user_id: int, entry_id: int, correct: bool, *, only_if_due: bool = False
+) -> VocabularyEntry | None:
+    """Moves a word along the Leitner schedule after one answer. With
+    `only_if_due` (the test, which also asks words that aren't due), a right
+    answer to a word that isn't due yet leaves its schedule alone - practising
+    ahead doesn't skip a step - while a wrong one still sends it back."""
+    entry = await get_vocabulary_entry(session, user_id, entry_id)
+    if entry is None:
+        return None
+    now = datetime.now(timezone.utc)
+    entry.review_count += 1
+    entry.last_reviewed_at = now
+    if not correct:
+        entry.box = 0
+        entry.lapse_count += 1
+        entry.is_learned = False
+        entry.due_at = now
+    elif not (only_if_due and (entry.is_learned or (entry.due_at is not None and entry.due_at > now))):
+        entry.box = min(entry.box + 1, VOCAB_MASTERED_BOX)
+        if entry.box >= VOCAB_MASTERED_BOX:
+            entry.is_learned = True
+            entry.due_at = None
+        else:
+            entry.due_at = _tashkent_midnight_utc(VOCAB_INTERVAL_DAYS[entry.box])
+    await session.commit()
+    return entry
+
+
+async def save_vocabulary_translations(
+    session: AsyncSession, user_id: int, lang: str, translations: dict[int, str]
+) -> None:
+    """Stores {entry id: translation} for one UI language."""
+    if not translations:
+        return
+    entries = (
+        await session.execute(
+            select(VocabularyEntry).where(
+                VocabularyEntry.user_id == user_id, VocabularyEntry.id.in_(list(translations))
+            )
+        )
+    ).scalars().all()
+    for entry in entries:
+        # A new dict, so SQLAlchemy sees the JSON column change.
+        entry.translations = {**(entry.translations or {}), lang: translations[entry.id]}
+    await session.commit()
+
+
+async def set_vocab_reminders(session: AsyncSession, user_id: int, enabled: bool) -> None:
+    await session.execute(update(User).where(User.id == user_id).values(vocab_reminders=enabled))
+    await session.commit()
+
+
+async def get_vocab_reminder_targets(
+    session: AsyncSession, *, min_due: int, active_days: int
+) -> list[tuple[int, str, int]]:
+    """(user id, language, words due) for everyone to remind today: reminders
+    on, not reminded yet today, at least `min_due` words due, no review yet
+    today - and either reviewed within `active_days` or never reminded
+    before (so someone who ignores the feature gets one nudge, not one a day)."""
+    now = datetime.now(timezone.utc)
+    today_start = _today_start_tashkent_as_utc()
+    today = (now + _TASHKENT_OFFSET).date()
+    reviewed = aliased(VocabularyEntry)
+    reviewed_today = (
+        select(reviewed.id)
+        .where(reviewed.user_id == User.id, reviewed.last_reviewed_at >= today_start)
+        .exists()
+    )
+    reviewed_lately = (
+        select(reviewed.id)
+        .where(
+            reviewed.user_id == User.id,
+            reviewed.last_reviewed_at >= now - timedelta(days=active_days),
+        )
+        .exists()
+    )
+    due = func.count(VocabularyEntry.id)
+    stmt = (
+        select(User.id, User.language, due)
+        .join(VocabularyEntry, VocabularyEntry.user_id == User.id)
+        .where(
+            User.vocab_reminders.is_(True),
+            User.status == UserStatus.approved,
+            or_(User.vocab_reminded_on.is_(None), User.vocab_reminded_on < today),
+            VocabularyEntry.is_learned.is_(False),
+            VocabularyEntry.due_at <= now,
+            ~reviewed_today,
+            or_(reviewed_lately, User.vocab_reminded_on.is_(None)),
+        )
+        .group_by(User.id, User.language)
+        .having(due >= min_due)
+    )
+    return [tuple(row) for row in (await session.execute(stmt)).all()]
+
+
+async def mark_vocab_reminded(session: AsyncSession, user_ids: list[int], day: date) -> None:
+    if user_ids:
+        await session.execute(update(User).where(User.id.in_(user_ids)).values(vocab_reminded_on=day))
         await session.commit()
 
 
