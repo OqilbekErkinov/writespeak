@@ -6,6 +6,7 @@ already-open AsyncSession so callers control the transaction boundary via
 """
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 
@@ -32,6 +33,9 @@ from db.models import (
     PracticeModule,
     PracticeProgress,
     PracticeQuestion,
+    FULL_TEST_CHECKS,
+    SPEAKING_LABELS,
+    SpeakingPart,
     SpeakingSubmission,
     SubmissionComment,
     User,
@@ -41,7 +45,7 @@ from db.models import (
     WritingSubmission,
 )
 from services.ai.essay_marking import count_words
-from services.ai.schemas import SpeakingGradingResult, VocabularyItem
+from services.ai.schemas import VocabularyItem
 
 # --- Users / access control -------------------------------------------------
 
@@ -174,30 +178,33 @@ async def save_speaking_submission(
     question_text: str,
     audio_file_path: str,
     transcript_text: str,
-    result: SpeakingGradingResult,
-    book_sample_ref: int | None,
+    overall_band: float,
+    criteria_scores: dict[str, float],
+    mistakes: list[dict],
+    vocabulary: list[VocabularyItem],
+    report_data: dict,
     feedback_pdf_path: str,
     practice_question_id: int | None = None,
     spend_credit: bool = False,
     assignment_part_id: int | None = None,
     payer_id: int | None = None,
+    credits: int = 1,
 ) -> SpeakingSubmission:
+    """With `spend_credit`, `credits` credits are spent (a full test counts
+    as FULL_TEST_CHECKS checks, less the free checks it used - see
+    bot/utils/quota.py), from `payer_id` (a group's sponsor) when given, else
+    from the student."""
     submission = SpeakingSubmission(
         user_id=user_id,
         part=part,
         question_text=question_text,
         audio_file_path=audio_file_path,
         transcript_text=transcript_text,
-        overall_band=result.overall_band,
-        criteria_scores={
-            "FC": result.fluency_and_coherence,
-            "LR": result.lexical_resource,
-            "GRA": result.grammatical_range_and_accuracy,
-            "Pronunciation": result.pronunciation,
-        },
-        annotations=[a.model_dump() for a in result.annotations],
-        vocabulary_json=[v.model_dump() for v in result.vocabulary],
-        book_sample_ref=book_sample_ref,
+        overall_band=overall_band,
+        criteria_scores=criteria_scores,
+        annotations=mistakes,
+        vocabulary_json=[v.model_dump() for v in vocabulary],
+        report_data=report_data,
         feedback_pdf_path=feedback_pdf_path,
         practice_question_id=practice_question_id,
         assignment_part_id=assignment_part_id,
@@ -205,10 +212,53 @@ async def save_speaking_submission(
     )
     session.add(submission)
     if spend_credit:
-        await _spend_one_credit(session, payer_id or user_id)
+        for _ in range(credits):
+            await _spend_one_credit(session, payer_id or user_id)
     await session.commit()
     await session.refresh(submission)
     return submission
+
+
+async def get_speaking_history(session: AsyncSession, user_id: int, part: str) -> tuple[int, dict | None]:
+    """(number of the student's earlier Speaking sessions, their latest graded
+    session of the same part as {"id", "band", "metrics", "number"}) for the
+    report's progress page. metrics is None for sessions graded before the
+    2026-10-13 report, which measured no voice."""
+    count = (
+        await session.execute(
+            select(func.count()).select_from(SpeakingSubmission).where(SpeakingSubmission.user_id == user_id)
+        )
+    ).scalar() or 0
+    latest = (
+        await session.execute(
+            select(SpeakingSubmission)
+            .where(
+                SpeakingSubmission.user_id == user_id,
+                SpeakingSubmission.part == part,
+                SpeakingSubmission.overall_band.is_not(None),
+            )
+            .order_by(SpeakingSubmission.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if latest is None:
+        return count, None
+    data = latest.report_data or {}
+    return count, {"id": latest.id, "band": latest.overall_band, "metrics": data.get("metrics"),
+                   "number": data.get("number")}
+
+
+async def get_speaking_sessions(session: AsyncSession, user_id: int, part: str, limit: int = 20) -> list[SpeakingSubmission]:
+    """The student's latest graded sessions of one part, newest first - for
+    spotting a resubmission of the same answers."""
+    stmt = (
+        select(SpeakingSubmission)
+        .where(SpeakingSubmission.user_id == user_id, SpeakingSubmission.part == part,
+               SpeakingSubmission.overall_band.is_not(None))
+        .order_by(SpeakingSubmission.created_at.desc())
+        .limit(limit)
+    )
+    return list((await session.execute(stmt)).scalars().all())
 
 
 async def get_writing_history(
@@ -287,9 +337,20 @@ async def get_total_submission_count(session: AsyncSession, user_id: int) -> int
         select(func.count()).select_from(WritingSubmission).where(WritingSubmission.user_id == user_id)
     )
     s = await session.execute(
-        select(func.count()).select_from(SpeakingSubmission).where(SpeakingSubmission.user_id == user_id)
+        select(_speaking_checks()).select_from(SpeakingSubmission).where(SpeakingSubmission.user_id == user_id)
     )
     return (w.scalar() or 0) + (s.scalar() or 0)
+
+
+def _speaking_checks():
+    """Checks used by Speaking rows: a full test counts FULL_TEST_CHECKS."""
+    return func.coalesce(
+        func.sum(case((SpeakingSubmission.part == SpeakingPart.full, FULL_TEST_CHECKS), else_=1)), 0
+    )
+
+
+def _checks(model):
+    return func.count() if model is WritingSubmission else _speaking_checks()
 
 
 async def has_active_subscription(session: AsyncSession, user_id: int) -> bool:
@@ -1123,7 +1184,7 @@ async def get_user_history(session: AsyncSession, user_id: int, limit: int = 20)
         {
             "type": "speaking",
             "id": r.id,
-            "label": f"Speaking {r.part.value.upper()}",
+            "label": SPEAKING_LABELS.get(r.part.value, "Speaking"),
             "band": r.overall_band,
             "date": r.created_at,
             "pdf_path": r.feedback_pdf_path,
@@ -1555,7 +1616,7 @@ def work_info(kind: str, row) -> dict:
     if kind == "w":
         label = f"Writing Task {row.task_type.value[-1]}"
     else:
-        label = f"Speaking Part {row.part.value[-1]}"
+        label = SPEAKING_LABELS.get(row.part.value, "Speaking")
     return {
         "kind": kind,
         "id": row.id,
@@ -1759,7 +1820,7 @@ async def count_sponsored_today(session: AsyncSession, user_id: int, payer_id: i
     total = 0
     for model in (WritingSubmission, SpeakingSubmission):
         total += (await session.execute(
-            select(func.count()).select_from(model).where(
+            select(_checks(model)).select_from(model).where(
                 model.user_id == user_id,
                 model.paid_by_id == payer_id,
                 model.created_at >= since,
@@ -1769,20 +1830,23 @@ async def count_sponsored_today(session: AsyncSession, user_id: int, payer_id: i
     return total
 
 
-async def find_sponsor(session: AsyncSession, user_id: int, assignment_group_id: int | None = None) -> int | None:
-    """The payer who covers this student's next check: a sponsored group they
-    are in whose payer still has credit and whose daily limit isn't used up
-    (assignments of that group are never limited). None if nobody does."""
+async def find_sponsor(
+    session: AsyncSession, user_id: int, assignment_group_id: int | None = None, cost: int = 1
+) -> int | None:
+    """The payer who covers this student's next check (`cost` checks - a full
+    Speaking test is 3): a sponsored group they are in whose payer still has
+    the credit and whose daily limit isn't used up (assignments of that group
+    are never limited). None if nobody does."""
     for group, _ in await get_member_groups(session, user_id):
         if not group.sponsor_checks:
             continue
         payer_id = await get_group_payer_id(session, group)
         payer = await session.get(User, payer_id)
-        if payer is None or payer.credit_balance <= 0:
+        if payer is None or payer.credit_balance < cost:
             continue
         if assignment_group_id == group.id or group.daily_limit is None:
             return payer_id
-        if await count_sponsored_today(session, user_id, payer_id) < group.daily_limit:
+        if await count_sponsored_today(session, user_id, payer_id) + cost <= group.daily_limit:
             return payer_id
     return None
 
@@ -1791,7 +1855,7 @@ async def sponsored_spend(session: AsyncSession, payer_id: int, since: datetime)
     total = 0
     for model in (WritingSubmission, SpeakingSubmission):
         total += (await session.execute(
-            select(func.count()).select_from(model).where(model.paid_by_id == payer_id, model.created_at >= since)
+            select(_checks(model)).select_from(model).where(model.paid_by_id == payer_id, model.created_at >= since)
         )).scalar() or 0
     return total
 
@@ -1806,6 +1870,30 @@ async def pick_practice_question(
     if exclude_ids:
         stmt = stmt.where(PracticeQuestion.id.not_in(exclude_ids))
     return (await session.execute(stmt.order_by(func.random()).limit(1))).scalar_one_or_none()
+
+
+async def pick_full_test(session: AsyncSession) -> tuple[PracticeQuestion, PracticeQuestion, PracticeQuestion] | None:
+    """A random Part 1 topic and a random Part 2 cue card with its own Part 3
+    discussion questions - in the channel the Part 3 post comes right after
+    its cue card (services/practice_import/speaking.py), so its source_ref is
+    the card's plus one. None if the bank has no such pair yet."""
+    part1 = await pick_practice_question(session, PracticeModule.speaking_part1)
+    cards = (await session.execute(
+        select(PracticeQuestion).where(PracticeQuestion.module == PracticeModule.speaking_part2)
+    )).scalars().all()
+    follow_ups = (await session.execute(
+        select(PracticeQuestion).where(PracticeQuestion.module == PracticeModule.speaking_part3)
+    )).scalars().all()
+    by_ref = {(q.source, q.source_ref): q for q in follow_ups if q.source_ref and q.source_ref.isdigit()}
+    pairs = [
+        (card, by_ref[(card.source, str(int(card.source_ref) + 1))])
+        for card in cards
+        if card.source_ref and card.source_ref.isdigit() and (card.source, str(int(card.source_ref) + 1)) in by_ref
+    ]
+    if part1 is None or not pairs:
+        return None
+    card, follow_up = random.choice(pairs)
+    return part1, card, follow_up
 
 
 async def create_assignment(

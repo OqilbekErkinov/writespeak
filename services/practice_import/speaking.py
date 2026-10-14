@@ -26,6 +26,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
+from bot.utils.speaking_questions import dedupe
 from db import crud
 from db.database import get_session
 from db.models import PracticeModule, PracticeQuestion
@@ -127,7 +128,9 @@ def parse_topic(post: tg.ChannelPost) -> Topic | None:
             questions = [_clean_line(line) for line in body if line.rstrip().endswith("?")]
         if not questions:
             return None
-        question_text = "\n".join(questions)
+        # The channel sometimes asks one question twice in other words ("Do you
+        # think you are an ambitious person?" / "Are you an ambitious person?").
+        question_text = "\n".join(dedupe(questions))
 
     title = title.capitalize() if title.isupper() else title
     return Topic(part, number, title, season, season_start(season), question_text, post.id)
@@ -233,3 +236,26 @@ async def sync() -> dict[str, int]:
                     counts["removed"] += 1
     logger.info("Speaking sync: %s (topics per part %s)", counts, per_part)
     return counts
+
+
+async def dedupe_existing() -> int:
+    """Drops repeated questions from the Part 1/3 topics already in the bank
+    (parse_topic does it for new ones). The stored hash is updated too, so
+    the next sync sees the topic as unchanged and students' progress stays."""
+    changed = 0
+    async with get_session() as session:
+        for question in await crud.get_imported_questions(session, SOURCE):
+            if question.module == PracticeModule.speaking_part2:
+                continue
+            lines = [line for line in question.question_text.splitlines() if line.strip()]
+            kept = dedupe(lines)
+            if len(kept) == len(lines):
+                continue
+            logger.info("Topic %s (%s): dropped %s", question.id, question.topic,
+                        [line for line in lines if line not in kept])
+            question.question_text = "\n".join(kept)
+            title = question.topic or ""
+            question.source_hash = hashlib.sha256(f"{title}\n{question.question_text}".encode("utf-8")).hexdigest()[:16]
+            changed += 1
+        await session.commit()
+    return changed

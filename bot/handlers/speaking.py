@@ -1,13 +1,24 @@
-"""Speaking module: Part 1 / Part 2 / Part 3.
+"""Speaking module: Part 1 / Part 2 / Part 3 / Full test.
 
 Flow: pick part -> send question/s (any format, like Writing) -> [confirm if
 needed] -> the bot asks the questions ONE AT A TIME like a real examiner
-(bot/utils/speaking_questions.py splits Part 1/3 sets; Part 2 is one cue
-card), collecting a voice/video/audio answer to each -> after the last one
-(or "✅ Yakunlash" early) the whole set is graded as one performance, one
-check, one PDF -> "check again" / "next question" buttons. Also entered
-directly from Practice, which presets part/practice_question_id and calls
-`start_question_set` with the stored question set.
+(bot/utils/speaking_questions.py splits Part 1/3 sets and drops repeated
+questions; Part 2 is one cue card), collecting a voice/video/audio answer to
+each -> after the last one (or "✅ Yakunlash" early) the whole set is graded
+as one performance, one check, one PDF -> the model answers follow as voice
+messages -> "check again" / "next question" buttons. Also entered directly
+from Practice and group assignments, which preset part/practice_question_id
+and call `start_question_set` with the stored question set.
+
+A Full test takes a Part 1 topic, a cue card and its Part 3 questions from
+the bank and is graded as one report with a Speaking band; it counts as
+FULL_TEST_CHECKS checks.
+
+Grading is services/ai/speaking_check.py (voice analysis, scores, feedback,
+model answers); this module adds Telegram and the database: the student's
+history (progress page), resubmissions (the same recordings again get their
+saved report back, free; near-identical answers are labelled, with no
+progress shown), the report, the voice messages.
 
 `lang` (bot/i18n.py) is only auto-injected by AccessControlMiddleware into
 top-level handlers - the internal helpers below take it as an explicit
@@ -17,9 +28,13 @@ not separately-dispatched events (see the matching note in writing.py).
 from __future__ import annotations
 
 import asyncio
+import difflib
+import hashlib
 import html
 import logging
+import re
 from collections import defaultdict
+from pathlib import Path
 
 from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
@@ -35,6 +50,7 @@ from bot.keyboards.practice_kb import CB_BACK_TO_LIST_PREFIX, after_result_kb
 from bot.keyboards.share_kb import share_card_kb
 from bot.keyboards.speaking_part_kb import (
     CB_FINISH_NOW,
+    CB_FULL_TEST,
     CB_SPEAKING_MENU,
     PART_CALLBACKS,
     question_kb,
@@ -52,20 +68,22 @@ from bot.utils.quota import check_quota, free_check_note, send_paywall
 from bot.utils.speaking_questions import split_questions
 from db import crud
 from db.database import get_session
-from db.models import BookTaskType, SourceType
-from services.ai import usage
-from services.ai.rag_book_search import find_authentic_sample, get_style_reference_samples
-from services.ai.sample_analyzer import analyze_sample, analyze_style
-from services.ai.speaking_grader import grade_speaking
-from services.ai.transcription import concat_mp3, ensure_mp3, transcribe_mp3
-from services.pdf.report_builder import build_feedback_pdf
+from db.models import FULL_TEST_CHECKS, SourceType
+from services.ai import tts, usage
+from services.ai.essay_marking import canon
+from services.ai.schemas import VocabularyItem
+from services.ai.speaking_check import run_check
+from services.ai.speaking_marking import PART_NAMES, build_progress
+from services.ai.transcription import concat_mp3, ensure_mp3
+from services.pdf.report_builder import build_speaking_report_pdf
 from services.storage.file_storage import read_file, save_report, save_upload
 
 logger = logging.getLogger(__name__)
 router = Router(name="speaking")
 
-PART_LABELS = {"part1": "Speaking Part 1", "part2": "Speaking Part 2", "part3": "Speaking Part 3"}
 PART_TO_CALLBACK = {part: cb for cb, part in PART_CALLBACKS.items()}
+FULL_TEST_QUESTIONS = 5  # Part 1 and Part 3 questions asked in a full test, each
+RESUBMISSION_SIMILARITY = 0.9
 
 # Serializes one user's answer handling, so several voice messages sent in
 # quick succession are recorded against consecutive questions instead of
@@ -102,6 +120,37 @@ async def choose_part(callback: CallbackQuery, state: FSMContext, lang: str) -> 
     await show_screen(
         callback, free_check_note(quota, lang) + t("speaking.send_question", lang), back_kb(lang, CB_SPEAKING_MENU)
     )
+
+
+@router.callback_query(F.data == CB_FULL_TEST)
+async def choose_full_test(callback: CallbackQuery, state: FSMContext, lang: str) -> None:
+    """Part 1 topic + cue card + its Part 3 questions, from the bank."""
+    await callback.answer()
+    quota = await check_quota(callback.from_user.id, cost=FULL_TEST_CHECKS)
+    if not quota.allowed:
+        await callback.message.answer(t("speaking.full_paywall", lang, checks=FULL_TEST_CHECKS))
+        await send_paywall(callback.message, lang)
+        return
+    async with get_session() as session:
+        picked = await crud.pick_full_test(session)
+    if picked is None:
+        await callback.message.answer(t("speaking.full_no_questions", lang))
+        return
+    part1, card, follow_up = picked
+    p1 = split_questions(part1.question_text, "part1")[:FULL_TEST_QUESTIONS]
+    p3 = split_questions(follow_up.question_text, "part3")[:FULL_TEST_QUESTIONS]
+
+    await state.clear()
+    credits = FULL_TEST_CHECKS - (quota.free_left or 0) if quota.spend_credit and quota.payer_id is None else FULL_TEST_CHECKS
+    await state.update_data(
+        part="full", spend_credit=quota.spend_credit, payer_id=quota.payer_id, credits=credits,
+        questions=[*p1, card.question_text, *p3],
+        question_parts=["part1"] * len(p1) + ["part2"] + ["part3"] * len(p3),
+        q_index=0, answers=[], intro=None,
+    )
+    await state.set_state(SpeakingStates.awaiting_answer)
+    await show_screen(callback, t("speaking.full_intro", lang, checks=FULL_TEST_CHECKS), None)
+    await _ask_current_question(callback.message, state, lang)
 
 
 @router.message(SpeakingStates.awaiting_question, ~F.text.in_(MENU_BUTTON_TEXTS))
@@ -146,8 +195,9 @@ async def start_question_set(
     optionally practice_question_id / mock_session_id) already in state.
     `intro` (HTML) heads the first question, e.g. the practice topic."""
     data = await state.get_data()
+    questions = split_questions(text, data["part"])
     await state.update_data(
-        questions=split_questions(text, data["part"]), q_index=0, answers=[], intro=intro
+        questions=questions, question_parts=[data["part"]] * len(questions), q_index=0, answers=[], intro=intro
     )
     await state.set_state(SpeakingStates.awaiting_answer)
     await _ask_current_question(message, state, lang)
@@ -161,21 +211,31 @@ def _back_target(data: dict) -> str:
         return f"{CB_BACK_TO_LIST_PREFIX}{data['practice_question_id']}"
     if data.get("assignment_part_id"):
         return CB_MY_ASSIGNMENTS
+    if data["part"] == "full":
+        return CB_SPEAKING_MENU
     return PART_TO_CALLBACK[data["part"]]  # asks for a new question set
+
+
+def _question_parts(data: dict) -> list[str]:
+    # Flows started before full tests existed have no question_parts.
+    return data.get("question_parts") or [data["part"]] * len(data["questions"])
 
 
 async def _ask_current_question(message: Message, state: FSMContext, lang: str) -> None:
     data = await state.get_data()
     questions = data["questions"]
+    parts = _question_parts(data)
     index = data["q_index"]
     question = html.escape(questions[index], quote=False)
 
-    if data["part"] == "part2":
+    if parts[index] == "part2":
         text = t("speaking.cue_card", lang, question=question)
     elif len(questions) == 1:
         text = t("speaking.question_single", lang, question=question)
     else:
         text = t("speaking.question_n", lang, n=index + 1, total=len(questions), question=question)
+    if data["part"] == "full" and (index == 0 or parts[index] != parts[index - 1]):
+        text = t("speaking.part_start", lang, part=PART_NAMES[parts[index]]) + "\n\n" + text
     if index == 0 and data.get("intro"):
         text = f"{data['intro']}\n\n{text}"
 
@@ -188,10 +248,8 @@ async def _ask_current_question(message: Message, state: FSMContext, lang: str) 
         except TelegramBadRequest:
             pass
 
-    sent = await message.answer(
-        text,
-        reply_markup=question_kb(lang, _back_target(data), can_finish=bool(data.get("answers"))),
-    )
+    can_finish = bool(data.get("answers")) and data["part"] != "full"  # a full test is answered in full
+    sent = await message.answer(text, reply_markup=question_kb(lang, _back_target(data), can_finish=can_finish))
     await state.update_data(question_msg_id=sent.message_id)
 
 
@@ -240,7 +298,8 @@ async def finish_now(callback: CallbackQuery, state: FSMContext, lang: str) -> N
     async with _user_locks[callback.from_user.id]:
         if await state.get_state() != SpeakingStates.awaiting_answer.state:
             return
-        if not (await state.get_data()).get("answers"):
+        data = await state.get_data()
+        if not data.get("answers") or data.get("part") == "full":
             return
         await state.set_state(SpeakingStates.processing)
     await strip_buttons(callback.message)
@@ -253,9 +312,8 @@ async def reject_non_audio_answer(message: Message, lang: str) -> None:
 
 
 def _combine(questions: list[str], transcripts: list[str]) -> tuple[str, str]:
-    """(question_text, transcript_text) for grading/storage - a multi-question
-    set is labelled Q/A so the grader and the PDF keep each answer with
-    its question."""
+    """(question_text, transcript_text) for storage - a multi-question set is
+    labelled Q/A so each answer stays with its question."""
     if len(questions) == 1:
         return questions[0], transcripts[0]
     question_text = "\n".join(f"{i}. {q}" for i, q in enumerate(questions, 1))
@@ -265,52 +323,121 @@ def _combine(questions: list[str], transcripts: list[str]) -> tuple[str, str]:
     return question_text, transcript_text
 
 
+def _fingerprint(clips: list[bytes]) -> str:
+    digest = hashlib.sha256()
+    for clip in clips:
+        digest.update(hashlib.sha256(clip).digest())
+    return digest.hexdigest()
+
+
+def _said(texts: list[str]) -> str:
+    return canon(" ".join(texts)).lower()
+
+
+def _find_resubmission(sessions, audio_hash: str, transcripts: list[str] | None = None):
+    """The earlier session these answers repeat: the very same recordings
+    (by fingerprint), or - with `transcripts` - answers more than 90% the same."""
+    for s in sessions:
+        data = s.report_data or {}
+        if transcripts is None:
+            if data.get("audio_hash") == audio_hash:
+                return s
+            continue
+        before = data.get("transcripts")
+        if not before or len(before) != len(transcripts):
+            continue
+        if difflib.SequenceMatcher(None, _said(before), _said(transcripts), autojunk=False).ratio() > RESUBMISSION_SIMILARITY:
+            return s
+    return None
+
+
+def _session_number(submission) -> int:
+    return (submission.report_data or {}).get("number") or submission.id
+
+
+async def _send_saved_report(message: Message, state: FSMContext, data: dict, earlier, lang: str) -> bool:
+    """The same recordings again: the saved report, no new check. False if
+    the saved PDF is gone (then the answers are graded as new)."""
+    path = earlier.feedback_pdf_path
+    if not path or not Path(path).exists():
+        return False
+    await message.answer_document(
+        BufferedInputFile(read_file(path), filename="IELTS_Feedback.pdf"),
+        caption=t("speaking.resubmitted", lang, number=_session_number(earlier), band=earlier.overall_band),
+        reply_markup=share_card_kb("speaking", earlier.id, lang),
+    )
+    if data.get("mock_session_id"):
+        await record_mock_test_part(message, state, submission_id=earlier.id, submission_type="speaking",
+                                    band=earlier.overall_band)
+    else:
+        await state.clear()
+        await message.answer(t("nav.what_next", lang), reply_markup=_after_result_kb(data, lang))
+    return True
+
+
+async def _voices(answers: list[dict]) -> list[bytes | None]:
+    """The model answers spoken (Ogg/Opus), or None where it failed."""
+    if not tts.enabled() or not answers:
+        return [None] * len(answers)
+    results = await asyncio.gather(
+        *(tts.speak(" ".join(a["paragraphs"]), a["words"]) for a in answers), return_exceptions=True
+    )
+    out = []
+    for a, r in zip(answers, results):
+        if isinstance(r, BaseException):
+            logger.warning("Voice for model answer %s failed: %r", a["label"], r)
+            out.append(None)
+        else:
+            out.append(r)
+    return out
+
+
 async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
     data = await state.get_data()
     answers = data["answers"]
     questions = data["questions"][: len(answers)]
+    parts = _question_parts(data)[: len(answers)]
     user_id = message.chat.id
-    processing_msg = await message.answer(t("writing.grading_in_progress", lang))
+    part = data["part"]
 
+    clips = [read_file(a["path"]) for a in answers]
+    audio_hash = _fingerprint(clips)
+    async with get_session() as session:
+        sessions = await crud.get_speaking_sessions(session, user_id, part)
+    earlier = _find_resubmission(sessions, audio_hash)
+    if earlier is not None and await _send_saved_report(message, state, data, earlier, lang):
+        logger.info("Speaking resubmission by user %s: same recordings as submission %s", user_id, earlier.id)
+        return
+
+    processing_msg = await message.answer(t("speaking.grading_in_progress", lang))
     try:
-        clips = [await ensure_mp3(read_file(a["path"]), a["filename"]) for a in answers]
-        with usage.track(f"speaking {data['part']} user={user_id}"):
-            transcripts = list(await asyncio.gather(*(transcribe_mp3(c) for c in clips)))
-            mp3_bytes = await concat_mp3(clips)
-            question_text, transcript_text = _combine(questions, transcripts)
-            result = await grade_speaking(
-                part=data["part"],
-                question_text=question_text,
-                mp3_audio_bytes=mp3_bytes,
-                transcript_text=transcript_text,
+        async with get_session() as session:
+            earlier_sessions, previous = await crud.get_speaking_history(session, user_id, part)
+        number = earlier_sessions + 1
+        with usage.track(f"speaking {part} user={user_id}"):
+            check = await run_check(
+                part,
+                [{"part": p, "text": q} for p, q in zip(parts, questions)],
+                [(clip, a["filename"]) for clip, a in zip(clips, answers)],
+                seed=user_id + earlier_sessions,
             )
-            book_sample = await find_authentic_sample(
-                topic=result.topic,
-                task_type=BookTaskType.speaking,
-                min_band=result.overall_band + 1.0,
-            )
-        sample_analysis = None
-        style_analysis = None
-        if book_sample is not None:
-            sample_analysis = await analyze_sample(book_sample.content_text, PART_LABELS[data["part"]])
-        else:
-            # No topic match at all for Speaking - fall back to a general
-            # style analysis instead of an apology (Revision Brief v2,
-            # Section 4).
-            style_samples = await get_style_reference_samples(BookTaskType.speaking)
-            if style_samples:
-                style_analysis = await analyze_style(
-                    [s.content_text for s in style_samples], PART_LABELS[data["part"]]
-                )
-        pdf_bytes = build_feedback_pdf(
-            student_name=message.chat.full_name,
-            task_label=PART_LABELS[data["part"]],
-            answer_text=transcript_text,
-            grading=result,
-            book_sample=book_sample,
-            sample_analysis=sample_analysis,
-            style_analysis=style_analysis,
+            voices = await _voices(check.answers)
+        report = check.report
+        transcripts = [item.audio.text for item in check.items]
+        repeat = _find_resubmission(sessions, audio_hash, transcripts)
+        progress = build_progress(
+            part, report.overall_band, check.metrics, None if repeat else previous, report.priorities,
+            _session_number(repeat) if repeat else None,
         )
+        for a, voice in zip(check.answers, voices):
+            a["voice"] = voice is not None
+        # WeasyPrint is CPU-bound for a few seconds - off the event loop.
+        pdf_bytes = await asyncio.to_thread(
+            build_speaking_report_pdf, report, check.answers, progress, message.chat.full_name,
+            any(a["voice"] for a in check.answers),
+        )
+        mp3s = [await ensure_mp3(clip, a["filename"]) for clip, a in zip(clips, answers)]
+        joined = mp3s[0] if len(mp3s) == 1 else await concat_mp3(mp3s)
     except Exception:
         logger.exception("Speaking grading failed for user %s", user_id)
         await processing_msg.edit_text(t("writing.grading_failed", lang))
@@ -320,23 +447,43 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
         return
 
     pdf_path = save_report(user_id, pdf_bytes, ".pdf")
-    audio_path = answers[0]["path"] if len(answers) == 1 else save_upload(user_id, mp3_bytes, ".mp3")
+    audio_path = answers[0]["path"] if len(answers) == 1 else save_upload(user_id, joined, ".mp3")
+    question_text, transcript_text = _combine(questions, transcripts)
+    vocabulary = [
+        VocabularyItem(word_or_phrase=v.term, meaning=v.meaning, example_sentence=v.example)
+        for v in report.vocabulary
+    ]
+    report_data = {
+        "number": number,
+        "metrics": check.metrics.as_json(),
+        "audio_hash": audio_hash,
+        "transcripts": transcripts,
+        "questions": questions,
+        "question_parts": parts,
+        "pronunciation_measured": not report.pron_estimated,
+        "resubmission_of": repeat.id if repeat else None,
+        "model_answers": [{"label": a["label"], "band": a["band"], "words": a["words"]} for a in check.answers],
+    }
 
     async with get_session() as session:
         submission = await crud.save_speaking_submission(
             session,
             user_id=user_id,
-            part=data["part"],
+            part=part,
             question_text=question_text,
             audio_file_path=audio_path,
             transcript_text=transcript_text,
-            result=result,
-            book_sample_ref=book_sample.id if book_sample else None,
+            overall_band=report.overall_band,
+            criteria_scores=report.criteria_scores(),
+            mistakes=report.mistakes_json(),
+            vocabulary=vocabulary,
+            report_data=report_data,
             feedback_pdf_path=pdf_path,
             practice_question_id=data.get("practice_question_id"),
             spend_credit=data.get("spend_credit", False),
             assignment_part_id=data.get("assignment_part_id"),
             payer_id=data.get("payer_id"),
+            credits=data.get("credits", 1),
         )
         if data.get("practice_question_id"):
             await crud.mark_practice_complete(
@@ -346,10 +493,10 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
                 submission_id=submission.id,
                 submission_type="speaking",
             )
-        new_words = await crud.add_vocabulary_entries(session, user_id, result.vocabulary, source="speaking")
+        new_words = await crud.add_vocabulary_entries(session, user_id, vocabulary, source="speaking")
         await crud.reward_referrer_if_eligible(session, user_id)
 
-    caption = t("writing.done_caption", lang, band=result.overall_band)
+    caption = t("writing.done_caption", lang, band=report.overall_band)
     if new_words:
         caption += "\n" + t("vocab.added_after_check", lang, count=new_words)
     await processing_msg.delete()
@@ -358,6 +505,16 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
         caption=caption,
         reply_markup=share_card_kb("speaking", submission.id, lang),
     )
+    for a, voice in zip(check.answers, voices):
+        if voice is None:
+            continue
+        try:
+            await message.answer_voice(
+                BufferedInputFile(voice, filename=f"model_answer_{re.sub(r'[^A-Za-z0-9]+', '_', a['label'])}.ogg"),
+                caption=t("speaking.model_voice_caption", lang, label=a["label"], band=f"{a['band']:.1f}"),
+            )
+        except TelegramBadRequest as e:
+            logger.warning("Sending model answer voice %s failed: %s", a["label"], e)
 
     if data.get("mock_session_id"):
         await record_mock_test_part(
@@ -365,7 +522,7 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
             state,
             submission_id=submission.id,
             submission_type="speaking",
-            band=result.overall_band,
+            band=report.overall_band,
         )
     else:
         await state.clear()
@@ -377,4 +534,6 @@ def _after_result_kb(data: dict, lang: str):
         return assignment_after_kb(data.get("next_part_id"), lang)
     if data.get("practice_question_id"):
         return after_result_kb(data["practice_question_id"], lang)
+    if data.get("part") == "full":
+        return check_again_kb(CB_FULL_TEST, lang)
     return check_again_kb(PART_TO_CALLBACK[data["part"]], lang)

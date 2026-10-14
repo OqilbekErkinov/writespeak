@@ -65,6 +65,16 @@ class SpeakingPart(str, enum.Enum):
     part1 = "part1"
     part2 = "part2"
     part3 = "part3"
+    full = "full"  # Part 1 + 2 + 3 graded as one report, counted as FULL_TEST_CHECKS
+
+
+FULL_TEST_CHECKS = 3
+SPEAKING_LABELS = {
+    "part1": "Speaking Part 1",
+    "part2": "Speaking Part 2",
+    "part3": "Speaking Part 3",
+    "full": "Speaking Full test",
+}
 
 
 class PracticeModule(str, enum.Enum):
@@ -198,9 +208,14 @@ class SpeakingSubmission(Base):
 
     overall_band: Mapped[float | None] = mapped_column(Float, nullable=True)
     criteria_scores: Mapped[dict] = mapped_column(JSON, default=dict)  # {FC, LR, GRA, Pronunciation}
+    # The report's numbered mistakes ({n, q, wrong, correct, why, criterion, ...})
+    # since 2026-10-13; older rows hold sentence annotations.
     annotations: Mapped[list] = mapped_column(JSON, default=list)
     vocabulary_json: Mapped[list] = mapped_column(JSON, default=list)
     book_sample_ref: Mapped[int | None] = mapped_column(ForeignKey("book_chunks.id"), nullable=True)
+    # Since 2026-10-13: {"number", "metrics", "audio_hash", "transcripts",
+    # "questions", "model_answers"} - see bot/handlers/speaking.py.
+    report_data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     feedback_pdf_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     practice_question_id: Mapped[int | None] = mapped_column(

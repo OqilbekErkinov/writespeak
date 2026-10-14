@@ -47,8 +47,11 @@ def checks_paused_for(user_id: int) -> bool:
     return bool(allowed) and user_id not in allowed | settings.admin_ids
 
 
-async def check_quota(user_id: int, assignment_group_id: int | None = None) -> Quota:
-    """`assignment_group_id`: the check answers that group's assignment."""
+async def check_quota(user_id: int, assignment_group_id: int | None = None, cost: int = 1) -> Quota:
+    """`assignment_group_id`: the check answers that group's assignment.
+    `cost`: how many checks this one counts as (a full Speaking test: 3) -
+    free checks are used first, then the group's sponsor pays all of it, or
+    the student's own credits pay what the free checks don't cover."""
     if settings.checks_only_for_ids:
         # Test window: the testers check free of charge, nobody else at all.
         # Nothing is changed in the database, so ending it restores everyone.
@@ -57,14 +60,16 @@ async def check_quota(user_id: int, assignment_group_id: int | None = None) -> Q
         if await crud.has_active_subscription(session, user_id):
             return Quota(True, False)
         free_left = await free_checks_left(session, user_id)
-        if free_left > 0:
+        if free_left >= cost:
             return Quota(True, False, free_left)
-        payer_id = await crud.find_sponsor(session, user_id, assignment_group_id)
+        payer_id = await crud.find_sponsor(session, user_id, assignment_group_id, cost=cost)
         if payer_id is not None:
             return Quota(True, True, payer_id=payer_id)
         user = await crud.get_user(session, user_id)
-        if user is not None and user.credit_balance > 0:
-            return Quota(True, True)
+        if user is not None and user.credit_balance >= cost - free_left:
+            # Saving the submission uses up the free checks left (they are
+            # counted from submissions) and spends the rest as credits.
+            return Quota(True, True, free_left or None)
         return Quota(False, False)
 
 

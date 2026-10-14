@@ -1,0 +1,305 @@
+{#- The Speaking report's base stylesheet (included by speaking_report.html):
+    a copy of the Writing report's stylesheet (writing_report.html, Appendix A of the
+    final Writing report prompt, 2026-10-12) - the Speaking design is the same design
+    system. Kept as a copy so the Writing report stays untouched. -#}
+@page {
+  size: A4;
+  margin: 16mm 15mm 16mm 15mm;
+  @bottom-center { content: "WriteSpeak  •  " counter(page) " / " counter(pages); font: 8pt Inter; color: #9aa0ad; }
+}
+:root {
+  --navy: #1b2545; --ink: #2b2f38; --muted: #6b7180; --line: #e6e8ee;
+  --green: #23784a; --green-bg: #e3f3e9; --amber: #b8730a; --amber-bg: #fff3d9; --amber-line: #e8a33a;
+}
+* { box-sizing: border-box; }
+body { font-family: Inter, sans-serif; color: var(--ink); font-size: 10pt; line-height: 1.5; margin: 0; }
+h2 { color: var(--navy); font-size: 14pt; font-weight: 700; margin: 0 0 2mm; }
+h2 .en { color: var(--muted); font-weight: 400; font-size: 11pt; }
+.sub { color: var(--muted); font-size: 9pt; margin-bottom: 4.5mm; }
+.page-break { page-break-before: always; }
+
+.top { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid var(--navy); padding-bottom: 3mm; margin-bottom: 6mm; }
+.brand { font-size: 8pt; letter-spacing: 3px; color: var(--muted); font-weight: 600; }
+.title { font-size: 17pt; font-weight: 700; color: var(--navy); }
+.meta { text-align: right; font-size: 9pt; color: var(--muted); }
+
+.dash { display: flex; gap: 6mm; margin-bottom: 6mm; }
+.band { width: 52mm; background: var(--navy); color: white; border-radius: 4mm; padding: 6mm 5mm; text-align: center; }
+.band .lbl { font-size: 8.5pt; opacity: .75; letter-spacing: 1px; text-transform: uppercase; }
+.band .num { font-size: 46pt; font-weight: 700; line-height: 1.05; margin: 2mm 0; }
+.band .next { display: inline-block; background: rgba(255,255,255,.14); border-radius: 10mm; padding: 1mm 4mm; font-size: 9pt; }
+.crit { flex: 1; }
+.crow { margin-bottom: 3.2mm; }
+.crow .head { display: flex; justify-content: space-between; font-size: 9.5pt; }
+.crow .head b { color: var(--navy); }
+.crow .note { font-size: 8.5pt; color: var(--muted); }
+.bar { position: relative; height: 3mm; background: var(--line); border-radius: 2mm; margin: 1mm 0 .8mm; }
+.bar .fill { height: 100%; border-radius: 2mm; }
+.bar .tick { position: absolute; top: -1mm; width: .6mm; height: 5mm; background: var(--navy); }
+.weak .fill { background: var(--amber-line); } .ok .fill { background: #5b7bd5; } .strong .fill { background: #3aa36b; }
+.legend-tick { font-size: 8pt; color: var(--muted); text-align: right; }
+
+.strength { background: var(--green-bg); border-left: 1.2mm solid var(--green); border-radius: 2mm; padding: 4mm 5mm; margin-bottom: 6mm; }
+.strength .k { color: var(--green); font-weight: 700; font-size: 9pt; text-transform: uppercase; letter-spacing: .8px; }
+
+.focus { border: 1px solid var(--line); border-radius: 3mm; padding: 4mm 5mm; }
+.focus .fh { font-weight: 700; color: var(--navy); font-size: 10.5pt; margin-bottom: 2mm; }
+.focus ol { margin: 0; padding-left: 5mm; }
+.focus li { margin-bottom: 1.6mm; font-size: 9.6pt; }
+.focus li:last-child { margin-bottom: 0; }
+
+.tag { display: inline-block; font-size: 7.3pt; font-weight: 600; border-radius: 1.5mm; padding: .2mm 1.8mm; white-space: nowrap; }
+.tag.lr { background: #fde8d8; color: #a2531a; }
+.tag.gra { background: #ece6fb; color: #5b3fb0; }
+.tag.cc { background: #dff0f7; color: #1d6f93; }
+
+.legend { display: flex; gap: 5mm; font-size: 8.5pt; color: var(--muted); margin-bottom: 4mm; }
+.legend span { white-space: nowrap; display: inline-flex; align-items: center; gap: 1.5mm; }
+.sw { display: inline-block; width: 7mm; height: 3.5mm; border-radius: 1mm; }
+.essay { border: 1px solid var(--line); border-radius: 3mm; padding: 5mm 6mm; font-size: 10.3pt; line-height: 1.85; }
+.essay p { margin: 0 0 3.2mm; }
+.essay p:last-child { margin: 0; }
+.good { background: var(--green-bg); border-radius: 1mm; padding: 0 .6mm; }
+.err { border-bottom: 1.6px solid var(--amber-line); }
+.essay s { color: #a6623a; text-decoration-color: #c98a5a; }
+.essay ins { text-decoration: none; color: var(--green); font-weight: 600; }
+sup.n { font-size: 6.3pt; font-weight: 700; color: #fff; background: var(--navy); border-radius: 2mm; padding: 0 1.1mm; margin-left: .4mm; }
+
+/* mistakes */
+.mist { border-bottom: 1px solid var(--line); padding: 2.4mm 0; display: flex; gap: 3.5mm; page-break-inside: avoid; }
+.mist .num { flex: 0 0 6.5mm; height: 6.5mm; border-radius: 50%; background: var(--navy); color: #fff; font-weight: 700; font-size: 8.5pt; text-align: center; line-height: 6.5mm; margin-top: .3mm; }
+.mist .body { flex: 1; }
+.mist .fix { font-size: 9.8pt; }
+.mist .w { color: #a6623a; text-decoration: line-through; text-decoration-color: #d8a684; }
+.mist .r { color: var(--green); font-weight: 600; }
+.mist .why { font-size: 9pt; color: var(--muted); margin-top: .6mm; }
+.mist .side { flex: 0 0 auto; padding-top: .6mm; }
+.mist.ask { background: #f5f8fd; border-radius: 2mm; padding-left: 2mm; padding-right: 2mm; }
+.mist.ask .q { font-size: 9pt; color: #2b5aa8; font-weight: 600; margin-top: .6mm; }
+
+/* vocab */
+table.voc { width: 100%; border-collapse: collapse; font-size: 9pt; }
+table.voc th { text-align: left; font-size: 7.8pt; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); border-bottom: 1.5px solid var(--navy); padding: 1.5mm 2mm; }
+table.voc td { border-bottom: 1px solid var(--line); padding: 2mm; vertical-align: top; line-height: 1.38; }
+table.voc tr { page-break-inside: avoid; }
+table.voc td.term { color: var(--navy); font-weight: 700; width: 24%; }
+table.voc td.mean { width: 34%; }
+table.voc td.exm { color: #4a4f5c; font-style: italic; }
+
+.track { margin-top: 7mm; display: flex; gap: 4mm; align-items: center; background: #f6f7fa; border-radius: 3mm; padding: 4mm 5mm; font-size: 9pt; page-break-inside: avoid; }
+.track b { color: var(--navy); }
+.disc { margin-top: 5mm; font-size: 7.5pt; color: #9aa0ad; text-align: center; }
+
+/* sample section (added for the template) */
+.sample-note { background:#eef3fb; color:#2b5aa8; font-size:8.8pt; border-radius:2mm; padding:2.5mm 4mm; margin-bottom:4mm; }
+.sample { border:1px solid var(--line); border-radius:3mm; padding:5mm 6mm; font-size:10.3pt; line-height:1.75; }
+.sample p { margin:0 0 3mm; } .sample p:last-child { margin:0; }
+.sample .ph { color:#9aa0ad; font-style:italic; }
+.sample-meta { font-size:8.5pt; color:var(--muted); margin-top:2mm; text-align:right; }
+
+.tag.task { background: #e4f2e8; color: #23784a; }
+.copy { background: #eceef2; border-bottom: 1.6px dashed #8a90a0; border-radius: 1mm; padding: 0 .6mm; color: #555b68; }
+.copy-tip { font-size: 8.6pt; color: #555b68; background: #f3f4f7; border-left: 1.2mm solid #8a90a0; border-radius: 1.5mm; padding: 2mm 3.5mm; margin-top: 3.5mm; }
+.mist .side .tag { margin: 0; }
+.voc-wrap { margin-top: 9mm; }
+.prog { margin-top: 7mm; background: #f6f7fa; border-radius: 3mm; padding: 4mm 5mm; page-break-inside: avoid; }
+.prog .ph { font-weight: 700; color: var(--navy); font-size: 10pt; margin-bottom: 2.5mm; }
+.prow { display: flex; align-items: center; font-size: 9.2pt; padding: 1.4mm 0; border-top: 1px solid #e3e5eb; }
+.prow:first-of-type { border-top: 0; }
+.prow .l { flex: 0 0 52mm; color: #4a4f5c; }
+.prow .v { flex: 0 0 34mm; font-weight: 700; color: var(--navy); }
+.chip { font-size: 8pt; font-weight: 700; border-radius: 4mm; padding: .4mm 2.6mm; }
+.chip.up { background: #e3f3e9; color: #23784a; }
+.chip.down { background: #fff3d9; color: #a3640a; }
+.chip.eq { background: #eceef2; color: #555b68; }
+.prog .pn { font-size: 7.8pt; color: var(--muted); margin-top: 2mm; }
+
+h2, .sub { page-break-after: avoid; }
+.mist { padding: 1.9mm 0; }
+.sample { font-size: 9.8pt; line-height: 1.56; padding: 4mm 5.5mm; }
+.sample p { margin: 0 0 2.4mm; }
+.prog { margin-top: 3.5mm; padding: 3mm 5mm; }
+.disc { margin-top: 3mm; }
+.sample-note { margin-bottom: 3mm; }
+
+@page :first { margin: 0; @bottom-center { content: none; } }
+:root { --gold: #ffc53d; --blue: #3d5af1; }
+
+/* section headings on inner pages, matched to the cover */
+h2 { font-family: Fraunces; font-weight: 600; font-size: 17pt; letter-spacing: -.2px; }
+h2 .en { font-family: Inter; }
+.kick { font: 700 7.5pt Inter; letter-spacing: 2px; color: var(--blue); text-transform: uppercase; margin-bottom: 1mm; }
+
+/* ---------- COVER ---------- */
+.cover { height: 296mm; position: relative; }
+.hero { background: #14213d; color: #fff; padding: 11mm 16mm 30mm; position: relative; overflow: hidden; }
+.hero:after { content: ""; position: absolute; right: -40mm; top: -45mm; width: 120mm; height: 120mm; border-radius: 50%;
+  background: #1d2d52; }
+.hero-in { position: relative; z-index: 2; display: flex; justify-content: space-between; align-items: center; }
+.brandrow { position: relative; z-index: 2; display: flex; justify-content: space-between; align-items: center; margin-bottom: 6mm; }
+.logo { font: 800 9pt Inter; letter-spacing: 3.5px; }
+.logo span { color: var(--gold); }
+.taskchip { font: 600 8pt Inter; border: 1px solid rgba(255,255,255,.35); border-radius: 5mm; padding: 1mm 3.5mm; }
+.kicker { font: 600 8pt Inter; letter-spacing: 2px; text-transform: uppercase; color: var(--gold); }
+.name { font-family: Fraunces; font-weight: 600; font-size: 40pt; line-height: 1; margin: 2.5mm 0 2mm; }
+.metaline { font-size: 9.5pt; opacity: .72; }
+.stats { display: flex; gap: 7mm; margin-top: 6mm; }
+.stat b { display: block; font-family: Fraunces; font-weight: 600; font-size: 19pt; line-height: 1; }
+.stat span { white-space: nowrap; font-size: 7.5pt; letter-spacing: 1px; text-transform: uppercase; opacity: .6; }
+.gauge { position: relative; width: 56mm; height: 56mm; flex: 0 0 56mm; }
+.gauge svg { position: absolute; left: 0; top: 0; }
+.g-num { position: absolute; left: 0; right: 0; top: 14.5mm; text-align: center; font-family: Fraunces; font-weight: 600; font-size: 44pt; line-height: 1; }
+.g-lab { position: absolute; left: 0; right: 0; top: 33mm; text-align: center; font-size: 7pt; letter-spacing: 1.8px; opacity: .65; text-transform: uppercase; }
+.g-target { position: absolute; left: 0; right: 0; bottom: -8mm; text-align: center; }
+.g-target span { display: inline-block; background: var(--gold); color: #14213d; font-weight: 700; font-size: 8.5pt; border-radius: 5mm; padding: 1.1mm 4mm; }
+
+.cc-row { display: flex; gap: 4mm; margin: -17mm 16mm 0; position: relative; z-index: 5; }
+.cc-row2 { margin-top: 3.5mm; }
+.cc-card { flex: 1; display: flex; align-items: center; background: #fff; border: 1px solid #e3e5eb; border-left: 1.8mm solid #5b7bd5; border-radius: 3mm; padding: 3.6mm 4.5mm 3.6mm 3.5mm; }
+.cc-card.st-top { border-left-color: #2fa866; } .cc-card.st-focus { border-left-color: #e8a33a; }
+.cc-l { flex: 0 0 23mm; text-align: center; border-right: 1px solid #eceef2; margin-right: 4mm; padding-right: 2mm; }
+.cc-score { font-family: Fraunces; font-weight: 600; font-size: 36pt; color: #14213d; line-height: 1; }
+.cc-of { font-size: 6.8pt; letter-spacing: 1.2px; text-transform: uppercase; color: #8a90a0; margin-top: 1.2mm; }
+.cc-r { flex: 1; }
+.cc-head { display: flex; justify-content: space-between; align-items: center; gap: 2mm; }
+.cc-name { font-size: 10pt; font-weight: 700; color: #14213d; line-height: 1.2; }
+.cc-chip { font-size: 6.8pt; font-weight: 700; border-radius: 3mm; padding: .4mm 2mm; white-space: nowrap; }
+.c-top { background: #e3f3e9; color: #23784a; } .c-ok { background: #e6ecfb; color: #3550b0; } .c-focus { background: #fff1d6; color: #a3640a; }
+.cc-bar { position: relative; height: 2.4mm; background: #eceef2; border-radius: 1.2mm; margin: 2.6mm 0 2.2mm; }
+.cc-fill { height: 100%; border-radius: 1.2mm; background: #5b7bd5; }
+.st-top .cc-fill { background: #2fa866; } .st-focus .cc-fill { background: #e8a33a; }
+.cc-tick { position: absolute; top: -.9mm; width: .6mm; height: 4.2mm; background: #14213d; }
+.cc-note { font-size: 8.3pt; color: #5d6370; line-height: 1.4; }
+
+.cbody { padding: 0 16mm; }
+.tickkey { text-align: right; font-size: 7pt; color: #8a90a0; margin: 1.2mm 0 3mm; }
+.well { display: flex; gap: 4mm; background: #e9f5ee; border-radius: 3mm; padding: 3mm 5mm; }
+.well .q { font-family: Fraunces; font-size: 40pt; line-height: .8; color: #2fa866; }
+.well .k { font: 700 7.5pt Inter; letter-spacing: 1.8px; color: #23784a; text-transform: uppercase; }
+.well .t { font-size: 9.3pt; color: #24412f; margin-top: 1mm; line-height: 1.5; }
+.well .t b { font-family: Fraunces; font-style: italic; font-weight: 400; font-size: 10.6pt; color: #14213d; }
+
+.prio-h { display: flex; justify-content: space-between; align-items: baseline; margin: 4.5mm 0 2.2mm; }
+.prio-h .t { font-family: Fraunces; font-weight: 600; font-size: 15pt; color: #14213d; }
+.prio-h .s { font-size: 8.3pt; color: #8a90a0; }
+.prios { display: flex; gap: 4mm; }
+.prio { flex: 1; border: 1px solid #e3e5eb; border-radius: 3mm; padding: 3mm 3.8mm; position: relative; }
+.prio .n { font-family: Fraunces; font-weight: 600; font-size: 17pt; color: var(--blue); line-height: 1; }
+.prio .h { font-weight: 700; color: #14213d; font-size: 9.6pt; line-height: 1.3; margin: 2mm 0 1.4mm; }
+.prio .r { font-size: 8.2pt; color: #5d6370; line-height: 1.42; }
+.prio .ex { font-size: 8.3pt; margin-top: 1.6mm; line-height: 1.45; }
+.prio .ex s { color: #a6623a; text-decoration-color: #d8a684; }
+.prio .ex b { color: #23784a; }
+.prio .ref { margin-top: 2mm; font-size: 7.3pt; color: #8a90a0; }
+
+.inside { margin-top: 4mm; border-top: 1px solid #e3e5eb; padding-top: 3mm; }
+.inside .k { font: 700 7.3pt Inter; letter-spacing: 1.8px; color: #8a90a0; text-transform: uppercase; margin-bottom: 1.6mm; }
+.toc { display: flex; gap: 3mm; }
+.toc a { flex: 1; text-decoration: none; color: #14213d; background: #f6f7fa; border-radius: 2.5mm; padding: 2.2mm 3mm; font-size: 8.3pt; font-weight: 600; line-height: 1.3; }
+.toc a:after { content: "p. " target-counter(attr(href), page); display: block; font-weight: 400; color: #8a90a0; font-size: 7.3pt; margin-top: .6mm; }
+.mist { display: block; position: relative; padding: 1.9mm 0 1.9mm 10mm; page-break-inside: avoid; }
+.mist .num { position: absolute; left: 0; top: 2.1mm; width: 6.5mm; height: 6.5mm; }
+.mist .side { position: absolute; right: 0; top: 2.1mm; }
+.mist .body { display: block; padding-right: 20mm; }
+
+.mhead { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4.5mm; }
+.bandbadge { background: #14213d; color: #fff; border-radius: 3mm; padding: 2.2mm 5mm 2.6mm; text-align: center; min-width: 26mm; }
+.bandbadge span { display: block; font: 700 7pt Inter; letter-spacing: 2px; text-transform: uppercase; color: var(--gold); }
+.bandbadge b { display: block; font-family: Fraunces; font-weight: 600; font-size: 26pt; line-height: 1; margin-top: .8mm; }
+.qbox { background: #f6f7fa; border-radius: 3mm; padding: 3.2mm 4.5mm; font-size: 9pt; font-style: italic; color: #4a4f5c; line-height: 1.5; margin-bottom: 4mm; }
+.qbox .ql { font: 700 7pt Inter; font-style: normal; letter-spacing: 1.6px; text-transform: uppercase; color: #8a90a0; margin-bottom: 1mm; }
+.sample { border-left: 1.6mm solid var(--gold); }
+.prog { margin-top: 0; padding: 3.5mm 5mm; }
+.checkh { font-family: Fraunces; font-weight: 600; font-size: 14pt; color: #14213d; margin: 8mm 0 3mm; }
+.ck { display: flex; gap: 3.5mm; align-items: flex-start; border-bottom: 1px solid #eceef2; padding: 2.6mm 0; font-size: 9.6pt; color: #2b2f38; }
+.ck > i { flex: 0 0 4.2mm; height: 4.2mm; border: 1.4px solid var(--blue); border-radius: 1mm; margin-top: .4mm; }
+.ck b { color: #14213d; }
+.ck span { display: block; font-size: 7.5pt; color: #8a90a0; margin-top: .4mm; }
+.disc { margin-top: 10mm; }
+.cover-foot { position: absolute; left: 16mm; right: 16mm; bottom: 9mm; display: flex; justify-content: space-between; font-size: 7pt; color: #a0a5b1; }
+
+/* ---- WriteSpeak additions to the Appendix A stylesheet ---- */
+/* Bundled fonts (fonts/, SIL OFL). WeasyPrint 63 ignores unicode-range, so each
+   subset is its own family and the font-family lists name them in turn. */
+@font-face { font-family: Fraunces; src: url(fonts/fraunces-latin-400-normal.woff); font-weight: 400; }
+@font-face { font-family: Fraunces; src: url(fonts/fraunces-latin-600-normal.woff); font-weight: 600; }
+@font-face { font-family: Fraunces; src: url(fonts/fraunces-latin-700-normal.woff); font-weight: 700; }
+@font-face { font-family: Fraunces; src: url(fonts/fraunces-latin-400-italic.woff); font-style: italic; }
+@font-face { font-family: FrauncesExt; src: url(fonts/fraunces-latin-ext-400-normal.woff); font-weight: 400; }
+@font-face { font-family: FrauncesExt; src: url(fonts/fraunces-latin-ext-600-normal.woff); font-weight: 600; }
+@font-face { font-family: FrauncesExt; src: url(fonts/fraunces-latin-ext-700-normal.woff); font-weight: 700; }
+@font-face { font-family: FrauncesExt; src: url(fonts/fraunces-latin-ext-400-italic.woff); font-style: italic; }
+{% for family, subset in (("Inter", "latin"), ("InterExt", "latin-ext"), ("InterCyr", "cyrillic")) %}
+@font-face { font-family: {{ family }}; src: url(fonts/inter-{{ subset }}-400-normal.woff); font-weight: 400; }
+@font-face { font-family: {{ family }}; src: url(fonts/inter-{{ subset }}-600-normal.woff); font-weight: 600; }
+@font-face { font-family: {{ family }}; src: url(fonts/inter-{{ subset }}-700-normal.woff); font-weight: 700; }
+@font-face { font-family: {{ family }}; src: url(fonts/inter-{{ subset }}-800-normal.woff); font-weight: 800; }
+@font-face { font-family: {{ family }}; src: url(fonts/inter-{{ subset }}-400-italic.woff); font-style: italic; }
+{% endfor %}
+body, h2 .en { font-family: {{ sans }}; }
+h2, .name, .stat b, .g-num, .cc-score, .well .q, .well .t b, .prio-h .t, .prio .n, .bandbadge b, .checkh { font-family: {{ serif }}; }
+
+/* WeasyPrint 63's flexbox ignores `gap` and `flex-basis` widths: the same
+   spacing as margins, the same widths as `width`. */
+.hero-in > div:first-child { flex: none; width: 118mm; }  /* never under the score ring */
+.stats { display: block; }
+.stat { display: inline-block; vertical-align: top; }
+.stat + .stat { margin-left: 7mm; }
+.cc-card + .cc-card { margin-left: 4mm; }
+.cc-l { flex: none; width: 23mm; }
+.cc-chip { margin-left: 2mm; }
+.well .q { margin-right: 4mm; }
+.prio + .prio { margin-left: 4mm; }
+.toc a { display: block; }
+.toc a + a { margin-left: 3mm; }
+.ck > i { flex: none; display: block; width: 4.2mm; margin-right: 3.5mm; }
+.prow .l { flex: none; width: 52mm; }
+.prow .v { flex: none; width: 34mm; }
+.legend > span { display: inline-block; }
+.legend > span + span { margin-left: 5mm; }
+.legend .sw { margin-right: 1.5mm; vertical-align: -0.5mm; }
+
+/* "ask" items (unclear meaning) keep room for the number circle. */
+.mist.ask { padding-left: 12mm; padding-right: 2mm; }
+.mist.ask .num { left: 2mm; }
+.mist.ask .side { right: 2mm; }
+.nomist { font-size: 10pt; color: var(--green); }
+.unmarked { font-size: 8.8pt; color: var(--muted); margin-bottom: 3mm; }
+.qbox .qt { white-space: pre-line; }
+.qimg { display: block; max-width: 100%; max-height: 85mm; margin: 3mm auto 0; border-radius: 2mm; }
+.prog .first { font-size: 9.4pt; color: #4a4f5c; }
+
+/* The cover's fixed height hid whatever didn't fit; let it run on instead, so
+   report_builder sees the overflow and renders the compact cover below. */
+.cover { height: auto; }
+.compact .hero { padding: 9mm 16mm 25mm; }
+.compact .brandrow { margin-bottom: 4mm; }
+.compact .name { margin: 1.5mm 0 1.5mm; }
+.compact .stats { margin-top: 3.5mm; }
+.compact .stat b { font-size: 16pt; }
+.compact .cc-row2 { margin-top: 2.5mm; }
+.compact .cc-card { padding-top: 2.2mm; padding-bottom: 2.2mm; }
+.compact .cc-score { font-size: 28pt; }
+.compact .cc-bar { margin: 1.8mm 0 1.6mm; }
+.compact .cc-note { font-size: 7.6pt; line-height: 1.32; }
+.compact .tickkey { margin: 1mm 0 2mm; }
+.compact .well { padding: 2.2mm 4mm; }
+.compact .well .q { font-size: 30pt; }
+.compact .well .t { font-size: 8.5pt; line-height: 1.4; }
+.compact .well .t b { font-size: 9.6pt; }
+.compact .prio-h { margin: 3mm 0 1.6mm; }
+.compact .prio-h .t { font-size: 13pt; }
+.compact .prio { padding: 2.2mm 3mm; }
+.compact .prio .n { font-size: 14pt; }
+.compact .prio .h { font-size: 8.8pt; margin: 1.2mm 0 1mm; }
+.compact .prio .r, .compact .prio .ex { font-size: 7.4pt; line-height: 1.36; }
+.compact .prio .ref { margin-top: 1.4mm; font-size: 6.8pt; }
+.compact .inside { margin-top: 2.6mm; padding-top: 2mm; }
+.compact .toc a { padding: 1.6mm 2.4mm; font-size: 7.6pt; }
+/* progress rows as a table, so label, value and chip never run together
+   (WeasyPrint's flexbox ignored the rows' widths: "Overall band8.0 → 8.5") */
+table.ptbl { width: 100%; border-collapse: collapse; font-size: 9.2pt; }
+table.ptbl td { padding: 1.4mm 0; border-top: 1px solid #e3e5eb; vertical-align: middle; }
+table.ptbl tr:first-child td { border-top: 0; }
+table.ptbl td.l { width: 56mm; color: #4a4f5c; }
+table.ptbl td.v { width: 38mm; font-weight: 700; color: var(--navy); }

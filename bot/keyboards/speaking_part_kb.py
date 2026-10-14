@@ -6,6 +6,7 @@ from bot.keyboards.nav_kb import back_button
 CB_PART1 = "speaking:part1"
 CB_PART2 = "speaking:part2"
 CB_PART3 = "speaking:part3"
+CB_FULL_TEST = "speaking:full"  # Part 1 + 2 + 3 from the question bank, one report
 CB_SPEAKING_MENU = "speaking:menu"  # back to the Part 1/2/3 picker
 CB_FINISH_NOW = "speaking:finish"  # grade the answers collected so far
 
@@ -20,6 +21,7 @@ def speaking_part_kb(lang: str = "uz") -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="Part 2", callback_data=CB_PART2),
                 InlineKeyboardButton(text="Part 3", callback_data=CB_PART3),
             ],
+            [InlineKeyboardButton(text=t("speaking.btn_full_test", lang), callback_data=CB_FULL_TEST)],
             [back_button(lang)],
         ]
     )

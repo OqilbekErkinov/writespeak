@@ -10,12 +10,12 @@ from bot.i18n import t
 from bot.keyboards.share_kb import CB_SHARE_PREFIX
 from db import crud
 from db.database import get_session
+from db.models import SPEAKING_LABELS
 from services.image.share_card import build_share_card
 
 router = Router(name="share")
 
 _TASK_LABELS = {"task1": "Writing Task 1", "task2": "Writing Task 2"}
-_PART_LABELS = {"part1": "Speaking Part 1", "part2": "Speaking Part 2", "part3": "Speaking Part 3"}
 
 
 @router.callback_query(F.data.startswith(CB_SHARE_PREFIX))
@@ -31,7 +31,7 @@ async def send_share_card(callback: CallbackQuery, lang: str) -> None:
             task_label = _TASK_LABELS.get(submission.task_type.value) if submission else None
         else:
             submission = await crud.get_speaking_submission(session, submission_id, user_id)
-            task_label = _PART_LABELS.get(submission.part.value) if submission else None
+            task_label = SPEAKING_LABELS.get(submission.part.value) if submission else None
 
     if submission is None or submission.overall_band is None:
         await callback.message.answer(t("share.not_found", lang))

@@ -44,6 +44,21 @@ class Settings(BaseSettings):
     openai_model_audio: str = "gpt-audio-1.5"
     openai_model_transcribe: str = "whisper-1"
     openai_embedding_model: str = "text-embedding-3-small"
+    # Speaking model answers sent as voice messages (services/ai/tts.py).
+    # Empty = no voice messages.
+    openai_model_tts: str = "gpt-4o-mini-tts"
+    openai_tts_voice: str = "coral"
+
+    # --- Azure AI Speech: pronunciation assessment (services/ai/pronunciation.py) ---
+    # Both empty = no assessment; the Speaking report then hides "Words to
+    # practise" and "Intonation" and marks Pronunciation "(estimated)".
+    azure_speech_key: str = ""
+    azure_speech_region: str = ""
+
+    # --- Speaking model answers (services/ai/speaking_answers.py) ---
+    # A session question that matches a book question exactly is answered with
+    # the book's own answer (and its band). False = always write a new one.
+    allow_book_answers_verbatim: bool = True
 
     # --- Database ---
     database_url: str

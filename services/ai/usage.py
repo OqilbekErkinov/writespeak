@@ -28,7 +28,9 @@ TOKEN_PRICES = {
     "text-embedding-3-small": (0.02, 0.02, 0.0),
 }
 AUDIO_TOKEN_PRICES = {"gpt-audio": (32.00, 64.00)}  # audio input, audio output
-PER_MINUTE_PRICES = {"whisper-1": 0.006}
+# Per minute of audio: Whisper input; text-to-speech output (estimated from
+# the word count at 140 words a minute - the speech API reports no usage).
+PER_MINUTE_PRICES = {"whisper-1": 0.006, "gpt-4o-mini-tts": 0.015, "tts-1": 0.012}
 
 
 @dataclass

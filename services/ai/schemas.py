@@ -212,16 +212,117 @@ class GeneratedSample(BaseModel):
     paragraphs: list[str]
 
 
-class SpeakingGradingResult(BaseModel):
-    topic: str
-    overall_band: float
-    fluency_and_coherence: float
-    lexical_resource: float
-    grammatical_range_and_accuracy: float
-    pronunciation: float
-    annotations: list[Annotation]
-    vocabulary: list[VocabularyItem]
-    feedback_summary: str
+# --- Speaking feedback (Speaking report prompt, 2026-10-13) ------------------------
+# The model returns this JSON - section 1.11's data contract minus what code
+# adds itself (questions, duplicates, cue cards, fillers, voice metrics,
+# stats, timings, band rounding, chips, progress). services/ai/
+# speaking_marking.py validates it against the transcripts.
+
+SpeakingCriterion = Literal["LR", "GRA", "FLU", "PRON"]
+
+
+class SpeakingScores(BaseModel):
+    """One scoring run: whole bands only (Speaking prompt section 1.9)."""
+
+    FC: int = Field(description="Fluency & Coherence, a whole band 0-9.")
+    LR: int = Field(description="Lexical Resource, a whole band 0-9.")
+    GRA: int = Field(description="Grammatical Range & Accuracy, a whole band 0-9.")
+    P: int = Field(description="Pronunciation, a whole band 0-9.")
+
+
+class AnswerSegment(BaseModel):
+    type: Literal["text", "good", "error"]
+    text: str = Field(
+        description="Characters copied EXACTLY from this answer's transcript (fillers, repeats and "
+        "false starts included). Joining the answer's segments in order must give back its transcript."
+    )
+    fix: Optional[str] = Field(
+        description="Error segments only: the replacement for `text` when the fix is 6 words or "
+        "fewer (empty string = delete it). null for longer problems and for text/good segments."
+    )
+    mistake_id: Optional[int] = Field(description="Error segments only: the matching mistake id; null otherwise.")
+
+
+class AnswerMarking(BaseModel):
+    id: str = Field(description='The answer\'s id exactly as given, e.g. "Q1".')
+    segments: list[AnswerSegment]
+
+
+class SpeakingMistake(BaseModel):
+    id: int
+    question: str = Field(description='The id of the answer it is in, e.g. "Q2".')
+    wrong: str = Field(description="Only the part that matters, copied exactly from that answer's transcript.")
+    correct: str = Field(
+        description="The corrected version of that part, keeping the student's meaning; put in place "
+        "of `wrong`, the spoken sentence must be correct and natural."
+    )
+    why: str = Field(description="One plain-English line, 25 words or fewer.")
+    criterion: SpeakingCriterion
+    unclear: bool = Field(description="True when the student's meaning can't be determined.")
+    if_you_meant: Optional[str] = Field(
+        description="Only when unclear: the most likely intended meaning, short, in English; null otherwise."
+    )
+
+
+class SpeakingMissedMistake(BaseModel):
+    question: str
+    wrong: str = Field(description="Copied exactly from that answer's transcript, long enough to be found once.")
+    correct: str
+    why: str = Field(description="One plain-English line, 25 words or fewer.")
+    criterion: SpeakingCriterion
+    unclear: bool
+    if_you_meant: Optional[str]
+
+
+class SpeakingMissedMistakes(BaseModel):
+    mistakes: list[SpeakingMissedMistake]
+
+
+class SpeakingPriority(BaseModel):
+    title: str = Field(description="2-6 words naming ONE specific pattern.")
+    rule: str = Field(description="One line.")
+    example_wrong: str = Field(description="A short piece copied exactly from the student's answers.")
+    example_right: str = Field(description="The same piece, improved.")
+    criteria: list[SpeakingCriterion]
+    mistake_ids: list[int] = Field(description="2-5 ids from `mistakes` showing this pattern; empty when voice_ref.")
+    voice_ref: bool = Field(
+        description="True for a priority about the measured voice (fillers, pace, pauses, a pronunciation "
+        "pattern) - it then points to the 'Your voice, measured' page instead of mistakes."
+    )
+
+
+class SpeakingCriterionNotes(BaseModel):
+    FC: str
+    LR: str
+    GRA: str
+    P: str
+
+
+class CuePointCoverage(BaseModel):
+    point: str = Field(description="The cue-card point, as written on the card.")
+    covered: bool
+
+
+class SpeakingFeedback(BaseModel):
+    answers: list[AnswerMarking]
+    mistakes: list[SpeakingMistake]
+    criterion_notes: SpeakingCriterionNotes
+    strength: Strength
+    priorities: list[SpeakingPriority]
+    vocabulary_topic: str = Field(description='3-6 words naming the topic, e.g. "dreams, ambition and careers".')
+    vocabulary: list[VocabEntry]
+    checklist: list[ChecklistItem]
+    cue_coverage: list[CuePointCoverage] = Field(description="Part 2 only: every cue-card point; empty otherwise.")
+
+
+class Verdict(BaseModel):
+    id: int
+    keep: bool = Field(description="False when it is not definitely an error an examiner would penalise.")
+    reason: str = Field(description="Short: why it is or isn't an error.")
+
+
+class Verdicts(BaseModel):
+    verdicts: list[Verdict]
 
 
 class SampleHighlight(BaseModel):

@@ -231,6 +231,45 @@ _T: dict[str, dict[str, str]] = {
         "uz": "🎙 Iltimos, javobingizni ovozli xabar, video-xabar yoki audio fayl qilib yuboring.",
         "ru": "🎙 Пожалуйста, отправьте ответ голосовым, видео-сообщением или аудиофайлом.",
     },
+    # Full test (Part 1 + 2 + 3 in one report)
+    "speaking.btn_full_test": {"uz": "🎯 Full test (Part 1–3)", "ru": "🎯 Full test (Part 1–3)"},
+    "speaking.full_intro": {
+        "uz": "🎯 <b>Speaking Full test</b>\n\nImtihondagidek: Part 1 (qisqa savollar), Part 2 (cue card, "
+        "1–2 daqiqa gapirasiz) va Part 3 (muhokama). Har bir savolga ovozli xabar bilan javob bering — "
+        "oxirida bitta umumiy hisobot va <b>Speaking band</b> chiqadi.\n\nBu {checks} ta tekshiruv "
+        "hisoblanadi.",
+        "ru": "🎯 <b>Speaking Full test</b>\n\nКак на экзамене: Part 1 (короткие вопросы), Part 2 (cue card, "
+        "говорите 1–2 минуты) и Part 3 (дискуссия). Отвечайте на каждый вопрос голосовым — в конце "
+        "будет один общий отчёт и <b>Speaking band</b>.\n\nЭто считается как {checks} проверки.",
+    },
+    "speaking.full_no_questions": {
+        "uz": "Hozircha Full test uchun savollar bazasi tayyor emas. Birozdan so'ng urinib ko'ring.",
+        "ru": "База вопросов для Full test пока не готова. Попробуйте чуть позже.",
+    },
+    "speaking.full_paywall": {
+        "uz": "🎯 Full test {checks} ta tekshiruv hisoblanadi, sizda esa yetarli bepul tekshiruv yoki "
+        "kredit yo'q.",
+        "ru": "🎯 Full test считается как {checks} проверки, а у вас недостаточно бесплатных проверок или "
+        "кредитов.",
+    },
+    "speaking.part_start": {
+        "uz": "— <b>{part}</b> —",
+        "ru": "— <b>{part}</b> —",
+    },
+    "speaking.grading_in_progress": {
+        "uz": "⏳ Yozuvingiz tinglanib, tahlil qilinmoqda — bu 2–3 daqiqa davom etadi, biroz kuting...",
+        "ru": "⏳ Слушаю и анализирую вашу запись — это займёт 2–3 минуты, немного подождите...",
+    },
+    "speaking.resubmitted": {
+        "uz": "♻️ Bu — {number}-sessiyadagi aynan o'sha yozuv, shuning uchun saqlangan hisobotingizni "
+        "qayta yubordim (tekshiruv hisoblanmadi). Ball: <b>{band}</b>",
+        "ru": "♻️ Это та же самая запись, что и в сессии №{number}, поэтому я отправил сохранённый отчёт "
+        "(проверка не засчитана). Балл: <b>{band}</b>",
+    },
+    "speaking.model_voice_caption": {
+        "uz": "Model answer · {label} · Band {band}",
+        "ru": "Model answer · {label} · Band {band}",
+    },
     # --- Input extraction (bot/utils/input_extraction.py) ---
     "input.reading": {
         "uz": "⏳ O'qilmoqda...",

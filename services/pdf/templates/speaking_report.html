@@ -1,0 +1,331 @@
+{#- The approved Speaking report design (Appendix A of the Speaking report
+    prompt, 2026-10-13), rendered by services/pdf/report_builder.py: the
+    shared report stylesheet (report_styles.css), Appendix A's "speaking
+    additions" block unchanged, then WriteSpeak's own additions. English
+    only; never red. -#}
+<!doctype html><html lang="en"><head><meta charset="utf-8"><style>
+{% include "report_styles.css" %}
+
+/* ---------- speaking additions ---------- */
+.tag.flu { background: #dff0f7; color: #1d6f93; }
+.tag.pron { background: #fbe4ef; color: #9c2f62; }
+.filler { color: #9aa0ad; border-bottom: 1.4px dotted #b4b9c4; }
+.qcard { border: 1px solid #e3e5eb; border-radius: 3mm; padding: 3.6mm 4.5mm; margin-bottom: 3.5mm; page-break-inside: avoid; }
+.qhead { display: flex; justify-content: space-between; align-items: baseline; gap: 4mm; margin-bottom: 1.6mm; }
+.qn { font: 700 7.5pt Inter; letter-spacing: 1.5px; color: var(--blue); text-transform: uppercase; }
+.qt { font-weight: 700; color: #14213d; font-size: 10pt; margin-top: .6mm; }
+.qmeta { font-size: 7.6pt; color: #8a90a0; white-space: nowrap; }
+.qa { font-size: 10.2pt; line-height: 1.8; }
+.qa s { color: #a6623a; text-decoration-color: #c98a5a; }
+.qa ins { text-decoration: none; color: var(--green); font-weight: 600; }
+.dup { display: inline-block; font-size: 7pt; font-weight: 700; color: #6b7180; background: #eceef2; border-radius: 3mm; padding: .2mm 2mm; margin-left: 2mm; }
+
+.mock { display: inline-block; font: 700 6.8pt Inter; letter-spacing: 1px; text-transform: uppercase; color: #a3640a; background: #fff1d6; border-radius: 3mm; padding: .5mm 2.4mm; margin-bottom: 4mm; }
+.vrow { display: flex; gap: 4mm; margin-bottom: 4mm; }
+.vcard { flex: 1; border: 1px solid #e3e5eb; border-radius: 3mm; padding: 3.6mm 4mm; }
+.vk { font: 700 7pt Inter; letter-spacing: 1.5px; text-transform: uppercase; color: #8a90a0; }
+.vv { font-family: Fraunces; font-weight: 600; font-size: 24pt; color: #14213d; line-height: 1.05; margin-top: 1mm; }
+.vv small { font-family: Inter; font-weight: 600; font-size: 8pt; color: #8a90a0; margin-left: 1mm; }
+.vn { font-size: 8.2pt; color: #5d6370; line-height: 1.4; margin-top: 1.4mm; }
+.scale { position: relative; height: 2.6mm; border-radius: 1.3mm; margin: 3mm 0 1.2mm;
+  background: linear-gradient(to right, #f6d48f 0%, #f6d48f 35%, #9fd8b5 35%, #9fd8b5 70%, #f6d48f 70%, #f6d48f 100%); }
+.scale .mk { position: absolute; top: -1.4mm; width: 1mm; height: 5.4mm; background: #14213d; border-radius: .5mm; }
+.scale-l { display: flex; justify-content: space-between; font-size: 6.8pt; color: #8a90a0; }
+.vbox { border: 1px solid #e3e5eb; border-radius: 3mm; padding: 3.8mm 4.5mm; margin-bottom: 4mm; page-break-inside: avoid; }
+.vbh { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 2.5mm; }
+.vbh b { font-family: Fraunces; font-weight: 600; font-size: 12.5pt; color: #14213d; }
+.vbh span { font-size: 7.6pt; color: #8a90a0; }
+.fb { display: flex; align-items: center; gap: 3mm; font-size: 9pt; margin-bottom: 1.8mm; }
+.fb .w { flex: 0 0 14mm; font-weight: 700; color: #14213d; }
+.fb .t { flex: 1; height: 3.2mm; background: #f1f2f5; border-radius: 1.6mm; }
+.fb .t i { display: block; height: 100%; border-radius: 1.6mm; background: #e8a33a; }
+.fb .c { flex: 0 0 8mm; text-align: right; font-weight: 700; color: #14213d; }
+.ptab { width: 100%; border-collapse: collapse; font-size: 9pt; }
+.ptab th { text-align: left; font-size: 7.4pt; text-transform: uppercase; letter-spacing: .6px; color: #8a90a0; border-bottom: 1.5px solid #14213d; padding: 1.4mm 2mm; }
+.ptab td { border-bottom: 1px solid #eceef2; padding: 2mm; vertical-align: top; }
+.ptab .pw { font-weight: 700; color: #14213d; }
+.ptab .ipa { font-family: "DejaVu Sans", sans-serif; color: #3550b0; }
+.ptab .sc { font-weight: 700; }
+.ptab .sc.lo { color: #a3640a; } .ptab .sc.mid { color: #5d6370; }
+.intl { display: flex; gap: 4mm; align-items: center; }
+.intl svg { flex: 0 0 auto; }
+
+.mans { border: 1px solid #e3e5eb; border-left: 1.6mm solid var(--gold); border-radius: 3mm; padding: 3.6mm 4.5mm; margin-bottom: 3.5mm; page-break-inside: avoid; }
+.mans .qt { margin: .4mm 0 1.6mm; }
+.mans .txt { font-size: 10pt; line-height: 1.65; color: #2b2f38; }
+.mans .ft { display: flex; justify-content: space-between; margin-top: 2mm; font-size: 7.6pt; color: #8a90a0; }
+.listen { font-weight: 700; color: #3550b0; background: #e6ecfb; border-radius: 3mm; padding: .4mm 2.4mm; }
+.mist.ask { padding-left: 12mm; padding-right: 2mm; }
+.mist.ask .num { left: 2mm; }
+.mist.ask .side { right: 2mm; }
+.prog-first { background: #f6f7fa; border-radius: 3mm; padding: 4mm 5mm; font-size: 9.6pt; color: #4a4f5c; }
+.prog-first b { color: #14213d; }
+
+/* ---- WriteSpeak additions for Speaking ---- */
+/* WeasyPrint 63's flexbox ignores `gap` and `flex-basis` widths: the same
+   spacing as margins, the same widths as `width`. */
+.qhead > div:first-child { flex: 1; }
+.qmeta { margin-left: 4mm; }
+.vcard + .vcard { margin-left: 4mm; }
+.legend .filler { display: inline; }
+/* the filler bars (Appendix A's .fb rows) as a table: WeasyPrint's flexbox
+   ignores widths, so labels of different lengths would shift the bars */
+table.fbt { width: 100%; border-collapse: collapse; font-size: 9pt; }
+table.fbt td { padding: .9mm 0; vertical-align: middle; }
+table.fbt td.w { width: 22mm; font-weight: 700; color: #14213d; white-space: nowrap; }
+table.fbt .trk { display: block; height: 3.2mm; background: #f1f2f5; border-radius: 1.6mm; }
+table.fbt .trk i { display: block; height: 3.2mm; border-radius: 1.6mm; background: #e8a33a; }
+table.fbt td.c { width: 11mm; text-align: right; font-weight: 700; color: #14213d; }
+/* Appendix A's .intl row as a table: in WeasyPrint's flexbox the sketch ran
+   over the tip */
+table.intt { width: 100%; border-collapse: collapse; }
+table.intt td { vertical-align: middle; padding: 0; }
+table.intt td.sv { width: 66mm; padding-right: 4mm; }
+.qn-l { font-size: 7.5pt; color: #8a90a0; font-weight: 700; margin-right: 1.5mm; }
+.qa .nospeech { color: var(--muted); font-style: italic; }
+.unmarked { font-size: 8.8pt; color: var(--muted); margin-bottom: 3mm; }
+.nomist { font-size: 10pt; color: var(--green); }
+.parth { font: 700 8pt Inter; letter-spacing: 1.8px; text-transform: uppercase; color: #8a90a0; margin: 5mm 0 2mm; page-break-after: avoid; }
+/* Part 2: the cue card, talk length and point coverage */
+.cue { background: #f6f7fa; border-radius: 2.5mm; padding: 2.4mm 4mm; margin: 1.6mm 0 3mm; }
+.cue ul { margin: 0; padding-left: 5mm; font-size: 9.2pt; color: #4a4f5c; }
+.talk { display: flex; align-items: center; font-size: 8.4pt; color: #5d6370; margin-top: 3mm; }
+.talk .tl { flex: none; width: 36mm; }
+.talk .tb { flex: none; display: block; width: 100mm; height: 2.4mm; background: #eceef2; border-radius: 1.2mm; margin: 0 3mm; }
+.talk .tb i { display: block; height: 100%; border-radius: 1.2mm; background: #5b7bd5; }
+.talk .tb i.short { background: #e8a33a; }
+.talk .tt { flex: none; width: 24mm; text-align: right; }
+.cov { font-size: 8.6pt; color: #4a4f5c; margin-top: 1.8mm; line-height: 1.7; }
+.cov .y { color: var(--green); }
+.cov .n { color: #a3640a; }
+.cov span { display: inline-block; margin-right: 3mm; }
+.nofill { font-size: 9pt; color: var(--green); }
+.mans .mb { float: right; background: #14213d; color: #fff; border-radius: 2mm; font: 700 7.5pt Inter; padding: .5mm 2.4mm; }
+.mans .mb b { color: var(--gold); margin-right: 1mm; }
+.vv, .vbh b { font-family: {{ serif }}; }
+.vk, .vv small, .qn, .parth { font-family: {{ sans }}; }
+</style></head><body{% if compact %} class="compact"{% endif %}>
+
+{% macro card(c) -%}
+<div class="cc-card st-{{ c.cls }}">
+  <div class="cc-l"><div class="cc-score">{{ "%.1f"|format(c.band) }}</div><div class="cc-of">out of 9</div></div>
+  <div class="cc-r">
+    <div class="cc-head"><span class="cc-name">{{ c.name }}</span><span class="cc-chip c-{{ c.cls }}">{{ c.chip }}</span></div>
+    <div class="cc-bar"><div class="cc-fill" style="width:{{ (c.band / 9 * 100)|round(1) }}%"></div><div class="cc-tick" style="left:{{ (report.target_band / 9 * 100)|round(1) }}%"></div></div>
+    <div class="cc-note">{{ c.note }}</div>
+  </div>
+</div>
+{%- endmacro %}
+{% set target = "%.1f"|format(report.target_band) %}
+{% set part_titles = {"part1": "Part 1", "part2": "Part 2 · Long turn", "part3": "Part 3 · Discussion"} %}
+
+<!-- ================= COVER ================= -->
+<div class="cover">
+  <div class="hero">
+    <div class="brandrow"><div class="logo">WRITE<span>SPEAK</span></div><div class="taskchip">{{ report.task_chip }}</div></div>
+    <div class="hero-in">
+      <div>
+        <div class="kicker">Feedback report</div>
+        <div class="name" style="font-size:{{ name_size }}pt">{{ student_name }}</div>
+        <div class="metaline">{{ date_str }} &nbsp;·&nbsp; {{ report.meta_label }}</div>
+        <div class="stats">
+          {% for value, label in report.stats %}<div class="stat"><b>{{ value }}</b><span>{{ label }}</span></div>{% endfor %}
+        </div>
+      </div>
+      <div class="gauge"><svg viewBox="0 0 130 130" width="56mm" height="56mm" xmlns="http://www.w3.org/2000/svg">
+<circle cx="65" cy="65" r="52" fill="none" stroke="#ffffff" stroke-opacity=".12" stroke-width="10"/>
+<circle cx="65" cy="65" r="52" fill="none" stroke="#ffc53d" stroke-width="10" stroke-linecap="round"
+ stroke-dasharray="{{ ring.dash }} {{ ring.circ }}" transform="rotate(-90 65 65)"/>
+<line x1="{{ ring.x1 }}" y1="{{ ring.y1 }}" x2="{{ ring.x2 }}" y2="{{ ring.y2 }}" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round"/>
+</svg>
+        <div class="g-num">{{ "%.1f"|format(report.overall_band) }}</div><div class="g-lab">{{ report.band_label }}</div>
+        <div class="g-target"><span>Next target · {{ target }}</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="cc-row">{{ card(report.criteria[0]) }}{{ card(report.criteria[1]) }}</div>
+  <div class="cc-row cc-row2" style="margin-left:16mm;margin-right:16mm">{{ card(report.criteria[2]) }}{{ card(report.criteria[3]) }}</div>
+
+  <div class="cbody">
+    <div class="tickkey">▮ marks your {{ target }} target</div>
+    <div class="well">
+      <div class="q">“</div>
+      <div>
+        <div class="k">What you did well</div>
+        <div class="t">{{ report.strength_html|safe }}</div>
+      </div>
+    </div>
+
+    {% if report.priorities %}
+    <div class="prio-h"><span class="t">Your {{ report.priorities|length }} priorities for Band {{ target }}</span><span class="s">Fix these first — they cost you the most.</span></div>
+    <div class="prios">
+      {% for p in report.priorities %}
+      <div class="prio"><div class="n">{{ p.n }}</div>
+        <div class="h">{{ p.title }}</div>
+        <div class="r">{{ p.rule_html|safe }}</div>
+        <div class="ex">{% if p.ex_wrong %}<s>{{ p.ex_wrong }}</s> → <b>{{ p.ex_right }}</b>{% else %}{{ p.ex_right }}{% endif %}</div>
+        <div class="ref">{% for tag, cls in p.tags %}<span class="tag {{ cls }}">{{ tag }}</span> {% endfor %}{% if p.voice_ref %}&nbsp;{{ p.voice_ref }}{% elif p.ids %}&nbsp;Mistake{% if p.ids|length > 1 %}s{% endif %} {{ p.ids|join(", ") }}{% endif %}</div></div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="inside">
+      <div class="k">Inside this report</div>
+      <div class="toc">
+        <a href="#s-ans">Your answers, marked</a>
+        <a href="#s-mist">Every mistake explained</a>
+        <a href="#s-voice">Your voice, measured</a>
+        <a href="#s-voc">Useful vocabulary</a>
+        <a href="#s-model">Model answers</a>
+        <a href="#s-prog">Your progress</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= ANSWERS ================= -->
+<div class="page-break"></div>
+<div class="kick">01 · Your answers</div>
+<h2 id="s-ans">Your answers, marked</h2>
+<div class="sub">This is what you said, from your recording. Short fixes are shown in the text, and every mistake is explained in the next section.</div>
+<div class="legend">
+  <span><i class="sw" style="background:var(--green-bg)"></i>Strong phrase — keep it</span>
+  <span><i class="sw" style="border-bottom:2px solid var(--amber-line); height:2.5mm"></i>Mistake</span>
+  <span><span class="filler">like</span> &nbsp;Filler word</span>
+  <span><s style="color:#a6623a">word</s> <b style="color:var(--green)">fix</b></span>
+</div>
+{% if not report.marked %}
+<div class="unmarked">This time not every mark could be placed on your transcript, so some answers are shown without them. Every mistake is explained in the next section.</div>
+{% endif %}
+{% set ns = namespace(part=None) %}
+{% for c in report.cards %}
+{% if report.part == "full" and c.part != ns.part %}{% set ns.part = c.part %}<div class="parth">{{ part_titles[c.part] }}</div>{% endif %}
+<div class="qcard"><div class="qhead"><div>
+  {% if c.cue_card %}<div class="qn">{{ c.qid }} · Cue card</div><div class="qt">{{ c.cue_card.topic }}</div>
+  {% else %}<div class="qn">{{ c.qid }}{% if c.duplicate_of %}<span class="dup">Same question as {{ c.duplicate_of }}</span>{% endif %}</div><div class="qt">{{ c.question }}</div>{% endif %}
+</div><div class="qmeta">{{ c.meta }}</div></div>
+{% if c.cue_card and c.cue_card.points %}<div class="cue"><ul>{% for p in c.cue_card.points %}<li>{{ p }}</li>{% endfor %}</ul></div>{% endif %}
+<div class="qa">{% if c.no_speech %}<span class="nospeech">No speech was recorded for this answer.</span>{% else %}{{ c.html|safe }}{% endif %}</div>
+{% if c.talk %}
+<div class="talk"><span class="tl">Talk length <b>{{ c.talk.length }}</b></span><span class="tb"><i class="{{ 'short' if c.talk.pct < 75 else '' }}" style="width:{{ c.talk.pct }}%"></i></span><span class="tt">target {{ c.talk.target }}</span></div>
+{% if c.talk.points %}<div class="cov">Cue-card points:&nbsp; {% for p in c.talk.points %}<span>{% if p.covered %}<b class="y">✓</b>{% else %}<b class="n">✗</b>{% endif %} {{ p.point }}</span>{% endfor %}</div>{% endif %}
+{% endif %}
+</div>
+{% endfor %}
+
+<!-- ================= MISTAKES ================= -->
+<div class="page-break"></div>
+<div class="kick">02 · Mistakes</div>
+<h2 id="s-mist">Every mistake explained</h2>
+<div class="sub">Only mistakes are shown. Correct answers are not repeated.</div>
+{% for m in report.mistakes %}
+{% if m.unclear %}
+<div class="mist ask"><div class="num">{{ m.n }}</div><div class="body">
+  <div class="fix"><span class="qn-l">{{ m.q }}</span><span class="w">{{ m.wrong }}</span></div>
+  <div class="why">{{ m.why_html|safe }}</div><div class="q">If you meant this: <span class="r">{{ m.correct or m.if_you_meant }}</span></div>
+</div><div class="side"><span class="tag {{ m.tag_cls }}">{{ m.tag }}</span></div></div>
+{% else %}
+<div class="mist"><div class="num">{{ m.n }}</div><div class="body">
+  <div class="fix"><span class="qn-l">{{ m.q }}</span><span class="w">{{ m.wrong }}</span>{% if m.correct %} → <span class="r">{{ m.correct }}</span>{% endif %}</div>
+  <div class="why">{{ m.why_html|safe }}</div>
+</div><div class="side"><span class="tag {{ m.tag_cls }}">{{ m.tag }}</span></div></div>
+{% endif %}
+{% else %}
+<div class="nomist">✓ No mistakes that need fixing were found in your answers.</div>
+{% endfor %}
+
+<!-- ================= VOICE ================= -->
+{% set v = report.voice %}
+<div class="page-break"></div>
+<div class="kick">03 · Your voice</div>
+<h2 id="s-voice">Your voice, measured</h2>
+<div class="sub">Measured from your recording, not just the words.</div>
+
+<div class="vrow">
+  <div class="vcard"><div class="vk">Speaking pace</div><div class="vv">{{ v.pace.wpm }}<small>words / min</small></div>
+    <div class="scale"><div class="mk" style="left:{{ v.pace.marker }}%"></div></div>
+    <div class="scale-l"><span>slow</span><span>natural 110–160</span><span>fast</span></div>
+    <div class="vn">{{ v.pace.note }}</div></div>
+  <div class="vcard"><div class="vk">Long pauses</div><div class="vv">{{ v.pauses.count }}<small>over 1 second</small></div>
+    <div class="vn">{{ v.pauses.note }}</div></div>
+  <div class="vcard"><div class="vk">Fillers</div><div class="vv">{{ v.fillers.count }}<small>in {{ v.fillers.seconds }} s</small></div>
+    <div class="vn">{{ v.fillers.note }}</div></div>
+</div>
+
+<div class="vbox">
+  <div class="vbh"><b>Your filler words</b><span>Counted from your recording</span></div>
+  {% if v.filler_bars %}<table class="fbt">{% for f in v.filler_bars %}<tr><td class="w">“{{ f.name }}”</td><td class="t"><span class="trk"><i style="width:{{ f.pct }}%"></i></span></td><td class="c">×{{ f.count }}</td></tr>{% endfor %}</table>
+  {% else %}<div class="nofill">✓ No filler words in your answers.</div>{% endif %}
+</div>
+
+{% if v.practise %}
+<div class="vbox">
+  <div class="vbh"><b>Words to practise</b><span>Lowest pronunciation scores in your recording</span></div>
+  <table class="ptab"><thead><tr><th>Word</th><th>Sounds like</th><th>Tip</th><th>Score</th></tr></thead><tbody>
+  {% for w in v.practise %}<tr><td class="pw">{{ w.word }}</td><td class="ipa">{{ w.ipa }}</td><td>{{ w.tip }}</td><td class="sc {{ w.cls }}">{{ w.score }}%</td></tr>{% endfor %}
+  </tbody></table>
+</div>
+{% endif %}
+
+{% if v.intonation %}
+<div class="vbox">
+  <div class="vbh"><b>Intonation</b><span>Your pitch over your longest stretch of speech, measured</span></div>
+  <table class="intt"><tr><td class="sv"><svg viewBox="0 0 220 60" width="62mm" height="17mm" xmlns="http://www.w3.org/2000/svg">
+<path d="{{ v.intonation.student }}" fill="none" stroke="#e8a33a" stroke-width="2.4" stroke-linecap="round"/>
+<path d="{{ v.intonation.natural }}" fill="none" stroke="#2fa866" stroke-width="2" stroke-dasharray="4 3" stroke-linecap="round"/>
+<text x="5" y="58" font-size="8" fill="#a3640a" font-family="Inter">your voice</text>
+<text x="70" y="58" font-size="8" fill="#23784a" font-family="Inter">natural rise and fall</text>
+</svg></td>
+    <td><div class="vn" style="margin:0">{{ v.intonation.tip|safe }}</div></td></tr></table>
+</div>
+{% endif %}
+
+<!-- ================= VOCAB ================= -->
+<div class="page-break"></div>
+<div class="kick">04 · Vocabulary</div>
+<h2 id="s-voc">Useful vocabulary</h2>
+<div class="sub">Words and phrases for speaking about {{ report.vocabulary_topic }}.</div>
+<table class="voc"><thead><tr><th>Word / phrase</th><th>Meaning</th><th>Example</th></tr></thead><tbody>
+{% for item in report.vocabulary %}<tr><td class="term">{{ item.term }}</td><td class="mean">{{ item.meaning }}</td><td class="exm">{{ item.example }}</td></tr>
+{% endfor %}</tbody></table>
+
+<!-- ================= MODEL ANSWERS ================= -->
+<div class="page-break"></div>
+<div class="kick">05 · Model answers</div>
+<div class="mhead">
+  <div><h2 id="s-model">Model answers</h2>
+  <div class="sub" style="margin:0">High-band answers to your exact questions.{% if voice_sent %} Read them, then listen to them in Telegram.{% endif %}</div></div>
+  {% if answers_band %}<div class="bandbadge"><span>Band</span><b>{{ "%.1f"|format(answers_band) }}</b></div>{% endif %}
+</div>
+{% for a in answers %}
+<div class="mans">{% if not answers_band %}<span class="mb"><b>Band</b>{{ "%.1f"|format(a.band) }}</span>{% endif %}<div class="qn">{{ a.label }}</div><div class="qt">{{ a.question }}</div><div class="txt">{% for p in a.paragraphs %}{{ p }}{% if not loop.last %}<br><br>{% endif %}{% endfor %}</div>
+<div class="ft"><span>{{ a.words }} words · about {{ a.seconds }} seconds</span>{% if voice_sent %}<span class="listen">▶ Sent as a voice message in Telegram</span>{% endif %}</div></div>
+{% else %}
+<div class="unmarked">Model answers could not be prepared this time.</div>
+{% endfor %}
+
+<!-- ================= PROGRESS ================= -->
+<div class="page-break"></div>
+<div class="kick">06 · Progress</div>
+<h2 id="s-prog">Your progress</h2>
+{% if progress.first %}
+<div class="prog-first"><b>{{ progress.lead }}</b> {{ progress.rest }}</div>
+{% else %}
+<div class="sub">{{ progress.compared }}</div>
+<div class="prog">
+  <table class="ptbl">{% for r in progress.rows %}<tr><td class="l">{{ r.label }}</td><td class="v">{{ r.value }}</td><td><span class="chip {{ r.cls }}">{{ r.chip }}</span></td></tr>{% endfor %}</table>
+  <div class="pn">{{ progress.note }}</div>
+</div>
+{% endif %}
+
+{% if report.checklist %}
+<div class="checkh">Before your next speaking practice</div>
+<div class="checks">
+  {% for c in report.checklist %}<div class="ck"><i></i><div>{{ c.html|safe }}{% if c.ref %}<span>{{ c.ref }}</span>{% endif %}</div></div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="disc">{{ report.disclaimer }}</div>
+</body></html>
