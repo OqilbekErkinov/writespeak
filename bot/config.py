@@ -56,9 +56,11 @@ class Settings(BaseSettings):
     azure_speech_region: str = ""
 
     # --- Speaking model answers (services/ai/speaking_answers.py) ---
-    # A session question that matches a book question exactly is answered with
-    # the book's own answer (and its band). False = always write a new one.
-    allow_book_answers_verbatim: bool = True
+    # True = a session question that matches a book question exactly is answered
+    # with the book's own answer. Off since 2026-10-14: book content isn't
+    # reproduced; books only lend an author's style. Turn on only for sources
+    # you have permission to show.
+    allow_book_answers_verbatim: bool = False
 
     # --- Database ---
     database_url: str

@@ -8,8 +8,10 @@ base stylesheet templates/report_styles.css is a copy of Writing's).
 from __future__ import annotations
 
 import base64
+import html as html_lib
 import logging
 import math
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -188,7 +190,23 @@ def _speaking_generated_text(report, answers: list[dict]) -> str:
     parts += [f"{v.term} {v.meaning} {v.example}" for v in report.vocabulary]
     parts += [c["html"] for c in report.checklist]
     parts += [p for a in answers for p in a["paragraphs"]]
+    parts += [s["note"] for a in answers for s in a.get("shows") or []]
     return "\n".join(parts)
+
+
+def _answer_paragraphs_html(answer: dict) -> list[str]:
+    """The model answer's paragraphs, escaped, with each "what this shows"
+    phrase marked and numbered (its first occurrence)."""
+    out = [html_lib.escape(p, quote=False) for p in answer["paragraphs"]]
+    for k, item in enumerate(answer.get("shows") or [], 1):
+        words = html_lib.escape(item["phrase"], quote=False).split()
+        pattern = re.compile(r"\s+".join(re.escape(w) for w in words), re.IGNORECASE)
+        for i, para in enumerate(out):
+            new, hits = pattern.subn(lambda m: f'<span class="shw">{m.group(0)}<sup class="k">{k}</sup></span>', para, count=1)
+            if hits:
+                out[i] = new
+                break
+    return out
 
 
 def build_speaking_report_pdf(
@@ -201,7 +219,11 @@ def build_speaking_report_pdf(
 ) -> bytes:
     """`report`: a services.ai.speaking_marking.SpeakingReport; `answers`: the
     model answers ({"label", "question", "paragraphs", "words", "seconds",
-    "band"}) - one header badge when they all share a band."""
+    "band", "source", "shows", "voice"}) - one "Aimed at" badge when they all
+    share a band."""
+    for a in answers:
+        a["html_paragraphs"] = _answer_paragraphs_html(a)
+        a.setdefault("voice", voice_sent)
     leaked = names_in(_speaking_generated_text(report, answers))
     if leaked:
         logger.error("Speaking report names the source (%s) - check the model output", ", ".join(leaked))

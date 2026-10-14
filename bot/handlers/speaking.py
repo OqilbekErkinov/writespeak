@@ -462,7 +462,14 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
         "question_parts": parts,
         "pronunciation_measured": not report.pron_estimated,
         "resubmission_of": repeat.id if repeat else None,
-        "model_answers": [{"label": a["label"], "band": a["band"], "words": a["words"]} for a in check.answers],
+        # what each sample is: its source, the band it was aimed at (provisional),
+        # the priorities it demonstrates
+        "model_answers": [
+            {"label": a["label"], "source": a.get("source", "ai_generated"), "aimed_at": a["band"],
+             "provisional": a.get("source") != "human_reviewed", "words": a["words"],
+             "shows": [s["n"] for s in a.get("shows") or []]}
+            for a in check.answers
+        ],
     }
 
     async with get_session() as session:

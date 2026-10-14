@@ -1,33 +1,39 @@
-"""Speaking model answers (Speaking report prompt, Part 3, 2026-10-13).
+"""Speaking model answers, written for the candidate's own results
+(Speaking report prompt Part 3, 2026-10-13; candidate-specific sample
+answers, 2026-10-14).
 
-The library: data/sample_library/speaking_index.json, built from the
-speaking books (one entry per book answer: id, author - the real author,
-not the book - book, part 1/2/3, topic, question, band as stated in the
-book, word_count, text), plus styles/<author>_speaking.json, each author's
-spoken style from their own answers only. As of 2026-10-13 there are no
-speaking books yet (the owner will send them): until the index exists every
-answer is newly written at DEFAULT_BAND with no author style.
+Every answer is a separate, complete answer to the student's OWN question,
+written to teach their weaknesses - not a rewrite of what they said:
 
-For each question of a session (repeated questions share one answer,
-labelled "Q3 · Q4"):
+  * it is aimed at about one band above the student (aim_band: overall + 1,
+    from 6.0 to 8.0), labelled as an approximate AI example, never as an
+    official band;
+  * it gets the report's own findings (Needs, from the feedback call - no
+    second assessment): the four bands, the three priorities, answer-level
+    problems (an answer that stops early or is unclear), the cue-card
+    points a Part 2 talk missed, the student's strong phrases and the
+    measured voice - and demonstrates the priorities: Fluency -> a direct
+    answer, a reason, an example; Lexical -> precise, natural collocations;
+    Grammar -> a useful variety of accurate structures;
+  * it may reuse the student's personal facts and sound ideas (Part 1 is
+    about them) but never their sentences (REUSE_LIMIT, checked in code),
+    and never a weak argument or a misreading of the question;
+  * with it come 1-2 "what this shows" notes - a phrase of the answer, the
+    priority it demonstrates and what to notice - found in the answer by code;
+  * one quality-check call for the whole report (answers the exact question
+    in its type, one consistent position, examples that fit, no shared stock
+    opener, no invented facts) - failing answers are written again once; then
+    our scorer reads the set, and if it is more than 0.5 below the aimed band
+    the set is written once more.
 
-  1. exact match - a book question of the same part that is the same
-     question after normalisation - and settings.allow_book_answers_verbatim:
-     the book's answer as written, its badge the band stated in the book;
-  2. otherwise a new answer in the style of ONE author, the same author for
-     the whole report: authors with answers of this part, then the closest
-     topic, then more answers; that author's style profile and 2-3 of their
-     own answers as references; badge = that author's band;
-  3. spoken style, the part's length (Part 1 40-60 words, Part 2 250-300,
-     Part 3 70-100), answer -> reason -> example, no invented facts;
-  4. one quality-check call for the whole report (answers the exact question
-     in its type, one consistent position, examples that fit, no stock
-     opener shared with another answer) - failing answers are written again
-     once; then our scorer reads the set, and if it is more than 0.5 below
-     the badge the set is written once more.
-
-What was used (exact match or generated, author, sample ids, band) is
-logged, never shown in the report.
+The speaking library (data/sample_library/speaking_index.json, built from
+speaking books: id, author, book, part, topic, question, band, text, plus
+styles/<author>_speaking.json) only lends an author's style when it exists -
+there is none yet. A book's answer is shown as written only with
+settings.allow_book_answers_verbatim, off since 2026-10-14 (no reproducing
+books). Each answer's source (ai_generated / published_reference /
+human_reviewed), aimed band and the priorities it shows are logged and saved
+with the submission, never shown as "official".
 """
 from __future__ import annotations
 
@@ -54,8 +60,11 @@ logger = logging.getLogger(__name__)
 
 LENGTHS = {"part1": (40, 60), "part2": (250, 300), "part3": (70, 100)}
 WORDS_PER_MINUTE = 140
-DEFAULT_BAND = 7.5
+DEFAULT_BAND = 7.5  # without the student's results
+AIM_RANGE = (6.0, 8.0)  # the aimed band: the student's band + 1, kept in this range
 SELF_CHECK_MARGIN = 0.5
+REUSE_LIMIT = 0.35  # share of the answer's 4-word runs that may come from the student's transcript
+MAX_SHOWS = 2
 REFERENCES = 3
 ANSWER_MAX_TOKENS = 6000
 EXACT_RATIO = 0.9
@@ -69,6 +78,84 @@ PART_NOTES = {
     "comparison, and a brief conclusion. A \"why\" question gets reasons; a \"how\" question gets ways; "
     "a comparison question compares.",
 }
+
+
+def aim_band(overall: float) -> float:
+    """The band a model answer is aimed at: one above the student's."""
+    return min(AIM_RANGE[1], max(AIM_RANGE[0], overall + 1.0))
+
+
+@dataclass
+class Needs:
+    """What the report found - the model answers are written to teach it."""
+
+    overall: float
+    bands: dict[str, float]  # FC, LR, GRA, P
+    priorities: list[dict]  # {"n": "01", "title", "rule", "criteria": [...], "voice": bool}
+    issues: dict[str, list[str]] = field(default_factory=dict)  # qid -> answer-level problems
+    missed_points: dict[str, list[str]] = field(default_factory=dict)  # Part 2 qid -> uncovered points
+    strengths: list[str] = field(default_factory=list)
+    voice: str = ""
+
+    @property
+    def aim(self) -> float:
+        return aim_band(self.overall)
+
+
+_CRITERION_NAMES = {"FLU": "Fluency", "LR": "Vocabulary", "GRA": "Grammar", "PRON": "Pronunciation"}
+
+
+def needs_from_feedback(items, bands: dict[str, float], overall: float, fb, metrics) -> Needs:
+    """Needs from the feedback call's own output (speaking_grader), so nothing
+    is assessed twice. Only answer-level problems (Fluency items: an answer
+    that is unclear or stops without a reason) go per answer - grammar and
+    word slips reach the answers through the priorities, so the sample
+    teaches patterns instead of correcting sentences."""
+    priorities = [
+        {"n": f"{i:02d}", "title": p.title.strip(), "rule": re.sub(r"\*+", "", p.rule).strip(),
+         "criteria": [c for c in p.criteria], "voice": bool(p.voice_ref)}
+        for i, p in enumerate(fb.priorities[:3], 1)
+    ]
+    issues: dict[str, list[str]] = {}
+    for m in fb.mistakes:
+        if m.criterion == "FLU" or m.unclear:
+            issues.setdefault(m.question.strip().upper(), []).append(f"«{m.wrong}» - {m.why}")
+    missed = {}
+    part2 = [it.qid for it in items if it.cue_card]
+    if part2:
+        missed[part2[0]] = [c.point for c in fb.cue_coverage if not c.covered]
+    voice = ""
+    if metrics is not None:
+        voice = (f"{metrics.wpm} words a minute, {metrics.fillers} fillers in {round(metrics.speaking_seconds)} s, "
+                 f"{metrics.long_pauses} pauses over 1 s")
+    return Needs(overall=overall, bands=bands, priorities=priorities, issues=issues, missed_points=missed,
+                 strengths=[q.strip() for q in fb.strength.quoted_phrases][:3], voice=voice)
+
+
+def _needs_text(needs: Needs, target: "Target") -> str:
+    lines = [
+        "THE STUDENT'S RESULTS (from the examiner's report - teach to these):",
+        f"- Bands: Fluency & Coherence {needs.bands.get('FC', 0):.0f}, Lexical Resource {needs.bands.get('LR', 0):.0f}, "
+        f"Grammatical Range & Accuracy {needs.bands.get('GRA', 0):.0f}, Pronunciation {needs.bands.get('P', 0):.0f}; "
+        f"overall {needs.overall:.1f}. Your answer is aimed at about Band {needs.aim:.1f}.",
+        "- Their priorities - what your answer must SHOW them how to do:",
+    ]
+    for p in needs.priorities:
+        kind = ", ".join(_CRITERION_NAMES.get(c, c) for c in p["criteria"])
+        voice = "; measured from the voice - can't be shown in text" if p["voice"] else ""
+        lines.append(f"  {p['n']} {p['title']} ({kind}{voice}): {p['rule']}")
+    for qid in target.qids:
+        for issue in needs.issues.get(qid.upper(), []):
+            lines.append(f"- In {qid} the examiner noted: {issue}")
+        if needs.missed_points.get(qid):
+            lines.append("- The student's talk did not cover these cue-card points - yours must: "
+                         + "; ".join(needs.missed_points[qid]))
+    if needs.strengths:
+        lines.append("- What they already do well (keep this kind of language): "
+                     + ", ".join(f"«{s}»" for s in needs.strengths))
+    if needs.voice:
+        lines.append(f"- Measured voice: {needs.voice}.")
+    return "\n".join(lines)
 
 
 @dataclass
@@ -219,8 +306,15 @@ async def get_style_profile(author: str, answers: list[BookAnswer]) -> StyleProf
 # --- Writing answers --------------------------------------------------------------------------------
 
 
+class _Shows(BaseModel):
+    priority: str = Field(description='The priority number it demonstrates, "01".."03".')
+    phrase: str = Field(description="2-12 words copied exactly from your answer, where it shows it.")
+    note: str = Field(description="20 words at most: what the student should notice there.")
+
+
 class _Answer(BaseModel):
     answer: str = Field(description="The spoken answer, as plain text (Part 2: paragraphs separated by blank lines).")
+    shows: list[_Shows] = Field(description="1-2 places where the answer demonstrates the student's priorities.")
 
 
 class _Check(BaseModel):
@@ -253,32 +347,79 @@ def _system(part: str, band: float, profile: StyleProfile | None, references: li
             "and register. Do NOT copy their sentences; short functional phrases are fine."
         )
     return (
-        "You write original IELTS Speaking model answers that students read and listen to.\n\n"
-        f"{PART_NOTES[part]}\nSpeak at IELTS band {band:.1f} - natural and fluent, not above that level, "
-        f"not written English. Length: {lo}-{hi} words (count before answering).\n"
+        "You write IELTS Speaking model answers that a student reads and listens to right after their own "
+        "feedback report - each one written to TEACH this student what their report says they need.\n\n"
+        f"{PART_NOTES[part]}\nSpeak at about IELTS band {band:.1f} - natural and fluent, not above that "
+        f"level, not written English, no memorised templates or showy idioms. Length: {lo}-{hi} words (count "
+        "before answering).\n"
+        "TEACH, DON'T REWRITE: write a separate, complete answer to the same question that demonstrates the "
+        "student's priorities while staying a strong, natural answer overall. Fluency & Coherence: a direct "
+        "answer, a reason, an example, clear linking (\"because\", \"so\", \"for example\", \"that's why\"). "
+        "Vocabulary: precise, natural words and collocations for this topic - never rare synonyms for their "
+        "own sake. Grammar: a useful variety of accurate structures (past forms for past events, \"would\" for "
+        "imagined ones, a relative or conditional clause where natural). A priority measured from the voice "
+        "(fillers, pace, intonation) is shown by speaking smoothly, not by mentioning it.\n"
         "Spoken style: contractions (I'd, it's, don't), natural openers that vary (\"To be honest, ...\", "
         "\"I'd say ...\", \"Well, ...\", or just the direct answer; \"Definitely\"/\"Absolutely\"/\"Not "
         "really\" only answer a yes/no question), answer first, then a reason, then a short example. Keep "
         "ONE consistent position from start to finish; every example must fit the point it supports. "
         "Answer exactly the question asked - never change its type.\n"
-        "When the student's own answer is given, build on it: keep their ideas, facts about themselves and "
-        "position where they make sense, and show how to say them at this band (you may add a reason or an "
-        "example). If their answer is unclear or contradicts itself, choose the clearest reading.\n"
+        "The student's own answer is given for comparison: you may reuse their personal facts and sound ideas "
+        "(Part 1 is about them), but never their sentences, and never keep a weak argument, a contradiction or "
+        "a misreading of the question - answer what was really asked.\n"
+        "shows: 1-2 places in YOUR answer that demonstrate the student's priorities (the first priority "
+        "first): the priority number, the exact phrase from your answer, and what the student should notice. "
+        "Skip priorities measured from the voice.\n"
         "No invented real-world facts: no statistics, studies, dates, named organisations or claims about "
         "real places presented as true; personal details are fine. Never mention any teacher, speaker or "
         "book." + style
     )
 
 
+def _grams(text: str, n: int = 4) -> list[tuple[str, ...]]:
+    words = [w for w in re.findall(r"[a-z0-9']+", text.lower()) if w not in ("um", "uh", "er", "erm", "like")]
+    return [tuple(words[i:i + n]) for i in range(len(words) - n + 1)]
+
+
+def reuse_share(answer: str, student: str) -> float:
+    """How much of the answer is the student's own wording: the share of its
+    4-word runs that also occur in their transcript."""
+    mine = _grams(answer)
+    if not mine or not student.strip():
+        return 0.0
+    theirs = set(_grams(student))
+    return sum(g in theirs for g in mine) / len(mine)
+
+
+def _shows(parsed: _Answer, text: str, needs: Needs | None) -> list[dict]:
+    """The "what this shows" notes whose phrase really is in the answer and
+    whose priority exists (and isn't a voice-only one)."""
+    if needs is None:
+        return []
+    titles = {p["n"]: p["title"] for p in needs.priorities if not p["voice"]}
+    low = re.sub(r"\s+", " ", text).lower()
+    out = []
+    for item in parsed.shows or []:
+        n = re.sub(r"\D", "", item.priority).zfill(2)[-2:]
+        phrase = item.phrase.strip().strip(".,;:!?\"'“”")
+        if n in titles and len(phrase.split()) >= 2 and re.sub(r"\s+", " ", phrase).lower() in low \
+                and all(o["phrase"].lower() != phrase.lower() for o in out):
+            out.append({"n": n, "title": titles[n], "phrase": phrase, "note": item.note.strip()})
+    return out[:MAX_SHOWS]
+
+
 async def _write_one(target: Target, band: float, profile: StyleProfile | None, references: list[BookAnswer],
-                     note: str = "") -> str:
+                     needs: Needs | None = None, note: str = "") -> tuple[str, list[dict]]:
+    """(the answer, its "what this shows" notes)."""
     lo, hi = LENGTHS[target.part]
     system = _system(target.part, band, profile, references) + (f"\n\n{note}" if note else "")
     user = f"QUESTION:\n{target.question}"
+    if needs is not None:
+        user += "\n\n" + _needs_text(needs, target)
     if target.student_answer.strip():
-        user += f"\n\nTHE STUDENT'S OWN ANSWER (speech transcript):\n{target.student_answer.strip()}"
+        user += f"\n\nTHE STUDENT'S OWN ANSWER (speech transcript, for comparison):\n{target.student_answer.strip()}"
     messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
-    best, best_off = "", 10**6
+    best, best_shows, best_off = "", [], 10**6
     for attempt in range(3):
         response = await client.beta.chat.completions.parse(
             model=settings.openai_model_sample, messages=messages, response_format=_Answer,
@@ -292,19 +433,24 @@ async def _write_one(target: Target, band: float, profile: StyleProfile | None, 
         words = count_words(text)
         off = 0 if lo <= words <= hi else min(abs(words - lo), abs(words - hi))
         leaked = names_in(text)
+        reused = reuse_share(text, target.student_answer)
         if leaked:
             off += 1000
+        if reused > REUSE_LIMIT:
+            off += 500
         if off < best_off:
-            best, best_off = text, off
+            best, best_shows, best_off = text, _shows(parsed, text, needs), off
         if off == 0:
             break
         problems = ([f"it has {words} words; it must be {lo}-{hi}"] if not lo <= words <= hi else []) + \
-                   ([f"remove the names {', '.join(leaked)}"] if leaked else [])
+                   ([f"remove the names {', '.join(leaked)}"] if leaked else []) + \
+                   (["it repeats too much of the student's own wording - build a separate answer in new "
+                     "sentences"] if reused > REUSE_LIMIT else [])
         messages = messages[:2] + [{"role": "assistant", "content": text},
                                    {"role": "user", "content": "Revise it: " + "; ".join(problems) + "."}]
     if not best:
         raise RuntimeError(f"No model answer for {target.label}")
-    return best
+    return best, best_shows
 
 
 async def _quality_check(pairs: list[tuple[Target, str]]) -> dict[str, str]:
@@ -342,9 +488,11 @@ def _shared_openers(pairs: list[tuple[Target, str]]) -> set[str]:
     return repeats
 
 
-async def build_model_answers(targets: list[Target], seed: int = 0) -> list[dict]:
-    """[{"label", "qids", "question", "paragraphs", "words", "seconds", "band"}],
-    one per target, in order."""
+async def build_model_answers(targets: list[Target], needs: Needs | None = None, seed: int = 0) -> list[dict]:
+    """[{"label", "qids", "question", "paragraphs", "words", "seconds", "band",
+    "source", "shows"}], one per target, in order. With `needs` (the
+    report's findings) the answers are aimed at needs.aim and teach its
+    priorities; without, they are plain Band DEFAULT_BAND examples."""
     from services.ai.speaking_grader import score_answers_text  # the heavier module
 
     log: dict = {"answers": {}}
@@ -362,13 +510,14 @@ async def build_model_answers(targets: list[Target], seed: int = 0) -> list[dict
                 exact[t.label] = match
     to_write = [t for t in targets if t.label not in exact]
 
-    band, profile, references = DEFAULT_BAND, None, []
+    aim = needs.aim if needs is not None else DEFAULT_BAND
+    band, profile, references = aim, None, []
     if to_write and library:
         try:
             vecs = [np.asarray(v, dtype=float) for v in await embed_texts([t.question for t in to_write])]
             choice = choose_author(to_write, vecs, library, seed)
             if choice is not None:
-                band = choice["band"]
+                # the author lends their style; the level stays the student's aim
                 parts = {int(t.part[-1]) for t in to_write}
                 pool = [a for a in choice["answers"] if a.part in parts
                         and not any(exact_match(t, [a]) for t in to_write)]
@@ -379,24 +528,29 @@ async def build_model_answers(targets: list[Target], seed: int = 0) -> list[dict
                            candidates=choice["candidates"])
         except Exception:
             logger.exception("Choosing a speaking author failed - answers are written without a style")
-            band, profile, references = DEFAULT_BAND, None, []
+            profile, references = None, []
     if not library:
         log["library"] = "none - generated without an author style"
 
+    log["aimed_at"] = band
+    if needs is not None:
+        log["priorities"] = [p["title"] for p in needs.priorities]
     texts: dict[str, str] = {t.label: exact[t.label].text.strip() for t in targets if t.label in exact}
+    shows: dict[str, list[dict]] = {}
     for t in targets:
         if t.label in exact:
             a = exact[t.label]
-            log["answers"][t.label] = {"source": "book", "author": a.author, "sample_id": a.id, "band": a.band}
+            log["answers"][t.label] = {"source": "published_reference", "author": a.author, "sample_id": a.id,
+                                       "band": a.band}
 
     if to_write:
-        written = await asyncio.gather(*(_write_one(t, band, profile, references) for t in to_write),
+        written = await asyncio.gather(*(_write_one(t, band, profile, references, needs) for t in to_write),
                                        return_exceptions=True)
         for t, w in zip(to_write, written):
             if isinstance(w, BaseException):
                 logger.error("Model answer %s failed: %r", t.label, w)
             else:
-                texts[t.label] = w
+                texts[t.label], shows[t.label] = w
         generated = [t for t in to_write if t.label in texts]
         # Quality check (one call), then the self-check score.
         try:
@@ -409,13 +563,13 @@ async def build_model_answers(targets: list[Target], seed: int = 0) -> list[dict
             if redo:
                 log["quality_fixes"] = {t.label: problems[t.label] for t in redo}
                 again = await asyncio.gather(*(
-                    _write_one(t, band, profile, references, note=f"A reviewer rejected a previous version: "
+                    _write_one(t, band, profile, references, needs, note=f"A reviewer rejected a previous version: "
                                f"{problems[t.label]}. Avoid these openers: "
                                + ", ".join(sorted({_opener(texts[x.label]) for x in targets if x.label in texts})))
                     for t in redo), return_exceptions=True)
                 for t, w in zip(redo, again):
                     if not isinstance(w, BaseException):
-                        texts[t.label] = w
+                        texts[t.label], shows[t.label] = w
         except Exception:
             logger.exception("Model answer quality check failed - answers kept as written")
         try:
@@ -430,18 +584,21 @@ async def build_model_answers(targets: list[Target], seed: int = 0) -> list[dict
                     note = (f"An examiner scored a previous version {score:.1f}. These answers must read as clear "
                             f"Band {band:.1f} speech: develop each answer with a reason and an example, with "
                             "precise, natural vocabulary.")
-                    again = await asyncio.gather(*(_write_one(t, band, profile, references, note) for t in group),
-                                                 return_exceptions=True)
+                    again = await asyncio.gather(*(_write_one(t, band, profile, references, needs, note)
+                                                   for t in group), return_exceptions=True)
                     candidate = {t.label: w for t, w in zip(group, again) if not isinstance(w, BaseException)}
                     if len(candidate) == len(group):
-                        second = await score_answers_text(part, [(t.question, candidate[t.label]) for t in group])
+                        second = await score_answers_text(part, [(t.question, candidate[t.label][0]) for t in group])
                         log["self_check"][part].append(second)
                         if second >= score:
-                            texts.update(candidate)
+                            for label, (text, notes) in candidate.items():
+                                texts[label], shows[label] = text, notes
         except Exception:
             logger.exception("Model answer self-check failed - answers kept as written")
         for t in generated:
-            log["answers"][t.label] = {"source": "generated", "author": log.get("author"), "band": band}
+            log["answers"][t.label] = {"source": "ai_generated", "author": log.get("author"), "band": band,
+                                       "shows": [s["n"] for s in shows.get(t.label, [])],
+                                       "reuse": round(reuse_share(texts[t.label], t.student_answer), 2)}
 
     out = []
     for t in targets:
@@ -456,6 +613,8 @@ async def build_model_answers(targets: list[Target], seed: int = 0) -> list[dict
             "paragraphs": [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()],
             "words": words, "seconds": round(words / WORDS_PER_MINUTE * 60),
             "band": a.band if a else band,
+            "source": "published_reference" if a else "ai_generated",
+            "shows": shows.get(t.label, []),
         })
         log["answers"].setdefault(t.label, {})["words"] = words
     logger.info("Speaking model answers: %s", json.dumps(log, ensure_ascii=False))

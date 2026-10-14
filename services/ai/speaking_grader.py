@@ -549,8 +549,12 @@ async def listening_notes(wavs: list[bytes]) -> str | None:
 # --- The whole grading ------------------------------------------------------------------------------------
 
 
-async def grade_speaking(part: str, items: list[SessionItem], ev: Evidence, practise: list[dict] | None = None):
-    """Scores, feedback, missed-errors pass, verification -> SpeakingReport."""
+async def grade_speaking(part: str, items: list[SessionItem], ev: Evidence, practise: list[dict] | None = None,
+                         on_feedback=None):
+    """Scores, feedback, missed-errors pass, verification -> SpeakingReport.
+    `on_feedback(scores, overall, feedback)` is called as soon as the
+    feedback is final, so work that needs it (the candidate-specific model
+    answers) runs alongside the last two passes."""
     # Imported here: speaking_marking imports SessionItem from this module.
     from services.ai.scoring import overall_band, target_band
     from services.ai.speaking_marking import assess, build_report
@@ -572,6 +576,11 @@ async def grade_speaking(part: str, items: list[SessionItem], ev: Evidence, prac
             raise RuntimeError("Speaking feedback ran past its token limit twice")
         if problems:
             logger.warning("Speaking feedback still has problems after the retry: %s", "; ".join(problems))
+    if on_feedback is not None:
+        try:
+            on_feedback(scores, overall, feedback)
+        except Exception:
+            logger.exception("on_feedback failed")
 
     # The first pass's mistakes are verified while the missed-errors pass
     # runs; whatever that pass finds is verified after it (a short call).

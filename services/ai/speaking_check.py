@@ -4,7 +4,9 @@ the database (the handler, bot/handlers/speaking.py, adds those):
     voice analysis (services/ai/voice.py)
       -> pronunciation assessment (Azure) or, without it, listening notes
       -> grading (services/ai/speaking_grader.py, speaking_marking.py)
-    and, at the same time, the model answers (services/ai/speaking_answers.py).
+    and, as soon as the feedback is final, the model answers written for the
+    student's results (services/ai/speaking_answers.py), alongside the
+    grading's last two passes.
 """
 from __future__ import annotations
 
@@ -14,7 +16,7 @@ from dataclasses import dataclass
 
 from bot.utils.speaking_questions import duplicate_of, parse_cue_card
 from services.ai import pronunciation
-from services.ai.speaking_answers import build_model_answers, targets_for
+from services.ai.speaking_answers import build_model_answers, needs_from_feedback, targets_for
 from services.ai.speaking_grader import LISTEN_MIN_WORDS, Evidence, SessionItem, grade_speaking, listening_notes
 from services.ai.speaking_marking import SpeakingReport
 from services.ai.voice import AnswerAudio, VoiceMetrics, analyse_answers, measure, measure_pitch, to_wav16k
@@ -58,8 +60,15 @@ async def run_check(part: str, questions: list[dict], clips: list[tuple[bytes, s
     items = build_items(questions, audios)
     metrics = measure(audios)
     pitch = await asyncio.to_thread(measure_pitch, [w for w, a in zip(wavs, audios) if not a.no_speech])
-    # The model answers build on what the student said; written while grading runs.
-    answers_task = asyncio.create_task(build_model_answers(targets_for(items), seed=seed))
+    answers_task: asyncio.Task | None = None
+    needs = None
+
+    def start_answers(scores, overall, feedback) -> None:
+        # The model answers are written for this student's results.
+        nonlocal answers_task, needs
+        needs = needs_from_feedback(items, scores, overall, feedback, metrics)
+        answers_task = asyncio.create_task(build_model_answers(targets_for(items), needs, seed=seed))
+
     try:
         pron, notes, practise = None, None, None
         if notes_task is None:
@@ -71,16 +80,20 @@ async def run_check(part: str, questions: list[dict], clips: list[tuple[bytes, s
             notes = await notes_task if notes_task else await listening_notes(wavs)
             if sum(a.word_count for a in audios) < LISTEN_MIN_WORDS:
                 notes = None  # too little speech to judge
-        report = await grade_speaking(part, items, Evidence(metrics, pron, notes, pitch), practise)
+        report = await grade_speaking(part, items, Evidence(metrics, pron, notes, pitch), practise,
+                                      on_feedback=start_answers)
     except BaseException:
-        answers_task.cancel()
+        if answers_task is not None:
+            answers_task.cancel()
         raise
     try:
+        if answers_task is None:
+            raise RuntimeError("the feedback never reached the model answers")
         answers = await answers_task
     except Exception:
         logger.exception("Speaking model answers failed - one more try")
         try:
-            answers = await build_model_answers(targets_for(items), seed=seed)
+            answers = await build_model_answers(targets_for(items), needs, seed=seed)
         except Exception:
             logger.exception("Speaking model answers failed again - the report goes out without them")
             answers = []

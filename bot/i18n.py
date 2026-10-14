@@ -267,8 +267,8 @@ _T: dict[str, dict[str, str]] = {
         "(проверка не засчитана). Балл: <b>{band}</b>",
     },
     "speaking.model_voice_caption": {
-        "uz": "Model answer · {label} · Band {band}",
-        "ru": "Model answer · {label} · Band {band}",
+        "uz": "Model answer · {label} · aimed at Band {band} (AI example)",
+        "ru": "Model answer · {label} · aimed at Band {band} (AI example)",
     },
     # --- Input extraction (bot/utils/input_extraction.py) ---
     "input.reading": {
