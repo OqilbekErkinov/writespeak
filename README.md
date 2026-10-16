@@ -133,7 +133,7 @@ tekshiruv = 5 000 so'm" edi). Har bir tekshiruv o'z tannarxiga qarab o'z narxida
 | Speaking Part 1 / Part 2 / Part 3 | 6 / 5 / 8 |
 | To'liq Speaking (Part 1+2+3, bitta hisobot) | 16 |
 
-- Ro'yxatdan o'tganda **`WELCOME_COINS`** (standart: 10) coin sovg'a.
+- Ro'yxatdan o'tganda **`WELCOME_COINS`** (standart: 8) coin sovg'a.
 - Coin faqat hisobot saqlanganda yechiladi (xato bo'lgan tekshiruv bepul), muddati tugamaydi.
 - Paketlar: 10 / 25 / 50 / 100 / 200 coin — 10 000 / 23 000 / 45 000 / 88 000 / 170 000 so'm.
   O'qituvchi va markazlarga qo'shimcha: 500 / 1 000 / 2 500 / 5 000 coin — 400 000 / 780 000 /

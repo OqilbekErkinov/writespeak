@@ -88,7 +88,7 @@ class Settings(BaseSettings):
 
     # --- Coins & payments (bot/utils/coins.py: what each check and pack costs) ---
     # Coins every new user gets once, on signup.
-    welcome_coins: int = 10
+    welcome_coins: int = 8
     # Coins the inviter and the invited user each get on the invited user's
     # first approved purchase.
     referral_coins: int = 5
