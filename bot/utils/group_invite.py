@@ -3,9 +3,11 @@
 - a group's students:   https://t.me/<bot>?start=g<group id>_<signature>
 - a center's teachers:  https://t.me/<bot>?start=c<center id>_<signature>
 
-The signature is an HMAC of the id keyed with the bot's own secret token, so an
-invite can't be guessed from a number - the old `group_<id>` links could, and
-are no longer accepted (see bot/handlers/start.py).
+The signature is an HMAC of the id keyed with a secret - the bot's token, or
+settings.invite_secret (the previous bot's token since the move to a new
+bot, so links already handed out stay valid) - so an invite can't be guessed
+from a number - the old `group_<id>` links could, and are no longer accepted
+(see bot/handlers/start.py).
 """
 from __future__ import annotations
 
@@ -23,7 +25,7 @@ LEGACY_PREFIX = "group_"
 
 
 def _signature(kind: str, object_id: int) -> str:
-    key = settings.telegram_bot_token.encode()
+    key = (settings.invite_secret or settings.telegram_bot_token).encode()
     return hmac.new(key, f"{kind}-invite:{object_id}".encode(), hashlib.sha256).hexdigest()[:10]
 
 

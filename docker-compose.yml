@@ -64,6 +64,18 @@ services:
       - ./data:/data
     command: python -m services.practice_import.runner
 
+  # The previous bot (@writespeak_bot) since the move to the new one: answers
+  # everyone with a link to it (bot/moved.py). Idles while MOVED_BOT_TOKEN is
+  # empty.
+  moved_bot:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    command: python -m bot.moved
+
   admin_web:
     build: .
     restart: unless-stopped

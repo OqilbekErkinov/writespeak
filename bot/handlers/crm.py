@@ -198,8 +198,10 @@ async def answer_student(message: Message, bot: Bot) -> None:
     if message.message_thread_id != (cfg.get("topics") or {}).get("support"):
         return
     replied = message.reply_to_message
-    # In a topic, a plain message "replies" to the topic's first message.
-    if replied.forum_topic_created is not None or replied.from_user is None or replied.from_user.id != bot.id:
+    # In a topic, a plain message "replies" to the topic's first message. A bot's
+    # message - this one's, or the previous bot's before the move - is a
+    # student's if it is in the map of support messages.
+    if replied.forum_topic_created is not None or replied.from_user is None or not replied.from_user.is_bot:
         return
     user_id = await crm.support_user(message.chat.id, replied.message_id)
     if user_id is None:

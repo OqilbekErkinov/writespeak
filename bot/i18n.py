@@ -1134,6 +1134,15 @@ _T: dict[str, dict[str, str]] = {
     "vocab.btn_delete_yes": {"uz": "✅ Ha, o'chirish", "ru": "✅ Да, удалить"},
     "vocab.btn_cancel": {"uz": "❌ Bekor qilish", "ru": "❌ Отмена"},
     "vocab.btn_relearn": {"uz": "↩️ Qaytadan o'rganish", "ru": "↩️ Учить заново"},
+    # --- The previous bot, after the move to the new one (bot/moved.py) ---
+    "moved.text": {
+        "uz": "🚀 <b>Biz yangi botga ko'chdik: @{bot}</b>\n\nHisobingiz, kreditlaringiz, obunangiz va barcha "
+              "tekshiruvlaringiz saqlangan. Quyidagi tugmani bosing, yangi botda <b>Start</b> ni bosing va "
+              "davom eting.",
+        "ru": "🚀 <b>Мы переехали в новый бот: @{bot}</b>\n\nВаш аккаунт, кредиты, подписка и все проверки "
+              "сохранены. Нажмите кнопку ниже, затем <b>Start</b> в новом боте - и продолжайте.",
+    },
+    "moved.button": {"uz": "➡️ @{bot} ga o'tish", "ru": "➡️ Перейти в @{bot}"},
     # --- Admin bilan aloqa (bot/handlers/support.py, bot/handlers/crm.py) ---
     "support.ask": {
         "uz": "💬 Savolingiz, taklifingiz yoki muammoingizni yozing - matn, rasm, fayl yoki ovozli xabar "

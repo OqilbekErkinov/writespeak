@@ -13,7 +13,6 @@ from services.ai.sample_bank import ModelAnswer
 from services.ai.schemas import (
     ChecklistItem,
     CriterionNotes,
-    CriterionScores,
     EssaySegment,
     Mistake,
     Priority,
@@ -154,7 +153,6 @@ def build_sample_report_pdf(lang: str = "uz") -> bytes:
             for i, w, c, why, crit, unclear in _MISTAKES
         ],
         essay=_segments(),
-        scores=CriterionScores(TR_or_TA=7.0, CC=7.0, LR=6.5, GRA=6.0),
         criterion_notes=CriterionNotes(
             TR_or_TA="Both views covered and a clear opinion.",
             CC="Logical order, but one unclear sentence.",
@@ -187,6 +185,7 @@ def build_sample_report_pdf(lang: str = "uz") -> bytes:
             ChecklistItem(text="Each sentence says **exactly what I mean** - a chance to do what?", ref="Mistake 5"),
         ],
     )
-    report = build_report("task2", _QUESTION, _ESSAY, feedback)
+    # whole bands, as the scoring runs give them; overall 6.5
+    report = build_report("task2", _QUESTION, _ESSAY, feedback, bands={"TR_or_TA": 7, "CC": 7, "LR": 6, "GRA": 6})
     answer = ModelAnswer(question=_QUESTION, paragraphs=_SAMPLE, band=8.0)
     return build_writing_report_pdf(report, answer, build_progress(report, None), "Sample Student", essay_number=None)

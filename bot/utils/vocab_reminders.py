@@ -86,11 +86,17 @@ async def _send(bot: Bot, user_id: int, lang: str, due: int, retry: bool = True)
             return False
         await asyncio.sleep(e.retry_after)
         return await _send(bot, user_id, lang, due, retry=False)
-    except TelegramForbiddenError:
-        return None
+    except TelegramForbiddenError as e:
+        if "blocked" in str(e).lower():
+            return None
+        # "can't initiate conversation": hasn't opened this bot yet - since the
+        # move to a new bot, everyone until they press Start there. Not a "no".
+        logger.info("Vocabulary reminder to %s not sent: %s", user_id, e)
+        return False
     except TelegramBadRequest as e:
         if "chat not found" in str(e).lower():
-            return None
+            logger.info("Vocabulary reminder to %s not sent: %s", user_id, e)
+            return False
         logger.warning("Vocabulary reminder to %s failed: %s", user_id, e)
         return False
     except Exception:

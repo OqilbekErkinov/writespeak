@@ -265,17 +265,36 @@ async def _deliver_with_retries(bot: Bot, cfg: dict, job: dict) -> None:
         except (TelegramNetworkError, TelegramServerError) as e:
             logger.warning("Admins' group: %r - trying again", e)
             await asyncio.sleep(5 * (attempt + 1))
-        except TelegramForbiddenError as e:
-            logger.warning("Admins' group: the bot can't post there (%s) - message dropped", e)
-            await asyncio.sleep(PAUSE)
-            return
-        except TelegramBadRequest as e:
-            if "thread not found" in str(e).lower():
+        except (TelegramForbiddenError, TelegramBadRequest) as e:
+            reason = str(e).lower()
+            # (a copy's "chat not found" can be about the student's chat instead)
+            if job.get("op") != "copy" and any(s in reason for s in ("not a member", "kicked", "chat not found")):
+                # The bot isn't in the group (yet) - a new bot before it's added:
+                # the message waits at the head of the queue.
+                await _wait_for_group(job, e)
+                return
+            if isinstance(e, TelegramForbiddenError):
+                logger.warning("Admins' group: the bot can't post there (%s) - message dropped", e)
+                await asyncio.sleep(PAUSE)
+                return
+            if "thread not found" in reason:
                 _forget_topic(job.get("topic", ""))
             logger.warning("Admins' group: %s - a %s message dropped", e, job.get("topic"))
             await asyncio.sleep(PAUSE)
             return
     logger.warning("Admins' group: gave up on a %s message", job.get("topic"))
+
+
+_last_wait_log = 0.0
+
+
+async def _wait_for_group(job: dict, error: Exception) -> None:
+    global _last_wait_log
+    await redis().lpush(QUEUE, json.dumps(job, ensure_ascii=False))
+    if time.monotonic() - _last_wait_log > 600:
+        _last_wait_log = time.monotonic()
+        logger.warning("Admins' group: the bot isn't in the group (%s) - messages wait until it is added", error)
+    await asyncio.sleep(60)
 
 
 def _cut(text: str, limit: int) -> str:

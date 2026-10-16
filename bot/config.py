@@ -18,6 +18,13 @@ class Settings(BaseSettings):
     admin_telegram_ids: str  # comma-separated, parsed via admin_ids property
     # No leading @ - used to build referral links (bot/handlers/referral.py).
     telegram_bot_username: str = "writespeak_bot"
+    # Signs group/center invite links (bot/utils/group_invite.py); empty = the
+    # bot token. Since the move to @bandzilla_bot (2026-10-17) it is the old
+    # bot's token, so the links and QR codes handed out before keep working.
+    invite_secret: str = ""
+    # The previous bot (@writespeak_bot): bot/moved.py answers everyone there
+    # with a link to this one. Empty = that service idles.
+    moved_bot_token: str = ""
 
     # --- OpenAI ---
     # Verified against a live key on 2026-08-28: gpt-4o-audio-preview has been
