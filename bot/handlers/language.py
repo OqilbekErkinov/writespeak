@@ -13,6 +13,7 @@ from bot.config import settings
 from bot.i18n import t
 from bot.keyboards.lang_kb import CB_LANG_CHANGE_PREFIX, CB_LANG_ONBOARD_PREFIX
 from bot.keyboards.main_menu_kb import main_menu_kb
+from bot.utils import stickers
 from bot.utils.group_invite import joined_notice
 from bot.utils.quota import price_list
 from bot.utils.sample_report import build_sample_report_pdf
@@ -42,6 +43,7 @@ async def onboard_set_language(callback: CallbackQuery) -> None:
     await callback.message.answer(
         t("start.welcome", lang, name=callback.from_user.full_name), reply_markup=main_menu_kb(lang)
     )
+    await stickers.send(callback.bot, callback.from_user.id, "salom")  # the brand's first hello (p. 49)
     # In the student's language; rendered off the event loop (WeasyPrint is CPU-bound).
     pdf_bytes = await asyncio.to_thread(build_sample_report_pdf, lang)
     await callback.message.answer_document(

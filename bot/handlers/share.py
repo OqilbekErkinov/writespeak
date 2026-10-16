@@ -37,11 +37,16 @@ async def send_share_card(callback: CallbackQuery, lang: str) -> None:
         await callback.message.answer(t("share.not_found", lang))
         return
 
+    # The Gotcha count: the report's numbered mistakes - only rows saved with
+    # report_data have them in that form (older ones hold sentence notes).
+    mistakes = len(submission.annotations or []) if submission.report_data is not None else None
     png_bytes = build_share_card(
         student_name=callback.from_user.full_name,
         band=submission.overall_band,
         task_label=task_label or "IELTS",
         bot_username=settings.telegram_bot_username,
+        mistakes=mistakes,
+        lang=lang,
     )
     await callback.message.answer_photo(
         BufferedInputFile(png_bytes, filename="band_score.png"),

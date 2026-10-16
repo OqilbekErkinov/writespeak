@@ -1,4 +1,6 @@
-# WriteSpeak
+# Bandzilla
+
+(Avvalgi nomi WriteSpeak - 2026-10-17 dan Bandzilla, bot @bandzilla_bot.)
 
 Ochiq (istalgan foydalanuvchi kirishi mumkin) Telegram bot: Writing (Task 1/2) va Speaking
 (Part 1/2/3) ishlarini rasmiy IELTS Band Descriptors asosida baholaydi, rangli tahlil bilan

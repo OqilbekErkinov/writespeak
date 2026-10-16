@@ -1,4 +1,4 @@
-"""Builds the WriteSpeak PDF feedback reports: Jinja2 HTML -> WeasyPrint PDF.
+"""Builds the Bandzilla PDF feedback reports: Jinja2 HTML -> WeasyPrint PDF.
 
 Writing: build_writing_report_pdf (templates/writing_report.html, the final
 design of 2026-10-12). Speaking: build_speaking_report_pdf
@@ -33,8 +33,13 @@ _env = Environment(
 # --- Writing report (final design, 2026-10-12) ------------------------------------------
 # templates/writing_report.html is the approved Appendix A design, English only.
 
-FONT_SANS = "Inter, InterExt, InterCyr, Noto Sans, sans-serif"
-FONT_SERIF = "Fraunces, FrauncesExt, Noto Serif, serif"
+# Bandzilla type (Brand Guidelines p. 36): Manrope for text, Unbounded for
+# headings and numbers, Caveat for the hand-written accents - each subset its
+# own family (templates/report_styles.css).
+FONT_SANS = "Manrope, ManropeExt, ManropeCyr, Noto Sans, sans-serif"
+FONT_DISPLAY = "Unbounded, UnboundedExt, UnboundedCyr, Manrope, Noto Sans, sans-serif"
+FONT_HAND = "Caveat, CaveatExt, CaveatCyr, Manrope, cursive"
+BRAND_FONTS = {"sans": FONT_SANS, "display": FONT_DISPLAY, "hand": FONT_HAND}
 RING_RADIUS = 52  # the score ring's circle in the 130x130 SVG
 RING_TICK = (43, 61)  # the target tick runs between these radii
 
@@ -54,9 +59,9 @@ def _ring(overall: float, target: float) -> dict:
 
 def _name_size(name: str) -> int:
     """Font size that keeps the student's name clear of the score ring
-    (longer names still wrap inside their 118mm column)."""
+    (longer names still wrap inside their 118mm column) - Unbounded is wide."""
     n = len(name)
-    return 40 if n <= 12 else 34 if n <= 16 else 28 if n <= 20 else 23 if n <= 26 else 19
+    return 32 if n <= 10 else 27 if n <= 14 else 23 if n <= 18 else 19 if n <= 24 else 16
 
 
 def _piece(task_type: str) -> str:
@@ -149,8 +154,7 @@ def build_writing_report_pdf(
     if leaked:
         logger.error("Writing report names the source (%s) - check the model output", ", ".join(leaked))
     context = dict(
-        sans=FONT_SANS,
-        serif=FONT_SERIF,
+        **BRAND_FONTS,
         piece=_piece(report.task_type),
         task_label="Task 1 Report" if report.task_type == "task1" else "Task 2 Essay",
         student_name=student_name,
@@ -232,8 +236,7 @@ def build_speaking_report_pdf(
         logger.error("Speaking report names the source (%s) - check the model output", ", ".join(leaked))
     bands = {a["band"] for a in answers}
     context = dict(
-        sans=FONT_SANS,
-        serif=FONT_SERIF,
+        **BRAND_FONTS,
         student_name=student_name,
         name_size=_name_size(student_name),
         date_str=_format_date(when or datetime.now()),

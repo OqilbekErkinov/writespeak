@@ -434,7 +434,7 @@ async def send_report(callback: CallbackQuery, lang: str) -> None:
         await callback.answer(t("group.report_unavailable", lang), show_alert=True)
         return
     await callback.answer()
-    await callback.message.answer_document(BufferedInputFile(content, filename=f"WriteSpeak_report_{kind}{submission_id}.pdf"))
+    await callback.message.answer_document(BufferedInputFile(content, filename=f"Bandzilla_report_{kind}{submission_id}.pdf"))
 
 
 @router.callback_query(F.data.startswith(kb.CB_COMMENT_PREFIX))
@@ -536,7 +536,7 @@ async def parent_report(callback: CallbackQuery, lang: str) -> None:
         period_start=max(month_start, membership.joined_at), period_end=now, lang=lang,
     )
     await callback.message.answer_document(
-        BufferedInputFile(pdf, filename=f"WriteSpeak_{student.full_name[:30]}_{_date(now)}.pdf".replace(" ", "_")),
+        BufferedInputFile(pdf, filename=f"Bandzilla_{student.full_name[:30]}_{_date(now)}.pdf".replace(" ", "_")),
         caption=t("group.parent_report_caption", lang, name=_esc(student.full_name)),
     )
 
@@ -561,7 +561,7 @@ async def group_excel(callback: CallbackQuery, lang: str) -> None:
     await callback.answer(t("group.preparing", lang))
     members, _, assignments, _ = await _group_data(group)
     content = await asyncio.to_thread(build_group_excel, group.name, members, assignments, lang)
-    await callback.message.answer_document(BufferedInputFile(content, filename=f"WriteSpeak_{group.name[:40]}.xlsx".replace(" ", "_")))
+    await callback.message.answer_document(BufferedInputFile(content, filename=f"Bandzilla_{group.name[:40]}.xlsx".replace(" ", "_")))
 
 
 @router.callback_query(F.data.startswith(kb.CB_GROUP_PDF_PREFIX))
@@ -575,7 +575,7 @@ async def group_pdf(callback: CallbackQuery, lang: str) -> None:
     content = await asyncio.to_thread(
         build_group_pdf, group.name, teacher.full_name if teacher else "", overview, members, assignments, lang
     )
-    await callback.message.answer_document(BufferedInputFile(content, filename=f"WriteSpeak_{group.name[:40]}.pdf".replace(" ", "_")))
+    await callback.message.answer_document(BufferedInputFile(content, filename=f"Bandzilla_{group.name[:40]}.pdf".replace(" ", "_")))
 
 
 # --- Leaderboard ----------------------------------------------------------------------------------------

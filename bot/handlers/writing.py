@@ -43,7 +43,7 @@ from bot.keyboards.writing_task_kb import (
     writing_task_kb,
 )
 from bot.states.writing_states import WritingStates
-from bot.utils import crm_events
+from bot.utils import crm_events, stickers
 from bot.utils.input_extraction import read_text_input
 from bot.utils.messages import show_screen, strip_buttons
 from bot.utils.mock_test_flow import record_mock_test_part
@@ -334,6 +334,7 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
     except Exception:
         logger.exception("Writing grading failed for user %s", user_id)
         await processing_msg.edit_text(t("writing.grading_failed", lang))
+        await stickers.send(message.bot, user_id, "oops")
         await state.clear()
         if not data.get("mock_session_id"):
             await message.answer(t("nav.what_next", lang), reply_markup=_after_result_kb(data, lang))
@@ -398,7 +399,9 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
             )
         new_words = await crud.add_vocabulary_entries(session, user_id, vocabulary, source="writing")
 
-    caption = t("writing.done_caption", lang, band=report.overall_band)
+    found = len(report.mistakes)
+    caption = (t("writing.done_caption", lang, band=report.overall_band, mistakes=found) if found
+               else t("writing.done_caption_clean", lang, band=report.overall_band))
     if new_words:
         caption += "\n" + t("vocab.added_after_check", lang, count=new_words)
     await processing_msg.delete()
@@ -407,6 +410,7 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
         caption=caption,
         reply_markup=share_card_kb("writing", submission.id, lang),
     )
+    await stickers.send(message.bot, user_id, stickers.for_result(report.overall_band, found))
 
     if data.get("mock_session_id"):
         await record_mock_test_part(

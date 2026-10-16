@@ -92,7 +92,7 @@ async def main() -> None:
     from bot.utils.group_scheduler import run_group_jobs
     from bot.utils.vocab_reminders import run_vocab_reminders
 
-    logger.info("Starting WriteSpeak bot (polling mode)")
+    logger.info("Starting Bandzilla bot (polling mode)")
     await bot.delete_webhook(drop_pending_updates=True)
     crm.install_error_forwarding()
     background = [

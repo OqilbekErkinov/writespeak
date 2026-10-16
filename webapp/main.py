@@ -1,4 +1,4 @@
-"""WriteSpeak admin web panel - a read-mostly dashboard over the same
+"""Bandzilla admin web panel - a read-mostly dashboard over the same
 Postgres database the bot uses (db/ package, completely unchanged - this is
 a second consumer of it, not a rewrite). Runs as a separate process from the
 same Docker image as the bot (see docker-compose.yml's `admin_web` service):
@@ -30,7 +30,7 @@ from db.database import get_session
 from db.models import PaymentStatus, PracticeModule, UserRole
 from services.storage.file_storage import delete_file, save_practice_image
 
-app = FastAPI(title="WriteSpeak Admin")
+app = FastAPI(title="Bandzilla Admin")
 app.add_middleware(
     SessionMiddleware,
     secret_key=settings.web_session_secret,

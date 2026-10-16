@@ -1,9 +1,11 @@
 {#- The approved final report design (Appendix A of the final report prompt,
-    2026-10-12), rendered by services/pdf/report_builder.py. The stylesheet
-    (report_styles.css) is shared with the Speaking report. English only. -#}
+    2026-10-12) in the Bandzilla brand (2026-10-17), rendered by
+    services/pdf/report_builder.py. The stylesheet (report_styles.css) is shared
+    with the Speaking report. English only. -#}
 <!doctype html><html lang="en"><head><meta charset="utf-8"><style>
 {% include "report_styles.css" %}
 </style></head><body{% if compact %} class="compact"{% endif %}>
+<div class="pagefoot"><img src="img/symbol.png" alt=""><span class="pg"></span></div>
 
 {% macro card(c) -%}
 <div class="cc-card st-{{ c.cls }}">
@@ -20,7 +22,7 @@
 <!-- ================= COVER ================= -->
 <div class="cover">
   <div class="hero">
-    <div class="brandrow"><div class="logo">WRITE<span>SPEAK</span></div><div class="taskchip">IELTS Writing · {{ task_label }}</div></div>
+    <div class="brandrow"><div class="logo"><img src="img/logo-on-dark.png" alt="Bandzilla"></div><div class="taskchip">IELTS Writing · {{ task_label }}</div></div>
     <div class="hero-in">
       <div>
         <div class="kicker">Feedback report</div>
@@ -35,7 +37,7 @@
       </div>
       <div class="gauge"><svg viewBox="0 0 130 130" width="56mm" height="56mm" xmlns="http://www.w3.org/2000/svg">
 <circle cx="65" cy="65" r="52" fill="none" stroke="#ffffff" stroke-opacity=".12" stroke-width="10"/>
-<circle cx="65" cy="65" r="52" fill="none" stroke="#ffc53d" stroke-width="10" stroke-linecap="round"
+<circle cx="65" cy="65" r="52" fill="none" stroke="#5BF2A6" stroke-width="10" stroke-linecap="round"
  stroke-dasharray="{{ ring.dash }} {{ ring.circ }}" transform="rotate(-90 65 65)"/>
 <line x1="{{ ring.x1 }}" y1="{{ ring.y1 }}" x2="{{ ring.x2 }}" y2="{{ ring.y2 }}" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round"/>
 </svg>
@@ -57,6 +59,7 @@
         <div class="k">What you did well</div>
         <div class="t">{{ report.strength_html|safe }}</div>
       </div>
+      <div class="m"><img src="img/mascot-{{ 'cool' if report.overall_band >= 7 else 'happy' }}.png" alt=""></div>
     </div>
 
     {% if report.priorities %}
@@ -93,9 +96,9 @@
 {% if report.essay_marked %}
 <div class="legend">
   <span><i class="sw" style="background:var(--green-bg)"></i>Strong phrase — keep it</span>
-  <span><i class="sw" style="border-bottom:2px solid var(--amber-line); height:2.5mm"></i>Mistake</span>
-  <span><i class="sw" style="background:#eceef2;border-bottom:1.6px dashed #8a90a0"></i>Copied from the question</span>
-  <span><s style="color:#a6623a">word</s> <b style="color:var(--green)">fix</b></span>
+  <span><i class="sw" style="border-bottom:2px solid var(--line-y); height:2.5mm"></i>Mistake</span>
+  <span><i class="sw" style="background:#E9EFEC;border-bottom:1.6px dashed var(--faint)"></i>Copied from the question</span>
+  <span><s style="color:var(--red)">word</s> <b style="color:var(--moss)">fix</b></span>
 </div>
 {% else %}
 <div class="unmarked">This time the marks could not be placed on your text, so your {{ piece }} is shown exactly as you wrote it. Every mistake is explained in the next section.</div>

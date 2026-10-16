@@ -107,7 +107,7 @@ consistent position throughout; main ideas are extended, supported and justified
 examples, not just asserted.
 """.strip()
 
-# Every WriteSpeak user is an ESL learner. Since 2026-10-16 that softens the
+# Every Bandzilla user is an ESL learner. Since 2026-10-16 that softens the
 # feedback's WORDING only - the bands come from strict scoring runs
 # (scoring.LENIENCY_NOTE): "default to the higher band" had inflated them
 # (an essay a careful marking puts at 7.5 got 8.0 and 8.5).

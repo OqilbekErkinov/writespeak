@@ -3,38 +3,40 @@
 <head>
 <meta charset="utf-8">
 <style>
-{% for family, subset in (("Inter", "latin"), ("InterExt", "latin-ext"), ("InterCyr", "cyrillic")) %}
-@font-face { font-family: {{ family }}; src: url(fonts/inter-{{ subset }}-400-normal.woff); font-weight: 400; }
-@font-face { font-family: {{ family }}; src: url(fonts/inter-{{ subset }}-600-normal.woff); font-weight: 600; }
-@font-face { font-family: {{ family }}; src: url(fonts/inter-{{ subset }}-700-normal.woff); font-weight: 700; }
-{% endfor %}
-@page { size: A4; margin: 14mm 14mm 16mm; @bottom-center { content: "WriteSpeak"; font: 8pt Inter, InterExt, InterCyr, sans-serif; color: #8991ac; } }
+{#- Bandzilla type (fonts/, SIL OFL): each subset its own family - WeasyPrint 63 ignores unicode-range -#}
+{% for suffix, subset in (("", "latin"), ("Ext", "latin-ext"), ("Cyr", "cyrillic")) %}
+{% for weight in (400, 500, 700, 800) %}@font-face { font-family: Manrope{{ suffix }}; src: url(fonts/manrope-{{ subset }}-{{ weight }}-normal.woff); font-weight: {{ weight }}; }
+{% endfor %}{% for weight in (600, 700) %}@font-face { font-family: Unbounded{{ suffix }}; src: url(fonts/unbounded-{{ subset }}-{{ weight }}-normal.woff); font-weight: {{ weight }}; }
+{% endfor %}{% endfor %}
+@page { size: A4; margin: 14mm 14mm 16mm; @bottom-center { content: "Bandzilla"; font: 500 7.5pt Manrope, ManropeExt, ManropeCyr, sans-serif; color: #8FA39A; } }
 * { box-sizing: border-box; }
-body { font-family: Inter, InterExt, InterCyr, sans-serif; font-size: 10pt; color: #1c2333; margin: 0; }
-.head { background: #0f1c3f; color: #fff; border-radius: 3mm; padding: 6mm 7mm; margin-bottom: 6mm; }
-.head .k { font-size: 8.5pt; letter-spacing: .06em; text-transform: uppercase; opacity: .7; }
-.head h1 { font-size: 20pt; margin: 1mm 0 1.5mm; }
+body { font-family: Manrope, ManropeExt, ManropeCyr, sans-serif; font-weight: 500; font-size: 10pt; color: #13261F; margin: 0; }
+.head { background: #062018 url(img/skin-ink.svg) no-repeat; background-size: 200mm auto; color: #fff; border-radius: 3mm; padding: 6mm 7mm; margin-bottom: 6mm; }
+.head .logo { height: 6.5mm; display: block; margin-bottom: 3mm; }
+.head .k { font-size: 8pt; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: #5BF2A6; }
+.head h1 { font-family: Unbounded, UnboundedExt, UnboundedCyr, Manrope, sans-serif; font-weight: 700; font-size: 19pt; letter-spacing: -.4pt; margin: 1mm 0 1.5mm; }
 .head .m { font-size: 9pt; opacity: .88; line-height: 1.5; }
-.tile { display: inline-block; vertical-align: top; width: 41.5mm; border: 1px solid #e1e5f0; border-radius: 2.5mm; padding: 3mm 4mm; margin-right: 2mm; margin-bottom: 2.5mm; }
-.tile b { display: block; font-size: 15pt; color: #172a5c; }
-.tile span { font-size: 8pt; color: #5a6274; }
-.tile i { font-style: normal; font-size: 8pt; color: #8991ac; }
-h2 { font-size: 12pt; margin: 6mm 0 2.5mm; color: #0f1c3f; }
+.tile { display: inline-block; vertical-align: top; width: 41.5mm; border: 1px solid #DDE8E3; border-left: 1.4mm solid #5BF2A6; border-radius: 2.5mm; padding: 3mm 4mm; margin-right: 2mm; margin-bottom: 2.5mm; }
+.tile b { display: block; font-family: Unbounded, UnboundedExt, UnboundedCyr, Manrope, sans-serif; font-weight: 700; font-size: 14pt; color: #062018; }
+.tile span { font-size: 8pt; color: #5E7069; }
+.tile i { font-style: normal; font-size: 8pt; color: #8FA39A; }
+h2 { font-family: Unbounded, UnboundedExt, UnboundedCyr, Manrope, sans-serif; font-weight: 600; font-size: 11.5pt; letter-spacing: -.2pt; margin: 6mm 0 2.5mm; color: #062018; }
 table { width: 100%; border-collapse: collapse; }
-th { text-align: left; font-size: 7.5pt; text-transform: uppercase; letter-spacing: .04em; color: #8991ac; border-bottom: 1px solid #e1e5f0; padding: 2mm; }
-td { padding: 2mm; border-bottom: 1px solid #eef0f6; }
+th { text-align: left; font-size: 7.3pt; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; color: #5E7069; border-bottom: 1.5px solid #062018; padding: 2mm; }
+td { padding: 2mm; border-bottom: 1px solid #DDE8E3; }
 td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
-.up { color: #0ca30c; font-weight: 600; } .down { color: #d03b3b; font-weight: 600; }
+.up { color: #0A7C4A; font-weight: 800; } .down { color: #D93A3A; font-weight: 800; }
 .chart img { width: 100%; }
-.tip { background: #f2f6fd; border-left: 3px solid #2a78d6; border-radius: 2mm; padding: 3.5mm 4.5mm; }
-.cmt { border: 1px solid #e1e5f0; border-radius: 2.5mm; padding: 3mm 4mm; margin-bottom: 2.5mm; page-break-inside: avoid; }
-.cmt .h { font-size: 8.5pt; color: #5a6274; margin-bottom: 1mm; }
-.muted { color: #8991ac; }
+.tip { background: #E6FAF0; border-left: 3px solid #0A7C4A; border-radius: 2mm; padding: 3.5mm 4.5mm; }
+.cmt { border: 1px solid #DDE8E3; border-radius: 2.5mm; padding: 3mm 4mm; margin-bottom: 2.5mm; page-break-inside: avoid; }
+.cmt .h { font-size: 8.5pt; color: #5E7069; margin-bottom: 1mm; }
+.muted { color: #8FA39A; }
 </style>
 </head>
 <body>
 <div class="head">
-  <div class="k">WriteSpeak · {{ L.parent_title }}</div>
+  <img class="logo" src="img/logo-on-dark.png" alt="Bandzilla">
+  <div class="k">{{ L.parent_title }}</div>
   <h1>{{ student_name }}</h1>
   <div class="m">{{ L.group }}: {{ group_name }} · {{ L.teacher }}: {{ teacher_name }}<br>{{ L.period }}: {{ period }}</div>
 </div>

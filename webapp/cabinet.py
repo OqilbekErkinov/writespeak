@@ -197,7 +197,7 @@ async def report_pdf(request: Request, kind: str, submission_id: int):
         path = await crud.get_member_report_pdf(session, uid, kind, submission_id)
     if path is None:
         return Response(status_code=404)
-    return FileResponse(path, media_type="application/pdf", filename=f"WriteSpeak_report_{kind}{submission_id}.pdf")
+    return FileResponse(path, media_type="application/pdf", filename=f"Bandzilla_report_{kind}{submission_id}.pdf")
 
 
 async def _export_data(group):
@@ -223,7 +223,7 @@ async def export_excel(request: Request, group_id: int):
         return _login_redirect()
     members, _, assignments, _ = await _export_data(group)
     content = await asyncio.to_thread(build_group_excel, group.name, members, assignments, "uz")
-    return _download(content, f"WriteSpeak_{group.name}.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    return _download(content, f"Bandzilla_{group.name}.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 
 @router.get("/group/{group_id}/report.pdf")
@@ -233,7 +233,7 @@ async def export_pdf(request: Request, group_id: int):
         return _login_redirect()
     members, overview, assignments, teacher = await _export_data(group)
     content = await asyncio.to_thread(build_group_pdf, group.name, teacher.full_name if teacher else "", overview, members, assignments, "uz")
-    return _download(content, f"WriteSpeak_{group.name}.pdf", "application/pdf")
+    return _download(content, f"Bandzilla_{group.name}.pdf", "application/pdf")
 
 
 @router.get("/group/{group_id}/student/{student_id}/monthly.pdf")
@@ -265,4 +265,4 @@ async def monthly_pdf(request: Request, group_id: int, student_id: int):
         assignments_done=sum(1 for a in assignments if len(a["done"]) == len(a["parts"])),
         assignments_total=len(assignments), period_start=max(month_start, membership.joined_at), period_end=now, lang="uz",
     )
-    return _download(content, f"WriteSpeak_{student.full_name}_{_day(now)}.pdf", "application/pdf")
+    return _download(content, f"Bandzilla_{student.full_name}_{_day(now)}.pdf", "application/pdf")

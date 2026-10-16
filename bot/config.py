@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     telegram_bot_token: str
     admin_telegram_ids: str  # comma-separated, parsed via admin_ids property
     # No leading @ - used to build referral links (bot/handlers/referral.py).
-    telegram_bot_username: str = "writespeak_bot"
+    telegram_bot_username: str = "bandzilla_bot"
     # Signs group/center invite links (bot/utils/group_invite.py); empty = the
     # bot token. Since the move to @bandzilla_bot (2026-10-17) it is the old
     # bot's token, so the links and QR codes handed out before keep working.

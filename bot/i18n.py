@@ -35,12 +35,14 @@ _T: dict[str, dict[str, str]] = {
         "кнопками Подтвердить/Отклонить).",
     },
     "start.welcome": {
-        "uz": "Xush kelibsiz, {name}! 👋\nQuyidagi menyudan bo'limni tanlang:",
-        "ru": "Добро пожаловать, {name}! 👋\nВыберите раздел в меню ниже:",
+        "uz": "Salom, {name}! Men Bandzilla 🦖 — IELTS Writing va Speaking'dagi xatolaringizni yeyman.\n"
+              "Nimani tekshiramiz? Quyidagi menyudan tanlang 👇",
+        "ru": "Привет, {name}! Я Bandzilla 🦖 — съедаю ошибки в вашем IELTS Writing и Speaking.\n"
+              "Что проверим? Выберите в меню ниже 👇",
     },
     "start.sample_caption": {
-        "uz": "📄 Mana shunday batafsil hisobot olasiz — har bir Writing yoki Speaking "
-        "tekshiruvi uchun!",
+        "uz": "📄 Mana shunday hisobot olasiz: ball, har bir xatoning izohi, sizga moslab yozilgan "
+        "model javob va Band 7+ so'zlar — har bir Writing yoki Speaking tekshiruvi uchun.",
         "ru": "📄 Именно такой подробный отчёт вы получите за каждую проверку Writing или "
         "Speaking!",
     },
@@ -182,17 +184,21 @@ _T: dict[str, dict[str, str]] = {
         "ru": "✅ Принято.\n\n✏️ Теперь отправьте свой ответ (минимум {min_words} слов).",
     },
     "writing.grading_in_progress": {
-        "uz": "⏳ Tahlil qilinmoqda — bu 2–4 daqiqa davom etadi, biroz kuting...",
-        "ru": "⏳ Идёт анализ — это займёт 2–4 минуты, немного подождите...",
+        "uz": "🦷 Tahlil qilyapman… tishlarim o'tkir! Bu 2–4 daqiqa oladi.",
+        "ru": "🦷 Разбираю… зубы острые! Это займёт 2–4 минуты.",
     },
     "writing.grading_failed": {
-        "uz": "❌ Kechirasiz, tahlil qilishda xatolik yuz berdi. Birozdan so'ng qayta "
+        "uz": "Voy, nimadir xato ketdi — tekshiruv tugamadi, coin yechilmadi. Birozdan so'ng qayta "
         "urinib ko'ring.",
-        "ru": "❌ Извините, при анализе произошла ошибка. Попробуйте ещё раз чуть позже.",
+        "ru": "Ой, что-то пошло не так — проверка не завершилась, coin не списаны. Попробуйте ещё раз чуть позже.",
     },
     "writing.done_caption": {
-        "uz": "✅ Tayyor! Umumiy ball: <b>{band}</b>",
-        "ru": "✅ Готово! Общий балл: <b>{band}</b>",
+        "uz": "Gotcha! {mistakes} ta xato topdim 🦖\nTaxminiy Band: <b>{band}</b> — rasmiy IELTS natijasi emas.",
+        "ru": "Gotcha! Нашёл ошибок: {mistakes} 🦖\nПримерный Band: <b>{band}</b> — это не официальный результат IELTS.",
+    },
+    "writing.done_caption_clean": {
+        "uz": "Xato topmadim — zo'r ish! 🦖\nTaxminiy Band: <b>{band}</b> — rasmiy IELTS natijasi emas.",
+        "ru": "Ошибок не нашёл — отличная работа! 🦖\nПримерный Band: <b>{band}</b> — это не официальный результат IELTS.",
     },
     "writing.resubmitted": {
         "uz": "♻️ Bu — #{number} inshodagi aynan o'sha matn, shuning uchun saqlangan hisobotingizni qayta "
@@ -254,8 +260,8 @@ _T: dict[str, dict[str, str]] = {
         "ru": "— <b>{part}</b> —",
     },
     "speaking.grading_in_progress": {
-        "uz": "⏳ Yozuvingiz tinglanib, tahlil qilinmoqda — bu 2–4 daqiqa davom etadi, biroz kuting...",
-        "ru": "⏳ Слушаю и анализирую вашу запись — это займёт 2–4 минуты, немного подождите...",
+        "uz": "🎧 Yozuvingizni tinglab, tahlil qilyapman… tishlarim o'tkir 🦷 Bu 2–4 daqiqa oladi.",
+        "ru": "🎧 Слушаю запись и разбираю… зубы острые 🦷 Это займёт 2–4 минуты.",
     },
     "speaking.resubmitted": {
         "uz": "♻️ Bu — {number}-sessiyadagi aynan o'sha yozuv, shuning uchun saqlangan hisobotingizni "
@@ -1146,8 +1152,8 @@ _T: dict[str, dict[str, str]] = {
     # --- Share (bot/handlers/share.py) ---
     "share.not_found": {"uz": "Bu natija topilmadi.", "ru": "Результат не найден."},
     "share.caption": {
-        "uz": "Do'stlaringizga ulashing! 📤",
-        "ru": "Поделитесь с друзьями! 📤",
+        "uz": "Natijangizni do'stlaringizga ulashing! 🦖📤",
+        "ru": "Поделитесь результатом с друзьями! 🦖📤",
     },
     "share.button": {"uz": "📤 Ulashish uchun rasm", "ru": "📤 Изображение для публикации"},
 }

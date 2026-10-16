@@ -3,108 +3,172 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{% block title %}WriteSpeak Admin{% endblock %}</title>
+<meta name="theme-color" content="#062018">
+<title>{% block title %}Bandzilla Admin{% endblock %}</title>
+<link rel="icon" type="image/png" sizes="32x32" href="https://writespeak.uz/assets/favicon-32.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&family=Unbounded:wght@700;800&display=swap">
 <style>
+  /* Bandzilla brand: Deep Ink base, Lime energy, light mint surfaces.
+     Text on Lime/Yellow/Red is always Ink; white text only on Ink or Moss. */
   :root {
-    --navy: #0f1c3f;
-    --navy-2: #172a5c;
-    --accent: #2a78d6;
-    --paper: #f7f8fc;
-    --surface: #ffffff;
-    --border: #e1e5f0;
-    --ink: #1c2333;
-    --ink-soft: #5a6274;
-    --ink-faint: #8991ac;
-    --good: #0ca30c;
-    --warn: #a6720a;
-    --bad: #d03b3b;
-    --font: system-ui, -apple-system, "Segoe UI", sans-serif;
+    --ink: #062018;          /* Deep Ink - top bar, main text */
+    --lime: #5BF2A6;         /* Bandzilla Lime - primary actions, active nav */
+    --skin: #2BCB7B;         /* Skin Green */
+    --moss: #0A7C4A;         /* Moss - links, success text */
+    --yellow: #FFE066;       /* Spike Yellow - pending / warnings */
+    --red: #FF4D4D;          /* Error Red - destructive / rejected */
+    --mint: #C9F7DD;         /* mascot belly */
+    --mint-2: #E9FBF2;
+    --paper: #F3FBF7;        /* page background */
+    --surface: #FFFFFF;
+    --border: #D6E8DE;
+    --border-strong: #B9D6C7;
+    --ink-soft: #3E5A4F;
+    --ink-faint: #587367;
+    --red-tint: #FFE1E1;
+    --good: var(--moss);
+    --warn: var(--yellow);
+    --bad: var(--red);
+    --font: "Manrope", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --font-head: "Unbounded", "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif;
   }
   * { box-sizing: border-box; }
   body {
     margin: 0; font-family: var(--font); background: var(--paper); color: var(--ink);
-    font-size: 15px; line-height: 1.5;
+    font-size: 15px; font-weight: 500; line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
   }
-  a { color: var(--accent); text-decoration: none; }
+  a { color: var(--moss); text-decoration: none; font-weight: 700; }
   a:hover { text-decoration: underline; }
 
+  /* Top bar: Ink with a row of spikes along its bottom edge */
   .topbar {
-    background: var(--navy); color: #fff; display: flex; align-items: center;
-    gap: 28px; padding: 0 24px; height: 58px;
+    position: relative; background: var(--ink); color: #fff; display: flex; align-items: center;
+    gap: 24px; padding: 0 24px; min-height: 64px;
   }
-  .topbar .brand { font-weight: 700; font-size: 17px; margin-right: 8px; }
-  .topbar nav { display: flex; gap: 4px; flex: 1; }
+  .topbar::after {
+    content: ""; position: absolute; left: 0; right: 0; top: 100%; height: 7px; pointer-events: none;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='7' viewBox='0 0 14 7'%3E%3Cpath d='M0 0h14L7 7z' fill='%23062018'/%3E%3C/svg%3E") repeat-x left top / 14px 7px;
+  }
+  .topbar .brand { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+  .topbar .brand img { display: block; height: 32px; width: auto; color: var(--lime);
+    font: 800 18px/32px var(--font-head); }
+  .topbar .brand .tag { font-size: 10.5px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--ink); background: var(--lime); padding: 3px 8px; border-radius: 100px; line-height: 1.4; }
+  .topbar nav { display: flex; gap: 4px; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+  .topbar nav::-webkit-scrollbar { display: none; }
   .topbar nav a {
-    color: rgba(255,255,255,0.75); padding: 8px 14px; border-radius: 8px; font-size: 14px;
-    font-weight: 500;
+    color: rgba(255,255,255,0.78); padding: 8px 12px; border-radius: 100px; font-size: 14px;
+    font-weight: 700; white-space: nowrap;
   }
-  .topbar nav a:hover { color: #fff; text-decoration: none; background: rgba(255,255,255,0.08); }
-  .topbar nav a.active { color: #fff; background: rgba(255,255,255,0.14); }
-  .topbar .logout { color: rgba(255,255,255,0.6); font-size: 13px; }
+  .topbar nav a:hover { color: #fff; text-decoration: none; background: rgba(91,242,166,0.12); }
+  .topbar nav a.active { color: var(--ink); background: var(--lime); }
+  .topbar .logout { color: rgba(255,255,255,0.7); font-size: 13px; font-weight: 700; white-space: nowrap; }
+  .topbar .logout:hover { color: var(--lime); }
 
-  .wrap { max-width: 1120px; margin: 0 auto; padding: 28px 24px 60px; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 36px 24px 60px; }
 
-  h1 { font-size: 22px; margin: 0 0 20px; }
+  h1 { font-family: var(--font-head); font-weight: 800; font-size: 24px; line-height: 1.1;
+    letter-spacing: -0.02em; margin: 0 0 22px; color: var(--ink); }
 
-  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1px;
-    background: var(--border); border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
+  .stat-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px;
     margin-bottom: 28px; }
-  .stat { background: var(--surface); padding: 16px 18px; }
-  .stat .n { font-size: 26px; font-weight: 700; color: var(--navy-2); font-variant-numeric: tabular-nums; }
-  .stat .l { font-size: 12.5px; color: var(--ink-soft); margin-top: 2px; }
+  .stat { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 16px 18px; }
+  .stat .n { font-family: var(--font-head); font-size: 22px; font-weight: 700; line-height: 1.2; color: var(--ink);
+    letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+  .stat .l { font-size: 12.5px; color: var(--ink-soft); margin-top: 6px; line-height: 1.35; }
+  .stat:first-child { background: var(--ink); border-color: var(--ink); }
+  .stat:first-child .n { color: var(--lime); }
+  .stat:first-child .l { color: rgba(255,255,255,0.78); }
 
   .card {
-    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
-    padding: 18px 20px; margin-bottom: 24px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+    padding: 20px 22px; margin-bottom: 24px;
   }
-  .card h2 { font-size: 15px; margin: 0 0 14px; color: var(--ink); }
+  .card h2 { font-family: var(--font-head); font-size: 15px; font-weight: 700; letter-spacing: -0.01em;
+    line-height: 1.25; margin: 0 0 16px; color: var(--ink); }
 
   table { width: 100%; border-collapse: collapse; font-size: 14px; }
-  th { text-align: left; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.04em;
-    color: var(--ink-faint); font-weight: 600; padding: 8px 10px; border-bottom: 1px solid var(--border); }
-  td { padding: 9px 10px; border-bottom: 1px solid var(--border); color: var(--ink-soft); }
+  th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--moss); font-weight: 800; padding: 8px 10px; border-bottom: 2px solid var(--border); }
+  td { padding: 10px 10px; border-bottom: 1px solid var(--border); color: var(--ink-soft); }
   tr:last-child td { border-bottom: none; }
-  td.strong { color: var(--ink); font-weight: 600; }
-  .table-scroll { overflow-x: auto; }
+  tr:hover td { background: var(--paper); }
+  td.strong { color: var(--ink); font-weight: 700; }
+  .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
-  .pill { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600;
-    padding: 3px 9px; border-radius: 100px; }
-  .pill-good { color: var(--good); background: #e4f5e4; }
-  .pill-warn { color: var(--warn); background: #fbf0da; }
-  .pill-bad { color: var(--bad); background: #fbe9e7; }
+  .pill { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 800;
+    padding: 3px 10px; border-radius: 100px; color: var(--ink); white-space: nowrap; }
+  .pill-good { background: var(--mint); }
+  .pill-warn { background: var(--yellow); }
+  .pill-bad { background: var(--red-tint); box-shadow: inset 0 0 0 1px var(--red); }
 
-  .btn { display: inline-block; font-size: 13px; font-weight: 600; padding: 6px 12px; border-radius: 7px;
-    border: 1px solid var(--border); background: var(--surface); color: var(--ink); cursor: pointer; }
-  .btn:hover { background: var(--paper); text-decoration: none; }
-  .btn-good { color: #fff; background: var(--good); border-color: var(--good); }
-  .btn-bad { color: #fff; background: var(--bad); border-color: var(--bad); }
+  .btn { display: inline-block; font-family: var(--font); font-size: 13px; font-weight: 700; line-height: 1.4;
+    padding: 7px 14px; border-radius: 100px; border: 1px solid var(--border-strong); background: var(--surface);
+    color: var(--ink); cursor: pointer; }
+  .btn:hover { background: var(--mint-2); border-color: var(--moss); text-decoration: none; }
+  .btn:focus-visible { outline: 2px solid var(--moss); outline-offset: 2px; }
+  .btn:disabled, .btn[disabled] { opacity: 0.4; cursor: default; background: var(--surface); border-color: var(--border-strong); }
+  .btn-good { color: #fff; background: var(--moss); border-color: var(--moss); }
+  .btn-good:hover { background: var(--ink); border-color: var(--ink); color: #fff; }
+  .btn-bad { color: var(--ink); background: var(--red); border-color: var(--red); }
+  .btn-bad:hover { background: var(--red); border-color: var(--red); color: var(--ink); box-shadow: 0 0 0 3px var(--red-tint); }
 
   form.inline { display: inline; }
 
   input[type=text], input[type=password], textarea, select {
-    font-family: var(--font); font-size: 14px; padding: 8px 10px; border: 1px solid var(--border);
-    border-radius: 7px; background: var(--surface); color: var(--ink);
+    font-family: var(--font); font-size: 14px; font-weight: 500; padding: 9px 12px; border: 1px solid var(--border-strong);
+    border-radius: 10px; background: var(--surface); color: var(--ink); max-width: 100%;
   }
-  textarea { width: 100%; line-height: 1.5; resize: vertical; }
-  .btn-primary { color: #fff; background: var(--accent); border-color: var(--accent); }
-  .btn-sm { font-size: 12px; padding: 4px 9px; }
-  .flash { background: #e4f5e4; color: var(--good); border-radius: 8px; padding: 10px 14px;
-    font-size: 14px; font-weight: 600; margin-bottom: 16px; }
-  .error { background: #fbe9e7; color: var(--bad); border-radius: 8px; padding: 10px 14px;
-    font-size: 14px; font-weight: 600; margin-bottom: 16px; }
+  input[type=text]:focus, input[type=password]:focus, textarea:focus, select:focus {
+    outline: none; border-color: var(--moss); box-shadow: 0 0 0 3px rgba(91,242,166,0.45);
+  }
+  ::placeholder { color: var(--ink-faint); opacity: 1; }
+  input[type=checkbox] { accent-color: var(--moss); }
+  input[type=file] { font-family: var(--font); font-size: 13px; color: var(--ink-soft); max-width: 100%; }
+  input[type=file]::file-selector-button { font-family: var(--font); font-size: 13px; font-weight: 700; color: var(--ink);
+    background: var(--surface); border: 1px solid var(--border-strong); border-radius: 100px; padding: 6px 14px;
+    margin-right: 10px; cursor: pointer; }
+  input[type=file]::file-selector-button:hover { background: var(--mint-2); border-color: var(--moss); }
+  textarea { width: 100%; line-height: 1.55; resize: vertical; }
+  .btn-primary { color: var(--ink); background: var(--lime); border-color: var(--lime); }
+  .btn-primary:hover { background: var(--skin); border-color: var(--skin); color: var(--ink); }
+  .btn-sm { font-size: 12px; padding: 4px 10px; }
+  .flash { background: var(--mint); color: var(--ink); border-left: 4px solid var(--moss); border-radius: 10px;
+    padding: 10px 14px; font-size: 14px; font-weight: 700; margin-bottom: 16px; }
+  .error { background: var(--red-tint); color: var(--ink); border-left: 4px solid var(--red); border-radius: 10px;
+    padding: 10px 14px; font-size: 14px; font-weight: 700; margin-bottom: 16px; }
   .hint { color: var(--ink-soft); font-size: 13px; margin: 4px 0 0; }
 
   .filters { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
-  .filters a { padding: 6px 12px; border-radius: 100px; border: 1px solid var(--border); font-size: 13px;
-    color: var(--ink-soft); }
-  .filters a.active { background: var(--navy); color: #fff; border-color: var(--navy); }
+  .filters a { padding: 6px 14px; border-radius: 100px; border: 1px solid var(--border-strong); font-size: 13px;
+    font-weight: 700; color: var(--ink-soft); background: var(--surface); }
+  .filters a:hover { text-decoration: none; border-color: var(--moss); color: var(--ink); }
+  .filters a.active { background: var(--lime); color: var(--ink); border-color: var(--skin); }
 
   .empty { color: var(--ink-faint); font-size: 14px; padding: 20px 0; text-align: center; }
+
+  /* Phones and narrow windows: logo + logout on top, nav scrolls sideways under them */
+  @media (max-width: 1060px) {
+    .topbar { flex-wrap: wrap; gap: 8px 16px; padding: 12px 16px 10px; }
+    .topbar .logout { margin-left: auto; }
+    .topbar nav { order: 3; flex: 1 0 100%; margin: 0 -16px; padding: 0 16px; }
+    .wrap { padding: 30px 16px 48px; }
+  }
+  @media (max-width: 560px) {
+    h1 { font-size: 20px; }
+    .card { padding: 16px; border-radius: 14px; }
+    .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .stat { padding: 14px; }
+    .stat .n { font-size: 18px; }
+  }
 </style>
 </head>
 <body>
   <div class="topbar">
-    <div class="brand">WriteSpeak</div>
+    <div class="brand"><img src="https://writespeak.uz/assets/logo-on-dark.webp" alt="Bandzilla" width="720" height="126"><span class="tag">Admin</span></div>
     <nav>
       <a href="/" class="{{ 'active' if active == 'dashboard' else '' }}">Dashboard</a>
       <a href="/users" class="{{ 'active' if active == 'users' else '' }}">Foydalanuvchilar</a>

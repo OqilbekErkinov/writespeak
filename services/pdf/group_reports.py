@@ -101,7 +101,7 @@ def _band(value: float | None) -> str:
 # --- Excel ---------------------------------------------------------------------------------
 
 _HEADER_FONT = Font(bold=True, color="FFFFFF")
-_HEADER_FILL = PatternFill("solid", fgColor="0F1C3F")
+_HEADER_FILL = PatternFill("solid", fgColor="062018")  # Bandzilla Deep Ink
 
 
 def _sheet(wb: Workbook, title: str, headers: list[str], rows: list[list], first: bool = False):
@@ -192,7 +192,7 @@ def band_chart(works: list[dict], title: str, daily_average: bool = False) -> st
     """A band-over-time line per skill, as a data URI - None with fewer than two
     points to draw. `daily_average`: one point per day (a whole group's work)."""
     series = []
-    for kind, label, color in (("w", "Writing", "#2a78d6"), ("s", "Speaking", "#0ca30c")):
+    for kind, label, color in (("w", "Writing", "#0A7C4A"), ("s", "Speaking", "#FF7A93")):  # Moss, Tongue Pink
         points = sorted((_local(w["created_at"]).replace(tzinfo=None), w["band"]) for w in works if w["kind"] == kind)
         if daily_average:
             days: dict = {}

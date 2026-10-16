@@ -1,4 +1,4 @@
-# WriteSpeak — zaxiradan tiklash
+# Bandzilla (avvalgi WriteSpeak) — zaxiradan tiklash
 
 Zaxiralar har kuni 03:50 (Toshkent) da `deploy/backup/backup.sh` tomonidan olinadi:
 

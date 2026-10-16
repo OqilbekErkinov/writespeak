@@ -37,7 +37,7 @@ from bot.keyboards.payment_kb import (
     payment_review_kb,
 )
 from bot.states.payment_states import PaymentStates
-from bot.utils import crm_events
+from bot.utils import crm_events, stickers
 from bot.utils.coins import CENTER_PACKS, pack_price
 from bot.utils.quota import format_som
 from db import crud
@@ -220,6 +220,8 @@ async def notify_decision(bot, decision: crud.PaymentDecision) -> None:
         await bot.send_message(request.user_id, text)
     except Exception:
         pass
+    if request.status == PaymentStatus.approved:
+        await stickers.send(bot, request.user_id, "rahmat")  # thanks (Love), Brand Guidelines p. 26
     if referrer is not None:
         try:
             await bot.send_message(
