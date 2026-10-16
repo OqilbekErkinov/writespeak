@@ -6,8 +6,10 @@ rules, Speaking report prompt section 1.9 and Part 4, 2026-10-13/16).
     (.25 up to .5, .75 up to the next whole band);
   * a report's criterion bands are the median of SCORE_RUNS independent
     scoring calls - gpt-5 accepts no temperature, so this is what keeps one
-    answer's band from moving between runs. An identical resubmission is
-    never scored again at all: its saved report is reused (see the handlers).
+    answer's band from moving between runs (the third call is only made
+    when the first two disagree - see median_of_runs). An identical
+    resubmission is never scored again at all: its saved report is reused
+    (see the handlers).
 
 The ESL adjustment softens the wording of feedback only; it is not a
 reason to give a higher number (LENIENCY_NOTE).
@@ -71,21 +73,30 @@ async def median_of_runs(
     runs: int = SCORE_RUNS,
     label: str = "",
 ) -> tuple[dict[str, float], list[dict[str, float]]]:
-    """Runs `score_once` `runs` times in parallel and returns (median bands,
-    every run that succeeded). One failed run is tolerated; with fewer than
-    two good runs the scoring fails."""
-    results = await asyncio.gather(*(score_once() for _ in range(runs)), return_exceptions=True)
+    """Returns (the per-criterion median of `runs` scoring calls, every run
+    that succeeded). Two calls run first, in parallel; when they give the same
+    whole band on every criterion, the median is that band whatever the other
+    runs would say, so those are skipped - the same result for one call less
+    (2026-10-17). Otherwise the rest run too. One failed run is tolerated;
+    with fewer than two good runs the scoring fails."""
+    first = min(2, runs)
+    results = list(await asyncio.gather(*(score_once() for _ in range(first)), return_exceptions=True))
     good = [r for r in results if not isinstance(r, BaseException)]
+    agreed = len(good) == 2 and all(whole_band(good[0][k]) == whole_band(good[1][k]) for k in keys)
+    if not agreed and runs > first:
+        results += await asyncio.gather(*(score_once() for _ in range(runs - first)), return_exceptions=True)
+        good = [r for r in results if not isinstance(r, BaseException)]
     for r in results:
         if isinstance(r, BaseException):
             logger.warning("A %s scoring run failed: %r", label or "scoring", r)
     if len(good) < min(2, runs):
-        raise RuntimeError(f"{label or 'Scoring'}: only {len(good)} of {runs} runs succeeded")
+        raise RuntimeError(f"{label or 'Scoring'}: only {len(good)} of {len(results)} runs succeeded")
     medians = median_bands(good, keys)
     logger.info(
-        "Scores %s: runs %s -> median %s",
+        "Scores %s: runs %s -> median %s%s",
         label,
         [{k: whole_band(r[k]) for k in keys} for r in good],
         medians,
+        " (the first two agreed)" if agreed and runs > first else "",
     )
     return medians, good

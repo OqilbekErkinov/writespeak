@@ -52,7 +52,7 @@ from bot.config import settings
 from bot.utils.speaking_questions import same_question
 from services.ai import usage
 from services.ai.essay_marking import count_words
-from services.ai.openai_client import client, parse_flex
+from services.ai.openai_client import SHORT_FLEX_TIMEOUT, client, parse_flex
 from services.ai.sample_bank import _cosine, _slug, embed_texts, forbidden_names, names_in, write_json
 from services.ai.schemas import StyleProfile
 from services.ai.scoring import aim_band
@@ -416,7 +416,8 @@ async def _write_one(target: Target, band: float, profile: StyleProfile | None, 
     messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
     best, best_shows, best_off = "", [], 10**6
     for attempt in range(3):
-        response = await client.beta.chat.completions.parse(
+        response = await parse_flex(  # Flex: half price, the default tier as a fallback (openai_client)
+            flex_timeout=SHORT_FLEX_TIMEOUT,
             model=settings.openai_model_sample, messages=messages, response_format=_Answer,
             max_completion_tokens=ANSWER_MAX_TOKENS, extra_body={"reasoning_effort": "low"},
         )

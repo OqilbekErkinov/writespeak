@@ -48,7 +48,7 @@ from pydantic import BaseModel
 
 from bot.config import settings
 from services.ai import usage
-from services.ai.openai_client import client
+from services.ai.openai_client import SHORT_FLEX_TIMEOUT, client, parse_flex
 
 logger = logging.getLogger(__name__)
 
@@ -518,7 +518,8 @@ async def _ask_model(answers: list[AnswerAudio], cands: list[list[_Candidate]], 
         "fillers."
     )
     try:
-        response = await client.beta.chat.completions.parse(
+        response = await parse_flex(  # Flex: half price, the default tier as a fallback (openai_client)
+            flex_timeout=SHORT_FLEX_TIMEOUT,
             model=settings.openai_model_sample,
             messages=[{"role": "system", "content": system}, {"role": "user", "content": "\n\n".join(lines)}],
             response_format=_FillerCall,
