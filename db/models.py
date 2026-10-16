@@ -179,6 +179,9 @@ class WritingSubmission(Base):
     annotations: Mapped[list] = mapped_column(JSON, default=list)  # [{sentence, color, comment}]
     vocabulary_json: Mapped[list] = mapped_column(JSON, default=list)
     book_sample_ref: Mapped[int | None] = mapped_column(ForeignKey("book_chunks.id"), nullable=True)
+    # Since 2026-10-16: {"model_answer": {"source", "aimed_at", "provisional",
+    # "shows", "writer", "reference_ids"}, "resubmission_of"} - see bot/handlers/writing.py.
+    report_data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     feedback_pdf_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     practice_question_id: Mapped[int | None] = mapped_column(

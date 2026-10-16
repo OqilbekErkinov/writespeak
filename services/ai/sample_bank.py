@@ -21,14 +21,28 @@ For each report:
      most similar to the student's), ties -> more samples overall; writers
      still level (e.g. two who answered the same questions) take turns per
      student. The choice and the scores behind it are logged - never shown;
-  3. a NEW answer is always written, in a call separate from the feedback,
-     from that writer's style profile and 2-3 of their samples of this task
-     type (never a sample of the same question), at the writer's book band;
+  3. a NEW answer is always written from that writer's style profile and
+     2-3 of their samples of this task type (never a sample of the same
+     question) - written for THIS student's results (candidate-specific
+     samples, 2026-10-16): it starts once the feedback is final
+     (writing_grader's on_feedback), is aimed at about one band above the
+     student (scoring.aim_band: 6.0-8.0, shown as "Aimed at" and "AI example",
+     never as an official band) and demonstrates their priorities (Task
+     Response: every part answered, ideas developed; Coherence: paragraphing,
+     topic sentences, referencing; Lexical: precise collocations, not rare
+     synonyms; Grammar: a useful variety of accurate structures; Task 1: the
+     overview, key features, grouped comparisons, no unsupported detail),
+     with 1-3 "what this shows" notes found in it by code. The writer lends
+     the style; the level is the student's aim;
   4. it must be 260-300 words (Task 1: 170-200), copy no 8-word run from any
-     book and name no writer or book; then our own scorer checks it, and if
-     it is more than 0.5 below the writer's band it is written once more.
-Without a library a Band 8 answer is written with no style - the page is
-never empty.
+     book, reuse little of the student's own wording (REUSE_LIMIT) and name
+     no writer or book; then our own scorer checks it (written once more if
+     more than 0.5 below the aimed band), and a quality check (the question's
+     exact type, one consistent position, examples that fit their points, no
+     stock opener, no invented facts) - written once more if it fails.
+Without a library an answer is written with no style - the page is never
+empty. Where it came from (ai_generated; the writer and sample ids, the aimed
+band, the priorities it shows) is logged and saved with the submission.
 """
 from __future__ import annotations
 
@@ -47,12 +61,14 @@ from pathlib import Path
 
 import numpy as np
 import openai
+from pydantic import BaseModel, Field
 
 from bot.config import settings
 from services.ai import usage
 from services.ai.essay_marking import WORD_RE, count_words
 from services.ai.openai_client import client
 from services.ai.schemas import GeneratedSample, StyleProfile, Task1Label, Task2Label
+from services.ai.scoring import aim_band
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +81,9 @@ MIN_REFERENCES = 2
 PROFILE_SAMPLES = 8
 GENERATION_ATTEMPTS = 3
 SELF_CHECK_MARGIN = 0.5
-DEFAULT_BAND = 8.0
+DEFAULT_BAND = 8.0  # without the student's results
+REUSE_LIMIT = 0.25  # share of the answer's 5-word runs that may come from the student's essay
+MAX_SHOWS = 3
 ANSWER_MAX_TOKENS = 8000  # a ~300-word answer needs ~2-4k with reasoning; stops a runaway
 INDEX_FIELDS = ("id", "author", "book", "task_type", "subtype", "topic", "question", "band", "word_count", "text")
 
@@ -89,7 +107,10 @@ class LibrarySample:
 class ModelAnswer:
     question: str
     paragraphs: list[str]
-    band: float
+    band: float  # the band it was aimed at (approximate)
+    shows: list[dict] = field(default_factory=list)  # {"n", "title", "phrase", "note"}
+    source: str = "ai_generated"  # ai_generated | published_reference | human_reviewed
+    log: dict = field(default_factory=dict)  # writer, sample ids, checks - internal only
 
     @property
     def word_count(self) -> int:
@@ -225,6 +246,93 @@ async def embed_texts(texts: list[str]) -> list[list[float]]:
     response = await client.embeddings.create(model=settings.openai_embedding_model, input=texts)
     usage.record("embedding", response)
     return [d.embedding for d in response.data]
+
+
+# --- The student's results ----------------------------------------------------------------------
+
+_CRITERION_NAMES = {"TR": "Task", "CC": "Coherence", "LR": "Vocabulary", "GRA": "Grammar"}
+
+
+@dataclass
+class Needs:
+    """What the report found - the model answer is written to teach it."""
+
+    overall: float
+    bands: dict[str, float]  # TR_or_TA, CC, LR, GRA
+    priorities: list[dict]  # {"n": "01", "title", "rule", "criteria": [...]}
+    issues: list[str] = field(default_factory=list)  # task- and logic-level problems
+    strengths: list[str] = field(default_factory=list)
+    essay: str = ""  # the student's own text, for comparison
+
+    @property
+    def aim(self) -> float:
+        return aim_band(self.overall)
+
+
+def needs_from_feedback(bands: dict[str, float], overall: float, fb, essay: str) -> Needs:
+    """Needs from the feedback call's own output, so nothing is assessed
+    twice. Only task- and logic-level mistakes go in as issues (TR, CC,
+    unclear meaning); word and grammar slips reach the answer through the
+    priorities, so the sample teaches patterns instead of correcting lines."""
+    priorities = [
+        {"n": f"{i:02d}", "title": p.title.strip(), "rule": re.sub(r"\*+", "", p.rule).strip(),
+         "criteria": list(p.criteria)}
+        for i, p in enumerate(fb.priorities[:3], 1)
+    ]
+    issues = [f"«{m.wrong}» - {m.why}" for m in fb.mistakes if m.criterion in ("TR", "CC") or m.unclear][:5]
+    return Needs(overall=overall, bands=bands, priorities=priorities, issues=issues,
+                 strengths=[q.strip() for q in fb.strength.quoted_phrases][:3], essay=essay)
+
+
+def _needs_text(needs: Needs, task_type: str) -> str:
+    first = "Task Achievement" if task_type == "task1_academic" else "Task Response"
+    lines = [
+        "THE STUDENT'S RESULTS (from the examiner's report - teach to these):",
+        f"- Bands: {first} {needs.bands.get('TR_or_TA', 0):.0f}, Coherence & Cohesion {needs.bands.get('CC', 0):.0f}, "
+        f"Lexical Resource {needs.bands.get('LR', 0):.0f}, Grammatical Range & Accuracy {needs.bands.get('GRA', 0):.0f}; "
+        f"overall {needs.overall:.1f}. Your answer is aimed at about Band {needs.aim:.1f}.",
+        "- Their priorities - what your answer must SHOW them how to do:",
+    ]
+    for p in needs.priorities:
+        kind = ", ".join(_CRITERION_NAMES.get(c, c) for c in p["criteria"])
+        lines.append(f"  {p['n']} {p['title']} ({kind}): {p['rule']}")
+    if needs.issues:
+        lines.append("- Task and logic problems the examiner found (don't repeat them):")
+        lines += [f"  {i}" for i in needs.issues]
+    if needs.strengths:
+        lines.append("- What they already do well: " + ", ".join(f"«{s}»" for s in needs.strengths))
+    return "\n".join(lines)
+
+
+def _grams5(text: str, n: int = 5) -> set[tuple[str, ...]]:
+    words = [w.lower().replace("’", "'") for w in WORD_RE.findall(text)]
+    return {tuple(words[i:i + n]) for i in range(len(words) - n + 1)}
+
+
+def reuse_share(answer: str, essay: str, question: str = "") -> float:
+    """How much of the answer is the student's own wording: the share of its
+    5-word runs found in their essay (runs from the question don't count)."""
+    mine = _grams5(answer) - _grams5(question)
+    if not mine or not essay.strip():
+        return 0.0
+    return len(mine & _grams5(essay)) / len(mine)
+
+
+def _shows(parsed, text: str, needs: Needs | None) -> list[dict]:
+    """The "what this shows" notes whose phrase really is in the answer and
+    whose priority exists."""
+    if needs is None:
+        return []
+    titles = {p["n"]: p["title"] for p in needs.priorities}
+    low = re.sub(r"\s+", " ", text).lower()
+    out = []
+    for item in getattr(parsed, "shows", None) or []:
+        n = re.sub(r"\D", "", item.priority).zfill(2)[-2:]
+        phrase = item.phrase.strip().strip(".,;:!?\"'“”")
+        if n in titles and len(phrase.split()) >= 3 and re.sub(r"\s+", " ", phrase).lower() in low \
+                and all(o["phrase"].lower() != phrase.lower() for o in out):
+            out.append({"n": n, "title": titles[n], "phrase": phrase, "note": item.note.strip()})
+    return out[:MAX_SHOWS]
 
 
 # --- Library -----------------------------------------------------------------------------------
@@ -481,7 +589,12 @@ def _task_rules(task_type: str) -> str:
         )
     return (
         "This is Writing Task 2: answer every part of the question with a clear, consistent "
-        "position, well-developed and supported body paragraphs, and a conclusion."
+        "position, well-developed and supported body paragraphs, and a conclusion. Follow the question's "
+        "exact type: an advantages-and-disadvantages question discusses both (it is not a \"do the "
+        "advantages outweigh\" essay unless that is asked), a discussion question presents both views, an "
+        "opinion question argues one position. Keep ONE position from the introduction to the conclusion - "
+        "the conclusion restates what the body argued. Every example must support its own point. Don't "
+        "open with a stock phrase such as \"With the advent of\" or \"In this day and age\"."
     )
 
 
@@ -504,24 +617,46 @@ def _system(task_type: str, band: float, profile: StyleProfile | None, reference
             f"THE WRITER'S OWN ANSWERS - style references only:\n{refs}\n\n"
             "Follow this writer's introduction, body-paragraph pattern, way of giving examples, "
             f"linkers, sentence style, register and conclusion pattern, in {paragraphs} paragraphs "
-            "like theirs. Match the vocabulary level and sentence complexity of their answers - don't "
-            "write in a more academic or sophisticated way than they do. Do NOT copy sentences from "
-            f"their answers; reusing short functional phrases is fine. LENGTH: {lo}-{hi} words, "
-            "whatever the length of their answers."
+            "like theirs. Never write in a more academic or sophisticated way than they do; where the "
+            "aimed band is below their level, keep their structure but use plainer words and simpler "
+            "sentences. Do NOT copy sentences from their answers; reusing short functional phrases is "
+            f"fine. LENGTH: {lo}-{hi} words, whatever the length of their answers."
         )
     facts = (
         " Use only the data in the question and the visual." if task_type == "task1_academic" else
         " Support ideas with general knowledge or clearly hypothetical examples (\"if posters were "
         "confined to transport hubs, ...\", \"a student who ...\")."
     )
+    task1 = task_type == "task1_academic"
+    teach = (
+        "Task Achievement: a clear overview of the main trends or stages, the key features selected and "
+        "compared, no detail the visual doesn't show. Coherence: information grouped logically, one focus "
+        "per paragraph. Vocabulary: accurate trend and comparison language. Grammar: comparatives, "
+        "a range of tenses, the passive for a process."
+        if task1 else
+        "Task Response: every part of the question answered, each main idea explained and supported, not "
+        "just stated. Coherence: one clear topic sentence per body paragraph, ideas that follow logically, "
+        "linking and referencing that guide the reader. Vocabulary: precise, natural words and collocations "
+        "for this topic - never rare synonyms for their own sake. Grammar: a useful variety of accurate "
+        "structures."
+    )
     return (
-        "You write original IELTS Writing model answers for students to learn from.\n\n"
-        f"{_task_rules(task_type)}\nWrite at IELTS band {band:.1f} - not above it. Length: {lo}-{hi} "
-        f"words (aim for about {(lo + hi) // 2}; count before answering). Answer every part of the "
-        "question.\nNo invented real-world facts: no statistics, studies, surveys, named programmes, "
+        "You write IELTS Writing model answers that a student reads right after their own feedback report - "
+        "each one written to TEACH this student what their report says they need.\n\n"
+        f"{_task_rules(task_type)}\nWrite at about IELTS band {band:.1f} - not above it, natural, no "
+        f"memorised templates. Length: {lo}-{hi} words (aim for about {(lo + hi) // 2}; count before "
+        "answering). Answer every part of the question.\n"
+        "TEACH, DON'T REWRITE: when the student's results are given, write a separate, complete answer to "
+        "the same question that demonstrates their priorities while staying a strong answer overall. "
+        f"{teach} The student's own text is given for comparison: you may share a sound idea, but never "
+        "their sentences, and never keep a weak argument or a misreading of the question.\n"
+        "shows: when priorities are given, 1-3 places in YOUR answer that demonstrate them (the first "
+        "priority first): the priority number, a phrase copied exactly from your answer, and what the "
+        "student should notice there.\n"
+        "No invented real-world facts: no statistics, studies, surveys, named programmes, "
         "laws, dates, and no claims about real countries, cities or organisations that a reader could "
-        f"take as fact.{facts} Never mention any writer, teacher or book. Return only the answer's "
-        "paragraphs - no title, labels or notes." + style
+        f"take as fact.{facts} Never mention any writer, teacher or book. The paragraphs are only the "
+        "answer - no title, labels or notes." + style
     )
 
 
@@ -533,15 +668,22 @@ async def _write(
     profile: StyleProfile | None,
     references: list[LibrarySample],
     note: str = "",
-) -> tuple[list[str], list[str]]:
-    """(paragraphs, problems left) - the best of up to GENERATION_ATTEMPTS."""
+    needs: Needs | None = None,
+) -> tuple[list[str], list[str], list[dict]]:
+    """(paragraphs, problems left, "what this shows" notes) - the best of up
+    to GENERATION_ATTEMPTS."""
     lo, hi = WORD_RANGE[task_type]
     system = _system(task_type, band, profile, references) + (f"\n\n{note}" if note else "")
     text = f"QUESTION:\n{question}"
+    if needs is not None:
+        text += "\n\n" + _needs_text(needs, task_type)
+        if needs.essay.strip():
+            text += f"\n\nTHE STUDENT'S OWN ANSWER (for comparison only):\n{needs.essay.strip()}"
     user = [{"type": "text", "text": text}, *_image_parts(prompt_images)] if prompt_images else text
     messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
     best: list[str] | None = None
     best_problems: list[str] = []
+    best_shows: list[dict] = []
     for attempt in range(GENERATION_ATTEMPTS):
         try:
             response = await client.beta.chat.completions.parse(
@@ -560,6 +702,7 @@ async def _write(
         paragraphs = [p.strip() for p in parsed.paragraphs if p.strip()]
         full = "\n\n".join(paragraphs)
         words, copies, names = count_words(full), copied_runs(full, allowed=question), names_in(full)
+        reused = reuse_share(full, needs.essay, question) if needs is not None else 0.0
         problems = []
         if not lo <= words <= hi:
             problems.append(f"it has {words} words; it must be {lo}-{hi} words")
@@ -567,8 +710,10 @@ async def _write(
             problems.append(f"{copies} word sequence(s) are copied from book samples; rewrite those in your own words")
         if names:
             problems.append(f"remove the names {', '.join(names)}")
+        if reused > REUSE_LIMIT:
+            problems.append("it repeats too much of the student's own wording - write a separate answer in new sentences")
         if best is None or len(problems) < len(best_problems):
-            best, best_problems = paragraphs, problems
+            best, best_problems, best_shows = paragraphs, problems, _shows(parsed, full, needs)
         if not problems:
             break
         logger.info("Model answer attempt %d rejected: %s", attempt + 1, "; ".join(problems))
@@ -578,7 +723,48 @@ async def _write(
         ]
     if best is None:
         raise RuntimeError("Model answer generation returned nothing usable")
-    return best, best_problems
+    return best, best_problems, best_shows
+
+
+class _QualityCheck(BaseModel):
+    ok: bool
+    problem: str = Field(description="Empty when ok; else what to fix, one line.")
+
+
+async def quality_problem(
+    task_type: str, question: str, paragraphs: list[str], subtype: str,
+    prompt_images: list[tuple[bytes, str]] | None = None,
+) -> str | None:
+    """The report's quality check of a model answer (one call): None if it
+    passes, else what is wrong. Report #15's "Band 8.5" answer argued that the
+    harms win and concluded that the benefits win; both #14's and #15's
+    turned an advantages/disadvantages question into an "outweigh" essay and
+    opened with "With the advent of"."""
+    from services.ai.writing_grader import _parse, _with_images  # the heavier module
+
+    lib_task = TASK_TYPES[task_type]
+    checks = (
+        "1. It does exactly what the question asks, in the question's type"
+        + (f" (labelled: {subtype.replace('_', ' ')})" if lib_task == "task2" else "")
+        + " - every part answered, nothing turned into a different question.\n"
+        "2. Its position is the same from start to finish: the conclusion restates what the body argued.\n"
+        "3. Every example fits the point it supports.\n"
+        "4. It doesn't open with a stock phrase (\"With the advent of\", \"In this day and age\", "
+        "\"Nowadays, ...\").\n"
+        "5. It presents no invented statistics or real-world facts as true."
+        + ("\n6. Every figure matches the visual." if lib_task == "task1_academic" else "")
+    )
+    messages = [
+        {"role": "system", "content": "You check an IELTS Writing model answer before students see it. "
+         f"ok=false if ANY check fails, with the problem in one line:\n{checks}"},
+        {"role": "user", "content": _with_images(
+            f"QUESTION:\n{question}\n\nMODEL ANSWER:\n" + "\n\n".join(paragraphs), prompt_images)},
+    ]
+    response = await _parse("answer_check", 6000, messages, _QualityCheck)
+    parsed = response.choices[0].message.parsed
+    if parsed is None or parsed.ok:
+        return None
+    return parsed.problem.strip() or "failed the quality check"
 
 
 async def build_model_answer(
@@ -586,9 +772,12 @@ async def build_model_answer(
     question: str,
     prompt_images: list[tuple[bytes, str]] | None = None,
     seed: int = 0,
+    needs: Needs | None = None,
 ) -> ModelAnswer:
     """`task_type`: the bot's "task1" / "task2". `seed` (e.g. the student's id
-    plus essay count) takes turns between writers level on every count."""
+    plus essay count) takes turns between writers level on every count.
+    With `needs` (the report's findings) the answer is aimed at needs.aim and
+    teaches its priorities."""
     # Imported here: writing_grader is the heavier module and only this step needs it.
     from services.ai.writing_grader import score_writing
 
@@ -600,7 +789,8 @@ async def build_model_answer(
         logger.exception("Could not load the sample library")
         library = []
 
-    band, profile, references = DEFAULT_BAND, None, []
+    aim = needs.aim if needs is not None else DEFAULT_BAND
+    band, profile, references = aim, None, []
     if library:
         try:
             (subtype, topic), (q_vec,) = await asyncio.gather(
@@ -609,15 +799,19 @@ async def build_model_answer(
             choice = choose_writer(question, lib_task, subtype, np.asarray(q_vec, dtype=float), library, seed)
             own = [s for s in library if s.author == choice.author and s.task_type == lib_task]
             profile = await get_style_profile(choice.author, lib_task, own)
-            band, references = choice.band, choice.references
+            references = choice.references  # the writer lends the style; the level stays the student's aim
             log.update(topic=topic, **choice.log)
         except Exception:
             logger.exception("Choosing a writer failed - the model answer is written without a style")
-            band, profile, references = DEFAULT_BAND, None, []
+            profile, references = None, []
     else:
         log["chosen"] = None
 
-    paragraphs, problems = await _write(question, lib_task, prompt_images, band, profile, references)
+    log["aimed_at"] = band
+    if needs is not None:
+        log["priorities"] = [p["title"] for p in needs.priorities]
+    paragraphs, problems, shows = await _write(question, lib_task, prompt_images, band, profile, references,
+                                               needs=needs)
     log["problems"] = problems
     try:
         score = await score_writing(task_type, question, "\n\n".join(paragraphs), prompt_images)
@@ -628,13 +822,32 @@ async def build_model_answer(
                 f"Band {band:.1f} answer: develop every idea fully, with precise vocabulary and "
                 "accurate, varied grammar."
             )
-            second, second_problems = await _write(question, lib_task, prompt_images, band, profile, references, note)
+            second, second_problems, second_shows = await _write(
+                question, lib_task, prompt_images, band, profile, references, note, needs)
             second_score = await score_writing(task_type, question, "\n\n".join(second), prompt_images)
             log["self_check"].append(second_score)
             if second_score >= score:
-                paragraphs, log["problems"] = second, second_problems
+                paragraphs, log["problems"], shows = second, second_problems, second_shows
     except Exception:
         logger.exception("Model answer self-check failed - keeping the answer as written")
+    try:
+        subtype = log.get("subtype") or regex_subtype(question, lib_task)
+        problem = await quality_problem(task_type, question, paragraphs, subtype, prompt_images)
+        log["quality"] = problem or "ok"
+        if problem:
+            note = f"A reviewer rejected a previous version: {problem}. Write it again and fix exactly that."
+            again, again_problems, again_shows = await _write(
+                question, lib_task, prompt_images, band, profile, references, note, needs)
+            again_problem = await quality_problem(task_type, question, again, subtype, prompt_images)
+            log["quality_retry"] = again_problem or "ok"
+            if again_problem is None:
+                paragraphs, log["problems"], shows = again, again_problems, again_shows
+    except Exception:
+        logger.exception("Model answer quality check failed - keeping the answer as written")
     log["words"] = sum(count_words(p) for p in paragraphs)
+    log["shows"] = [x["n"] for x in shows]
+    if needs is not None:
+        log["reuse"] = round(reuse_share("\n\n".join(paragraphs), needs.essay, question), 2)
+    log["source"] = "ai_generated"
     logger.info("Model answer: %s", json.dumps(log, ensure_ascii=False))
-    return ModelAnswer(question=question, paragraphs=paragraphs, band=band)
+    return ModelAnswer(question=question, paragraphs=paragraphs, band=band, shows=shows, log=log)

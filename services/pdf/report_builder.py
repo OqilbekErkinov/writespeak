@@ -2,8 +2,9 @@
 
 Writing: build_writing_report_pdf (templates/writing_report.html, the final
 design of 2026-10-12). Speaking: build_speaking_report_pdf
-(templates/speaking_report.html, 2026-10-13, the same design system - its
-base stylesheet templates/report_styles.css is a copy of Writing's).
+(templates/speaking_report.html, 2026-10-13). Both share
+templates/report_styles.css, the cover's score ring and the marked
+"what this shows" phrases of the candidate-specific model answers.
 """
 from __future__ import annotations
 
@@ -131,6 +132,7 @@ def _generated_text(report: WritingReport, answer: ModelAnswer | None) -> str:
     parts += [c["html"] for c in report.checklist]
     if answer is not None:
         parts += answer.paragraphs
+        parts += [s["note"] for s in answer.shows]
     return "\n".join(parts)
 
 
@@ -158,6 +160,7 @@ def build_writing_report_pdf(
         report=report,
         ring=_ring(report.overall_band, report.target_band),
         answer=answer,
+        answer_paragraphs=_marked_paragraphs(answer.paragraphs, answer.shows) if answer else [],
         chart_images=[
             f"data:{mime};base64,{base64.b64encode(data).decode()}" for data, mime in chart_images or []
         ],
@@ -194,11 +197,11 @@ def _speaking_generated_text(report, answers: list[dict]) -> str:
     return "\n".join(parts)
 
 
-def _answer_paragraphs_html(answer: dict) -> list[str]:
-    """The model answer's paragraphs, escaped, with each "what this shows"
+def _marked_paragraphs(paragraphs: list[str], shows: list[dict] | None) -> list[str]:
+    """A model answer's paragraphs, escaped, with each "what this shows"
     phrase marked and numbered (its first occurrence)."""
-    out = [html_lib.escape(p, quote=False) for p in answer["paragraphs"]]
-    for k, item in enumerate(answer.get("shows") or [], 1):
+    out = [html_lib.escape(p, quote=False) for p in paragraphs]
+    for k, item in enumerate(shows or [], 1):
         words = html_lib.escape(item["phrase"], quote=False).split()
         pattern = re.compile(r"\s+".join(re.escape(w) for w in words), re.IGNORECASE)
         for i, para in enumerate(out):
@@ -222,7 +225,7 @@ def build_speaking_report_pdf(
     "band", "source", "shows", "voice"}) - one "Aimed at" badge when they all
     share a band."""
     for a in answers:
-        a["html_paragraphs"] = _answer_paragraphs_html(a)
+        a["html_paragraphs"] = _marked_paragraphs(a["paragraphs"], a.get("shows"))
         a.setdefault("voice", voice_sent)
     leaked = names_in(_speaking_generated_text(report, answers))
     if leaked:

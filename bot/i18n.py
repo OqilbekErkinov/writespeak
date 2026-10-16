@@ -196,6 +196,12 @@ _T: dict[str, dict[str, str]] = {
         "uz": "✅ Tayyor! Umumiy ball: <b>{band}</b>",
         "ru": "✅ Готово! Общий балл: <b>{band}</b>",
     },
+    "writing.resubmitted": {
+        "uz": "♻️ Bu — #{number} inshodagi aynan o'sha matn, shuning uchun saqlangan hisobotingizni qayta "
+        "yubordim (tekshiruv hisoblanmadi). Ball: <b>{band}</b>",
+        "ru": "♻️ Это тот же текст, что и в эссе #{number}, поэтому я отправил сохранённый отчёт (проверка "
+        "не засчитана). Балл: <b>{band}</b>",
+    },
     # --- Speaking (bot/handlers/speaking.py) ---
     "speaking.choose_part": {
         "uz": "Qaysi qismini tekshirmoqchisiz?",

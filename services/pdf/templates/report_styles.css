@@ -1,7 +1,6 @@
-{#- The Speaking report's base stylesheet (included by speaking_report.html):
-    a copy of the Writing report's stylesheet (writing_report.html, Appendix A of the
-    final Writing report prompt, 2026-10-12) - the Speaking design is the same design
-    system. Kept as a copy so the Writing report stays untouched. -#}
+{#- The report stylesheet shared by writing_report.html and speaking_report.html:
+    Appendix A of the final Writing report prompt (2026-10-12), unchanged except for
+    its font declarations, then the WriteSpeak additions. Included inside <style>. -#}
 @page {
   size: A4;
   margin: 16mm 15mm 16mm 15mm;
@@ -301,5 +300,13 @@ h2, .name, .stat b, .g-num, .cc-score, .well .q, .well .t b, .prio-h .t, .prio .
 table.ptbl { width: 100%; border-collapse: collapse; font-size: 9.2pt; }
 table.ptbl td { padding: 1.4mm 0; border-top: 1px solid #e3e5eb; vertical-align: middle; }
 table.ptbl tr:first-child td { border-top: 0; }
-table.ptbl td.l { width: 56mm; color: #4a4f5c; }
+table.ptbl td.l { width: 64mm; padding-right: 3mm; color: #4a4f5c; }
 table.ptbl td.v { width: 38mm; font-weight: 700; color: var(--navy); }
+/* candidate-specific model answers: where the answer shows a priority */
+.shw { background: #e6ecfb; border-radius: 1mm; padding: 0 .6mm; }
+sup.k, .shows .k { display: inline-block; font: 700 6.3pt Inter; color: #fff; background: #3550b0; border-radius: 2mm; padding: 0 1.2mm; margin-left: .4mm; }
+.shows { margin-top: 2mm; font-size: 8.4pt; color: #4a4f5c; line-height: 1.45; }
+.shows b { color: #14213d; }
+.shows div + div { margin-top: .8mm; }
+.mnote { font-size: 7.8pt; color: var(--muted); margin-top: 1mm; }
+.mhead .bandbadge span { white-space: nowrap; }

@@ -59,7 +59,8 @@ class WritingGradingResult(BaseModel):
 
 # --- Writing feedback (final report, 2026-10-12) --------------------------------
 # The Feedback Coach returns this JSON - the data contract of the final report
-# prompt, minus what code adds itself (task type, question, overall band,
+# prompt, minus what code adds itself (the criterion bands - separate scoring
+# runs since 2026-10-16 -, task type, question, overall band,
 # copied-from-the-question spans, stats, progress).
 # services/ai/essay_marking.py validates it against the student's original
 # essay and services/pdf/report_builder.py renders it; the model never
@@ -136,10 +137,12 @@ class Strength(BaseModel):
 
 
 class CriterionScores(BaseModel):
-    TR_or_TA: float
-    CC: float
-    LR: float
-    GRA: float
+    """One Writing scoring run: whole bands only (reliability rules, 2026-10-16)."""
+
+    TR_or_TA: int = Field(description="Task Achievement (Task 1) or Task Response (Task 2), a whole band 0-9.")
+    CC: int = Field(description="Coherence & Cohesion, a whole band 0-9.")
+    LR: int = Field(description="Lexical Resource, a whole band 0-9.")
+    GRA: int = Field(description="Grammatical Range & Accuracy, a whole band 0-9.")
 
 
 class CriterionNotes(BaseModel):
@@ -165,7 +168,6 @@ class WritingFeedback(BaseModel):
     essay: list[list[EssaySegment]] = Field(
         description="The student's essay as a list of paragraphs, each a list of segments."
     )
-    scores: CriterionScores
     criterion_notes: CriterionNotes
     strength: Strength
     priorities: list[Priority]
@@ -208,8 +210,17 @@ class Task1Label(BaseModel):
     topic: str = Field(description="One or two lowercase words, e.g. population, energy, transport.")
 
 
+class SampleShow(BaseModel):
+    priority: str = Field(description='The priority number it demonstrates, "01".."03".')
+    phrase: str = Field(description="3-14 words copied exactly from your answer, where it shows it.")
+    note: str = Field(description="25 words at most: what the student should notice there.")
+
+
 class GeneratedSample(BaseModel):
     paragraphs: list[str]
+    shows: list[SampleShow] = Field(
+        description="1-3 places where the answer demonstrates the student's priorities (empty if none were given)."
+    )
 
 
 # --- Speaking feedback (Speaking report prompt, 2026-10-13) ------------------------

@@ -1,5 +1,5 @@
-"""Band arithmetic for the Speaking report (reliability rules, Speaking
-report prompt section 1.9, 2026-10-13).
+"""Band arithmetic shared by the Speaking and Writing reports (reliability
+rules, Speaking report prompt section 1.9 and Part 4, 2026-10-13/16).
 
   * every criterion is a whole band (0-9), as in the real IELTS descriptors;
   * the overall band is the mean of the four, rounded the IELTS way
@@ -44,6 +44,15 @@ def overall_band(criteria: list[float]) -> float:
     to the next whole band."""
     mean = sum(criteria) / len(criteria)
     return math.floor(mean * 2 + 0.5) / 2
+
+
+AIM_RANGE = (6.0, 8.0)
+
+
+def aim_band(overall: float) -> float:
+    """The band a model answer is aimed at: one above the student's, kept
+    between AIM_RANGE (candidate-specific samples, 2026-10-14)."""
+    return min(AIM_RANGE[1], max(AIM_RANGE[0], overall + 1.0))
 
 
 def target_band(overall: float) -> float:

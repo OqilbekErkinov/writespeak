@@ -17,9 +17,11 @@ the same turn, not separately-dispatched events.
 from __future__ import annotations
 
 import asyncio
+import difflib
 import html
 import logging
 import mimetypes
+from pathlib import Path
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
@@ -48,7 +50,8 @@ from db import crud
 from db.database import get_session
 from db.models import SourceType
 from services.ai import usage
-from services.ai.sample_bank import build_model_answer
+from services.ai.essay_marking import canon
+from services.ai.sample_bank import build_model_answer, needs_from_feedback
 from services.ai.schemas import VocabularyItem
 from services.ai.writing_grader import grade_writing
 from services.pdf.report_builder import build_progress, build_writing_report_pdf
@@ -58,6 +61,7 @@ logger = logging.getLogger(__name__)
 router = Router(name="writing")
 
 MIN_ANSWER_WORDS = {"task1": 150, "task2": 250}
+RESUBMISSION_SIMILARITY = 0.9
 
 MAX_PROMPT_IMAGES = 3
 
@@ -214,9 +218,44 @@ def _load_prompt_images(paths: list[str]) -> list[tuple[bytes, str]]:
     return images
 
 
+def _same_text(a: str, b: str) -> float:
+    return difflib.SequenceMatcher(None, canon(a).lower(), canon(b).lower(), autojunk=False).ratio()
+
+
+async def _repeat_of(user_id: int, task_type: str, answer_text: str):
+    """(an earlier essay with exactly this text, an earlier essay more than
+    90% the same, {submission id: essay number}) - either may be None."""
+    async with get_session() as session:
+        earlier = await crud.get_writing_sessions(session, user_id, task_type)
+        numbers = {s.id: await crud.writing_essay_number(session, user_id, s.id) for s in earlier}
+    same = next((s for s in earlier if canon(s.answer_text).lower() == canon(answer_text).lower()), None)
+    similar = next((s for s in earlier if _same_text(s.answer_text, answer_text) > RESUBMISSION_SIMILARITY), None)
+    return same, similar, numbers
+
+
 async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
     data = await state.get_data()
     user_id = message.chat.id
+
+    # The very same essay again gets its saved report, not a new (differently
+    # scored) check - reports #14 and #15 were one essay graded 8.0 and 8.5,
+    # with "progress" between them.
+    same, similar, numbers = await _repeat_of(user_id, data["task_type"], data["answer_text"])
+    if same is not None and same.feedback_pdf_path and Path(same.feedback_pdf_path).exists():
+        logger.info("Writing resubmission by user %s: same text as submission %s", user_id, same.id)
+        await message.answer_document(
+            BufferedInputFile(read_file(same.feedback_pdf_path), filename="IELTS_Feedback.pdf"),
+            caption=t("writing.resubmitted", lang, number=numbers[same.id], band=same.overall_band),
+            reply_markup=share_card_kb("writing", same.id, lang),
+        )
+        if data.get("mock_session_id"):
+            await record_mock_test_part(message, state, submission_id=same.id, submission_type="writing",
+                                        band=same.overall_band)
+        else:
+            await state.clear()
+            await message.answer(t("nav.what_next", lang), reply_markup=_after_result_kb(data, lang))
+        return
+
     processing_msg = await message.answer(t("writing.grading_in_progress", lang))
 
     try:
@@ -225,42 +264,60 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
         prompt_images = None
         if data["task_type"] == "task1":
             prompt_images = _load_prompt_images(data.get("prompt_image_paths") or [])
+        seed = user_id + earlier_essays
+        answer_task: asyncio.Task | None = None
+        needs = None
 
-        # The model answer only needs the question, so it's written while the
-        # essay is being graded.
+        def start_answer(bands, overall, feedback) -> None:
+            # The model answer is written for this student's results, while the
+            # grading's last two passes run.
+            nonlocal answer_task, needs
+            needs = needs_from_feedback(bands, overall, feedback, data["answer_text"])
+            answer_task = asyncio.create_task(
+                build_model_answer(data["task_type"], data["prompt_text"], prompt_images, seed=seed, needs=needs)
+            )
+
         with usage.track(f"writing {data['task_type']} user={user_id}"):
-            report, answer = await asyncio.gather(
-                grade_writing(
+            try:
+                report = await grade_writing(
                     task_type=data["task_type"],
                     prompt_text=data["prompt_text"],
                     answer_text=data["answer_text"],
                     prompt_images=prompt_images,
-                ),
-                build_model_answer(
-                    data["task_type"], data["prompt_text"], prompt_images, seed=user_id + earlier_essays
-                ),
-                return_exceptions=True,
-            )
-            if isinstance(report, BaseException):
-                raise report
-            if isinstance(answer, BaseException):
+                    on_feedback=start_answer,
+                )
+            except BaseException:
+                if answer_task is not None:
+                    answer_task.cancel()
+                raise
+            try:
+                if answer_task is None:
+                    raise RuntimeError("the feedback never reached the model answer")
+                answer = await answer_task
+            except Exception as e:
                 # The model answer page is never left empty: one more try.
-                logger.error("Model answer failed for user %s - trying once more", user_id, exc_info=answer)
+                logger.error("Model answer failed for user %s - trying once more", user_id, exc_info=e)
                 try:
                     answer = await build_model_answer(
-                        data["task_type"], data["prompt_text"], prompt_images, seed=user_id + earlier_essays
+                        data["task_type"], data["prompt_text"], prompt_images, seed=seed, needs=needs
                     )
                 except Exception:
                     logger.exception("Model answer failed again for user %s - report goes out without it", user_id)
                     answer = None
 
+        if similar is not None:
+            # Nearly the same essay: no "progress" between an essay and itself.
+            progress = {"first": True, "note": f"Same essay as #{numbers[similar.id]}, so there is no progress to "
+                        "show. Your next new essay will be compared with this one."}
+        else:
+            progress = build_progress(report, previous)
         # WeasyPrint is CPU-bound for a few seconds - off the event loop, so
         # other students' messages aren't held up while a report renders.
         pdf_bytes = await asyncio.to_thread(
             build_writing_report_pdf,
             report,
             answer,
-            build_progress(report, previous),
+            progress,
             message.chat.full_name,
             earlier_essays + 1,
             prompt_images,
@@ -303,6 +360,16 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
             spend_credit=data.get("spend_credit", False),
             assignment_part_id=data.get("assignment_part_id"),
             payer_id=data.get("payer_id"),
+            report_data={
+                # where the model answer came from: internal only, never in the report
+                "model_answer": None if answer is None else {
+                    "source": answer.source, "aimed_at": answer.band,
+                    "provisional": answer.source != "human_reviewed",
+                    "shows": [x["n"] for x in answer.shows], "writer": answer.log.get("chosen"),
+                    "reference_ids": answer.log.get("reference_ids", []),
+                },
+                "resubmission_of": similar.id if similar is not None else None,
+            },
         )
         if data.get("practice_question_id"):
             await crud.mark_practice_complete(

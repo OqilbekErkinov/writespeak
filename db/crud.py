@@ -137,6 +137,7 @@ async def save_writing_submission(
     spend_credit: bool = False,
     assignment_part_id: int | None = None,
     payer_id: int | None = None,
+    report_data: dict | None = None,
 ) -> WritingSubmission:
     """`annotations` holds the report's numbered mistakes (each with its
     `criterion`) since the 2026-10 report redesign - get_writing_history
@@ -157,6 +158,7 @@ async def save_writing_submission(
         annotations=annotations,
         vocabulary_json=[v.model_dump() for v in vocabulary],
         book_sample_ref=book_sample_ref,
+        report_data=report_data,
         feedback_pdf_path=feedback_pdf_path,
         practice_question_id=practice_question_id,
         assignment_part_id=assignment_part_id,
@@ -259,6 +261,27 @@ async def get_speaking_sessions(session: AsyncSession, user_id: int, part: str, 
         .limit(limit)
     )
     return list((await session.execute(stmt)).scalars().all())
+
+
+async def get_writing_sessions(session: AsyncSession, user_id: int, task_type: str, limit: int = 20) -> list[WritingSubmission]:
+    """The student's latest graded essays of one task type, newest first - for
+    spotting a resubmission of the same essay."""
+    stmt = (
+        select(WritingSubmission)
+        .where(WritingSubmission.user_id == user_id, WritingSubmission.task_type == task_type,
+               WritingSubmission.overall_band.is_not(None))
+        .order_by(WritingSubmission.created_at.desc())
+        .limit(limit)
+    )
+    return list((await session.execute(stmt)).scalars().all())
+
+
+async def writing_essay_number(session: AsyncSession, user_id: int, submission_id: int) -> int:
+    """The "Essay #N" a Writing report was given: the student's Nth essay."""
+    return (await session.execute(
+        select(func.count()).select_from(WritingSubmission).where(
+            WritingSubmission.user_id == user_id, WritingSubmission.id <= submission_id)
+    )).scalar() or 0
 
 
 async def get_writing_history(

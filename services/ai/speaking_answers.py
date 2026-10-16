@@ -55,13 +55,13 @@ from services.ai.essay_marking import count_words
 from services.ai.openai_client import client
 from services.ai.sample_bank import _cosine, _slug, embed_texts, forbidden_names, names_in, write_json
 from services.ai.schemas import StyleProfile
+from services.ai.scoring import aim_band
 
 logger = logging.getLogger(__name__)
 
 LENGTHS = {"part1": (40, 60), "part2": (250, 300), "part3": (70, 100)}
 WORDS_PER_MINUTE = 140
 DEFAULT_BAND = 7.5  # without the student's results
-AIM_RANGE = (6.0, 8.0)  # the aimed band: the student's band + 1, kept in this range
 SELF_CHECK_MARGIN = 0.5
 REUSE_LIMIT = 0.35  # share of the answer's 4-word runs that may come from the student's transcript
 MAX_SHOWS = 2
@@ -78,11 +78,6 @@ PART_NOTES = {
     "comparison, and a brief conclusion. A \"why\" question gets reasons; a \"how\" question gets ways; "
     "a comparison question compares.",
 }
-
-
-def aim_band(overall: float) -> float:
-    """The band a model answer is aimed at: one above the student's."""
-    return min(AIM_RANGE[1], max(AIM_RANGE[0], overall + 1.0))
 
 
 @dataclass

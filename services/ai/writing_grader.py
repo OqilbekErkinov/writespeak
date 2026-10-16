@@ -1,26 +1,36 @@
 """Writing (Task 1 / Task 2) grading against the IELTS Writing Band Descriptors -
-the "Feedback Coach" (final report, 2026-10-12):
+the "Feedback Coach" (final report, 2026-10-12; reliability rules, Part 4 of
+the Speaking report prompt, 2026-10-16):
 
-  1. text the student copied from the question is found by code first
+  1. scores: SCORE_RUNS independent scoring calls, whole bands, median per
+     criterion (services/ai/scoring.py) - the same essay got 8.0 and then 8.5
+     when the feedback call also scored it (reports #14 and #15);
+  2. text the student copied from the question is found by code
      (services/ai/essay_marking.py) and named in the prompt, so the model
      writes a Task mistake with a paraphrase for it;
-  2. the feedback call returns WritingFeedback (services/ai/schemas.py) - JSON
-     only, the model never produces layout. If essay_marking's `assess` finds
-     a problem worth paying for (its marks can't be placed on the essay, a
-     section would be short) or the answer runs past its token limit, the
-     call is made once more and the better answer kept;
-  3. a second call whose only job is to find mistakes the first one missed;
-  4. essay_marking.build_report validates everything and assembles the report.
+  3. the feedback call returns WritingFeedback (services/ai/schemas.py) - JSON
+     only, written for the scores already decided. If essay_marking's
+     `assess` finds a problem worth paying for (its marks can't be placed on
+     the essay, a section would be short) or the answer runs past its token
+     limit, the call is made once more and the better answer kept. Once it
+     is final, `on_feedback` lets the caller start the model answer written
+     for these results (services/ai/sample_bank.py);
+  4. a second call finds mistakes the first one missed, while a third checks
+     the first pass's mistakes - is each definitely wrong, and does the
+     correction keep the meaning? - then the second pass's finds are checked
+     the same way; anything that isn't is dropped;
+  5. essay_marking.build_report validates everything and assembles the report.
 
 `score_writing` is the same examiner returning scores only - the model
 answer's self-check (services/ai/sample_bank.py).
 
-All three run gpt-5 at settings.openai_grading_reasoning_effort, and each has
+All calls run gpt-5 at settings.openai_grading_reasoning_effort, and each has
 an output-token limit: on 2026-10-13 a feedback call ran on to 52k tokens
 (normal: ~8k at low effort), taking 4.5 minutes and $0.53.
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import logging
 
@@ -35,11 +45,10 @@ from services.ai.essay_marking import (
     assess,
     build_report,
     find_copied_spans,
-    overall_band,
-    snap_band,
 )
 from services.ai.openai_client import client
-from services.ai.schemas import CriterionScores, Mistake, MissedMistake, MissedMistakes, WritingFeedback
+from services.ai.schemas import CriterionScores, Mistake, MissedMistake, MissedMistakes, Verdicts, WritingFeedback
+from services.ai.scoring import LENIENCY_NOTE, median_of_runs, overall_band, target_band, whole_band
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +56,7 @@ logger = logging.getLogger(__name__)
 # essay needs at low effort, so only a runaway answer is cut off.
 FEEDBACK_MAX_TOKENS = 20000
 MISSED_MAX_TOKENS = 8000
+VERIFY_MAX_TOKENS = 8000
 SCORE_MAX_TOKENS = 4000
 
 # Condensed, paraphrased summary of the public IELTS Writing Band Descriptors
@@ -97,20 +107,14 @@ consistent position throughout; main ideas are extended, supported and justified
 examples, not just asserted.
 """.strip()
 
-# Revision Brief v2, Section 1 (2026-08-30): calibrate toward the more
-# generous end of a band range rather than a literal examiner reading, since
-# every WriteSpeak user is an ESL learner, not a native speaker being
-# benchmarked against native-level command of English.
-ESL_CALIBRATION = """
-ESL-CALIBRATED SCORING: When applying the 4 criteria above, weigh communicative effectiveness \
-above prescriptive correctness. A single grammar slip, an awkward but understandable collocation, \
-or a minor first-language-interference pattern (e.g. article omission, preposition choice, word \
-order carried over from Uzbek or Russian) should not by itself pull the band down - only deduct \
-when such issues are frequent or severe enough to genuinely interfere with the reader's \
-understanding or the response's fluency. Where a response sits between two bands, default to the \
-HIGHER one unless the errors are systematic. This is intentionally more generous than a literal \
-reading of the descriptors - it's a supportive estimate calibrated for ESL learners, not a \
-literal examiner reading, and the report's disclaimer says so.
+# Every WriteSpeak user is an ESL learner. Since 2026-10-16 that softens the
+# feedback's WORDING only - the bands come from strict scoring runs
+# (scoring.LENIENCY_NOTE): "default to the higher band" had inflated them
+# (an essay a careful marking puts at 7.5 got 8.0 and 8.5).
+ESL_WORDING = """
+ESL-FRIENDLY WORDING: the student is an ESL learner. Be warm and encouraging, explain in plain \
+words, and acknowledge what works - but stay honest: never call something correct that isn't, and \
+never soften a real problem into nothing.
 """.strip()
 
 
@@ -134,26 +138,38 @@ def _piece(task_type: str) -> str:
     return "report" if task_type == "task1" else "essay"
 
 
-def _system_prompt(task_type: str) -> str:
+def _system_prompt(task_type: str, bands: dict[str, float], overall: float, target: float) -> str:
     first = "Task Achievement" if task_type == "task1" else "Task Response"
     piece = _piece(task_type)
     if task_type == "task1":
         tr_scope = "task coverage, the overview, key features, data accuracy, copying the question"
         vocab_scope = "for describing this kind of chart or diagram"
+        gap_examples = "a sharper overview, comparisons that group the data, more precise trend vocabulary"
     else:
-        tr_scope = "task coverage, position, idea development, copying the question"
+        tr_scope = "task coverage, position, idea development, a conclusion that matches the body, copying the question"
         vocab_scope = "for essays on this topic"
+        gap_examples = ("develop your second point with an example, make the conclusion match the body, "
+                        "sharpen collocations")
+    high_note = (
+        f" The overall band is {overall:.1f}: where real mistakes are few, take priorities from what separates "
+        f"this band from the next in the descriptors ({gap_examples}). Never build a priority around one "
+        "trivial word."
+        if overall >= 7 else " Never build a priority around one trivial word."
+    )
     return f"""You are a certified, meticulous IELTS Writing examiner AND a warm, encouraging ESL \
-tutor. Grade according to the IELTS Writing Band Descriptors below AND the ESL-calibrated scoring \
-note that follows them - the goal is an honest, diagnostic score a student can actually trust and \
-act on: not a maximally strict literal reading, and not an inflated, feel-good one either.
+tutor writing a feedback report.
 
 {_task_instructions(task_type)}
 
 IELTS WRITING BAND DESCRIPTORS (summary):
 {BAND_DESCRIPTORS}
 
-{ESL_CALIBRATION}
+THE SCORES ARE ALREADY DECIDED (separate scoring runs): {first} {bands['TR_or_TA']:.0f}, Coherence \
+& Cohesion {bands['CC']:.0f}, Lexical Resource {bands['LR']:.0f}, Grammatical Range & Accuracy \
+{bands['GRA']:.0f}; overall band {overall:.1f}; the student's next target is {target:.1f}. Everything \
+you write must be consistent with these scores.
+
+{ESL_WORDING}
 
 Your output is rendered into a feedback report by software, so follow the field rules exactly. \
 Write everything in English, in plain words a B1-B2 learner understands.
@@ -167,22 +183,28 @@ include a few surrounding words in both wrong and correct.
    - why: one plain-English line, 25 words or fewer.
    - criterion, by the real cause: GRA = grammar (tenses, articles - a missing or unneeded "the" \
 is always GRA, agreement, verb patterns, punctuation, sentence structure); LR = vocabulary (word \
-choice, collocation, word form, spelling, wordiness, repetition, register); CC = linking, \
-referencing, paragraphing and logic gaps (a reason that doesn't lead to its result, e.g. "people \
-don't have to search for products, creating many employment opportunities"); TR = {tr_scope}.
-   - Real mistakes only: never style preferences ("the economy of the country" is not wrong) and \
-never something that is already correct.
+choice, collocation, word form, spelling, wordiness, repetition, register, overstated words); CC = \
+linking, referencing, paragraphing and logic gaps (a reason that doesn't lead to its result, e.g. \
+"people don't have to search for products, creating many employment opportunities"); TR = {tr_scope}.
+   - Real mistakes only: never style preferences ("the economy of the country" is not wrong), never \
+something that is already correct, and never a "fix" that changes what the student meant. Read the \
+whole sentence before flagging: a verb may correctly continue an earlier verb phrase, a negative or \
+future form may be right as it stands.
    - If you can't tell what the student meant: unclear=true, say in `why` that the meaning is \
 unclear, put the most likely meaning in if_you_meant (short, English) and the fix for that meaning \
 in `correct`. Otherwise unclear=false and if_you_meant=null.
    - Before you finish the list, do a SECOND pass over the {piece}, sentence by sentence, whose \
 only job is to find mistakes you missed. Typical misses: subject-verb agreement in the SECOND verb \
 of a clause ("advertising obscures ... and undermines"), historic vs historical, a missing closing \
-comma after an inserted phrase, an unneeded "the" before general nouns.
+comma after an inserted phrase, an unneeded "the" before general nouns, wrong word partners \
+(collocations), overstated words, a fixed phrase used with the wrong meaning, a linking phrase \
+that doesn't fit the logic ("In other words" before a new idea), and a conclusion that takes a \
+position the body never argued.
 2. essay - the student's {piece} copied EXACTLY (every character, typo and punctuation mark, in \
 order), as a list of paragraphs (as in the original), each split into segments:
-   - "good": 2-5 genuinely strong phrases in the whole {piece} worth keeping - never on text that \
-contains a mistake or that is copied from the question.
+   - "good": 2-5 of the {piece}'s BEST phrases - language above the student's level worth keeping \
+(a precise collocation, an idiomatic expression, a well-built complex structure), never an ordinary \
+phrase, never text that contains a mistake or that is copied from the question.
    - "error": the exact text of a mistake with its mistake_id. fix = the replacement for that \
 text if it is 6 words or fewer (empty string to delete it), otherwise null. Every mistake needs at \
 least one error segment.
@@ -190,26 +212,38 @@ least one error segment.
    Joining all segment texts must give back the original {piece}: copy punctuation exactly even \
 when it is wrong or missing, and never add, drop or repeat words between segments. Never correct \
 anything inside "text" or "good" segments, and don't number anything.
-3. scores - TR_or_TA ({first}), CC, LR, GRA, each 0-9 in 0.5 steps, per the ESL-calibrated \
-approach above. (The overall band is computed by the software from these four.)
-4. criterion_notes - one short line per criterion (6-12 words) saying what drives that score.
-5. strength - text: 1-2 sentences (40 words at most) on what the {piece} genuinely does well, \
-quoting 1-2 of the student's actual strong phrases word for word, in double quotes; \
-quoted_phrases: those phrases exactly as in the {piece}. No generic praise - this is the only \
-praise in the report.
-6. priorities - exactly 3, the most important first, each about ONE specific pattern (never a \
+3. criterion_notes - one short line per criterion (6-12 words) saying what drives that score.
+4. strength - text: 1-2 sentences (40 words at most) on what the {piece} genuinely does well, \
+quoting 1-2 of the phrases you marked "good", word for word, in double quotes; quoted_phrases: \
+those phrases exactly as in the {piece}. No generic praise - this is the only praise in the report.
+5. priorities - exactly 3, the most important first, each about ONE specific pattern (never a \
 whole category like "grammar"): title (2-6 words), rule (one short line, 15 words at most), \
 example_wrong (2-6 words copied exactly from the student's text, no "...") and example_right \
-(that piece corrected), criteria (its tag or tags), mistake_ids (2-5 ids from `mistakes` that show THIS pattern; each must have one of \
-the priority's criteria; never all the mistakes of a category).
-7. vocabulary - 10-12 words or phrases useful {vocab_scope}, about one band above the student's \
+(that piece corrected), criteria (its tag or tags), mistake_ids (2-5 ids from `mistakes` that show \
+THIS pattern; each must have one of the priority's criteria; never all the mistakes of a \
+category).{high_note}
+6. vocabulary - 10-12 words or phrases useful {vocab_scope}, about one band above the student's \
 level: term, plain-English meaning, an English example sentence on this topic.
-8. checklist - 5-6 short lines for "Before you send your next {piece}", built ONLY from this \
-report's priorities and mistakes, written as checks the student can tick ("My introduction \
-paraphrases the question."); ref = "Priority 01".."Priority 03" or "Mistake <id>".
+7. checklist - 5-6 short lines for "Before you send your next {piece}", built ONLY from this \
+report's priorities and mistakes, written as forward-looking habits the student can tick ("My \
+introduction paraphrases the question.") - never "I fixed ..."; ref = "Priority 01".."Priority 03" \
+or "Mistake <id>".
 
 Plain text only. In why, rule and checklist you may put a key word in **double asterisks** (bold) \
 or *single asterisks* (italics); no other markup."""
+
+
+def _scoring_system(task_type: str) -> str:
+    first = "Task Achievement" if task_type == "task1" else "Task Response"
+    return (
+        "You are a certified IELTS Writing examiner. Score the answer against the IELTS Writing Band "
+        f"Descriptors below.\n\n{_task_instructions(task_type)}\n\nIELTS WRITING BAND DESCRIPTORS "
+        f"(summary):\n{BAND_DESCRIPTORS}\n\n{LENIENCY_NOTE}\n\nCheck before you score: does the "
+        "answer do exactly what the question asks (all of its parts, its type - advantages AND "
+        "disadvantages, both views, ...)? Is the position the same from the introduction to the "
+        "conclusion? Are main ideas extended and supported? Return the four bands (TR_or_TA = "
+        f"{first}) as whole numbers."
+    )
 
 
 def _missed_prompt(task_type: str) -> str:
@@ -219,7 +253,10 @@ mistakes in a student's {piece} (below). Your ONLY job is to find real mistakes 
 MISSED. Read the {piece} again, sentence by sentence. Typical misses: subject-verb agreement in \
 the SECOND verb of a clause ("advertising obscures ... and undermines"), historic vs historical, a \
 missing closing comma after an inserted phrase, an unneeded "the" before general nouns, \
-prepositions in fixed phrases, word forms.
+prepositions in fixed phrases, word forms, wrong word partners (collocations: "make a research" -> \
+"do research"), overstated words (an absolute word where a softer one is meant), a fixed phrase \
+used with the wrong meaning, a linking phrase that doesn't fit the logic, and a conclusion that \
+takes a position the body never argued (TR).
 
 Rules:
 - Don't repeat or overlap a listed mistake, and ignore text copied from the question.
@@ -234,6 +271,41 @@ punctuation), LR (word choice, collocation, word form, spelling), CC (linking, l
 (task). unclear=true with if_you_meant only when the meaning can't be determined.
 - If nothing was missed, return an empty list. Plain text; you may put a key word in \
 **double asterisks**."""
+
+
+VERIFY_SYSTEM = """You are a senior IELTS Writing examiner double-checking a colleague's list of \
+mistakes in a student's essay or report. For each item decide whether to keep it.
+
+keep=false when:
+- the original is ALREADY CORRECT, grammatical and natural in its context - read the whole \
+sentence: a verb may correctly continue an earlier verb phrase ("people start using it and spend \
+hours" is right; "spending" would change the meaning), a negative or future form may be correct as \
+it stands;
+- it is only a STYLE PREFERENCE or a different-but-equally-good choice (a demonstrative instead of \
+an article, a near-synonym, "ranging from X to Y", a slightly plainer word);
+- the correction CHANGES WHAT THE STUDENT MEANT;
+- it is an optional comma, British vs American usage, or a choice that is correct either way.
+
+keep=true for every real error an examiner would penalise, including collocation errors, \
+overstated or wrong-meaning words, verb-pattern errors, unclear meaning, linking phrases that \
+don't fit the logic, and logic errors (a conclusion that contradicts the body).
+
+Judge each item on its own; give a short reason. Return a verdict for every id."""
+
+
+async def _verify_call(source_text: str, items: list[tuple[int, str, str, str, str]]) -> dict[int, tuple[bool, str]]:
+    """`items`: (id, where, wrong, correct, why). {id: (keep, reason)};
+    items without a verdict are kept."""
+    if not items:
+        return {}
+    listed = "\n".join(f"{i}. «{wrong}» -> «{correct}» ({why})" for i, _, wrong, correct, why in items)
+    messages = [
+        {"role": "system", "content": VERIFY_SYSTEM},
+        {"role": "user", "content": f"{source_text}\n\nMISTAKES TO CHECK:\n{listed}"},
+    ]
+    response = await _parse("verify", VERIFY_MAX_TOKENS, messages, Verdicts)
+    parsed = response.choices[0].message.parsed
+    return {v.id: (v.keep, v.reason) for v in parsed.verdicts} if parsed else {}
 
 
 def _with_images(text: str, prompt_images: list[tuple[bytes, str]] | None):
@@ -291,11 +363,12 @@ async def _parse(purpose: str, max_tokens: int, messages: list[dict], response_f
     return response
 
 
-async def _feedback_call(task_type, prompt_text, answer_text, prompt_images, copied) -> WritingFeedback | None:
+async def _feedback_call(task_type, prompt_text, answer_text, prompt_images, copied, bands) -> WritingFeedback | None:
     """None when the answer ran past FEEDBACK_MAX_TOKENS."""
+    overall = overall_band(list(bands.values()))
     text = f"QUESTION PROMPT:\n{prompt_text}\n\nSTUDENT'S ANSWER:\n{answer_text}{_copied_note(copied)}"
     messages = [
-        {"role": "system", "content": _system_prompt(task_type)},
+        {"role": "system", "content": _system_prompt(task_type, bands, overall, target_band(overall))},
         {"role": "user", "content": _with_images(text, prompt_images)},
     ]
     try:
@@ -335,19 +408,22 @@ async def grade_writing(
     prompt_text: str,
     answer_text: str,
     prompt_images: list[tuple[bytes, str]] | None = None,
+    on_feedback=None,
 ) -> WritingReport:
     """`prompt_images` - (bytes, mime) pairs of the Task 1 chart/diagram, so
     the grader can check the student's figures and overview against the
-    actual visual instead of just its text description.
+    actual visual instead of just its text description. `on_feedback(bands,
+    overall, feedback)` is called as soon as the feedback is final.
 
     The report always shows the student's original text; the model's marks
     are located in it (services/ai/essay_marking.py), never an altered copy."""
+    bands = await score_writing_runs(task_type, prompt_text, answer_text, prompt_images)
     copied = [answer_text[s:e] for s, e in find_copied_spans(answer_text, prompt_text)]
-    feedback = await _feedback_call(task_type, prompt_text, answer_text, prompt_images, copied)
+    feedback = await _feedback_call(task_type, prompt_text, answer_text, prompt_images, copied, bands)
     problems = assess(feedback, answer_text) if feedback else ["the answer ran past its token limit"]
     if problems:
         logger.warning("Feedback needs another try: %s", "; ".join(problems))
-        retry = await _feedback_call(task_type, prompt_text, answer_text, prompt_images, copied)
+        retry = await _feedback_call(task_type, prompt_text, answer_text, prompt_images, copied, bands)
         if retry is not None:
             retry_problems = assess(retry, answer_text)
             if feedback is None or _rank(retry, retry_problems, answer_text) < _rank(feedback, problems, answer_text):
@@ -356,17 +432,79 @@ async def grade_writing(
             raise RuntimeError("Feedback ran past its token limit twice")
         if problems:
             logger.warning("Feedback still has problems after the retry: %s", "; ".join(problems))
+    if on_feedback is not None:
+        try:
+            on_feedback(bands, overall_band(list(bands.values())), feedback)
+        except Exception:
+            logger.exception("on_feedback failed")
 
-    try:
-        missed = await _missed_errors_call(task_type, prompt_text, answer_text, prompt_images, feedback.mistakes)
-    except Exception:
-        logger.exception("Missed-errors pass failed - the report goes out with the first pass only")
-        missed = []
+    # "Is this definitely wrong?" - the first pass's mistakes are checked while
+    # the missed-errors pass runs; its finds are checked after it. Text copied
+    # from the question and unclear meaning are not corrections to check.
+    copied_norm = [c.lower() for c in copied]
+    source = f"QUESTION PROMPT:\n{prompt_text}\n\nSTUDENT'S {_piece(task_type).upper()}:\n{answer_text}"
 
-    report = build_report(task_type, prompt_text, answer_text, feedback, missed)
+    def checkable(m) -> bool:
+        return not m.unclear and m.criterion in ("GRA", "LR", "CC") and not any(
+            m.wrong.strip().lower() in c for c in copied_norm)
+
+    async def verify(items) -> dict[int, tuple[bool, str]]:
+        try:
+            return await _verify_call(source, items)
+        except Exception:
+            logger.exception("Verification pass failed - keeping those mistakes")
+            return {}
+
+    async def find_missed() -> list[MissedMistake]:
+        try:
+            return await _missed_errors_call(task_type, prompt_text, answer_text, prompt_images, feedback.mistakes)
+        except Exception:
+            logger.exception("Missed-errors pass failed - the report goes out with the first pass only")
+            return []
+
+    verdicts, missed = await asyncio.gather(
+        verify([(m.id, "essay", m.wrong, m.correct, m.why) for m in feedback.mistakes if checkable(m)]),
+        find_missed(),
+    )
+    missed_verdicts = await verify([(k, "essay", x.wrong, x.correct, x.why) for k, x in enumerate(missed) if checkable(x)])
+    for label, found in (("mistake", verdicts), ("missed-pass item", missed_verdicts)):
+        for i, (keep, reason) in found.items():
+            if not keep:
+                logger.info("Verification dropped %s %s: %s", label, i, reason)
+    dropped = {i for i, (keep, _) in verdicts.items() if not keep}
+    missed = [x for k, x in enumerate(missed) if missed_verdicts.get(k, (True, ""))[0]]
+
+    report = build_report(task_type, prompt_text, answer_text, feedback, missed, bands=bands, dropped=dropped)
     if report.notes:
         logger.info("Report validation: %s", "; ".join(report.notes))
     return report
+
+
+async def _score_once(task_type, prompt_text, answer_text, prompt_images) -> dict[str, float]:
+    text = f"QUESTION PROMPT:\n{prompt_text}\n\nANSWER:\n{answer_text}"
+    messages = [
+        {"role": "system", "content": _scoring_system(task_type)},
+        {"role": "user", "content": _with_images(text, prompt_images)},
+    ]
+    response = await _parse("score", SCORE_MAX_TOKENS, messages, CriterionScores)
+    scores = response.choices[0].message.parsed
+    if scores is None:
+        raise RuntimeError("Scoring model returned no parsable result")
+    return {k: whole_band(getattr(scores, k)) for k in SCORE_KEYS}
+
+
+async def score_writing_runs(
+    task_type: str,
+    prompt_text: str,
+    answer_text: str,
+    prompt_images: list[tuple[bytes, str]] | None = None,
+) -> dict[str, float]:
+    """The report's criterion bands: the median of SCORE_RUNS scoring runs."""
+    bands, _ = await median_of_runs(
+        lambda: _score_once(task_type, prompt_text, answer_text, prompt_images), SCORE_KEYS,
+        label=f"writing {task_type}",
+    )
+    return bands
 
 
 async def score_writing(
@@ -375,22 +513,6 @@ async def score_writing(
     answer_text: str,
     prompt_images: list[tuple[bytes, str]] | None = None,
 ) -> float:
-    """The overall band our examiner gives `answer_text` - scores only."""
-    system = (
-        "You are a certified IELTS Writing examiner. Score the answer according to the IELTS "
-        "Writing Band Descriptors below AND the ESL-calibrated scoring note.\n\n"
-        f"{_task_instructions(task_type)}\n\nIELTS WRITING BAND DESCRIPTORS (summary):\n"
-        f"{BAND_DESCRIPTORS}\n\n{ESL_CALIBRATION}\n\nReturn only the four criterion scores "
-        f"(TR_or_TA = {'Task Achievement' if task_type == 'task1' else 'Task Response'}), each "
-        "0-9 in 0.5 steps."
-    )
-    text = f"QUESTION PROMPT:\n{prompt_text}\n\nANSWER:\n{answer_text}"
-    messages = [
-        {"role": "system", "content": system},
-        {"role": "user", "content": _with_images(text, prompt_images)},
-    ]
-    response = await _parse("self_check", SCORE_MAX_TOKENS, messages, CriterionScores)
-    scores = response.choices[0].message.parsed
-    if scores is None:
-        raise RuntimeError("Scoring model returned no parsable result")
-    return overall_band([snap_band(getattr(scores, k)) for k in SCORE_KEYS])
+    """The overall band our examiner gives `answer_text` in one run - the
+    model answer's self-check."""
+    return overall_band(list((await _score_once(task_type, prompt_text, answer_text, prompt_images)).values()))

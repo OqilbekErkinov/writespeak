@@ -22,7 +22,11 @@ Enforced here, not left to the prompt:
     ("argue that that") is repaired, or not shown inline;
   * 3 priorities whose 2-5 mistake numbers carry the priority's tags, 10-12
     vocabulary items, 5-6 checklist lines;
-  * the overall band (IELTS rounding), the target, criterion chips and stats.
+  * every phrase quoted in "What you did well" is one of the green strong
+    phrases, and the cover's strong-phrase count is the number of them;
+  * mistakes the verification pass rejected are dropped;
+  * the overall band (IELTS rounding) from the scoring runs' whole bands,
+    the target, criterion chips and stats.
 `assess` lists the problems worth one more model call.
 """
 from __future__ import annotations
@@ -33,7 +37,8 @@ import math
 import re
 from dataclasses import dataclass, field
 
-from services.ai.schemas import EssaySegment, MissedMistake, Strength, VocabEntry, WritingFeedback
+from services.ai.schemas import EssaySegment, MissedMistake, VocabEntry, WritingFeedback
+from services.ai.scoring import overall_band, target_band, whole_band
 
 INLINE_FIX_MAX_WORDS = 6
 MAX_GOOD_HIGHLIGHTS = 5
@@ -72,24 +77,6 @@ def canon(text: str) -> str:
 
 def count_words(text: str) -> int:
     return len(WORD_RE.findall(text))
-
-
-# --- Scores ------------------------------------------------------------------------------
-
-
-def snap_band(value: float) -> float:
-    return max(0.0, min(9.0, round(float(value) * 2) / 2))
-
-
-def overall_band(criteria: list[float]) -> float:
-    """Mean of the four criteria, rounded the IELTS way: .25 up to .5, .75 up
-    to the next whole band."""
-    mean = sum(criteria) / len(criteria)
-    return math.floor(mean * 2 + 0.5) / 2
-
-
-def target_band(overall: float) -> float:
-    return min(9.0, overall + 0.5)
 
 
 # --- Copied from the question --------------------------------------------------------------
@@ -254,17 +241,6 @@ def essay_matches(original: str, essay: list[list[EssaySegment]]) -> bool:
 # --- Checks shared by `assess` and `build_report` --------------------------------------------
 
 
-def _quoted_phrases(strength: Strength, original: str) -> list[str]:
-    """The strength's quoted phrases that really occur in the essay."""
-    essay = canon(original).lower()
-    found = []
-    for phrase in strength.quoted_phrases:
-        core = canon(phrase).strip(_QUOTES + " .,").lower()
-        if len(core.split()) >= 2 and core in essay:
-            found.append(phrase.strip().strip(_QUOTES + " .,"))
-    return found
-
-
 def _shared_run(a: str, b: str, n: int = 5) -> bool:
     """Do two texts share a run of n words (or is the shorter one inside the other)?"""
     wa, wb = [_word_key(w) for w in WORD_RE.findall(a)], [_word_key(w) for w in WORD_RE.findall(b)]
@@ -334,31 +310,43 @@ def inline_format(text: str) -> str:
     return re.sub(r"(?<![\w*])\*(?!\s)(.+?)(?<!\s)\*(?![\w*])", r"<i>\1</i>", s)
 
 
-def _strength_html(strength: Strength, phrases: list[str], original: str) -> str:
-    """The praise with the student's own phrases set in bold quotes - the
-    validated phrases, and any other quotation in it that shares 4 words in a
-    row with the essay (the model sometimes shortens a quote slightly)."""
-    text = _esc(strength.text.strip())
+def phrases_in_goods(quoted: list[str], goods: list[str]) -> list[str]:
+    """The strength's quoted phrases that are green highlights (or inside one)."""
+    out = []
+    for phrase in quoted:
+        core = canon(phrase).strip(_QUOTES + " .,").lower()
+        if len(core.split()) >= 2 and any(core in canon(g).lower() for g in goods):
+            out.append(phrase.strip().strip(_QUOTES + " .,"))
+    return out
+
+
+def strength_html(text: str, phrases: list[str], goods: list[str]) -> str:
+    """The praise with the validated phrases in bold quotes. Any other
+    quotation loses its quote marks - "What you did well" only ever quotes
+    the green strong phrases (validation rule 8); if it quotes none of
+    them, the first two are named."""
+    s = _esc(text.strip())
     shown = 0
     for phrase in phrases:
-        core = _esc(phrase)
         # a full stop or comma the model put inside the closing quote goes after it
-        pattern = re.compile(f"[{_QUOTES}]?({re.escape(core)})([.,;:!?]?)[{_QUOTES}]?", re.IGNORECASE)
-        text, hits = pattern.subn(lambda m: f"<b>“{m.group(1)}”</b>{m.group(2)}", text, count=1)
+        pattern = re.compile(f"[{_QUOTES}]?({re.escape(_esc(phrase))})([.,;:!?]?)[{_QUOTES}]?", re.IGNORECASE)
+        s, hits = pattern.subn(lambda m: f"<b>“{m.group(1)}”</b>{m.group(2)}", s, count=1)
         shown += hits
+    green = [canon(g).lower() for g in goods]
 
-    def quoted(m: re.Match) -> str:
+    def other_quote(m: re.Match) -> str:
+        # a quotation that is part of a green phrase stays a quotation
         nonlocal shown
-        inner = m.group(2)
-        if len(inner.split()) >= 3 and _shared_run(html.unescape(inner), original, 4):
+        inner = m.group(1)
+        if len(inner.split()) >= 2 and any(canon(html.unescape(inner)).lower() in g for g in green):
             shown += 1
             return f"<b>“{inner}”</b>"
-        return m.group(0)
+        return inner
 
-    text = re.sub(r"(?<!<b>)([“\"])([^“”\"<]+)([”\"])", quoted, text)
-    if not shown and phrases:
-        text += " Phrases like " + " and ".join(f"<b>“{_esc(p)}”</b>" for p in phrases[:2]) + " show this."
-    return text
+    s = re.sub(r"(?<!<b>)[“\"]([^“”\"<]+)[”\"]", other_quote, s)
+    if not shown and goods:
+        s += " Phrases like " + " and ".join(f"<b>“{_esc(g)}”</b>" for g in goods[:2]) + " show this."
+    return s
 
 
 def _changed(old: str, new: str) -> str:
@@ -574,12 +562,20 @@ def build_report(
     original: str,
     fb: WritingFeedback,
     missed: list[MissedMistake] | tuple = (),
+    *,
+    bands: dict[str, float],
+    dropped: set[int] = frozenset(),
 ) -> WritingReport:
+    """`bands`: the scoring runs' whole criterion bands; `dropped`: ids of
+    mistakes the verification pass rejected."""
     notes: list[str] = []
 
     mistakes: list[_Mistake] = []
     seen_ids = set()
     for m in fb.mistakes:
+        if m.id in dropped:
+            notes.append(f"dropped mistake {m.id} (not definitely wrong): {m.wrong!r}")
+            continue
         if _is_noop(m) or m.id in seen_ids:
             notes.append(f"dropped mistake {m.id} (no change or repeated id)")
             continue
@@ -651,6 +647,19 @@ def build_report(
                 continue
             if len(good) < MAX_GOOD_HIGHLIGHTS:
                 good.append(_Mark(span.start, span.end, "good"))
+        # Rule 8: a phrase quoted as a strength is a green highlight - added
+        # when it is free of mistakes and copied text, else not quoted.
+        for phrase in fb.strength.quoted_phrases:
+            core = phrase.strip().strip(_QUOTES + " .,")
+            texts = [canon(original[k.start:k.end]).lower() for k in good]
+            if len(core.split()) < 2 or any(canon(core).lower() in t for t in texts):
+                continue
+            loc = locate(original, core)
+            if loc is None or len(good) >= MAX_GOOD_HIGHLIGHTS or _overlaps(*loc, marks + good) \
+                    or any(w and w in canon(core).lower() for w in wrongs):
+                continue
+            good.append(_Mark(*loc, "good"))
+            notes.append(f"quoted strength {core!r} added as a strong phrase")
         marks += good
     marks.sort(key=lambda k: k.start)
 
@@ -705,7 +714,7 @@ def build_report(
         for item in fb.checklist[: CHECKLIST_RANGE[1]]
     ]
 
-    bands = {key: snap_band(getattr(fb.scores, key)) for key in SCORE_KEYS}
+    bands = {key: whole_band(bands[key]) for key in SCORE_KEYS}
     overall = overall_band(list(bands.values()))
     top = max(bands.values())
     single_top = list(bands.values()).count(top) == 1
@@ -723,9 +732,10 @@ def build_report(
              "chip": chip, "cls": cls}
         )
 
-    phrases = _quoted_phrases(fb.strength, original)
+    goods = [original[k.start:k.end] for k in marks if k.kind == "good"]
+    phrases = phrases_in_goods(fb.strength.quoted_phrases, goods)
     if not phrases:
-        notes.append("strength quotes no phrase from the essay")
+        notes.append("strength quotes no green phrase")
     mistake_rows = []
     for m in mistakes:
         tag, tag_cls = TAGS[m.criterion]
@@ -749,7 +759,7 @@ def build_report(
             "fixes": len(mistakes),
             "strong": sum(k.kind == "good" for k in marks),
         },
-        strength_html=_strength_html(fb.strength, phrases, original),
+        strength_html=strength_html(fb.strength.text, phrases, goods),
         priorities=priorities,
         essay_paragraphs=render_essay(original, marks),
         essay_marked=marked,

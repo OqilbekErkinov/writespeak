@@ -40,6 +40,8 @@ from services.ai.essay_marking import (
     essay_matches,
     inline_format,
     locate,
+    phrases_in_goods,
+    strength_html,
 )
 from services.ai.pronunciation import Assessment
 from services.ai.schemas import SpeakingFeedback
@@ -264,34 +266,6 @@ def _only_fillers(item: SessionItem, start: int, end: int) -> bool:
 
 def _hits(spans: list[tuple[int, int]], start: int, end: int) -> bool:
     return any(start < b and a < end for a, b in spans)
-
-
-def phrases_in_goods(quoted: list[str], goods: list[str]) -> list[str]:
-    """The strength's quoted phrases that are green highlights (or inside one)."""
-    out = []
-    for phrase in quoted:
-        core = canon(phrase).strip(_QUOTES + " .,").lower()
-        if len(core.split()) >= 2 and any(core in canon(g).lower() for g in goods):
-            out.append(phrase.strip().strip(_QUOTES + " .,"))
-    return out
-
-
-def strength_html(text: str, phrases: list[str], goods: list[str]) -> str:
-    """The praise with the validated phrases in bold quotes. Any other
-    quotation loses its quote marks - "What you did well" only ever quotes
-    the green strong phrases (validation rule 8); if it quotes none of
-    them, the first two are named."""
-    s = _esc(text.strip())
-    shown = 0
-    for phrase in phrases:
-        # a full stop or comma the model put inside the closing quote goes after it
-        pattern = re.compile(f"[{_QUOTES}]?({re.escape(_esc(phrase))})([.,;:!?]?)[{_QUOTES}]?", re.IGNORECASE)
-        s, hits = pattern.subn(lambda m: f"<b>“{m.group(1)}”</b>{m.group(2)}", s, count=1)
-        shown += hits
-    s = re.sub(r"(?<!<b>)[“\"]([^“”\"<]+)[”\"]", r"\1", s)
-    if not shown and goods:
-        s += " Phrases like " + " and ".join(f"<b>“{_esc(g)}”</b>" for g in goods[:2]) + " show this."
-    return s
 
 
 def _ref(ref: str, by_model_id: dict[int, _Mistake], priorities: int) -> str:
