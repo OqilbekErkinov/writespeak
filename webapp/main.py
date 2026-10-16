@@ -24,6 +24,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
 from bot.config import settings
+from bot.utils import crm_events
 from db import crud
 from db.database import get_session
 from db.models import PaymentStatus, PracticeModule, UserRole
@@ -166,9 +167,11 @@ async def decide_payment_web(request: Request, request_id: int, action: str):
         return redirect
     if action in ("approve", "reject"):
         async with get_session() as session:
-            await crud.decide_payment_request(
+            _, applied = await crud.decide_payment_request(
                 session, request_id, approve=(action == "approve"), admin_id=WEB_REVIEWER_ID
             )
+        if applied:
+            await crm_events.payment_decided(request_id)
     return RedirectResponse("/payments", status_code=303)
 
 
@@ -203,8 +206,11 @@ async def make_center(request: Request, user_id: int, name: str = Form(...)):
         return redirect
     name = " ".join(name.split())[:100]
     async with get_session() as session:
-        if name and await crud.get_user_center(session, user_id) is None and await crud.get_user(session, user_id):
+        created = name and await crud.get_user_center(session, user_id) is None and await crud.get_user(session, user_id)
+        if created:
             await crud.create_center(session, user_id, name)
+    if created:
+        await crm_events.center_created(user_id, name)
     return RedirectResponse("/teachers?done=center", status_code=303)
 
 
@@ -214,8 +220,11 @@ async def revoke_teacher(request: Request, user_id: int):
         return redirect
     async with get_session() as session:
         user = await crud.get_user(session, user_id)
-        if user is not None and user.role == UserRole.teacher:
+        revoked = user is not None and user.role == UserRole.teacher
+        if revoked:
             await crud.set_user_role(session, user_id, UserRole.student)
+    if revoked:
+        await crm_events.teacher_revoked(user_id)
     return RedirectResponse("/teachers?done=revoked", status_code=303)
 
 

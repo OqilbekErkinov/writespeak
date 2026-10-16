@@ -32,6 +32,7 @@ from bot.keyboards import group_kb as kb
 from bot.keyboards.main_menu_kb import MENU_BUTTON_TEXTS
 from bot.states.group_states import AssignmentStates
 from bot.states.writing_states import WritingStates
+from bot.utils import crm_events
 from bot.utils.messages import remove_message, show_screen
 from bot.utils.quota import check_quota, free_check_note, send_paywall
 from db import crud
@@ -277,6 +278,7 @@ async def create(callback: CallbackQuery, state: FSMContext, lang: str) -> None:
         except Exception:
             logger.info("Assignment notice to %s failed", user.id)
     await callback.message.answer(t("as.created", lang, sent=sent, due=_when(due_at)))
+    await crm_events.assignment_created(group.name, assignment.kind, title, due_at, callback.from_user, sent)
     await _results_screen(callback, assignment.id, lang)
 
 

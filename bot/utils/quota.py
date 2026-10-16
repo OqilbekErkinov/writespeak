@@ -73,6 +73,22 @@ async def check_quota(user_id: int, assignment_group_id: int | None = None, cost
         return Quota(False, False)
 
 
+async def payment_of(user_id: int, spend_credit: bool, payer_id: int | None, credits: int = 1) -> dict:
+    """How a check that is about to be saved is paid, for its report_data
+    ("paid_with") and the admins' group: {"mode": "sponsor" | "credit" |
+    "test" | "subscription" | "free", "credits", "payer_id"}."""
+    if spend_credit and payer_id:
+        return {"mode": "sponsor", "credits": credits, "payer_id": payer_id}
+    if spend_credit:
+        return {"mode": "credit", "credits": credits}
+    if settings.checks_only_for_ids:
+        return {"mode": "test", "credits": 0}
+    async with get_session() as session:
+        if await crud.has_active_subscription(session, user_id):
+            return {"mode": "subscription", "credits": 0}
+    return {"mode": "free", "credits": 0}
+
+
 def free_check_note(quota: Quota, lang: str) -> str:
     """A note shown when a check will use one of the free ones, or is paid by
     the student's teacher/center ("" otherwise)."""

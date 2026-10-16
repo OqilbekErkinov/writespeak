@@ -28,6 +28,7 @@ from bot.config import settings
 from bot.i18n import t
 from bot.keyboards.lang_kb import CB_LANG_ONBOARD_PREFIX, lang_picker_kb
 from bot.keyboards.main_menu_kb import main_menu_kb
+from bot.utils import crm_events
 from bot.utils.group_invite import (
     is_center_payload,
     is_invite_payload,
@@ -52,6 +53,7 @@ async def cmd_start(message: Message, command: CommandObject, lang: str) -> None
         )
         return
 
+    referrer_id = None
     async with get_session() as session:
         user = await crud.get_user(session, tg.id)
         is_new = user is None
@@ -64,8 +66,12 @@ async def cmd_start(message: Message, command: CommandObject, lang: str) -> None
 
     if join is not None and join.status == "joined":
         await _notify_teacher(message, join)
+        await crm_events.group_joined(tg, join.group_name, join.teacher_name, join.member_count)
     if center_join is not None and center_join[0] == "joined":
         await _notify_center_owner(message, center_join[1])
+        await crm_events.center_joined(tg, center_join[1].name)
+    if is_new:
+        await crm_events.user_registered(tg, referrer_id, command.args, join, center_join)
 
     if is_new:
         # Language not chosen yet - bot/handlers/language.py's onboarding

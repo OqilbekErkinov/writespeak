@@ -35,6 +35,7 @@ from bot.keyboards import group_kb as kb
 from bot.keyboards.main_menu_kb import BTN_GROUP_RU, BTN_GROUP_UZ, MENU_BUTTON_TEXTS
 from bot.keyboards.payment_kb import buy_credits_kb
 from bot.states.group_states import GroupStates
+from bot.utils import crm_events
 from bot.utils.cabinet_auth import cabinet_login_url
 from bot.utils.group_invite import center_invite_link, invite_link
 from bot.utils.messages import show_screen
@@ -207,6 +208,7 @@ async def receive_group_name(message: Message, state: FSMContext, lang: str) -> 
         if not _can_open_group(user, message.from_user.id):
             return
         group = await crud.create_group(session, message.from_user.id, name)
+    await crm_events.group_created(group.id)
     text, markup = await _group_screen(message.from_user.id, group.id, lang)
     await message.answer(t("group.created", lang) + "\n\n" + text, reply_markup=markup, disable_web_page_preview=True)
 
@@ -227,6 +229,7 @@ async def request_teacher(callback: CallbackQuery, lang: str) -> None:
             await callback.bot.send_message(admin_id, text, reply_markup=kb.teacher_review_kb(tg.id))
         except Exception:
             pass  # an admin may not have opened the bot; others still get it
+    await crm_events.teacher_request(tg)
     await show_screen(callback, t("group.request_sent", lang), kb.back_kb(lang, kb.CB_HOME))
 
 
@@ -257,6 +260,7 @@ async def _decide_teacher(callback: CallbackQuery, approve: bool) -> None:
         pass
     if not already:
         await _notify(callback.bot, user, "group.teacher_approved" if approve else "group.teacher_rejected")
+    await crm_events.teacher_decided(user_id, approve, already, callback.from_user.full_name)
 
 
 @router.callback_query(F.data.startswith(kb.CB_TEACHER_OK_PREFIX))
@@ -665,6 +669,7 @@ async def do_gift(callback: CallbackQuery, lang: str) -> None:
         kb.back_kb(lang, f"{kb.CB_STUDENT_PREFIX}{group_id}:{student_id}:0"),
     )
     await _notify(callback.bot, student, "group.gift_notify_student", amount=amount)
+    await crm_events.credits_gifted(group.name, callback.from_user, credited, amount)
 
 
 @router.callback_query(F.data.startswith(kb.CB_GIFT_ALL_DO_PREFIX))
@@ -685,6 +690,7 @@ async def do_gift_all(callback: CallbackQuery, lang: str) -> None:
     for student in credited:
         await _notify(callback.bot, student, "group.gift_notify_student", amount=amount)
         await asyncio.sleep(SEND_PAUSE)
+    await crm_events.credits_gifted(group.name, callback.from_user, credited, amount)
 
 
 @router.callback_query(F.data.startswith(kb.CB_GIFT_ALL_PREFIX))
@@ -861,6 +867,7 @@ async def do_kick(callback: CallbackQuery, lang: str) -> None:
         student = await crud.get_user(session, student_id)
     if removed:
         await _notify(callback.bot, student, "group.kicked_notify", group=_esc(group.name))
+        await crm_events.group_left(group.name, student_id, by=callback.from_user)
     await show_screen(
         callback, t("group.kick_done", lang, name=_esc(student.full_name if student else None)),
         kb.back_kb(lang, f"{kb.CB_LIST_PREFIX}{group.id}:0"),
@@ -891,6 +898,7 @@ async def do_delete(callback: CallbackQuery, lang: str) -> None:
         return
     async with get_session() as session:
         await crud.delete_group(session, group.id)
+    await crm_events.group_deleted(group.name, callback.from_user)
     text, markup = await _home(callback.from_user.id, lang)
     await show_screen(callback, t("group.deleted", lang) + "\n\n" + text, markup)
 
@@ -918,6 +926,7 @@ async def do_leave(callback: CallbackQuery, lang: str) -> None:
         teacher = await crud.get_user(session, group.teacher_id) if group else None
     if left and group is not None:
         await _notify(callback.bot, teacher, "group.left_notify_teacher", name=_esc(callback.from_user.full_name))
+        await crm_events.group_left(group.name, callback.from_user.id)
     text, markup = await _home(callback.from_user.id, lang)
     await show_screen(callback, t("group.left", lang) + "\n\n" + text, markup)
 
@@ -980,6 +989,7 @@ async def do_center_kick(callback: CallbackQuery, lang: str) -> None:
         teacher = await crud.get_user(session, teacher_id)
     if removed:
         await _notify(callback.bot, teacher, "group.center_removed_notify", name=_esc(center.name))
+        await crm_events.center_teacher_removed(center.name, teacher_id, callback.from_user)
     await center_screen(callback, lang)
 
 

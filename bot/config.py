@@ -92,6 +92,9 @@ class Settings(BaseSettings):
     subscription_price_monthly: int = 99000
     # Test window - see the checks_only_for_ids property. Empty = off.
     checks_only_for: str = ""
+    # So'm per US dollar for the admins' group's cost figures (bot/utils/crm.py)
+    # when the Central Bank's daily rate can't be fetched.
+    usd_uzs_rate: float = 11800.0
 
     # --- Vocabulary bank (bot/handlers/vocabulary.py) ---
     # Tashkent hour (0-23) of the daily "words to review" reminder

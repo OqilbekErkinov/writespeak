@@ -44,6 +44,7 @@ from db.models import (
     VocabularyEntry,
     WritingSubmission,
 )
+from services.ai import usage
 from services.ai.essay_marking import count_words
 from services.ai.schemas import VocabularyItem
 
@@ -234,13 +235,7 @@ async def save_model_answer_voice(
     if 0 <= index < len(answers) and file_id:
         answers[index]["voice_file_id"] = file_id
     data["model_answers"] = answers
-    total = dict(data.get("cost") or {"total_usd": 0.0, "by_purpose": {}, "calls": 0})
-    by_purpose = dict(total.get("by_purpose") or {})
-    for purpose, value in (cost.get("by_purpose") or {}).items():
-        by_purpose[purpose] = round(by_purpose.get(purpose, 0.0) + value, 4)
-    total.update(total_usd=round(total.get("total_usd", 0.0) + cost.get("total_usd", 0.0), 4),
-                 by_purpose=by_purpose, calls=total.get("calls", 0) + cost.get("calls", 0))
-    data["cost"] = total
+    data["cost"] = usage.merge(data.get("cost"), cost)
     submission.report_data = data  # a new dict, so SQLAlchemy sees the change
     await session.commit()
 
@@ -2289,3 +2284,101 @@ async def get_dashboard_timeseries(session: AsyncSession, days: int = 30) -> lis
             }
         )
     return rows
+
+
+# --- Admins' group (bot/utils/crm_events.py) --------------------------------------------------
+
+
+async def count_users(session: AsyncSession, start: datetime | None = None, end: datetime | None = None) -> int:
+    stmt = select(func.count()).select_from(User)
+    if start is not None:
+        stmt = stmt.where(User.created_at >= start)
+    if end is not None:
+        stmt = stmt.where(User.created_at < end)
+    return (await session.execute(stmt)).scalar() or 0
+
+
+async def checks_before(session: AsyncSession, user_id: int, created_at: datetime) -> int:
+    """How many checks (a full Speaking test: FULL_TEST_CHECKS) the user had
+    before this moment - an old check within the first free ones was free."""
+    w = await session.execute(
+        select(func.count()).select_from(WritingSubmission)
+        .where(WritingSubmission.user_id == user_id, WritingSubmission.created_at < created_at)
+    )
+    s = await session.execute(
+        select(_speaking_checks()).select_from(SpeakingSubmission)
+        .where(SpeakingSubmission.user_id == user_id, SpeakingSubmission.created_at < created_at)
+    )
+    return (w.scalar() or 0) + (s.scalar() or 0)
+
+
+async def user_activity(session: AsyncSession) -> dict[int, dict]:
+    """{user id: {"writing", "speaking", "paid" (so'm approved)}} for everyone with any."""
+    out: dict[int, dict] = {}
+
+    def row(user_id: int) -> dict:
+        return out.setdefault(user_id, {"writing": 0, "speaking": 0, "paid": 0})
+
+    for user_id, n in (await session.execute(
+        select(WritingSubmission.user_id, func.count()).group_by(WritingSubmission.user_id)
+    )).all():
+        row(user_id)["writing"] = n
+    for user_id, n in (await session.execute(
+        select(SpeakingSubmission.user_id, func.count()).group_by(SpeakingSubmission.user_id)
+    )).all():
+        row(user_id)["speaking"] = n
+    for user_id, amount in (await session.execute(
+        select(PaymentRequest.user_id, func.sum(PaymentRequest.amount))
+        .where(PaymentRequest.status == PaymentStatus.approved).group_by(PaymentRequest.user_id)
+    )).all():
+        row(user_id)["paid"] = amount or 0
+    return out
+
+
+async def users_until(session: AsyncSession, until: datetime) -> list[User]:
+    return list((await session.execute(
+        select(User).where(User.created_at <= until).order_by(User.created_at)
+    )).scalars().all())
+
+
+async def payments_until(session: AsyncSession, until: datetime) -> list[PaymentRequest]:
+    return list((await session.execute(
+        select(PaymentRequest).where(PaymentRequest.created_at <= until).order_by(PaymentRequest.created_at)
+    )).scalars().all())
+
+
+async def submission_ids_until(session: AsyncSession, until: datetime) -> tuple[list[int], list[int]]:
+    w = (await session.execute(
+        select(WritingSubmission.id).where(WritingSubmission.created_at <= until).order_by(WritingSubmission.created_at)
+    )).scalars().all()
+    s = (await session.execute(
+        select(SpeakingSubmission.id).where(SpeakingSubmission.created_at <= until).order_by(SpeakingSubmission.created_at)
+    )).scalars().all()
+    return list(w), list(s)
+
+
+async def checks_between(
+    session: AsyncSession, start: datetime, end: datetime
+) -> tuple[list[WritingSubmission], list[SpeakingSubmission]]:
+    w = (await session.execute(
+        select(WritingSubmission).where(WritingSubmission.created_at >= start, WritingSubmission.created_at < end)
+    )).scalars().all()
+    s = (await session.execute(
+        select(SpeakingSubmission).where(SpeakingSubmission.created_at >= start, SpeakingSubmission.created_at < end)
+    )).scalars().all()
+    return list(w), list(s)
+
+
+async def payments_decided_between(session: AsyncSession, start: datetime, end: datetime) -> list[PaymentRequest]:
+    return list((await session.execute(
+        select(PaymentRequest).where(PaymentRequest.reviewed_at >= start, PaymentRequest.reviewed_at < end)
+    )).scalars().all())
+
+
+async def count_pending_payments(session: AsyncSession) -> int:
+    """Receipts sent and still waiting for an admin."""
+    return (await session.execute(
+        select(func.count()).select_from(PaymentRequest).where(
+            PaymentRequest.status == PaymentStatus.pending, PaymentRequest.receipt_file_id.is_not(None)
+        )
+    )).scalar() or 0

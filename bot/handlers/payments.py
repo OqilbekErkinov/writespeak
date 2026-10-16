@@ -33,6 +33,7 @@ from bot.keyboards.payment_kb import (
     payment_review_kb,
 )
 from bot.states.payment_states import PaymentStates
+from bot.utils import crm_events
 from bot.utils.quota import format_som
 from db import crud
 from db.database import get_session
@@ -132,6 +133,7 @@ async def receive_receipt(message: Message, state: FSMContext, lang: str) -> Non
             # An admin may not have opened a chat with the bot yet, or blocked
             # it. A single failed notification must not break the flow.
             pass
+    await crm_events.payment_receipt(request.id)
 
 
 @router.message(PaymentStates.awaiting_receipt, ~F.text.in_(MENU_BUTTON_TEXTS))
@@ -179,6 +181,7 @@ async def _decide(callback: CallbackQuery, *, approve: bool, status_line: str) -
 
     await _clear_buttons(callback, status_line)
     await callback.answer("Tasdiqlandi ✅" if approve else "Rad etildi")
+    await crm_events.payment_decided(request.id)
     try:
         if approve:
             text = (

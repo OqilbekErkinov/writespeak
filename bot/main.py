@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from aiogram import Bot, Dispatcher
+from aiogram import Bot, Dispatcher, F, Router
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.redis import RedisStorage
@@ -36,6 +36,7 @@ def build_dispatcher() -> Dispatcher:
     # 2026-08-29. Re-enable by importing it and adding its router back below.
     from bot.handlers import (
         account,
+        crm,
         group,
         group_assignments,
         language,
@@ -47,24 +48,33 @@ def build_dispatcher() -> Dispatcher:
         speaking,
         start,
         stats,
+        support,
         vocabulary,
         writing,
     )
 
-    dp.include_router(start.router)
-    dp.include_router(language.router)
-    dp.include_router(stats.router)
-    dp.include_router(payments.router)
-    dp.include_router(share.router)
-    dp.include_router(account.router)
-    dp.include_router(vocabulary.router)
-    dp.include_router(group.router)
-    dp.include_router(group_assignments.router)
-    dp.include_router(main_menu.router)
-    dp.include_router(writing.router)
-    dp.include_router(speaking.router)
-    dp.include_router(practice.router)
-    dp.include_router(my_works.router)
+    # The admins' group (bot/handlers/crm.py) is the only group the bot is in;
+    # everything else is for private chats only, so nothing said in the group
+    # is ever taken for a student's input.
+    dp.include_router(crm.router)
+    private = Router(name="private_chats")
+    private.message.filter(F.chat.type == "private")
+    private.include_router(start.router)
+    private.include_router(language.router)
+    private.include_router(stats.router)
+    private.include_router(payments.router)
+    private.include_router(share.router)
+    private.include_router(account.router)
+    private.include_router(vocabulary.router)
+    private.include_router(group.router)
+    private.include_router(group_assignments.router)
+    private.include_router(main_menu.router)
+    private.include_router(support.router)
+    private.include_router(writing.router)
+    private.include_router(speaking.router)
+    private.include_router(practice.router)
+    private.include_router(my_works.router)
+    dp.include_router(private)
 
     return dp
 
@@ -78,14 +88,17 @@ async def main() -> None:
     )
     dp = build_dispatcher()
 
+    from bot.utils import crm
     from bot.utils.group_scheduler import run_group_jobs
     from bot.utils.vocab_reminders import run_vocab_reminders
 
     logger.info("Starting WriteSpeak bot (polling mode)")
     await bot.delete_webhook(drop_pending_updates=True)
+    crm.install_error_forwarding()
     background = [
         asyncio.create_task(run_vocab_reminders(bot)),
         asyncio.create_task(run_group_jobs(bot)),
+        asyncio.create_task(crm.run_sender(bot)),
     ]
     try:
         await dp.start_polling(bot)

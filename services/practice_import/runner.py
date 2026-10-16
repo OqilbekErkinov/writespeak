@@ -14,6 +14,7 @@ from datetime import datetime
 
 from sqlalchemy import select
 
+from bot.utils import crm, crm_events
 from db import crud
 from db.database import get_session
 from db.models import PracticeQuestion
@@ -27,18 +28,22 @@ FIRST_RUN_DELAY = 60  # seconds - lets the bot container apply migrations first
 
 
 async def run_once(*, do_writing: bool = True, do_speaking: bool = True, since: datetime | None = None,
-                   limit: int | None = None) -> None:
+                   limit: int | None = None) -> dict[str, dict]:
+    """{"speaking": counts, "writing": counts} of what was imported."""
+    result: dict[str, dict] = {}
     if do_speaking:
         try:
-            await speaking.sync()
+            result["speaking"] = await speaking.sync()
         except Exception:
             logger.exception("Speaking import failed")
     if do_writing:
         try:
             counts = await writing.import_new_posts(since=since, limit=limit)
             logger.info("Writing import: %s", counts)
+            result["writing"] = counts
         except Exception:
             logger.exception("Writing import failed")
+    return result
 
 
 async def remove_manual_questions() -> int:
@@ -56,9 +61,11 @@ async def remove_manual_questions() -> int:
 
 
 async def main() -> None:
+    crm.install_error_forwarding()  # errors to the admins' group (bot/utils/crm.py)
     await asyncio.sleep(FIRST_RUN_DELAY)
     while True:
-        await run_once()
+        result = await run_once()
+        await crm_events.import_done(result)  # the run's OpenAI spend, to the daily totals
         await asyncio.sleep(INTERVAL_HOURS * 3600)
 
 

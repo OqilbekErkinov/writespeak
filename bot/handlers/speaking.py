@@ -33,6 +33,7 @@ import hashlib
 import html
 import logging
 import re
+import time
 from collections import defaultdict
 from pathlib import Path
 
@@ -66,7 +67,8 @@ from bot.utils.input_extraction import (
 )
 from bot.utils.messages import show_screen, strip_buttons
 from bot.utils.mock_test_flow import record_mock_test_part
-from bot.utils.quota import check_quota, free_check_note, send_paywall
+from bot.utils import crm_events
+from bot.utils.quota import check_quota, free_check_note, payment_of, send_paywall
 from bot.utils.speaking_questions import split_questions
 from db import crud
 from db.database import get_session
@@ -160,6 +162,10 @@ async def receive_question(message: Message, state: FSMContext, lang: str) -> No
     extracted = await read_text_input(message, lang)
     if extracted is None:
         return
+    if extracted.cost:
+        # reading a photo/file/voice costs too: it is added to the check's cost
+        earlier = (await state.get_data()).get("input_cost")
+        await state.update_data(input_cost=usage.merge(earlier, extracted.cost))
 
     if extracted.source == SourceType.text:
         await start_question_set(message, state, extracted.text, lang)
@@ -392,8 +398,10 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
     earlier = _find_resubmission(sessions, audio_hash)
     if earlier is not None and await _send_saved_report(message, state, data, earlier, lang):
         logger.info("Speaking resubmission by user %s: same recordings as submission %s", user_id, earlier.id)
+        await crm_events.check_repeated("s", user_id, earlier.id)
         return
 
+    started = time.monotonic()
     processing_msg = await message.answer(t("speaking.grading_in_progress", lang))
     try:
         async with get_session() as session:
@@ -447,8 +455,14 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
         "question_parts": parts,
         "pronunciation_measured": not report.pron_estimated,
         "resubmission_of": repeat.id if repeat else None,
-        # this check's OpenAI cost (estimated from tokens; TTS from its length)
-        "cost": usage.summary(calls),
+        # this check's OpenAI cost (estimated from tokens), reading the question
+        # photo/file included ("input: ..."; the voices, made on demand, are
+        # added later), how long the student waited, and how it was paid
+        "cost": usage.merge(usage.summary(calls), data.get("input_cost"), prefix="input: "),
+        "seconds": round(time.monotonic() - started),
+        "paid_with": await payment_of(
+            user_id, data.get("spend_credit", False), data.get("payer_id"), data.get("credits", 1)
+        ),
         # what each sample is: its source, the band it was aimed at (provisional),
         # the priorities it demonstrates - and its text, spoken when the student
         # taps its button (voice_file_id: Telegram's copy, reused after that)
@@ -518,6 +532,7 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
     else:
         await state.clear()
         await message.answer(t("nav.what_next", lang), reply_markup=_after_result_kb(data, lang))
+    await crm_events.check_done("s", submission.id)
 
 
 _listen_locks: defaultdict[int, asyncio.Lock] = defaultdict(asyncio.Lock)
@@ -564,6 +579,7 @@ async def listen_model_answer(callback: CallbackQuery, lang: str) -> None:
             await crud.save_model_answer_voice(
                 session, submission_id, index, sent.voice.file_id if sent.voice else None, usage.summary(calls)
             )
+        await crm_events.cost_updated("s", submission_id)
 
 
 def _after_result_kb(data: dict, lang: str):

@@ -51,6 +51,7 @@ class ExtractedInput:
     source: SourceType
     file_paths: list[str] = field(default_factory=list)  # saved originals, in order
     image_paths: list[str] = field(default_factory=list)  # the subset that are images
+    cost: dict | None = None  # reading it with OpenAI (usage.summary), added to the check's cost
 
 
 async def _download(bot: Bot, file_id: str) -> bytes:
@@ -72,8 +73,10 @@ async def read_text_input(message: Message, lang: str) -> ExtractedInput | None:
     result: ExtractedInput | None = None
     error: str | None = None
     try:
-        with usage.track(f"input user={message.from_user.id}"):
+        with usage.track(f"input user={message.from_user.id}") as calls:
             result = await _extract_text(messages, message.bot, message.from_user.id, lang)
+        if calls:
+            result.cost = usage.summary(calls)
     except UnsupportedInputError as e:
         error = str(e)
     except TelegramBadRequest as e:

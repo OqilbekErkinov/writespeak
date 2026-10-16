@@ -1134,6 +1134,27 @@ _T: dict[str, dict[str, str]] = {
     "vocab.btn_delete_yes": {"uz": "✅ Ha, o'chirish", "ru": "✅ Да, удалить"},
     "vocab.btn_cancel": {"uz": "❌ Bekor qilish", "ru": "❌ Отмена"},
     "vocab.btn_relearn": {"uz": "↩️ Qaytadan o'rganish", "ru": "↩️ Учить заново"},
+    # --- Admin bilan aloqa (bot/handlers/support.py, bot/handlers/crm.py) ---
+    "support.ask": {
+        "uz": "💬 Savolingiz, taklifingiz yoki muammoingizni yozing - matn, rasm, fayl yoki ovozli xabar "
+              "bo'lishi mumkin. Admin javobi shu chatga keladi.",
+        "ru": "💬 Напишите ваш вопрос, предложение или проблему - текстом, фото, файлом или голосовым "
+              "сообщением. Ответ администратора придёт в этот чат.",
+    },
+    "support.sent": {
+        "uz": "✅ Adminga yuborildi, javob shu yerga keladi. Yana biror narsa qo'shmoqchi bo'lsangiz, yozavering.",
+        "ru": "✅ Отправлено администратору, ответ придёт сюда. Если хотите что-то добавить - просто напишите.",
+    },
+    "support.unavailable": {
+        "uz": "Bu bo'lim hozircha ishlamayapti, birozdan so'ng urinib ko'ring.",
+        "ru": "Этот раздел пока недоступен, попробуйте чуть позже.",
+    },
+    "support.too_many": {
+        "uz": "Juda ko'p xabar yuborildi - bir soatdan so'ng yana yozing.",
+        "ru": "Слишком много сообщений - напишите снова через час.",
+    },
+    "support.answer": {"uz": "💬 <b>Admin javobi:</b>", "ru": "💬 <b>Ответ администратора:</b>"},
+    "support.btn_reply": {"uz": "✍️ Javob yozish", "ru": "✍️ Ответить"},
     # --- Share (bot/handlers/share.py) ---
     "share.not_found": {"uz": "Bu natija topilmadi.", "ru": "Результат не найден."},
     "share.caption": {

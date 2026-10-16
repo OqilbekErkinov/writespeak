@@ -21,6 +21,7 @@ import difflib
 import html
 import logging
 import mimetypes
+import time
 from pathlib import Path
 
 from aiogram import F, Router
@@ -42,10 +43,11 @@ from bot.keyboards.writing_task_kb import (
     writing_task_kb,
 )
 from bot.states.writing_states import WritingStates
+from bot.utils import crm_events
 from bot.utils.input_extraction import read_text_input
 from bot.utils.messages import show_screen, strip_buttons
 from bot.utils.mock_test_flow import record_mock_test_part
-from bot.utils.quota import check_quota, free_check_note, send_paywall
+from bot.utils.quota import check_quota, free_check_note, payment_of, send_paywall
 from db import crud
 from db.database import get_session
 from db.models import SourceType
@@ -129,6 +131,10 @@ async def _receive_input(message: Message, state: FSMContext, field: str, lang: 
     extracted = await read_text_input(message, lang)
     if extracted is None:
         return
+    if extracted.cost:
+        # reading a photo/file costs too: it is added to the check's cost
+        earlier = (await state.get_data()).get("input_cost")
+        await state.update_data(input_cost=usage.merge(earlier, extracted.cost))
 
     file_path = extracted.file_paths[0] if extracted.file_paths else None
     if field == "prompt":
@@ -254,8 +260,10 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
         else:
             await state.clear()
             await message.answer(t("nav.what_next", lang), reply_markup=_after_result_kb(data, lang))
+        await crm_events.check_repeated("w", user_id, same.id)
         return
 
+    started = time.monotonic()
     processing_msg = await message.answer(t("writing.grading_in_progress", lang))
 
     try:
@@ -337,6 +345,7 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
         for v in report.vocabulary
     ]
 
+    paid_with = await payment_of(user_id, data.get("spend_credit", False), data.get("payer_id"))
     async with get_session() as session:
         submission = await crud.save_writing_submission(
             session,
@@ -369,9 +378,12 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
                     "reference_ids": answer.log.get("reference_ids", []),
                 },
                 "resubmission_of": similar.id if similar is not None else None,
-                # this check's OpenAI cost (estimated from tokens; reading the prompt
-                # photo/file is logged separately as "input")
-                "cost": usage.summary(calls),
+                # this check's OpenAI cost (estimated from tokens), reading the
+                # prompt/answer photo or file included ("input: ..."), how long the
+                # student waited, and how it was paid
+                "cost": usage.merge(usage.summary(calls), data.get("input_cost"), prefix="input: "),
+                "seconds": round(time.monotonic() - started),
+                "paid_with": paid_with,
             },
         )
         if data.get("practice_question_id"):
@@ -406,6 +418,7 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
     else:
         await state.clear()
         await message.answer(t("nav.what_next", lang), reply_markup=_after_result_kb(data, lang))
+    await crm_events.check_done("w", submission.id)
 
 
 def _after_result_kb(data: dict, lang: str):

@@ -32,6 +32,11 @@ class AccessControlMiddleware(BaseMiddleware):
         if tg_user is None or tg_user.is_bot:
             data["lang"] = "uz"
             return await handler(event, data)
+        if isinstance(event, Message) and event.chat.type != "private":
+            # The admins' group (bot/handlers/crm.py checks who may do what):
+            # its members needn't be users of the bot.
+            data["lang"] = "uz"
+            return await handler(event, data)
 
         is_start = isinstance(event, Message) and (event.text or "").startswith("/start")
 
