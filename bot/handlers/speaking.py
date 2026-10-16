@@ -414,7 +414,7 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
         async with get_session() as session:
             earlier_sessions, previous = await crud.get_speaking_history(session, user_id, part)
         number = earlier_sessions + 1
-        with usage.track(f"speaking {part} user={user_id}"):
+        with usage.track(f"speaking {part} user={user_id}") as calls:
             check = await run_check(
                 part,
                 [{"part": p, "text": q} for p, q in zip(parts, questions)],
@@ -462,6 +462,8 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
         "question_parts": parts,
         "pronunciation_measured": not report.pron_estimated,
         "resubmission_of": repeat.id if repeat else None,
+        # this check's OpenAI cost (estimated from tokens; TTS from its length)
+        "cost": usage.summary(calls),
         # what each sample is: its source, the band it was aimed at (provisional),
         # the priorities it demonstrates
         "model_answers": [

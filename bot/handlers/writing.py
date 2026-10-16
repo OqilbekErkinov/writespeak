@@ -277,7 +277,7 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
                 build_model_answer(data["task_type"], data["prompt_text"], prompt_images, seed=seed, needs=needs)
             )
 
-        with usage.track(f"writing {data['task_type']} user={user_id}"):
+        with usage.track(f"writing {data['task_type']} user={user_id}") as calls:
             try:
                 report = await grade_writing(
                     task_type=data["task_type"],
@@ -369,6 +369,9 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
                     "reference_ids": answer.log.get("reference_ids", []),
                 },
                 "resubmission_of": similar.id if similar is not None else None,
+                # this check's OpenAI cost (estimated from tokens; reading the prompt
+                # photo/file is logged separately as "input")
+                "cost": usage.summary(calls),
             },
         )
         if data.get("practice_question_id"):

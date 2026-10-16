@@ -99,6 +99,21 @@ def record_minutes(purpose: str, model: str, seconds: float) -> None:
     _add(purpose, model, cost)
 
 
+def summary(calls: list[Call]) -> dict:
+    """A check's cost for the database (report_data["cost"]): the total, the
+    cost per purpose, and how many calls - the log lines are lost whenever
+    the bot container is recreated."""
+    by_purpose: dict[str, float] = {}
+    for c in calls:
+        by_purpose[c.purpose] = by_purpose.get(c.purpose, 0.0) + c.cost
+    return {
+        "total_usd": round(sum(c.cost for c in calls), 4),
+        "by_purpose": {k: round(v, 4) for k, v in sorted(by_purpose.items(), key=lambda kv: -kv[1])},
+        "calls": len(calls),
+        "models": sorted({c.model for c in calls}),
+    }
+
+
 @contextmanager
 def track(label: str):
     """Collects the calls made inside the block and logs their total cost."""
