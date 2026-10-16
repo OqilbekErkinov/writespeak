@@ -38,9 +38,13 @@ WEB_REVIEWER_ID = -1  # webapp/main.py's reviewer id for decisions made in the w
 WEEKDAYS = ["dushanba", "seshanba", "chorshanba", "payshanba", "juma", "shanba", "yakshanba"]
 SOURCES = {"text": "matn", "photo": "rasm", "pdf": "PDF", "docx": "Word", "audio": "ovoz"}
 PAID_NAMES = {
-    "free": "bepul", "credit": "kredit", "subscription": "obuna", "sponsor": "homiy", "test": "test",
-    "unknown": "noma'lum",
+    "free": "bepul", "coins": "coin", "credit": "kredit (eski)", "subscription": "obuna", "sponsor": "homiy",
+    "test": "test", "unknown": "noma'lum",
 }
+# Before coins (2026-10-17): every user had 2 free checks, and a paid check
+# was 1 credit = 5000 so'm - for reading old checks' "paid_with".
+LEGACY_FREE_CHECKS = 2
+LEGACY_CREDIT_PRICE = 5000
 # OpenAI call purposes (services/ai/*) in plain words
 PURPOSES = {
     "feedback": "hisobot matni",
@@ -178,7 +182,7 @@ def _user_history_card(user: User, n: int, activity: dict, referrer: User | None
         lines.append(f"🎓 Rol: {role}")
     lines.append(
         f"📊 Writing {a.get('writing', 0)} · Speaking {a.get('speaking', 0)} · to'lagan {_som(a.get('paid', 0))} so'm"
-        f" · balans {user.credit_balance} kredit"
+        f" · balans {user.coin_balance} coin"
     )
     if _subscribed(user):
         lines.append(f"♾ Obuna: {_when(user.subscription_expires_at)} gacha")
@@ -198,7 +202,7 @@ async def _payment_card(session, request: PaymentRequest) -> str:
     user = await crud.get_user(session, request.user_id)
     item = (
         f"{request.subscription_months} oylik cheksiz obuna" if request.kind == PaymentKind.subscription
-        else f"{request.credits} ta tekshiruv"
+        else f"{request.coins} coin"
     )
     lines = [
         f"💳 <b>To'lov #{request.id}</b> · {_PAY_STATUS[request.status]}",
@@ -217,7 +221,7 @@ async def _payment_card(session, request: PaymentRequest) -> str:
         verb = "✅ Tasdiqladi" if request.status == PaymentStatus.approved else "⛔ Rad etdi"
         lines.append(f"{verb}: {by} · {_when(request.reviewed_at)}")
     if user is not None:
-        balance = f"💼 Balans: {user.credit_balance} kredit"
+        balance = f"💼 Balans: {user.coin_balance} coin"
         if _subscribed(user):
             balance += f" · ♾ obuna {_when(user.subscription_expires_at)} gacha"
         lines.append(balance)
@@ -251,21 +255,29 @@ async def _old_payment(session, sub) -> dict:
     credits = FULL_TEST_CHECKS if getattr(sub, "part", None) == "full" else 1
     if sub.paid_by_id:
         return {"mode": "sponsor", "credits": credits, "payer_id": sub.paid_by_id}
-    if await crud.checks_before(session, sub.user_id, sub.created_at) < settings.free_checks:
+    if await crud.checks_before(session, sub.user_id, sub.created_at) < LEGACY_FREE_CHECKS:
         return {"mode": "free", "credits": 0}
     return {"mode": "unknown"}
 
 
 def _paid_line(paid: dict, user: User | None, payer: User | None) -> tuple[str, int | None]:
-    """(the line, so'm this check brought in - None when unknown)"""
-    mode, n = paid.get("mode"), paid.get("credits") or 0
-    price = settings.price_per_check
+    """(the line, so'm this check brought in - None when unknown). Revenue
+    is estimated at the nominal coin price (settings.coin_price; packs sell
+    coins up to 28% cheaper); checks from before coins carry "credits"."""
+    mode = paid.get("mode")
+    if "coins" in paid:
+        n, unit, price = paid.get("coins") or 0, "coin", settings.coin_price
+    else:
+        n, unit, price = paid.get("credits") or 0, "kredit", LEGACY_CREDIT_PRICE
+    if mode == "coins":
+        left = user.coin_balance if user is not None else "?"
+        return f"🪙 Coin bilan: {n} coin · balansda {left} coin", n * price
     if mode == "credit":
-        left = user.credit_balance if user is not None else "?"
-        return f"💳 Kredit bilan: {n} ta · balansda {left} kredit", n * price
+        left = user.coin_balance if user is not None else "?"
+        return f"💳 Kredit bilan (eski): {n} ta · hozir balansda {left} coin", n * price
     if mode == "sponsor":
-        left = payer.credit_balance if payer is not None else "?"
-        return f"🏫 Homiy to'ladi: {_user(payer, paid.get('payer_id'))} · {n} kredit (qoldi {left})", n * price
+        left = payer.coin_balance if payer is not None else "?"
+        return f"🏫 Homiy to'ladi: {_user(payer, paid.get('payer_id'))} · {n} {unit} (qoldi {left} coin)", n * price
     if mode == "subscription":
         return "♾ Obuna (cheksiz)", 0
     if mode == "free":
@@ -558,11 +570,11 @@ async def center_created(owner_id: int, name: str) -> None:
 
 
 @_safe
-async def credits_gifted(group_name: str, by, students: list, amount: int) -> None:
+async def coins_gifted(group_name: str, by, students: list, amount: int) -> None:
     names = ", ".join(_esc(s.full_name) for s in students[:10]) + (" ..." if len(students) > 10 else "")
     await _teachers(
-        f"🎁 <b>Kredit sovg'a qilindi</b> · guruh «{_esc(group_name)}»\n👤 {_who(by.id, by.full_name, by.username)}\n"
-        f"{len(students)} ta o'quvchiga {amount} kreditdan (jami {amount * len(students)}): {names}"
+        f"🎁 <b>Coin sovg'a qilindi</b> · guruh «{_esc(group_name)}»\n👤 {_who(by.id, by.full_name, by.username)}\n"
+        f"{len(students)} ta o'quvchiga {amount} coindan (jami {amount * len(students)}): {names}"
     )
 
 
@@ -588,7 +600,7 @@ async def support_message(message) -> None:
         checks = await crud.get_total_submission_count(session, tg.id)
     head = [
         f"💬 <b>Murojaat</b> · {_who(tg.id, tg.full_name, tg.username)}",
-        f"📊 Tekshiruvlar: {checks} · balans: {user.credit_balance if user else 0} kredit"
+        f"📊 Tekshiruvlar: {checks} · balans: {user.coin_balance if user else 0} coin"
         f" · til: {user.language if user else '?'}",
         "<i>↩️ Javob berish uchun shu xabarga reply qiling</i>",
     ]
@@ -748,7 +760,7 @@ INTROS = {
               "bu yerda 🚨 bilan chiqadi.",
     "daily": "Har kuni 00:05 da kechagi kun: yangi foydalanuvchilar, tekshiruvlar, to'lovlar, OpenAI xarajati, "
              "kun natijasi. /crm_today - bugungi hisobot hozirgacha.",
-    "teachers": "O'qituvchi so'rovlari, yangi guruhlar va markazlar, guruhga qo'shilish/chiqish, kredit "
+    "teachers": "O'qituvchi so'rovlari, yangi guruhlar va markazlar, guruhga qo'shilish/chiqish, coin "
                 "sovg'alari, vazifalar.",
     "support": "O'quvchilarning adminga yozgan xabarlari (botda «💬 Admin bilan aloqa»). Javob berish uchun "
                "xabarga reply qiling - javob o'quvchiga bot orqali boradi. Javobni faqat bot adminlari va "

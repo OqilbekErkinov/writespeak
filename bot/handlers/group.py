@@ -5,14 +5,14 @@
   payment receipts), and teachers who joined a center through its invite.
 - A teacher may run several groups. A center's owner (made one by an admin in
   the web panel) invites teachers, sees and manages every group of the
-  center, and pays for it: in a center's groups only the owner spends credits
+  center, and pays for it: in a center's groups only the owner spends coins
   (gifts, "center pays for checks"); elsewhere the group's teacher does.
 - Students join through a group's signed invite link (bot/handlers/start.py).
   What a teacher sees about a student covers only work submitted after the
   student joined: stats, a paged student list, a card per student with their
   recent works (report PDF, teacher comment + band), a monthly report for
   parents, Excel/PDF exports, a leaderboard, announcements, a QR code, and
-  credit gifts. Assignments live in bot/handlers/group_assignments.py, the
+  coin gifts. Assignments live in bot/handlers/group_assignments.py, the
   weekly digest and reminders in bot/utils/group_scheduler.py.
 """
 from __future__ import annotations
@@ -33,7 +33,7 @@ from bot.config import settings
 from bot.i18n import t
 from bot.keyboards import group_kb as kb
 from bot.keyboards.main_menu_kb import BTN_GROUP_RU, BTN_GROUP_UZ, MENU_BUTTON_TEXTS
-from bot.keyboards.payment_kb import buy_credits_kb
+from bot.keyboards.payment_kb import buy_coins_kb
 from bot.states.group_states import GroupStates
 from bot.utils import crm_events
 from bot.utils.cabinet_auth import cabinet_login_url
@@ -105,7 +105,7 @@ async def _managed(callback: CallbackQuery, group_id: int, lang: str) -> Group |
 
 
 async def _can_pay(session, user_id: int, group: Group) -> bool:
-    """Only the payer (the teacher, or the center's owner for a center group) spends credits."""
+    """Only the payer (the teacher, or the center's owner for a center group) spends coins."""
     return await crud.get_group_payer_id(session, group) == user_id
 
 
@@ -222,7 +222,7 @@ async def request_teacher(callback: CallbackQuery, lang: str) -> None:
         "🏫 <b>O'qituvchi bo'lish so'rovi</b>\n\n"
         f"Foydalanuvchi: {_esc(tg.full_name)}{username}\n"
         f"Telegram ID: <code>{tg.id}</code>\n\n"
-        "Tasdiqlansa, u guruh ochib, talabalarini kuzata oladi va ularga o'z kreditlarini ulasha oladi."
+        "Tasdiqlansa, u guruh ochib, talabalarini kuzata oladi va ularga o'z coinlarini ulasha oladi."
     )
     for admin_id in settings.admin_ids:
         try:
@@ -291,7 +291,7 @@ async def _group_screen(user_id: int, group_id: int, lang: str):
         lines.append(t("group.teacher_line", lang, name=_esc(teacher.full_name)))
     if group.sponsor_checks:
         limit = t("group.limit_none", lang) if group.daily_limit is None else str(group.daily_limit)
-        lines.append(t("group.sponsor_on_line", lang, balance=payer.credit_balance if payer else 0, limit=limit))
+        lines.append(t("group.sponsor_on_line", lang, balance=payer.coin_balance if payer else 0, limit=limit))
     else:
         lines.append(t("group.sponsor_off_line", lang))
     lines.append(t("group.invite_line", lang, link=invite_link(group.id)))
@@ -614,7 +614,7 @@ async def leaderboard(callback: CallbackQuery, lang: str) -> None:
     await show_screen(callback, text, kb.back_kb(lang, back))
 
 
-# --- Credits ---------------------------------------------------------------------------------------------
+# --- Coins ------------------------------------------------------------------------------------------------
 
 
 async def _payer_or_alert(callback: CallbackQuery, group: Group, lang: str) -> User | None:
@@ -640,11 +640,11 @@ async def choose_gift_amount(callback: CallbackQuery, lang: str) -> None:
     await callback.answer()
     async with get_session() as session:
         student = await crud.get_user(session, student_id)
-    if payer.credit_balance <= 0:
-        await show_screen(callback, t("group.gift_no_balance", lang), buy_credits_kb(lang))
+    if payer.coin_balance <= 0:
+        await show_screen(callback, t("group.gift_no_balance", lang), buy_coins_kb(lang, True))
         return
-    options = [a for a in kb.GIFT_AMOUNT_OPTIONS if a <= payer.credit_balance]
-    text = t("group.gift_one", lang, name=_esc(student.full_name if student else None), balance=payer.credit_balance)
+    options = [a for a in kb.GIFT_AMOUNT_OPTIONS if a <= payer.coin_balance]
+    text = t("group.gift_one", lang, name=_esc(student.full_name if student else None), balance=payer.coin_balance)
     await show_screen(
         callback, text,
         kb.amounts_kb(options, f"{kb.CB_GIFT_DO_PREFIX}{group_id}:{student_id}:", f"{kb.CB_STUDENT_PREFIX}{group_id}:{student_id}:{page}", lang),
@@ -658,7 +658,7 @@ async def do_gift(callback: CallbackQuery, lang: str) -> None:
     if group is None or await _payer_or_alert(callback, group, lang) is None:
         return
     async with get_session() as session:
-        credited = await crud.gift_credits(session, group=group, student_ids=[student_id], amount=amount)
+        credited = await crud.gift_coins(session, group=group, student_ids=[student_id], amount=amount)
     if not credited:
         await callback.answer(t("group.gift_failed", lang), show_alert=True)
         return
@@ -669,7 +669,7 @@ async def do_gift(callback: CallbackQuery, lang: str) -> None:
         kb.back_kb(lang, f"{kb.CB_STUDENT_PREFIX}{group_id}:{student_id}:0"),
     )
     await _notify(callback.bot, student, "group.gift_notify_student", amount=amount)
-    await crm_events.credits_gifted(group.name, callback.from_user, credited, amount)
+    await crm_events.coins_gifted(group.name, callback.from_user, credited, amount)
 
 
 @router.callback_query(F.data.startswith(kb.CB_GIFT_ALL_DO_PREFIX))
@@ -680,7 +680,7 @@ async def do_gift_all(callback: CallbackQuery, lang: str) -> None:
         return
     async with get_session() as session:
         members = await crud.get_group_members(session, group.id)
-        credited = await crud.gift_credits(session, group=group, student_ids=[u.id for u, _ in members], amount=amount)
+        credited = await crud.gift_coins(session, group=group, student_ids=[u.id for u, _ in members], amount=amount)
     if not credited:
         await callback.answer(t("group.gift_failed", lang), show_alert=True)
         return
@@ -690,7 +690,7 @@ async def do_gift_all(callback: CallbackQuery, lang: str) -> None:
     for student in credited:
         await _notify(callback.bot, student, "group.gift_notify_student", amount=amount)
         await asyncio.sleep(SEND_PAUSE)
-    await crm_events.credits_gifted(group.name, callback.from_user, credited, amount)
+    await crm_events.coins_gifted(group.name, callback.from_user, credited, amount)
 
 
 @router.callback_query(F.data.startswith(kb.CB_GIFT_ALL_PREFIX))
@@ -709,11 +709,11 @@ async def choose_gift_all(callback: CallbackQuery, lang: str) -> None:
     if not count:
         await show_screen(callback, t("group.no_students", lang), kb.back_kb(lang, back))
         return
-    options = [a for a in kb.GIFT_AMOUNT_OPTIONS if a * count <= payer.credit_balance]
+    options = [a for a in kb.GIFT_AMOUNT_OPTIONS if a * count <= payer.coin_balance]
     if not options:
-        await show_screen(callback, t("group.gift_all_not_enough", lang, count=count, balance=payer.credit_balance), buy_credits_kb(lang))
+        await show_screen(callback, t("group.gift_all_not_enough", lang, count=count, balance=payer.coin_balance), buy_coins_kb(lang, True))
         return
-    text = t("group.gift_all", lang, count=count, balance=payer.credit_balance)
+    text = t("group.gift_all", lang, count=count, balance=payer.coin_balance)
     await show_screen(callback, text, kb.amounts_kb(options, f"{kb.CB_GIFT_ALL_DO_PREFIX}{group.id}:", back, lang))
 
 
@@ -974,7 +974,7 @@ async def center_screen(callback: CallbackQuery, lang: str) -> None:
     text = t(
         "group.center_home", lang,
         name=_esc(center.name), teachers=len(teachers), groups=len(groups), students=students,
-        balance=owner.credit_balance if owner else 0, link=center_invite_link(center.id), teacher_lines=teacher_lines,
+        balance=owner.coin_balance if owner else 0, link=center_invite_link(center.id), teacher_lines=teacher_lines,
     )
     others = [(user.id, user.full_name) for user, _ in teachers if user.id != center.owner_id]
     await show_screen(callback, text, kb.center_kb(others, lang))

@@ -64,7 +64,7 @@ CB_REMIND_PREFIX = "as:remind:"  # + assignment id
 CB_ASSIGNMENT_DELETE_PREFIX = "as:del:"  # + assignment id
 CB_ASSIGNMENT_DELETE_DO_PREFIX = "as:deldo:"  # + assignment id
 
-GIFT_AMOUNT_OPTIONS = (1, 3, 5, 10)
+GIFT_AMOUNT_OPTIONS = (5, 10, 20, 50)  # coins
 LIMIT_OPTIONS = (1, 2, 3, 5)
 STUDENTS_PER_PAGE = 10
 COMMENT_BANDS = (4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0, 7.5, 8.0, 8.5, 9.0)

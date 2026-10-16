@@ -1,5 +1,7 @@
-"""Paid-credits top-up flow: pick a bundle -> pay by card -> send a receipt
-screenshot -> an admin approves/rejects it against the receipt.
+"""Coin top-up flow: pick a pack (bot/utils/coins.py) -> pay by card -> send
+a receipt screenshot -> an admin approves/rejects it against the receipt.
+Teachers and center owners also see the bigger center packs. The buyer's
+first approved purchase pays the referral bonus to them and their inviter.
 
 This is where bot/handlers/admin.py's old Approve/Deny-for-registration
 pattern moved to once the admin approval gate for new users was removed
@@ -29,15 +31,18 @@ from bot.keyboards.payment_kb import (
     CB_BUY_PREFIX,
     CB_BUY_SUB_PREFIX,
     CB_PAY_APPROVE_PREFIX,
+    CB_PAY_NOOP,
     CB_PAY_REJECT_PREFIX,
+    buy_coins_kb,
     payment_review_kb,
 )
 from bot.states.payment_states import PaymentStates
 from bot.utils import crm_events
+from bot.utils.coins import CENTER_PACKS, pack_price
 from bot.utils.quota import format_som
 from db import crud
 from db.database import get_session
-from db.models import PaymentKind, PaymentRequest
+from db.models import PaymentKind, PaymentRequest, PaymentStatus, User, UserRole
 
 logger = logging.getLogger(__name__)
 router = Router(name="payments")
@@ -47,34 +52,45 @@ def _is_admin(user_id: int) -> bool:
     return user_id in settings.admin_ids
 
 
-@router.callback_query(F.data.startswith(CB_BUY_PREFIX))
-async def choose_bundle(callback: CallbackQuery, state: FSMContext, lang: str) -> None:
-    await callback.answer()
-    credits = int(callback.data.removeprefix(CB_BUY_PREFIX))
-    amount = credits * settings.price_per_check
+def sees_center_packs(user: User | None) -> bool:
+    """Teachers (center owners are teachers too) and admins pay for students
+    and see the center packs."""
+    return user is not None and user.role in (UserRole.teacher, UserRole.admin)
 
+
+@router.callback_query(F.data == CB_PAY_NOOP)
+async def center_packs_heading(callback: CallbackQuery) -> None:
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith(CB_BUY_PREFIX))
+async def choose_pack(callback: CallbackQuery, state: FSMContext, lang: str) -> None:
+    await callback.answer()
+    coins = int(callback.data.removeprefix(CB_BUY_PREFIX))
+    price = pack_price(coins)
     async with get_session() as session:
-        request = await crud.create_payment_request(
-            session, user_id=callback.from_user.id, credits=credits, amount=amount
-        )
+        user = await crud.get_user(session, callback.from_user.id)
+        center_pack = coins in dict(CENTER_PACKS)
+        if price is None or (center_pack and not sees_center_packs(user)):
+            # A button from before coins (credits 1/3/5/10), or a center pack for a student.
+            await callback.message.answer(
+                t("pay.choose_pack", lang), reply_markup=buy_coins_kb(lang, sees_center_packs(user))
+            )
+            return
+        request = await crud.create_payment_request(session, user_id=callback.from_user.id, coins=coins, amount=price)
     await _start_receipt_flow(callback.message, state, request, lang)
 
 
 @router.callback_query(F.data.startswith(CB_BUY_SUB_PREFIX))
-async def choose_subscription(callback: CallbackQuery, state: FSMContext, lang: str) -> None:
+async def choose_subscription(callback: CallbackQuery, lang: str) -> None:
+    """The unlimited subscription is no longer sold (2026-10-17) - an old
+    button gets the coin packs instead."""
     await callback.answer()
-    months = int(callback.data.removeprefix(CB_BUY_SUB_PREFIX))
-    amount = months * settings.subscription_price_monthly
-
     async with get_session() as session:
-        request = await crud.create_payment_request(
-            session,
-            user_id=callback.from_user.id,
-            amount=amount,
-            kind=PaymentKind.subscription,
-            subscription_months=months,
-        )
-    await _start_receipt_flow(callback.message, state, request, lang)
+        user = await crud.get_user(session, callback.from_user.id)
+    await callback.message.answer(
+        t("pay.subscription_retired", lang), reply_markup=buy_coins_kb(lang, sees_center_packs(user))
+    )
 
 
 async def _start_receipt_flow(
@@ -116,7 +132,7 @@ async def receive_receipt(message: Message, state: FSMContext, lang: str) -> Non
     item_line = (
         f"{request.subscription_months} oylik cheksiz obuna"
         if request.kind == PaymentKind.subscription
-        else f"{request.credits} ta tekshiruv"
+        else f"{request.coins} coin"
     )
     caption = (
         "💳 <b>Yangi to'lov so'rovi</b>\n\n"
@@ -160,13 +176,11 @@ async def _decide(callback: CallbackQuery, *, approve: bool, status_line: str) -
     request_id = int(callback.data.removeprefix(prefix))
 
     async with get_session() as session:
-        request, applied = await crud.decide_payment_request(
-            session, request_id, approve=approve, admin_id=callback.from_user.id
+        decision = await crud.decide_payment_request(
+            session, request_id, approve=approve, admin_id=callback.from_user.id,
+            referral_coins=settings.referral_coins,
         )
-        # The notification below goes to the buyer, not the admin acting here
-        # - fetch the buyer's own language, not this handler's injected `lang`.
-        buyer = await crud.get_user(session, request.user_id) if request else None
-        buyer_lang = buyer.language if buyer is not None else "uz"
+        request, applied = decision.request, decision.applied
 
     if request is None:
         await callback.answer("So'rov topilmadi.", show_alert=True)
@@ -182,18 +196,39 @@ async def _decide(callback: CallbackQuery, *, approve: bool, status_line: str) -
     await _clear_buttons(callback, status_line)
     await callback.answer("Tasdiqlandi ✅" if approve else "Rad etildi")
     await crm_events.payment_decided(request.id)
+    await notify_decision(callback.bot, decision)
+
+
+async def notify_decision(bot, decision: crud.PaymentDecision) -> None:
+    """Tells the buyer (and, with a referral bonus, their inviter) - in the
+    bot or after an approval in the web panel."""
+    request = decision.request
+    async with get_session() as session:
+        buyer = await crud.get_user(session, request.user_id)
+        referrer = await crud.get_user(session, decision.referrer_id) if decision.referrer_id else None
+    buyer_lang = buyer.language if buyer is not None else "uz"
     try:
-        if approve:
-            text = (
-                t("pay.approved_subscription", buyer_lang, months=request.subscription_months)
-                if request.kind == PaymentKind.subscription
-                else t("pay.approved_credits", buyer_lang, credits=request.credits)
-            )
+        if request.status == PaymentStatus.approved:
+            if request.kind == PaymentKind.subscription:
+                text = t("pay.approved_subscription", buyer_lang, months=request.subscription_months)
+            else:
+                text = t("pay.approved_coins", buyer_lang, coins=request.coins, balance=buyer.coin_balance if buyer else 0)
+                if referrer is not None:
+                    text += "\n\n" + t("pay.referral_bonus_buyer", buyer_lang, coins=settings.referral_coins)
         else:
             text = t("pay.rejected", buyer_lang)
-        await callback.bot.send_message(request.user_id, text)
+        await bot.send_message(request.user_id, text)
     except Exception:
         pass
+    if referrer is not None:
+        try:
+            await bot.send_message(
+                referrer.id,
+                t("pay.referral_bonus_referrer", referrer.language or "uz", coins=settings.referral_coins,
+                  balance=referrer.coin_balance),
+            )
+        except Exception:
+            pass
 
 
 async def _clear_buttons(callback: CallbackQuery, status_line: str) -> None:

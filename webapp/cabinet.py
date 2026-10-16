@@ -118,7 +118,7 @@ async def index(request: Request):
         owner = await crud.get_user(session, center.owner_id) if center else None
     return _render(request, "index.html", {
         "cards": cards, "center": center, "is_owner": center is not None and center.owner_id == uid,
-        "balance": owner.credit_balance if owner else None,
+        "balance": owner.coin_balance if owner else None,
     })
 
 

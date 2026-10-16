@@ -47,7 +47,8 @@ from bot.utils import crm_events
 from bot.utils.input_extraction import read_text_input
 from bot.utils.messages import show_screen, strip_buttons
 from bot.utils.mock_test_flow import record_mock_test_part
-from bot.utils.quota import check_quota, free_check_note, payment_of, send_paywall
+from bot.utils.coins import writing_kind
+from bot.utils.quota import check_price, check_quota, free_check_note, payment_of, send_paywall
 from db import crud
 from db.database import get_session
 from db.models import SourceType
@@ -85,9 +86,10 @@ async def back_to_writing_menu(callback: CallbackQuery, state: FSMContext, lang:
 async def choose_task(callback: CallbackQuery, state: FSMContext, lang: str) -> None:
     await callback.answer()
 
-    quota = await check_quota(callback.from_user.id)
+    task_type = "task1" if callback.data == CB_TASK1 else "task2"
+    quota = await check_quota(callback.from_user.id, writing_kind(task_type))
     if not quota.allowed:
-        await send_paywall(callback.message, lang)
+        await send_paywall(callback.message, lang, quota)
         return
 
     # Defends against a stale Task1/Task2 button from an old message being
@@ -96,7 +98,6 @@ async def choose_task(callback: CallbackQuery, state: FSMContext, lang: str) -> 
     # one-off check get wrongly recorded as a mock test part. A no-op in the
     # normal flow, since open_writing_menu already cleared state.
     await state.clear()
-    task_type = "task1" if callback.data == CB_TASK1 else "task2"
     await state.update_data(task_type=task_type, spend_credit=quota.spend_credit, payer_id=quota.payer_id)
     await state.set_state(WritingStates.awaiting_prompt)
     await show_screen(
@@ -345,7 +346,8 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
         for v in report.vocabulary
     ]
 
-    paid_with = await payment_of(user_id, data.get("spend_credit", False), data.get("payer_id"))
+    coins = check_price(data, writing_kind(data["task_type"]))
+    paid_with = await payment_of(user_id, coins, data.get("payer_id"))
     async with get_session() as session:
         submission = await crud.save_writing_submission(
             session,
@@ -366,7 +368,7 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
             book_sample_ref=None,  # the model answer is always newly written
             feedback_pdf_path=pdf_path,
             practice_question_id=data.get("practice_question_id"),
-            spend_credit=data.get("spend_credit", False),
+            coins=coins,
             assignment_part_id=data.get("assignment_part_id"),
             payer_id=data.get("payer_id"),
             report_data={
@@ -395,7 +397,6 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
                 submission_type="writing",
             )
         new_words = await crud.add_vocabulary_entries(session, user_id, vocabulary, source="writing")
-        await crud.reward_referrer_if_eligible(session, user_id)
 
     caption = t("writing.done_caption", lang, band=report.overall_band)
     if new_words:

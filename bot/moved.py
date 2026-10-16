@@ -3,7 +3,7 @@
 gets a "we've moved" note with a button to the new bot - a /start link's
 payload (a referral, a group or center invite) carried over - so old links,
 QR codes and chats keep leading somewhere. Accounts are the same: the new
-bot finds a user by their Telegram id, with their credits and history.
+bot finds a user by their Telegram id, with their coins and history.
 
     python -m bot.moved              the `moved_bot` service (docker-compose.yml)
     python -m bot.moved --announce   the one-time announcement to every user

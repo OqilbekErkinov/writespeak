@@ -8,7 +8,7 @@
   <h2>O'quv markazlari</h2>
   {% if centers %}
   <div class="table-scroll"><table>
-    <tr><th>Markaz</th><th>Rahbar</th><th>O'qituvchilar</th><th>Guruhlar</th><th>Talabalar</th><th>Balans</th><th>30 kunda to'langan</th><th></th></tr>
+    <tr><th>Markaz</th><th>Rahbar</th><th>O'qituvchilar</th><th>Guruhlar</th><th>Talabalar</th><th>Balans (coin)</th><th>30 kunda sarflagan (coin)</th><th></th></tr>
     {% for c in centers %}
     <tr>
       <td class="strong">{{ c.center.name }}</td>
@@ -33,14 +33,14 @@
   <p class="hint" style="margin-bottom:12px">O'qituvchi botda "Guruh yaratish" orqali so'rov yuboradi, adminlar Telegram'da tasdiqlaydi. Markaz rahbari o'z o'qituvchilarini markaz havolasi orqali qo'shadi.</p>
   {% if teachers %}
   <div class="table-scroll"><table>
-    <tr><th>O'qituvchi</th><th>Telegram ID</th><th>Markaz</th><th>Guruhlar</th><th>Talabalar</th><th>30 kunda tekshiruvlar</th><th>30 kunda to'lagan</th><th>Kredit</th><th></th></tr>
+    <tr><th>O'qituvchi</th><th>Telegram ID</th><th>Markaz</th><th>Guruhlar</th><th>Talabalar</th><th>30 kunda tekshiruvlar</th><th>30 kunda sarflagan (coin)</th><th>Balans (coin)</th><th></th></tr>
     {% for t in teachers %}
     <tr>
       <td class="strong">{{ t.user.full_name }}{% if t.user.username %}<br><span class="hint">@{{ t.user.username }}</span>{% endif %}</td>
       <td>{{ t.user.id }}</td>
       <td>{% if t.center %}{{ t.center.name }}{% if t.is_owner %} <span class="pill pill-good">rahbar</span>{% endif %}{% else %}—{% endif %}</td>
       <td>{{ t.groups }}</td><td>{{ t.students }}</td><td>{{ t.checks_30d }}</td><td>{{ t.sponsored_30d }}</td>
-      <td>{{ t.user.credit_balance }}</td>
+      <td>{{ t.user.coin_balance }}</td>
       <td style="white-space:nowrap">
         {% if not t.center %}
         <form class="inline" method="post" action="/teachers/{{ t.user.id }}/center">

@@ -98,8 +98,8 @@ class PaymentStatus(str, enum.Enum):
 
 
 class PaymentKind(str, enum.Enum):
-    credits = "credits"
-    subscription = "subscription"
+    credits = "credits"  # a coin pack (bot/utils/coins.py) - the name predates coins
+    subscription = "subscription"  # no longer sold since 2026-10-17
 
 
 class MockTestStatus(str, enum.Enum):
@@ -129,17 +129,17 @@ class User(Base):
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    # Paid, never-expiring check credits bought beyond the free daily quota
-    # (see bot/utils/quota.py). One credit = one Writing or Speaking check.
-    credit_balance: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # Coins (bot/utils/coins.py): never expire; each check costs its own
+    # number of them. Bought in packs, plus settings.welcome_coins on signup.
+    coin_balance: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     # Unlimited-checks subscription (bot/utils/quota.py treats "now < this" as
-    # unlimited, alongside the free quota and credit_balance).
+    # unlimited). No longer sold since 2026-10-17; running ones are honoured.
     subscription_expires_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    # Referral program (bot/handlers/referral.py): the referrer earns 1 credit
-    # once this user completes their first check, tracked via
-    # referral_rewarded so it only ever pays out once.
+    # Referral program: on this user's first approved coin purchase both
+    # sides get settings.referral_coins (db/crud.py decide_payment_request);
+    # referral_rewarded makes sure it only ever pays out once.
     referred_by: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("users.id"), nullable=True
     )
@@ -193,6 +193,9 @@ class WritingSubmission(Base):
     )
     # Who paid for a check sponsored by a group's teacher/center (else NULL).
     paid_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    # Coins this check cost (its payer's: paid_by_id, else the student) - 0
+    # when free (test window, subscription) or saved before coins.
+    coins_spent: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     user: Mapped["User"] = relationship(back_populates="writing_submissions", foreign_keys=[user_id])
@@ -228,6 +231,7 @@ class SpeakingSubmission(Base):
         ForeignKey("assignment_parts.id", ondelete="SET NULL"), nullable=True
     )
     paid_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    coins_spent: Mapped[int] = mapped_column(Integer, default=0, server_default="0")  # as in WritingSubmission
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     user: Mapped["User"] = relationship(back_populates="speaking_submissions", foreign_keys=[user_id])
@@ -313,10 +317,10 @@ class BookChunk(Base):
 
 
 class PaymentRequest(Base):
-    """One card-transfer top-up request: N credits for N * settings.price_per_check
-    so'm, reviewed by an admin against the receipt screenshot the user sends
-    (see bot/handlers/payments.py). Credits are only added to the user's
-    balance once an admin approves it."""
+    """One card-transfer top-up request: a coin pack (bot/utils/coins.py) for
+    its so'm price, reviewed by an admin against the receipt screenshot the
+    user sends (see bot/handlers/payments.py). The coins are only added to
+    the user's balance once an admin approves it."""
 
     __tablename__ = "payment_requests"
 
@@ -325,7 +329,7 @@ class PaymentRequest(Base):
     kind: Mapped[PaymentKind] = mapped_column(
         Enum(PaymentKind, name="payment_kind"), default=PaymentKind.credits
     )
-    credits: Mapped[int] = mapped_column(Integer)  # 0 for a subscription purchase
+    coins: Mapped[int] = mapped_column(Integer)  # 0 for a subscription purchase
     subscription_months: Mapped[int | None] = mapped_column(Integer, nullable=True)
     amount: Mapped[int] = mapped_column(Integer)  # so'm
     status: Mapped[PaymentStatus] = mapped_column(
@@ -409,7 +413,7 @@ class Center(Base):
     """A learning center (B2B): its owner - made a center owner by an admin in
     the web panel - invites teachers with a signed link, sees all of their
     groups, and pays for the center's sponsored checks and gifts from their
-    own credit balance (bot/handlers/group.py)."""
+    own coin balance (bot/handlers/group.py)."""
 
     __tablename__ = "centers"
 

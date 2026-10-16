@@ -167,10 +167,11 @@ async def decide_payment_web(request: Request, request_id: int, action: str):
         return redirect
     if action in ("approve", "reject"):
         async with get_session() as session:
-            _, applied = await crud.decide_payment_request(
-                session, request_id, approve=(action == "approve"), admin_id=WEB_REVIEWER_ID
+            decision = await crud.decide_payment_request(
+                session, request_id, approve=(action == "approve"), admin_id=WEB_REVIEWER_ID,
+                referral_coins=settings.referral_coins,
             )
-        if applied:
+        if decision.applied:
             await crm_events.payment_decided(request_id)
     return RedirectResponse("/payments", status_code=303)
 

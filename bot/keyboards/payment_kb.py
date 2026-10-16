@@ -1,45 +1,35 @@
-"""Keyboards for the paid-credits purchase flow (bot/handlers/payments.py)."""
+"""Keyboards for the coin purchase flow (bot/handlers/payments.py)."""
 from __future__ import annotations
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from bot.config import settings
 from bot.i18n import t
+from bot.utils.coins import CENTER_PACKS, COIN_PACKS, discount_percent
 
-CB_BUY_PREFIX = "buy:"
-CB_BUY_SUB_PREFIX = "buysub:"
+CB_BUY_PREFIX = "buy:"  # + coins of the pack
+CB_BUY_SUB_PREFIX = "buysub:"  # the retired unlimited subscription (old buttons in chats)
 CB_PAY_APPROVE_PREFIX = "pay_approve:"
 CB_PAY_REJECT_PREFIX = "pay_reject:"
-
-# How many checks a student can buy in one go. A single 5000 so'm transfer
-# per overage would get tedious fast, so bundling cuts down on repeat top-ups.
-CREDIT_BUNDLES = (1, 3, 5, 10)
+CB_PAY_NOOP = "pay:noop"  # the "center packs" heading
 
 
-def buy_credits_kb(lang: str = "uz") -> InlineKeyboardMarkup:
+def _pack_button(coins: int, price: int, lang: str) -> InlineKeyboardButton:
     from bot.utils.quota import format_som  # local import: avoids a circular import with quota.py
 
-    rows = [
-        [
-            InlineKeyboardButton(
-                text=t("pay.bundle_button", lang, n=n, price=format_som(n * settings.price_per_check)),
-                callback_data=f"{CB_BUY_PREFIX}{n}",
-            )
-        ]
-        for n in CREDIT_BUNDLES
-    ]
-    rows.append(
-        [
-            InlineKeyboardButton(
-                text=t(
-                    "pay.subscription_button",
-                    lang,
-                    price=format_som(settings.subscription_price_monthly),
-                ),
-                callback_data=f"{CB_BUY_SUB_PREFIX}1",
-            )
-        ]
+    off = discount_percent(coins, price, settings.coin_price)
+    key = "pay.pack_button_discount" if off else "pay.pack_button"
+    return InlineKeyboardButton(
+        text=t(key, lang, coins=coins, price=format_som(price), off=off), callback_data=f"{CB_BUY_PREFIX}{coins}"
     )
+
+
+def buy_coins_kb(lang: str = "uz", with_center_packs: bool = False) -> InlineKeyboardMarkup:
+    """The coin packs; teachers and center owners also see the center packs."""
+    rows = [[_pack_button(coins, price, lang)] for coins, price in COIN_PACKS]
+    if with_center_packs:
+        rows.append([InlineKeyboardButton(text=t("pay.center_packs_header", lang), callback_data=CB_PAY_NOOP)])
+        rows += [[_pack_button(coins, price, lang)] for coins, price in CENTER_PACKS]
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 

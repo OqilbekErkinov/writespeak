@@ -59,7 +59,9 @@ async def cmd_start(message: Message, command: CommandObject, lang: str) -> None
         is_new = user is None
         if is_new:
             referrer_id = await _parse_referrer(session, command.args, new_user_id=tg.id)
-            await crud.create_user(session, tg.id, tg.username, tg.full_name, referred_by=referrer_id)
+            await crud.create_user(
+                session, tg.id, tg.username, tg.full_name, referred_by=referrer_id, coins=settings.welcome_coins
+            )
 
         join = await _maybe_join_group(session, command.args, user_id=tg.id)
         center_join = await _maybe_join_center(session, command.args, user_id=tg.id)

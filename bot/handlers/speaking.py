@@ -11,8 +11,8 @@ from Practice and group assignments, which preset part/practice_question_id
 and call `start_question_set` with the stored question set.
 
 A Full test takes a Part 1 topic, a cue card and its Part 3 questions from
-the bank and is graded as one report with a Speaking band; it counts as
-FULL_TEST_CHECKS checks.
+the bank and is graded as one report with a Speaking band; it costs the
+"speaking_full" coins (bot/utils/coins.py), less than the three parts apart.
 
 Grading is services/ai/speaking_check.py (voice analysis, scores, feedback,
 model answers); this module adds Telegram and the database: the student's
@@ -68,11 +68,12 @@ from bot.utils.input_extraction import (
 from bot.utils.messages import show_screen, strip_buttons
 from bot.utils.mock_test_flow import record_mock_test_part
 from bot.utils import crm_events
-from bot.utils.quota import check_quota, free_check_note, payment_of, send_paywall
+from bot.utils.coins import speaking_kind
+from bot.utils.quota import check_price, check_quota, free_check_note, payment_of, send_paywall
 from bot.utils.speaking_questions import split_questions
 from db import crud
 from db.database import get_session
-from db.models import FULL_TEST_CHECKS, SourceType
+from db.models import SourceType
 from services.ai import tts, usage
 from services.ai.essay_marking import canon
 from services.ai.schemas import VocabularyItem
@@ -112,9 +113,9 @@ async def back_to_speaking_menu(callback: CallbackQuery, state: FSMContext, lang
 async def choose_part(callback: CallbackQuery, state: FSMContext, lang: str) -> None:
     await callback.answer()
 
-    quota = await check_quota(callback.from_user.id)
+    quota = await check_quota(callback.from_user.id, speaking_kind(PART_CALLBACKS[callback.data]))
     if not quota.allowed:
-        await send_paywall(callback.message, lang)
+        await send_paywall(callback.message, lang, quota)
         return
 
     # See the matching comment in bot/handlers/writing.py's choose_task.
@@ -130,10 +131,9 @@ async def choose_part(callback: CallbackQuery, state: FSMContext, lang: str) -> 
 async def choose_full_test(callback: CallbackQuery, state: FSMContext, lang: str) -> None:
     """Part 1 topic + cue card + its Part 3 questions, from the bank."""
     await callback.answer()
-    quota = await check_quota(callback.from_user.id, cost=FULL_TEST_CHECKS)
+    quota = await check_quota(callback.from_user.id, "speaking_full")
     if not quota.allowed:
-        await callback.message.answer(t("speaking.full_paywall", lang, checks=FULL_TEST_CHECKS))
-        await send_paywall(callback.message, lang)
+        await send_paywall(callback.message, lang, quota)
         return
     async with get_session() as session:
         picked = await crud.pick_full_test(session)
@@ -145,15 +145,14 @@ async def choose_full_test(callback: CallbackQuery, state: FSMContext, lang: str
     p3 = split_questions(follow_up.question_text, "part3")[:FULL_TEST_QUESTIONS]
 
     await state.clear()
-    credits = FULL_TEST_CHECKS - (quota.free_left or 0) if quota.spend_credit and quota.payer_id is None else FULL_TEST_CHECKS
     await state.update_data(
-        part="full", spend_credit=quota.spend_credit, payer_id=quota.payer_id, credits=credits,
+        part="full", spend_credit=quota.spend_credit, payer_id=quota.payer_id,
         questions=[*p1, card.question_text, *p3],
         question_parts=["part1"] * len(p1) + ["part2"] + ["part3"] * len(p3),
         q_index=0, answers=[], intro=None,
     )
     await state.set_state(SpeakingStates.awaiting_answer)
-    await show_screen(callback, t("speaking.full_intro", lang, checks=FULL_TEST_CHECKS), None)
+    await show_screen(callback, free_check_note(quota, lang) + t("speaking.full_intro", lang), None)
     await _ask_current_question(callback.message, state, lang)
 
 
@@ -390,6 +389,7 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
     parts = _question_parts(data)[: len(answers)]
     user_id = message.chat.id
     part = data["part"]
+    coins = check_price(data, speaking_kind(part))
 
     clips = [read_file(a["path"]) for a in answers]
     audio_hash = _fingerprint(clips)
@@ -460,9 +460,7 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
         # added later), how long the student waited, and how it was paid
         "cost": usage.merge(usage.summary(calls), data.get("input_cost"), prefix="input: "),
         "seconds": round(time.monotonic() - started),
-        "paid_with": await payment_of(
-            user_id, data.get("spend_credit", False), data.get("payer_id"), data.get("credits", 1)
-        ),
+        "paid_with": await payment_of(user_id, coins, data.get("payer_id")),
         # what each sample is: its source, the band it was aimed at (provisional),
         # the priorities it demonstrates - and its text, spoken when the student
         # taps its button (voice_file_id: Telegram's copy, reused after that)
@@ -490,10 +488,9 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
             report_data=report_data,
             feedback_pdf_path=pdf_path,
             practice_question_id=data.get("practice_question_id"),
-            spend_credit=data.get("spend_credit", False),
+            coins=coins,
             assignment_part_id=data.get("assignment_part_id"),
             payer_id=data.get("payer_id"),
-            credits=data.get("credits", 1),
         )
         if data.get("practice_question_id"):
             await crud.mark_practice_complete(
@@ -504,7 +501,6 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
                 submission_type="speaking",
             )
         new_words = await crud.add_vocabulary_entries(session, user_id, vocabulary, source="speaking")
-        await crud.reward_referrer_if_eligible(session, user_id)
 
     caption = t("writing.done_caption", lang, band=report.overall_band)
     if new_words:

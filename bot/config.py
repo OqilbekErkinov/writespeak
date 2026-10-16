@@ -86,17 +86,18 @@ class Settings(BaseSettings):
     file_storage_path: str = "./data/storage"
     books_path: str = "./data/books"
 
-    # --- Limits & payments ---
-    # Free checks each user gets once, after registering (any mix of Writing
-    # and Speaking) - see bot/utils/quota.py.
-    free_checks: int = 2
-    # Price in so'm for one check beyond the free ones.
-    price_per_check: int = 5000
+    # --- Coins & payments (bot/utils/coins.py: what each check and pack costs) ---
+    # Coins every new user gets once, on signup.
+    welcome_coins: int = 10
+    # Coins the inviter and the invited user each get on the invited user's
+    # first approved purchase.
+    referral_coins: int = 5
+    # So'm one coin is worth at the smallest pack's price - for revenue
+    # estimates and "= N so'm" hints.
+    coin_price: int = 1000
     # Card shown to students for the manual top-up flow (bot/handlers/payments.py).
     payment_card_number: str = "0000 0000 0000 0000"
     payment_card_holder: str = "F.I.Sh."
-    # Monthly unlimited-checks subscription price, in so'm.
-    subscription_price_monthly: int = 99000
     # Test window - see the checks_only_for_ids property. Empty = off.
     checks_only_for: str = ""
     # So'm per US dollar for the admins' group's cost figures (bot/utils/crm.py)
@@ -127,7 +128,7 @@ class Settings(BaseSettings):
     def checks_only_for_ids(self) -> set[int]:
         """A test window (CHECKS_ONLY_FOR, comma-separated Telegram IDs): while
         set, only these users and the admins can start checks - free of charge -
-        and everyone else's free checks, credits and subscriptions are kept but
+        and everyone else's coins and subscriptions are kept but
         paused (bot/utils/quota.py). Empty = normal operation."""
         return {int(x.strip()) for x in self.checks_only_for.split(",") if x.strip()}
 

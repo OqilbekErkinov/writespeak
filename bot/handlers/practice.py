@@ -279,9 +279,9 @@ async def _start_practice_question(
         await callback.message.answer(t("practice.question_not_found", lang))
         return
 
-    quota = await check_quota(callback.from_user.id)
+    quota = await check_quota(callback.from_user.id, question.module.value)
     if not quota.allowed:
-        await send_paywall(callback.message, lang)
+        await send_paywall(callback.message, lang, quota)
         return
     spend_credit = quota.spend_credit
 

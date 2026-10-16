@@ -61,12 +61,13 @@ async def create_user(
     username: str | None,
     full_name: str,
     referred_by: int | None = None,
+    coins: int = 0,
 ) -> User:
     """The bot is open to anyone - no admin approval gate - so every new
-    signup is created active right away. `referred_by` is the referrer's
-    Telegram id from a `/start ref_<id>` deep link (bot/handlers/referral.py);
-    the referrer is only rewarded once this user completes their first check
-    (see reward_referrer_if_eligible), not just for signing up."""
+    signup is created active right away, with `coins` (the welcome gift).
+    `referred_by` is the referrer's Telegram id from a `/start ref_<id>` deep
+    link; both sides are only rewarded on this user's first approved coin
+    purchase (see decide_payment_request), not just for signing up."""
     user = User(
         id=user_id,
         username=username,
@@ -74,6 +75,7 @@ async def create_user(
         status=UserStatus.approved,
         approved_at=datetime.now(timezone.utc),
         referred_by=referred_by if referred_by != user_id else None,
+        coin_balance=coins,
     )
     session.add(user)
     await session.commit()
@@ -135,7 +137,7 @@ async def save_writing_submission(
     book_sample_ref: int | None,
     feedback_pdf_path: str,
     practice_question_id: int | None = None,
-    spend_credit: bool = False,
+    coins: int = 0,
     assignment_part_id: int | None = None,
     payer_id: int | None = None,
     report_data: dict | None = None,
@@ -143,9 +145,9 @@ async def save_writing_submission(
     """`annotations` holds the report's numbered mistakes (each with its
     `criterion`) since the 2026-10 report redesign - get_writing_history
     compares their per-criterion counts with the student's next essay.
-    Older rows hold the previous sentence-annotation format. With
-    `spend_credit`, the credit comes from `payer_id` (a group's sponsor) when
-    given, else from the student."""
+    Older rows hold the previous sentence-annotation format. `coins` (the
+    check's price, 0 when free) are spent from `payer_id` (a group's
+    sponsor) when given, else from the student."""
     submission = WritingSubmission(
         user_id=user_id,
         task_type=task_type,
@@ -163,11 +165,12 @@ async def save_writing_submission(
         feedback_pdf_path=feedback_pdf_path,
         practice_question_id=practice_question_id,
         assignment_part_id=assignment_part_id,
-        paid_by_id=payer_id if spend_credit and payer_id else None,
+        paid_by_id=payer_id if coins and payer_id else None,
+        coins_spent=coins,
     )
     session.add(submission)
-    if spend_credit:
-        await _spend_one_credit(session, payer_id or user_id)
+    if coins:
+        await _spend_coins(session, payer_id or user_id, coins)
     await session.commit()
     await session.refresh(submission)
     return submission
@@ -188,15 +191,13 @@ async def save_speaking_submission(
     report_data: dict,
     feedback_pdf_path: str,
     practice_question_id: int | None = None,
-    spend_credit: bool = False,
+    coins: int = 0,
     assignment_part_id: int | None = None,
     payer_id: int | None = None,
-    credits: int = 1,
 ) -> SpeakingSubmission:
-    """With `spend_credit`, `credits` credits are spent (a full test counts
-    as FULL_TEST_CHECKS checks, less the free checks it used - see
-    bot/utils/quota.py), from `payer_id` (a group's sponsor) when given, else
-    from the student."""
+    """`coins` (the check's price, 0 when free - bot/utils/coins.py) are
+    spent from `payer_id` (a group's sponsor) when given, else from the
+    student."""
     submission = SpeakingSubmission(
         user_id=user_id,
         part=part,
@@ -211,12 +212,12 @@ async def save_speaking_submission(
         feedback_pdf_path=feedback_pdf_path,
         practice_question_id=practice_question_id,
         assignment_part_id=assignment_part_id,
-        paid_by_id=payer_id if spend_credit and payer_id else None,
+        paid_by_id=payer_id if coins and payer_id else None,
+        coins_spent=coins,
     )
     session.add(submission)
-    if spend_credit:
-        for _ in range(credits):
-            await _spend_one_credit(session, payer_id or user_id)
+    if coins:
+        await _spend_coins(session, payer_id or user_id, coins)
     await session.commit()
     await session.refresh(submission)
     return submission
@@ -347,10 +348,12 @@ async def get_writing_history(
     }
 
 
-async def _spend_one_credit(session: AsyncSession, user_id: int) -> None:
-    user = await session.get(User, user_id)
-    if user is not None and user.credit_balance > 0:
-        user.credit_balance -= 1
+async def _spend_coins(session: AsyncSession, user_id: int, coins: int) -> None:
+    """Takes a check's price off the payer's balance (never below 0: the
+    balance was checked when the check started - bot/utils/quota.py)."""
+    user = (await session.execute(select(User).where(User.id == user_id).with_for_update())).scalar_one_or_none()
+    if user is not None:
+        user.coin_balance = max(0, user.coin_balance - coins)
 
 
 async def get_writing_submission(
@@ -372,9 +375,8 @@ async def get_speaking_submission(
 
 
 async def get_total_submission_count(session: AsyncSession, user_id: int) -> int:
-    """Lifetime count of delivered checks - the free-check quota
-    (bot/utils/quota.py) and the referral reward's "first completed check"
-    (see reward_referrer_if_eligible) both go by it."""
+    """Lifetime count of delivered checks (a full Speaking test counts
+    FULL_TEST_CHECKS)."""
     w = await session.execute(
         select(func.count()).select_from(WritingSubmission).where(WritingSubmission.user_id == user_id)
     )
@@ -470,25 +472,6 @@ async def get_criteria_averages(
 
 
 # --- Referral program ---------------------------------------------------------
-
-
-async def reward_referrer_if_eligible(session: AsyncSession, user_id: int) -> int | None:
-    """Call after a submission is saved. Pays out 1 credit to the referrer
-    the FIRST time the referred user completes a check (not just on signup,
-    to cut down on throwaway-account abuse). Returns the referrer's id if a
-    reward was just given, else None."""
-    user = await session.get(User, user_id)
-    if user is None or user.referred_by is None or user.referral_rewarded:
-        return None
-    if await get_total_submission_count(session, user_id) != 1:
-        return None
-    referrer = await session.get(User, user.referred_by)
-    if referrer is None:
-        return None
-    referrer.credit_balance += 1
-    user.referral_rewarded = True
-    await session.commit()
-    return referrer.id
 
 
 async def get_referral_count(session: AsyncSession, user_id: int) -> int:
@@ -1259,13 +1242,13 @@ async def create_payment_request(
     *,
     user_id: int,
     amount: int,
-    credits: int = 0,
+    coins: int = 0,
     kind: PaymentKind = PaymentKind.credits,
     subscription_months: int | None = None,
 ) -> PaymentRequest:
     request = PaymentRequest(
         user_id=user_id,
-        credits=credits,
+        coins=coins,
         amount=amount,
         kind=kind,
         subscription_months=subscription_months,
@@ -1288,19 +1271,28 @@ async def set_payment_receipt(
     return request
 
 
+@dataclass
+class PaymentDecision:
+    request: PaymentRequest | None
+    applied: bool  # False when it had already been decided (or doesn't exist)
+    referrer_id: int | None = None  # paid the referral bonus with this approval
+
+
 async def decide_payment_request(
-    session: AsyncSession, request_id: int, *, approve: bool, admin_id: int
-) -> tuple[PaymentRequest | None, bool]:
-    """Approves or rejects a payment request, adding credits to the buyer's
-    balance on approval. Returns (request, applied) - applied is False when
-    the request was already decided (e.g. two admins tapping their own copy
-    of the same notification), mirroring the old registration approve/deny
-    race guard."""
+    session: AsyncSession, request_id: int, *, approve: bool, admin_id: int, referral_coins: int = 0
+) -> PaymentDecision:
+    """Approves or rejects a payment request, adding the coins to the
+    buyer's balance on approval. `applied` is False when the request was
+    already decided (e.g. two admins tapping their own copy of the same
+    notification), mirroring the old registration approve/deny race guard.
+    The buyer's first approved coin purchase also pays `referral_coins` to
+    them and to whoever invited them (once - User.referral_rewarded)."""
     request = await session.get(PaymentRequest, request_id)
     if request is None:
-        return None, False
+        return PaymentDecision(None, False)
     if request.status != PaymentStatus.pending:
-        return request, False
+        return PaymentDecision(request, False)
+    referrer_id = None
 
     request.status = PaymentStatus.approved if approve else PaymentStatus.rejected
     request.reviewed_at = datetime.now(timezone.utc)
@@ -1317,10 +1309,17 @@ async def decide_payment_request(
                     days=30 * (request.subscription_months or 1)
                 )
             else:
-                user.credit_balance += request.credits
+                user.coin_balance += request.coins
+                if referral_coins and user.referred_by and not user.referral_rewarded:
+                    referrer = await session.get(User, user.referred_by)
+                    if referrer is not None:
+                        referrer.coin_balance += referral_coins
+                        user.coin_balance += referral_coins
+                        referrer_id = referrer.id
+                    user.referral_rewarded = True
     await session.commit()
     await session.refresh(request)
-    return request, True
+    return PaymentDecision(request, True, referrer_id)
 
 
 # --- Admin stats (/stats) ------------------------------------------------------
@@ -1550,7 +1549,7 @@ async def can_manage_group(session: AsyncSession, user_id: int, group: Group | N
 
 
 async def get_group_payer_id(session: AsyncSession, group: Group) -> int:
-    """Whose credits pay for the group's gifts and sponsored checks."""
+    """Whose coins pay for the group's gifts and sponsored checks."""
     if group.center_id is not None:
         center = await session.get(Center, group.center_id)
         if center is not None:
@@ -1614,7 +1613,7 @@ async def leave_group(session: AsyncSession, group_id: int, user_id: int) -> boo
 
 async def delete_group(session: AsyncSession, group_id: int) -> None:
     """Deletes a group, its memberships and assignments; students keep their
-    work and credits (their submissions just lose the assignment link)."""
+    work and coins (their submissions just lose the assignment link)."""
     part_ids = select(AssignmentPart.id).join(Assignment, Assignment.id == AssignmentPart.assignment_id).where(
         Assignment.group_id == group_id
     )
@@ -1818,16 +1817,16 @@ async def get_member_report_pdf(
     return work.feedback_pdf_path if work is not None and work.feedback_pdf_path else None
 
 
-# --- credits ---
+# --- coins: gifts and sponsored checks ---
 
 
-async def gift_credits(
+async def gift_coins(
     session: AsyncSession, *, group: Group, student_ids: list[int], amount: int
 ) -> list[User] | None:
-    """Moves `amount` credits from the group's payer (teacher or center owner)
+    """Moves `amount` coins from the group's payer (teacher or center owner)
     to each student in `student_ids`, in one transaction - only if every one
     of them is in the group and the payer's balance covers them all. Returns
-    the students credited, or None if nothing was transferred."""
+    the students who got them, or None if nothing was transferred."""
     if amount <= 0 or not student_ids:
         return None
     members = set(
@@ -1844,15 +1843,15 @@ async def gift_credits(
     payer_id = await get_group_payer_id(session, group)
     # Row locks: two quick taps must not both spend the same balance.
     payer = (await session.execute(select(User).where(User.id == payer_id).with_for_update())).scalar_one_or_none()
-    if payer is None or payer.credit_balance < amount * len(members):
+    if payer is None or payer.coin_balance < amount * len(members):
         await session.rollback()
         return None
     students = list(
         (await session.execute(select(User).where(User.id.in_(members)).with_for_update())).scalars().all()
     )
-    payer.credit_balance -= amount * len(students)
+    payer.coin_balance -= amount * len(students)
     for student in students:
-        student.credit_balance += amount
+        student.coin_balance += amount
     await session.commit()
     return students
 
@@ -1873,31 +1872,35 @@ async def count_sponsored_today(session: AsyncSession, user_id: int, payer_id: i
 
 
 async def find_sponsor(
-    session: AsyncSession, user_id: int, assignment_group_id: int | None = None, cost: int = 1
+    session: AsyncSession, user_id: int, assignment_group_id: int | None = None, *, coins: int, checks: int = 1
 ) -> int | None:
-    """The payer who covers this student's next check (`cost` checks - a full
-    Speaking test is 3): a sponsored group they are in whose payer still has
-    the credit and whose daily limit isn't used up (assignments of that group
-    are never limited). None if nobody does."""
+    """The payer who covers this student's next check (costing `coins`, and
+    counting `checks` against a daily limit - a full Speaking test is 3): a
+    sponsored group they are in whose payer still has the coins and whose
+    daily limit isn't used up (assignments of that group are never
+    limited). None if nobody does."""
     for group, _ in await get_member_groups(session, user_id):
         if not group.sponsor_checks:
             continue
         payer_id = await get_group_payer_id(session, group)
         payer = await session.get(User, payer_id)
-        if payer is None or payer.credit_balance < cost:
+        if payer is None or payer.coin_balance < coins:
             continue
         if assignment_group_id == group.id or group.daily_limit is None:
             return payer_id
-        if await count_sponsored_today(session, user_id, payer_id) + cost <= group.daily_limit:
+        if await count_sponsored_today(session, user_id, payer_id) + checks <= group.daily_limit:
             return payer_id
     return None
 
 
 async def sponsored_spend(session: AsyncSession, payer_id: int, since: datetime) -> int:
+    """Coins `payer_id` has spent on their students' checks since `since`."""
     total = 0
     for model in (WritingSubmission, SpeakingSubmission):
         total += (await session.execute(
-            select(_checks(model)).select_from(model).where(model.paid_by_id == payer_id, model.created_at >= since)
+            select(func.coalesce(func.sum(model.coins_spent), 0)).where(
+                model.paid_by_id == payer_id, model.created_at >= since
+            )
         )).scalar() or 0
     return total
 
@@ -2181,7 +2184,7 @@ async def list_centers_with_stats(session: AsyncSession) -> list[dict]:
             "teachers": len(teachers),
             "groups": len(groups),
             "students": students,
-            "balance": owner.credit_balance if owner else 0,
+            "balance": owner.coin_balance if owner else 0,
             "sponsored_30d": await sponsored_spend(session, center.owner_id, month_ago),
         })
     return result

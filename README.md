@@ -124,16 +124,31 @@ yozsa, AI ma'nosi, misol va tarjimasini topadi (kuniga 30 tagacha). Bo'lim (`bot
 
 ## Narxlash va to'lov
 
-Har bir foydalanuvchiga ro'yxatdan o'tgach **bir marta** **`FREE_CHECKS`** ta (standart: 2) bepul
-tekshiruv beriladi (har kuni yangilanmaydi) — Writing va Speaking bitta umumiy hisobga kiradi,
-tekshiruv hisobot tayyor bo'lgandagina hisoblanadi. Bu haqda bot ro'yxatdan o'tishda alohida
-tushuntiradi. Shundan ko'pi uchun har bir tekshiruv **`PRICE_PER_CHECK`** so'm (standart: 5000) turadi:
+Botdagi to'lov birligi — **coin** (`bot/utils/coins.py`, 2026-10-17 dan; avval "1 kredit = 1
+tekshiruv = 5 000 so'm" edi). Har bir tekshiruv o'z tannarxiga qarab o'z narxida coindan yechiladi:
 
-1. Limit tugaganda bot foydalanuvchiga miqdor tanlash tugmalarini (1/3/5/10 ta) ko'rsatadi.
+| Tekshiruv | Coin |
+|---|---|
+| Writing Task 1 / Task 2 | 4 / 5 |
+| Speaking Part 1 / Part 2 / Part 3 | 6 / 5 / 8 |
+| To'liq Speaking (Part 1+2+3, bitta hisobot) | 16 |
+
+- Ro'yxatdan o'tganda **`WELCOME_COINS`** (standart: 10) coin sovg'a.
+- Coin faqat hisobot saqlanganda yechiladi (xato bo'lgan tekshiruv bepul), muddati tugamaydi.
+- Paketlar: 10 / 25 / 50 / 100 / 200 coin — 10 000 / 23 000 / 45 000 / 88 000 / 170 000 so'm.
+  O'qituvchi va markazlarga qo'shimcha: 500 / 1 000 / 2 500 / 5 000 coin — 400 000 / 780 000 /
+  1 875 000 / 3 600 000 so'm (talabalar tekshiruvini guruh to'laganda shu balansdan yechiladi).
+- Referal: taklif qilingan do'st **birinchi marta coin sotib olganda** ikkalasiga
+  **`REFERRAL_COINS`** (standart: 5) coin.
+- Cheksiz oylik obuna endi sotilmaydi; faol obunalar muddati tugaguncha ishlaydi.
+
+Sotib olish:
+
+1. Coin yetmaganda (yoki "👤 Hisobim"da) bot paketlarni ko'rsatadi.
 2. Foydalanuvchi `PAYMENT_CARD_NUMBER`ga o'tkazma qiladi va chek skrinshotini botga yuboradi.
-3. Barcha adminlarga (`ADMIN_TELEGRAM_IDS`) skrinshot + Tasdiqlash/Rad etish tugmalari keladi.
-4. Admin tasdiqlasa, kredit foydalanuvchi hisobiga qo'shiladi (muddatsiz — ishlatilmaguncha
-   yo'qolmaydi) va u darhol yana tekshiruv topshira oladi.
+3. Barcha adminlarga (`ADMIN_TELEGRAM_IDS`) skrinshot + Tasdiqlash/Rad etish tugmalari keladi
+   (yoki web paneldagi "To'lovlar" sahifasida tasdiqlanadi).
+4. Admin tasdiqlasa, coin foydalanuvchi hisobiga qo'shiladi va u darhol tekshiruv topshira oladi.
 
 Bu — qo'lda tasdiqlanadigan, hech qanday tashqi integratsiya talab qilmaydigan boshlang'ich
 usul (`bot/handlers/payments.py`). Payme/Click orqali avtomatik tasdiqlashga o'tish uchun

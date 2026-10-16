@@ -421,10 +421,10 @@ async def do_part(callback: CallbackQuery, state: FSMContext, lang: str) -> None
         await callback.answer(t("as.not_available", lang), show_alert=True)
         return
     part, assignment = found
-    quota = await check_quota(callback.from_user.id, assignment_group_id=assignment.group_id)
+    quota = await check_quota(callback.from_user.id, part.module, assignment_group_id=assignment.group_id)
     if not quota.allowed:
         await callback.answer()
-        await send_paywall(callback.message, lang)
+        await send_paywall(callback.message, lang, quota)
         return
     await callback.answer()
     await state.clear()

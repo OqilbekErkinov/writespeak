@@ -66,19 +66,19 @@ async def advance_mock_test(message: Message, state: FSMContext, mock_session_id
         await _finish(message, state, mock_session_id, parts)
         return
 
-    quota = await check_quota(message.chat.id)
+    kind, sub_key = _PART_TO_FLOW[next_part.part_type]
+    quota = await check_quota(message.chat.id, f"{kind}_{sub_key}")
     spend_credit = quota.spend_credit
     if not quota.allowed:
         await state.clear()
         await message.answer(
-            "🎯 Mock Test davom etishi uchun imkoniyat yetmadi. Kredit sotib olib, "
+            "🎯 Mock Test davom etishi uchun coin yetmadi. Coin sotib olib, "
             "\"🎯 Mock Test\" tugmasi orqali qaytadan boshlashingiz mumkin (avval "
             "tugatgan qismlaringiz natijalari saqlanib qoladi)."
         )
-        await send_paywall(message)
+        await send_paywall(message, quota=quota)
         return
 
-    kind, sub_key = _PART_TO_FLOW[next_part.part_type]
     await state.update_data(
         mock_session_id=mock_session_id,
         mock_part_type=next_part.part_type.value,

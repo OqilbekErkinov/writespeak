@@ -129,7 +129,7 @@ async def build_digest(session, group, lang: str) -> str:
             lines.append(t("gr.digest_assignment", lang, title=_esc(assignment.title), complete=item["complete"], members=item["members"]))
     if group.sponsor_checks:
         payer = await crud.get_user(session, await crud.get_group_payer_id(session, group))
-        lines.append(t("gr.digest_balance", lang, balance=payer.credit_balance if payer else 0))
+        lines.append(t("gr.digest_balance", lang, balance=payer.coin_balance if payer else 0))
     return "\n".join(lines)
 
 

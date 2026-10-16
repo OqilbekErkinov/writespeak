@@ -44,31 +44,9 @@ _T: dict[str, dict[str, str]] = {
         "ru": "📄 Именно такой подробный отчёт вы получите за каждую проверку Writing или "
         "Speaking!",
     },
-    "start.free_checks": {
-        "uz": "🎁 <b>Sizga {total} ta bepul tekshiruv berildi!</b>\n\n"
-        "Bu imkoniyat <b>faqat bir marta</b> beriladi — har kuni yangilanmaydi. Ularni "
-        "xohlaganingizcha ishlatishingiz mumkin:\n"
-        "• 1 ta Writing + 1 ta Speaking\n"
-        "• yoki 2 ta Writing\n"
-        "• yoki 2 ta Speaking\n\n"
-        "❗️ <b>Iltimos, ularni shunchaki sinab ko'rish uchun tasodifiy matn yoki bir-ikki gap "
-        "yuborib sarflab qo'ymang.</b> Haqiqiy IELTS savolini oling (Writing Task 1, Task 2 "
-        "yoki Speaking savoli) va javobingizni imtihondagidek to'liq yozing yoki gapiring — "
-        "shundagina hisobot sizga haqiqiy foyda beradi.\n\n"
-        "ℹ️ Tekshiruv faqat hisobot tayyor bo'lganda hisoblanadi. Bepul tekshiruvlar tugagach, "
-        "har bir tekshiruv — {price} so'm.",
-        "ru": "🎁 <b>Вам доступно {total} бесплатные проверки!</b>\n\n"
-        "Они даются <b>только один раз</b> — каждый день не обновляются. Распределите их как "
-        "удобно:\n"
-        "• 1 Writing + 1 Speaking\n"
-        "• или 2 Writing\n"
-        "• или 2 Speaking\n\n"
-        "❗️ <b>Пожалуйста, не тратьте их на проверку «просто посмотреть» — случайный текст или "
-        "пару фраз.</b> Возьмите настоящее задание IELTS (Writing Task 1, Task 2 или вопрос "
-        "Speaking) и ответьте полностью, как на экзамене — только тогда отчёт принесёт "
-        "реальную пользу.\n\n"
-        "ℹ️ Проверка засчитывается, только когда отчёт готов. Когда бесплатные проверки "
-        "закончатся, каждая проверка стоит {price} сум.",
+    "start.welcome_coins": {
+        "uz": "🎁 <b>Sizga {coins} coin sovg'a qilindi!</b>\n\n🪙 Coin — botdagi to'lov birligi. Har bir tekshiruv o'z narxida coindan yechiladi: masalan, sovg'a Writing Task 1 + Task 2 ga yoki Task 1 + Speaking Part 1 ga yetadi.\n\n❗️ <b>Iltimos, ularni shunchaki sinab ko'rish uchun tasodifiy matn yoki bir-ikki gap yuborib sarflab qo'ymang.</b> Haqiqiy IELTS savolini oling (Writing Task 1, Task 2 yoki Speaking savoli) va javobingizni imtihondagidek to'liq yozing yoki gapiring — shundagina hisobot sizga haqiqiy foyda beradi.\n\nℹ️ Coin faqat hisobot tayyor bo'lganda yechiladi.",
+        "ru": "🎁 <b>Вам подарено {coins} coin!</b>\n\n🪙 Coin — валюта бота. Каждая проверка списывает свою цену в coin: например, подарка хватит на Writing Task 1 + Task 2 или на Task 1 + Speaking Part 1.\n\n❗️ <b>Пожалуйста, не тратьте их на проверку «просто посмотреть» — случайный текст или пару фраз.</b> Возьмите настоящее задание IELTS (Writing Task 1, Task 2 или вопрос Speaking) и ответьте полностью, как на экзамене — только тогда отчёт принесёт реальную пользу.\n\nℹ️ Coin списываются, только когда отчёт готов.",
     },
     # --- main_menu.py ---
     "menu.shown": {
@@ -84,36 +62,48 @@ _T: dict[str, dict[str, str]] = {
     "nav.what_next": {"uz": "Davom etamizmi? 👇", "ru": "Продолжим? 👇"},
     # --- Quota / paywall (bot/utils/quota.py) ---
     "quota.paywall": {
-        "uz": "⚠️ {free_limit} ta bepul tekshiruvingiz ishlatib bo'lingan (ular bir martalik "
-        "edi).\n\nDavom etish uchun har bir tekshiruv (Writing yoki Speaking) — "
-        "<b>{price} so'm</b>.\nXohlagan miqdorni tanlang:",
-        "ru": "⚠️ Ваши {free_limit} бесплатные проверки уже использованы (они даются один "
-        "раз).\n\nЧтобы продолжить, каждая проверка (Writing или Speaking) стоит "
-        "<b>{price} сум</b>.\nВыберите нужное количество:",
+        "uz": "⚠️ <b>Coin yetarli emas.</b> Bu tekshiruv — <b>{price} coin</b>, balansingizda — <b>{balance} coin</b>.\nCoin paketini tanlang (katta paketda arzonroq):",
+        "ru": "⚠️ <b>Недостаточно coin.</b> Эта проверка — <b>{price} coin</b>, на балансе — <b>{balance} coin</b>.\nВыберите пакет coin (в большом дешевле):",
     },
-    "quota.free_note": {
-        "uz": "🆓 <b>Bepul tekshiruv</b> — sizda {left}/{total} ta qoldi, bu ulardan biri. "
-        "Bepul tekshiruvlar faqat bir marta beriladi, shuning uchun haqiqiy IELTS savoli va "
-        "to'liq javobingizni yuboring.",
-        "ru": "🆓 <b>Бесплатная проверка</b> — у вас осталось {left}/{total}, эта — одна из "
-        "них. Бесплатные проверки даются только один раз, поэтому отправьте настоящее задание "
-        "IELTS и полный ответ.",
+    "quota.paywall_generic": {
+        "uz": "⚠️ <b>Coin yetarli emas.</b> Coin paketini tanlang (katta paketda arzonroq):",
+        "ru": "⚠️ <b>Недостаточно coin.</b> Выберите пакет coin (в большом дешевле):",
+    },
+    "quota.price_list": {
+        "uz": "🪙 <b>Tekshiruv narxlari (coin):</b>\n✍️ Writing Task 1 — <b>{w1}</b> · Task 2 — <b>{w2}</b>\n🎙 Speaking Part 1 — <b>{s1}</b> · Part 2 — <b>{s2}</b> · Part 3 — <b>{s3}</b>\n🎯 To'liq Speaking (Part 1+2+3) — <b>{full}</b>\n<i>1 coin = {coin} so'm, katta paketlarda arzonroq. Coinning muddati tugamaydi.</i>",
+        "ru": "🪙 <b>Цены проверок (coin):</b>\n✍️ Writing Task 1 — <b>{w1}</b> · Task 2 — <b>{w2}</b>\n🎙 Speaking Part 1 — <b>{s1}</b> · Part 2 — <b>{s2}</b> · Part 3 — <b>{s3}</b>\n🎯 Полный Speaking (Part 1+2+3) — <b>{full}</b>\n<i>1 coin = {coin} сум, в больших пакетах дешевле. Coin не сгорают.</i>",
+    },
+    "quota.price_note": {
+        "uz": "🪙 Bu tekshiruv — <b>{price} coin</b>. Hisobot tayyor bo'lganda yechiladi, balansingizda <b>{left} coin</b> qoladi.",
+        "ru": "🪙 Эта проверка — <b>{price} coin</b>. Спишется, когда отчёт будет готов; на балансе останется <b>{left} coin</b>.",
     },
     # Shown during a test window (settings.checks_only_for) to everyone else.
     "quota.paused": {
         "uz": "🛠 Tekshiruvlar vaqtincha to'xtatilgan — bot yangilanmoqda. Tez orada qayta "
-        "yoqiladi. Bepul tekshiruvlaringiz, kreditlaringiz va obunangiz saqlanib qoladi.",
+        "yoqiladi. Coinlaringiz va obunangiz saqlanib qoladi.",
         "ru": "🛠 Проверки временно приостановлены — бот обновляется. Скоро всё снова "
-        "заработает. Ваши бесплатные проверки, кредиты и подписка сохранятся.",
+        "заработает. Ваши coin и подписка сохранятся.",
     },
     # --- Payments (bot/handlers/payments.py, bot/keyboards/payment_kb.py) ---
-    "pay.bundle_button": {
-        "uz": "{n} ta tekshiruv — {price} so'm",
-        "ru": "{n} проверок — {price} сум",
+    "pay.pack_button": {
+        "uz": "🪙 {coins} coin — {price} so'm",
+        "ru": "🪙 {coins} coin — {price} сум",
     },
-    "pay.subscription_button": {
-        "uz": "♾️ Oylik cheksiz — {price} so'm",
-        "ru": "♾️ Безлимит на месяц — {price} сум",
+    "pay.pack_button_discount": {
+        "uz": "🪙 {coins} coin — {price} so'm (−{off}%)",
+        "ru": "🪙 {coins} coin — {price} сум (−{off}%)",
+    },
+    "pay.center_packs_header": {
+        "uz": "🏫 O'quv markazlar va o'qituvchilar uchun:",
+        "ru": "🏫 Для учебных центров и преподавателей:",
+    },
+    "pay.choose_pack": {
+        "uz": "Bu paket endi sotilmaydi. Iltimos, coin paketini tanlang:",
+        "ru": "Этот пакет больше не продаётся. Выберите пакет coin:",
+    },
+    "pay.subscription_retired": {
+        "uz": "Cheksiz obuna endi sotilmaydi — uning o'rniga coin paketlari bor (katta paketda coin arzonroq):",
+        "ru": "Безлимитная подписка больше не продаётся — вместо неё есть пакеты coin (в большом пакете дешевле):",
     },
     "pay.instructions": {
         "uz": "💳 <b>{amount} so'm</b>ni quyidagi kartaga o'tkazing:\n\n<code>{card}</code>\n"
@@ -138,9 +128,17 @@ _T: dict[str, dict[str, str]] = {
         "uz": "Iltimos, chekning skrinshotini rasm shaklida yuboring.",
         "ru": "Пожалуйста, отправьте скриншот чека именно картинкой.",
     },
-    "pay.approved_credits": {
-        "uz": "🎉 To'lovingiz tasdiqlandi! Hisobingizga {credits} ta tekshiruv qo'shildi.",
-        "ru": "🎉 Ваша оплата подтверждена! На ваш счёт добавлено {credits} проверок.",
+    "pay.approved_coins": {
+        "uz": "🎉 To'lovingiz tasdiqlandi! Hisobingizga <b>{coins} coin</b> qo'shildi. Balans: <b>{balance} coin</b>.",
+        "ru": "🎉 Ваша оплата подтверждена! На счёт добавлено <b>{coins} coin</b>. Баланс: <b>{balance} coin</b>.",
+    },
+    "pay.referral_bonus_buyer": {
+        "uz": "🎁 Taklif bonusi: sizga yana <b>{coins} coin</b> qo'shildi!",
+        "ru": "🎁 Бонус за приглашение: вам добавлено ещё <b>{coins} coin</b>!",
+    },
+    "pay.referral_bonus_referrer": {
+        "uz": "🎁 Siz taklif qilgan do'stingiz birinchi marta coin sotib oldi — sizga <b>{coins} coin</b> bonus! Balans: <b>{balance} coin</b>.",
+        "ru": "🎁 Приглашённый вами друг впервые купил coin — вам бонус <b>{coins} coin</b>! Баланс: <b>{balance} coin</b>.",
     },
     "pay.approved_subscription": {
         "uz": "🎉 To'lovingiz tasdiqlandi! {months} oylik cheksiz obuna faollashtirildi.",
@@ -198,9 +196,9 @@ _T: dict[str, dict[str, str]] = {
     },
     "writing.resubmitted": {
         "uz": "♻️ Bu — #{number} inshodagi aynan o'sha matn, shuning uchun saqlangan hisobotingizni qayta "
-        "yubordim (tekshiruv hisoblanmadi). Ball: <b>{band}</b>",
-        "ru": "♻️ Это тот же текст, что и в эссе #{number}, поэтому я отправил сохранённый отчёт (проверка "
-        "не засчитана). Балл: <b>{band}</b>",
+        "yubordim (coin yechilmadi). Ball: <b>{band}</b>",
+        "ru": "♻️ Это тот же текст, что и в эссе #{number}, поэтому я отправил сохранённый отчёт (coin "
+        "не списаны). Балл: <b>{band}</b>",
     },
     # --- Speaking (bot/handlers/speaking.py) ---
     "speaking.choose_part": {
@@ -242,21 +240,14 @@ _T: dict[str, dict[str, str]] = {
     "speaking.full_intro": {
         "uz": "🎯 <b>Speaking Full test</b>\n\nImtihondagidek: Part 1 (qisqa savollar), Part 2 (cue card, "
         "1–2 daqiqa gapirasiz) va Part 3 (muhokama). Har bir savolga ovozli xabar bilan javob bering — "
-        "oxirida bitta umumiy hisobot va <b>Speaking band</b> chiqadi.\n\nBu {checks} ta tekshiruv "
-        "hisoblanadi.",
+        "oxirida bitta umumiy hisobot va <b>Speaking band</b> chiqadi.",
         "ru": "🎯 <b>Speaking Full test</b>\n\nКак на экзамене: Part 1 (короткие вопросы), Part 2 (cue card, "
         "говорите 1–2 минуты) и Part 3 (дискуссия). Отвечайте на каждый вопрос голосовым — в конце "
-        "будет один общий отчёт и <b>Speaking band</b>.\n\nЭто считается как {checks} проверки.",
+        "будет один общий отчёт и <b>Speaking band</b>.",
     },
     "speaking.full_no_questions": {
         "uz": "Hozircha Full test uchun savollar bazasi tayyor emas. Birozdan so'ng urinib ko'ring.",
         "ru": "База вопросов для Full test пока не готова. Попробуйте чуть позже.",
-    },
-    "speaking.full_paywall": {
-        "uz": "🎯 Full test {checks} ta tekshiruv hisoblanadi, sizda esa yetarli bepul tekshiruv yoki "
-        "kredit yo'q.",
-        "ru": "🎯 Full test считается как {checks} проверки, а у вас недостаточно бесплатных проверок или "
-        "кредитов.",
     },
     "speaking.part_start": {
         "uz": "— <b>{part}</b> —",
@@ -268,9 +259,9 @@ _T: dict[str, dict[str, str]] = {
     },
     "speaking.resubmitted": {
         "uz": "♻️ Bu — {number}-sessiyadagi aynan o'sha yozuv, shuning uchun saqlangan hisobotingizni "
-        "qayta yubordim (tekshiruv hisoblanmadi). Ball: <b>{band}</b>",
+        "qayta yubordim (coin yechilmadi). Ball: <b>{band}</b>",
         "ru": "♻️ Это та же самая запись, что и в сессии №{number}, поэтому я отправил сохранённый отчёт "
-        "(проверка не засчитана). Балл: <b>{band}</b>",
+        "(coin не списаны). Балл: <b>{band}</b>",
     },
     "speaking.listen_prompt": {
         "uz": "🔊 Model javoblarni ovozli tinglash uchun bosing:",
@@ -405,13 +396,9 @@ _T: dict[str, dict[str, str]] = {
         "uz": "♾️ Obuna faol — yana {days} kun",
         "ru": "♾️ Подписка активна — ещё {days} дн.",
     },
-    "account.free_remaining": {
-        "uz": "🆓 Bepul tekshiruvlar (bir martalik): <b>{remaining}/{total}</b> qoldi",
-        "ru": "🆓 Бесплатные проверки (разовые): осталось <b>{remaining}/{total}</b>",
-    },
-    "account.credit_balance": {
-        "uz": "💳 Kredit balansi: <b>{credits} ta</b> tekshiruv (muddatsiz)",
-        "ru": "💳 Баланс: <b>{credits}</b> проверок (бессрочно)",
+    "account.coin_balance": {
+        "uz": "🪙 Balans: <b>{coins} coin</b> (muddatsiz)",
+        "ru": "🪙 Баланс: <b>{coins} coin</b> (бессрочно)",
     },
     "account.vocab_progress": {
         "uz": "📚 Lug'atim: {learned}/{total} so'z o'zlashtirildi",
@@ -423,16 +410,9 @@ _T: dict[str, dict[str, str]] = {
         "ru": "📉 Ваша самая слабая сторона в последних работах: <b>{label}</b> (в среднем "
         "{avg:.1f}).\n💡 {tip}",
     },
-    "account.price_line": {
-        "uz": "Har bir qo'shimcha tekshiruv — {price} so'm.",
-        "ru": "Каждая дополнительная проверка — {price} сум.",
-    },
     "account.referral": {
-        "uz": "🔗 Do'stlaringizni taklif qiling — har bir do'stingiz birinchi tekshiruvni "
-        "tugatganda sizga <b>1 ta bepul tekshiruv</b> beriladi ({count} ta taklif "
-        "qilingan):\n{link}",
-        "ru": "🔗 Приглашайте друзей — когда друг завершит первую проверку, вы получите "
-        "<b>1 бесплатную проверку</b> (приглашено: {count}):\n{link}",
+        "uz": "🔗 Do'stlaringizni taklif qiling — do'stingiz birinchi marta coin sotib olganda <b>ikkalangizga {coins} coin</b> bonus beriladi ({count} ta taklif qilingan):\n{link}",
+        "ru": "🔗 Приглашайте друзей — когда друг впервые купит coin, <b>вы оба получите по {coins} coin</b> (приглашено: {count}):\n{link}",
     },
     "account.language_button": {"uz": "🌐 Til / Язык", "ru": "🌐 Til / Язык"},
     # --- Groups / B2B (bot/handlers/group.py, bot/handlers/start.py) ---
@@ -440,11 +420,11 @@ _T: dict[str, dict[str, str]] = {
         "uz": "🏫 <b>Guruh</b>\n\nSiz hali hech qanday guruhda emassiz.\n\n"
         "• <b>Talaba bo'lsangiz:</b> o'qituvchingiz bergan taklif havolasini bosing.\n"
         "• <b>O'qituvchi bo'lsangiz:</b> o'z guruhingizni oching — talabalaringizning "
-        "natijalari va hisobotlarini kuzatasiz, ularga kredit ulashasiz.",
+        "natijalari va hisobotlarini kuzatasiz, ularga coin ulashasiz.",
         "ru": "🏫 <b>Группа</b>\n\nВы пока не состоите ни в одной группе.\n\n"
         "• <b>Если вы ученик:</b> откройте ссылку-приглашение от преподавателя.\n"
         "• <b>Если вы преподаватель:</b> создайте свою группу — будете видеть результаты и "
-        "отчёты учеников и сможете дарить им кредиты.",
+        "отчёты учеников и сможете дарить им coin.",
     },
     "group.btn_create": {"uz": "➕ Guruh yaratish", "ru": "➕ Создать группу"},
     "group.teachers_only": {
@@ -478,7 +458,7 @@ _T: dict[str, dict[str, str]] = {
     "group.created": {"uz": "✅ Guruh yaratildi!", "ru": "✅ Группа создана!"},
     "group.btn_stats": {"uz": "📊 Statistika", "ru": "📊 Статистика"},
     "group.btn_students": {"uz": "👥 Talabalar", "ru": "👥 Ученики"},
-    "group.btn_gift_all": {"uz": "🎁 Hammaga kredit ulashish", "ru": "🎁 Подарить кредиты всем"},
+    "group.btn_gift_all": {"uz": "🎁 Hammaga coin ulashish", "ru": "🎁 Подарить coin всем"},
     "group.btn_delete": {"uz": "🗑 Guruhni o'chirish", "ru": "🗑 Удалить группу"},
     "group.btn_cancel": {"uz": "Bekor qilish", "ru": "Отмена"},
     "group.member_home_title": {"uz": "🏫 <b>Guruhlaringiz</b>\n", "ru": "🏫 <b>Ваши группы</b>\n"},
@@ -542,45 +522,44 @@ _T: dict[str, dict[str, str]] = {
         "uz": "Bu hisobot mavjud emas.",
         "ru": "Этот отчёт недоступен.",
     },
-    "group.btn_gift_one": {"uz": "🎁 Kredit berish", "ru": "🎁 Подарить кредиты"},
+    "group.btn_gift_one": {"uz": "🎁 Coin berish", "ru": "🎁 Подарить coin"},
     "group.btn_kick": {"uz": "🚪 Guruhdan chiqarish", "ru": "🚪 Исключить"},
     "group.gift_one": {
-        "uz": "🎁 <b>{name}</b>ga nechta kredit berasiz?\nBalansingiz: {balance} ta",
-        "ru": "🎁 Сколько кредитов подарить: <b>{name}</b>?\nВаш баланс: {balance}",
+        "uz": "🎁 <b>{name}</b>ga nechta coin berasiz?\nBalansingiz: {balance} coin",
+        "ru": "🎁 Сколько coin подарить: <b>{name}</b>?\nВаш баланс: {balance} coin",
     },
     "group.gift_all": {
-        "uz": "🎁 Har bir talabaga nechta kredit berasiz?\nTalabalar: {count} · balansingiz: {balance} ta",
-        "ru": "🎁 Сколько кредитов подарить каждому ученику?\nУчеников: {count} · ваш баланс: {balance}",
+        "uz": "🎁 Har bir talabaga nechta coin berasiz?\nTalabalar: {count} · balansingiz: {balance} coin",
+        "ru": "🎁 Сколько coin подарить каждому ученику?\nУчеников: {count} · ваш баланс: {balance} coin",
     },
     "group.gift_no_balance": {
-        "uz": "Balansingizda kredit yo'q. Talabalarga ulashish uchun avval kredit sotib oling:",
-        "ru": "На балансе нет кредитов. Чтобы дарить их ученикам, сначала купите кредиты:",
+        "uz": "Balansingizda coin yo'q. Talabalarga ulashish uchun avval coin sotib oling:",
+        "ru": "На балансе нет coin. Чтобы дарить их ученикам, сначала купите coin:",
     },
     "group.gift_all_not_enough": {
-        "uz": "Hammaga kamida 1 tadan berish uchun {count} ta kredit kerak, balansingizda "
-        "{balance} ta. Kredit sotib oling:",
-        "ru": "Чтобы дать всем хотя бы по 1, нужно {count} кредитов, у вас {balance}. Купите кредиты:",
+        "uz": "{count} ta talabaga ulashish uchun balansingiz yetmaydi ({balance} coin). Coin sotib oling:",
+        "ru": "Чтобы подарить {count} ученикам, не хватает баланса ({balance} coin). Купите coin:",
     },
     "group.gift_failed": {
-        "uz": "Kredit berilmadi: balans yetarli emas yoki talaba guruhda emas.",
-        "ru": "Кредиты не переданы: недостаточно баланса или ученик не в группе.",
+        "uz": "Coin berilmadi: balans yetarli emas yoki talaba guruhda emas.",
+        "ru": "Coin не переданы: недостаточно баланса или ученик не в группе.",
     },
     "group.gift_done_one": {
-        "uz": "✅ <b>{name}</b>ga {amount} ta kredit berildi!",
-        "ru": "✅ Подарено {amount} кредитов: <b>{name}</b>!",
+        "uz": "✅ <b>{name}</b>ga {amount} coin berildi!",
+        "ru": "✅ Подарено {amount} coin: <b>{name}</b>!",
     },
     "group.gift_done_all": {
-        "uz": "✅ {count} ta talabaga {amount} tadan kredit berildi (jami {total} ta).",
-        "ru": "✅ {count} ученикам подарено по {amount} кредитов (всего {total}).",
+        "uz": "✅ {count} ta talabaga {amount} coindan berildi (jami {total} coin).",
+        "ru": "✅ {count} ученикам подарено по {amount} coin (всего {total}).",
     },
     "group.gift_notify_student": {
-        "uz": "🎁 O'qituvchingiz sizga {amount} ta tekshiruv sovg'a qildi!",
-        "ru": "🎁 Ваш преподаватель подарил вам {amount} проверок!",
+        "uz": "🎁 O'qituvchingiz sizga {amount} coin sovg'a qildi!",
+        "ru": "🎁 Ваш преподаватель подарил вам {amount} coin!",
     },
     "group.kick_confirm": {
-        "uz": "🚪 <b>{name}</b>ni guruhdan chiqarasizmi?\n\nUning ishlari va kreditlari o'zida "
+        "uz": "🚪 <b>{name}</b>ni guruhdan chiqarasizmi?\n\nUning ishlari va coinlari o'zida "
         "qoladi, siz endi uning natijalarini ko'rmaysiz.",
-        "ru": "🚪 Исключить <b>{name}</b> из группы?\n\nЕго работы и кредиты останутся у него, "
+        "ru": "🚪 Исключить <b>{name}</b> из группы?\n\nЕго работы и coin останутся у него, "
         "но вы больше не будете видеть его результаты.",
     },
     "group.btn_kick_yes": {"uz": "Ha, chiqarish", "ru": "Да, исключить"},
@@ -594,10 +573,10 @@ _T: dict[str, dict[str, str]] = {
     },
     "group.delete_confirm": {
         "uz": "🗑 \"<b>{name}</b>\" guruhini o'chirasizmi?\n\nBarcha talabalar guruhdan "
-        "chiqariladi (ularning ishlari va kreditlari o'zlarida qoladi). Bu amalni qaytarib "
+        "chiqariladi (ularning ishlari va coinlari o'zlarida qoladi). Bu amalni qaytarib "
         "bo'lmaydi.",
         "ru": "🗑 Удалить группу \"<b>{name}</b>\"?\n\nВсе ученики будут исключены (их работы "
-        "и кредиты останутся у них). Это действие нельзя отменить.",
+        "и coin останутся у них). Это действие нельзя отменить.",
     },
     "group.btn_delete_yes": {"uz": "Ha, o'chirish", "ru": "Да, удалить"},
     "group.deleted": {"uz": "✅ Guruh o'chirildi.", "ru": "✅ Группа удалена."},
@@ -650,8 +629,8 @@ _T: dict[str, dict[str, str]] = {
     "group.teacher_line": {"uz": "👨‍🏫 O'qituvchi: {name}", "ru": "👨‍🏫 Преподаватель: {name}"},
     "group.group_title": {"uz": "🏫 <b>{name}</b>\n👥 Talabalar: {count}", "ru": "🏫 <b>{name}</b>\n👥 Учеников: {count}"},
     "group.sponsor_on_line": {
-        "uz": "💳 Tekshiruvlarni guruh to'laydi · balans: {balance} ta · kunlik limit: {limit}",
-        "ru": "💳 Проверки оплачивает группа · баланс: {balance} · лимит в день: {limit}",
+        "uz": "💳 Tekshiruvlarni guruh to'laydi · balans: {balance} coin · kunlik limit: {limit}",
+        "ru": "💳 Проверки оплачивает группа · баланс: {balance} coin · лимит в день: {limit}",
     },
     "group.sponsor_off_line": {
         "uz": "💳 Talabalar tekshiruvlarni o'zlari to'laydi",
@@ -686,20 +665,20 @@ _T: dict[str, dict[str, str]] = {
     "group.settings": {
         "uz": "⚙️ <b>{name}</b> — sozlamalar\n\n"
         "💳 <b>Tekshiruvlarni men to'layman:</b> {sponsor}\n"
-        "Yoqilsa, talabalar o'z bepul tekshiruvlarini ishlatib bo'lgach, tekshiruvlari sizning "
+        "Yoqilsa, talabalarning tekshiruvlari (narxi coinda) sizning "
         "balansingizdan yechiladi.\n"
         "📏 <b>Kunlik limit</b> (har bir talabaga): {limit}. Vazifalar limitga kirmaydi.\n\n"
         "🏆 <b>Reyting talabalarga ko'rinadi:</b> {board}",
         "ru": "⚙️ <b>{name}</b> — настройки\n\n"
         "💳 <b>Я оплачиваю проверки:</b> {sponsor}\n"
-        "Если включено, после бесплатных проверок проверки учеников списываются с вашего "
+        "Если включено, проверки учеников (цена в coin) списываются с вашего "
         "баланса.\n"
         "📏 <b>Лимит в день</b> (на ученика): {limit}. Задания в лимит не входят.\n\n"
         "🏆 <b>Рейтинг виден ученикам:</b> {board}",
     },
     "group.center_owner_pays": {
-        "uz": "ℹ️ Bu markaz guruhi: kredit va to'lov sozlamalarini markaz rahbari boshqaradi.",
-        "ru": "ℹ️ Это группа центра: кредиты и оплату настраивает руководитель центра.",
+        "uz": "ℹ️ Bu markaz guruhi: coin va to'lov sozlamalarini markaz rahbari boshqaradi.",
+        "ru": "ℹ️ Это группа центра: coin и оплату настраивает руководитель центра.",
     },
     "group.preparing": {"uz": "⏳ Tayyorlanyapti…", "ru": "⏳ Готовлю…"},
     "group.parent_report_caption": {
@@ -770,21 +749,21 @@ _T: dict[str, dict[str, str]] = {
     },
     "group.center_home": {
         "uz": "🏢 <b>{name}</b> — markaz\n\n👨‍🏫 O'qituvchilar: {teachers}\n🏫 Guruhlar: {groups}\n"
-        "👥 Talabalar: {students}\n💳 Markaz balansi: {balance} ta kredit\n"
-        "<i>Markaz guruhlarining kreditlari va to'lovlari shu balansdan.</i>\n\n"
+        "👥 Talabalar: {students}\n💳 Markaz balansi: {balance} coin\n"
+        "<i>Markaz guruhlarining tekshiruvlari va sovg'alari shu balansdan.</i>\n\n"
         "{teacher_lines}\n\n🔗 <b>O'qituvchi taklif havolasi</b> (bosib nusxa oling):\n<code>{link}</code>\n\n"
         "O'qituvchini markazdan chiqarish uchun pastdagi tugmani bosing.",
         "ru": "🏢 <b>{name}</b> — центр\n\n👨‍🏫 Преподавателей: {teachers}\n🏫 Групп: {groups}\n"
-        "👥 Учеников: {students}\n💳 Баланс центра: {balance} кредитов\n"
-        "<i>Кредиты и оплаты групп центра — с этого баланса.</i>\n\n"
+        "👥 Учеников: {students}\n💳 Баланс центра: {balance} coin\n"
+        "<i>Проверки и подарки групп центра — с этого баланса.</i>\n\n"
         "{teacher_lines}\n\n🔗 <b>Ссылка для преподавателей</b> (нажмите, чтобы скопировать):\n<code>{link}</code>\n\n"
         "Чтобы исключить преподавателя, нажмите кнопку ниже.",
     },
     "group.center_teacher_row": {"uz": "• {name} — {groups} ta guruh", "ru": "• {name} — групп: {groups}"},
     "group.center_teacher_view": {
         "uz": "🏢 Siz <b>{name}</b> markazining o'qituvchisisiz (rahbar: {owner}).\n\nGuruhlaringizning "
-        "kreditlari va to'lovlarini markaz rahbari boshqaradi.",
-        "ru": "🏢 Вы преподаватель центра <b>{name}</b> (руководитель: {owner}).\n\nКредиты и оплату "
+        "coin va to'lovlarini markaz rahbari boshqaradi.",
+        "ru": "🏢 Вы преподаватель центра <b>{name}</b> (руководитель: {owner}).\n\nCoin и оплату "
         "ваших групп настраивает руководитель центра.",
     },
     "group.center_kick_confirm": {
@@ -855,8 +834,8 @@ _T: dict[str, dict[str, str]] = {
         "ru": "📝 {title}: выполнили {complete}/{members}",
     },
     "gr.digest_balance": {
-        "uz": "💳 To'lov balansi: {balance} ta kredit",
-        "ru": "💳 Баланс для оплаты: {balance} кредитов",
+        "uz": "💳 To'lov balansi: {balance} coin",
+        "ru": "💳 Баланс для оплаты: {balance} coin",
     },
     # --- Assignments (bot/handlers/group_assignments.py) ---
     "as.list": {"uz": "📝 <b>{name}</b> — vazifalar\n\nNatijani ko'rish uchun vazifani tanlang:", "ru": "📝 <b>{name}</b> — задания\n\nВыберите задание, чтобы увидеть результаты:"},
@@ -1136,10 +1115,10 @@ _T: dict[str, dict[str, str]] = {
     "vocab.btn_relearn": {"uz": "↩️ Qaytadan o'rganish", "ru": "↩️ Учить заново"},
     # --- The previous bot, after the move to the new one (bot/moved.py) ---
     "moved.text": {
-        "uz": "🚀 <b>Biz yangi botga ko'chdik: @{bot}</b>\n\nHisobingiz, kreditlaringiz, obunangiz va barcha "
+        "uz": "🚀 <b>Biz yangi botga ko'chdik: @{bot}</b>\n\nHisobingiz, balansingiz, obunangiz va barcha "
               "tekshiruvlaringiz saqlangan. Quyidagi tugmani bosing, yangi botda <b>Start</b> ni bosing va "
               "davom eting.",
-        "ru": "🚀 <b>Мы переехали в новый бот: @{bot}</b>\n\nВаш аккаунт, кредиты, подписка и все проверки "
+        "ru": "🚀 <b>Мы переехали в новый бот: @{bot}</b>\n\nВаш аккаунт, баланс, подписка и все проверки "
               "сохранены. Нажмите кнопку ниже, затем <b>Start</b> в новом боте - и продолжайте.",
     },
     "moved.button": {"uz": "➡️ @{bot} ga o'tish", "ru": "➡️ Перейти в @{bot}"},
