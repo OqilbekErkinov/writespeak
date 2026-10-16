@@ -35,7 +35,7 @@ import openai
 
 from bot.config import settings
 from services.ai import usage
-from services.ai.openai_client import client
+from services.ai.openai_client import client, parse_flex
 from services.ai.pronunciation import Assessment
 from services.ai.schemas import SpeakingFeedback, SpeakingMissedMistakes, SpeakingScores, Verdicts
 from services.ai.scoring import LENIENCY_NOTE, median_of_runs
@@ -239,30 +239,35 @@ whole numbers."""
 
 
 def _feedback_system(part: str, scores: dict[str, float], overall: float, target: float, has_pron: bool) -> str:
-    p_note = "" if has_pron else "; the P note is based on the listening notes"
-    high_note = (
-        " Where real mistakes are few"
+    """FEEDBACK_RULES (the same for every check, so OpenAI's prompt cache bills
+    it at a tenth of the price when checks follow each other) and then what
+    is particular to this student."""
+    notes = [
+        PART_NOTES[part],
+        f"THE SCORES ARE ALREADY DECIDED (separate scoring runs): Fluency & Coherence {scores['FC']:.0f}, "
+        f"Lexical Resource {scores['LR']:.0f}, Grammatical Range & Accuracy {scores['GRA']:.0f}, Pronunciation "
+        f"{scores['P']:.0f}; overall band {overall:.1f}; the student's next target is {target:.1f}. Everything "
+        "you write must be consistent with these scores.",
+        "Priorities: where real mistakes are few"
         + (" (the overall band is 7 or above)" if overall >= 7 else "")
-        + ", take priorities from what separates this band from the next in the descriptors (extend answers "
-        "with reasons and examples, less common vocabulary and collocations, more complex structures, "
-        "livelier intonation), with mistake_ids=[] - never from trivial slips."
-    )
-    spoken_vocab = (
-        ' Include natural spoken Part 1 phrases ("I\'d say I\'m fairly ...", "to be honest, ...").'
-        if part in ("part1", "full") else ""
-    )
-    return f"""You are a certified, meticulous IELTS Speaking examiner AND a warm, encouraging ESL \
-tutor writing a feedback report on a student's recorded answers.
+        + ", take them from what separates this band from the next in the descriptors (extend answers with "
+        "reasons and examples, less common vocabulary and collocations, more complex structures, livelier "
+        "intonation), with mistake_ids=[] - never from trivial slips.",
+    ]
+    if not has_pron:
+        notes.append("The P note (criterion_notes) is based on the listening notes.")
+    if part in ("part1", "full"):
+        notes.append('Vocabulary: include natural spoken Part 1 phrases ("I\'d say I\'m fairly ...", "to be '
+                     'honest, ...").')
+    return FEEDBACK_RULES + "\n\nTHIS STUDENT AND THIS TEST:\n" + "\n\n".join(notes)
 
-{PART_NOTES[part]}
+
+FEEDBACK_RULES = f"""You are a certified, meticulous IELTS Speaking examiner AND a warm, encouraging ESL \
+tutor writing a feedback report on a student's recorded answers. The part of the test, the decided \
+scores and a few rules for this student are given at the end. Be supportive in tone, honest in content.
 
 IELTS SPEAKING BAND DESCRIPTORS (summary):
 {BAND_DESCRIPTORS}
-
-THE SCORES ARE ALREADY DECIDED (separate scoring runs): Fluency & Coherence {scores['FC']:.0f}, \
-Lexical Resource {scores['LR']:.0f}, Grammatical Range & Accuracy {scores['GRA']:.0f}, Pronunciation \
-{scores['P']:.0f}; overall band {overall:.1f}; the student's next target is {target:.1f}. Everything \
-you write must be consistent with these scores. Be supportive in tone, honest in content.
 
 INPUT: each answer's id (Q1, Q2...), the question, and the VERBATIM transcript from speech \
 recognition. Fillers (uh, um, like...), repeats and false starts were really said and stay in the \
@@ -309,7 +314,7 @@ words or fewer (empty string to delete it), else null. Every mistake needs an er
    - "text": everything else. Joining an answer's segments must give back its transcript exactly - \
 fillers, repeats and punctuation included. Don't number anything.
 3. criterion_notes - FC, LR, GRA, P: one short line each (6-14 words) on what drives that score. \
-The FC note may mention answer length, fillers or pauses{p_note}.
+The FC note may mention answer length, fillers or pauses.
 4. strength - text: 1-2 sentences (40 words at most) on what the student genuinely does well, \
 quoting 1-2 of the phrases you marked "good", word for word, in double quotes; quoted_phrases: \
 those phrases exactly as in the transcript. No generic praise.
@@ -319,10 +324,10 @@ example_wrong (2-8 words copied exactly from an answer) and example_right (impro
 (its tags). A priority about the measured voice - fillers, pace or pauses (tag FLU), a \
 pronunciation pattern (tag PRON) - has voice_ref=true and mistake_ids=[]; any other has \
 voice_ref=false and mistake_ids = 2-5 ids from \
-`mistakes` showing this pattern, each with one of the priority's criteria.{high_note}
+`mistakes` showing this pattern, each with one of the priority's criteria.
 6. vocabulary_topic (3-6 words) and vocabulary - 10-12 words or phrases useful for speaking on \
 this topic, about one band above the student: term, plain-English meaning, an English example \
-sentence a student could say.{spoken_vocab}
+sentence a student could say.
 7. checklist - 5-6 short habits for "Before your next speaking practice", built ONLY from this \
 report's priorities and mistakes and written as forward-looking habits ("Every answer has a direct \
 answer, a reason and an example."), never "I fixed ..."; ref = "Priority 01".."Priority 03", \
@@ -388,12 +393,13 @@ async def parse_call(purpose: str, max_tokens: int, messages: list[dict], respon
     limit; a cut-off answer raises openai.LengthFinishReasonError (its cost
     is logged all the same)."""
     try:
-        response = await client.beta.chat.completions.parse(
+        response = await parse_flex(
             model=model or settings.openai_model_grading,
             messages=messages,
             response_format=response_format,
             max_completion_tokens=max_tokens,
             # gpt-5 accepts no temperature; openai 1.57 has no reasoning_effort argument yet.
+            # parse_flex: the Flex tier at half price, the default tier as a fallback.
             extra_body={"reasoning_effort": settings.openai_grading_reasoning_effort},
         )
     except openai.LengthFinishReasonError as e:

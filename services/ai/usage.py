@@ -30,6 +30,7 @@ TOKEN_PRICES = {
 AUDIO_TOKEN_PRICES = {"gpt-audio": (32.00, 64.00)}  # audio input, audio output
 # Per minute of audio: Whisper input; text-to-speech output (estimated from
 # the word count at 140 words a minute - the speech API reports no usage).
+FLEX_DISCOUNT = 0.5  # Flex processing is half the token price (services/ai/openai_client.py)
 PER_MINUTE_PRICES = {"whisper-1": 0.006, "gpt-4o-mini-tts": 0.015, "tts-1": 0.012}
 
 
@@ -75,6 +76,7 @@ def record(purpose: str, response) -> None:
     reasoning = _detail(completion_details, "reasoning_tokens")
 
     prices = _price(TOKEN_PRICES, model)
+    flex = getattr(response, "service_tier", None) == "flex"
     cost = 0.0
     if prices is not None:
         p_in, p_cached, p_out = prices
@@ -83,9 +85,11 @@ def record(purpose: str, response) -> None:
             (prompt - cached - audio_in) * p_in + cached * p_cached + audio_in * a_in
             + (completion - audio_out) * p_out + audio_out * a_out
         ) / 1_000_000
+        if flex:
+            cost *= FLEX_DISCOUNT
     logger.info(
-        "openai %s %s: in=%d (cached %d, audio %d) out=%d (reasoning %d) ~$%.4f%s",
-        purpose, model, prompt, cached, audio_in, completion, reasoning, cost,
+        "openai %s %s%s: in=%d (cached %d, audio %d) out=%d (reasoning %d) ~$%.4f%s",
+        purpose, model, " flex" if flex else "", prompt, cached, audio_in, completion, reasoning, cost,
         "" if prices is not None else " (no price for this model)",
     )
     _add(purpose, model, cost)

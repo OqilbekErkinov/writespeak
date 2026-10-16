@@ -221,6 +221,30 @@ async def save_speaking_submission(
     return submission
 
 
+async def save_model_answer_voice(
+    session: AsyncSession, submission_id: int, index: int, file_id: str | None, cost: dict
+) -> None:
+    """After a model answer was spoken on demand: Telegram's file id (reused
+    next time) and the voice's cost, added to the check's cost."""
+    submission = await session.get(SpeakingSubmission, submission_id)
+    if submission is None:
+        return
+    data = dict(submission.report_data or {})
+    answers = [dict(a) for a in data.get("model_answers") or []]
+    if 0 <= index < len(answers) and file_id:
+        answers[index]["voice_file_id"] = file_id
+    data["model_answers"] = answers
+    total = dict(data.get("cost") or {"total_usd": 0.0, "by_purpose": {}, "calls": 0})
+    by_purpose = dict(total.get("by_purpose") or {})
+    for purpose, value in (cost.get("by_purpose") or {}).items():
+        by_purpose[purpose] = round(by_purpose.get(purpose, 0.0) + value, 4)
+    total.update(total_usd=round(total.get("total_usd", 0.0) + cost.get("total_usd", 0.0), 4),
+                 by_purpose=by_purpose, calls=total.get("calls", 0) + cost.get("calls", 0))
+    data["cost"] = total
+    submission.report_data = data  # a new dict, so SQLAlchemy sees the change
+    await session.commit()
+
+
 async def get_speaking_history(session: AsyncSession, user_id: int, part: str) -> tuple[int, dict | None]:
     """(number of the student's earlier Speaking sessions, their latest graded
     session of the same part as {"id", "band", "metrics", "number"}) for the

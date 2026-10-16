@@ -51,8 +51,10 @@ from bot.keyboards.share_kb import share_card_kb
 from bot.keyboards.speaking_part_kb import (
     CB_FINISH_NOW,
     CB_FULL_TEST,
+    CB_LISTEN_PREFIX,
     CB_SPEAKING_MENU,
     PART_CALLBACKS,
+    listen_kb,
     question_kb,
     speaking_part_kb,
 )
@@ -375,23 +377,6 @@ async def _send_saved_report(message: Message, state: FSMContext, data: dict, ea
     return True
 
 
-async def _voices(answers: list[dict]) -> list[bytes | None]:
-    """The model answers spoken (Ogg/Opus), or None where it failed."""
-    if not tts.enabled() or not answers:
-        return [None] * len(answers)
-    results = await asyncio.gather(
-        *(tts.speak(" ".join(a["paragraphs"]), a["words"]) for a in answers), return_exceptions=True
-    )
-    out = []
-    for a, r in zip(answers, results):
-        if isinstance(r, BaseException):
-            logger.warning("Voice for model answer %s failed: %r", a["label"], r)
-            out.append(None)
-        else:
-            out.append(r)
-    return out
-
-
 async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
     data = await state.get_data()
     answers = data["answers"]
@@ -421,7 +406,6 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
                 [(clip, a["filename"]) for clip, a in zip(clips, answers)],
                 seed=user_id + earlier_sessions,
             )
-            voices = await _voices(check.answers)
         report = check.report
         transcripts = [item.audio.text for item in check.items]
         repeat = _find_resubmission(sessions, audio_hash, transcripts)
@@ -429,12 +413,13 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
             part, report.overall_band, check.metrics, None if repeat else previous, report.priorities,
             _session_number(repeat) if repeat else None,
         )
-        for a, voice in zip(check.answers, voices):
-            a["voice"] = voice is not None
+        listen = tts.enabled() and bool(check.answers)
+        for a in check.answers:
+            a["voice"] = listen  # spoken on demand: a "🔊" button under the report
         # WeasyPrint is CPU-bound for a few seconds - off the event loop.
         pdf_bytes = await asyncio.to_thread(
             build_speaking_report_pdf, report, check.answers, progress, message.chat.full_name,
-            any(a["voice"] for a in check.answers),
+            listen,
         )
         mp3s = [await ensure_mp3(clip, a["filename"]) for clip, a in zip(clips, answers)]
         joined = mp3s[0] if len(mp3s) == 1 else await concat_mp3(mp3s)
@@ -465,11 +450,13 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
         # this check's OpenAI cost (estimated from tokens; TTS from its length)
         "cost": usage.summary(calls),
         # what each sample is: its source, the band it was aimed at (provisional),
-        # the priorities it demonstrates
+        # the priorities it demonstrates - and its text, spoken when the student
+        # taps its button (voice_file_id: Telegram's copy, reused after that)
         "model_answers": [
             {"label": a["label"], "source": a.get("source", "ai_generated"), "aimed_at": a["band"],
              "provisional": a.get("source") != "human_reviewed", "words": a["words"],
-             "shows": [s["n"] for s in a.get("shows") or []]}
+             "shows": [s["n"] for s in a.get("shows") or []],
+             "text": " ".join(a["paragraphs"]), "voice_file_id": None}
             for a in check.answers
         ],
     }
@@ -514,16 +501,11 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
         caption=caption,
         reply_markup=share_card_kb("speaking", submission.id, lang),
     )
-    for a, voice in zip(check.answers, voices):
-        if voice is None:
-            continue
-        try:
-            await message.answer_voice(
-                BufferedInputFile(voice, filename=f"model_answer_{re.sub(r'[^A-Za-z0-9]+', '_', a['label'])}.ogg"),
-                caption=t("speaking.model_voice_caption", lang, label=a["label"], band=f"{a['band']:.1f}"),
-            )
-        except TelegramBadRequest as e:
-            logger.warning("Sending model answer voice %s failed: %s", a["label"], e)
+    if listen:
+        await message.answer(
+            t("speaking.listen_prompt", lang),
+            reply_markup=listen_kb(submission.id, [a["label"] for a in check.answers]),
+        )
 
     if data.get("mock_session_id"):
         await record_mock_test_part(
@@ -536,6 +518,52 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
     else:
         await state.clear()
         await message.answer(t("nav.what_next", lang), reply_markup=_after_result_kb(data, lang))
+
+
+_listen_locks: defaultdict[int, asyncio.Lock] = defaultdict(asyncio.Lock)
+
+
+@router.callback_query(F.data.startswith(CB_LISTEN_PREFIX))
+async def listen_model_answer(callback: CallbackQuery, lang: str) -> None:
+    """A model answer spoken (OpenAI TTS) the first time it is asked for, then
+    Telegram's saved copy - so a voice is paid for at most once, and only
+    when a student actually wants to hear it."""
+    await callback.answer()
+    try:
+        submission_id, index = (int(x) for x in callback.data.removeprefix(CB_LISTEN_PREFIX).split(":"))
+    except ValueError:
+        return
+    user_id = callback.from_user.id
+    async with _listen_locks[user_id]:  # a double tap waits and reuses the first voice
+        async with get_session() as session:
+            submission = await crud.get_speaking_submission(session, submission_id, user_id)
+        answers = ((submission.report_data or {}).get("model_answers") or []) if submission else []
+        if not (0 <= index < len(answers)) or not answers[index].get("text"):
+            await callback.message.answer(t("speaking.listen_gone", lang))
+            return
+        a = answers[index]
+        caption = t("speaking.model_voice_caption", lang, label=a["label"], band=f"{a['aimed_at']:.1f}")
+        if a.get("voice_file_id"):
+            try:
+                await callback.message.answer_voice(a["voice_file_id"], caption=caption)
+                return
+            except TelegramBadRequest:
+                pass  # Telegram no longer has it - speak it again
+        try:
+            with usage.track(f"tts user={user_id}") as calls:
+                audio = await tts.speak(a["text"], a["words"])
+            sent = await callback.message.answer_voice(
+                BufferedInputFile(audio, filename=f"model_answer_{re.sub(r'[^A-Za-z0-9]+', '_', a['label'])}.ogg"),
+                caption=caption,
+            )
+        except Exception:
+            logger.exception("Model answer voice %s for submission %s failed", a["label"], submission_id)
+            await callback.message.answer(t("speaking.listen_failed", lang))
+            return
+        async with get_session() as session:
+            await crud.save_model_answer_voice(
+                session, submission_id, index, sent.voice.file_id if sent.voice else None, usage.summary(calls)
+            )
 
 
 def _after_result_kb(data: dict, lang: str):

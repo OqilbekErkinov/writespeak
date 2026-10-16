@@ -184,8 +184,8 @@ _T: dict[str, dict[str, str]] = {
         "ru": "✅ Принято.\n\n✏️ Теперь отправьте свой ответ (минимум {min_words} слов).",
     },
     "writing.grading_in_progress": {
-        "uz": "⏳ Tahlil qilinmoqda — bu 1-2 daqiqa davom etadi, biroz kuting...",
-        "ru": "⏳ Идёт анализ — это займёт 1-2 минуты, немного подождите...",
+        "uz": "⏳ Tahlil qilinmoqda — bu 2–4 daqiqa davom etadi, biroz kuting...",
+        "ru": "⏳ Идёт анализ — это займёт 2–4 минуты, немного подождите...",
     },
     "writing.grading_failed": {
         "uz": "❌ Kechirasiz, tahlil qilishda xatolik yuz berdi. Birozdan so'ng qayta "
@@ -263,14 +263,26 @@ _T: dict[str, dict[str, str]] = {
         "ru": "— <b>{part}</b> —",
     },
     "speaking.grading_in_progress": {
-        "uz": "⏳ Yozuvingiz tinglanib, tahlil qilinmoqda — bu 2–3 daqiqa davom etadi, biroz kuting...",
-        "ru": "⏳ Слушаю и анализирую вашу запись — это займёт 2–3 минуты, немного подождите...",
+        "uz": "⏳ Yozuvingiz tinglanib, tahlil qilinmoqda — bu 2–4 daqiqa davom etadi, biroz kuting...",
+        "ru": "⏳ Слушаю и анализирую вашу запись — это займёт 2–4 минуты, немного подождите...",
     },
     "speaking.resubmitted": {
         "uz": "♻️ Bu — {number}-sessiyadagi aynan o'sha yozuv, shuning uchun saqlangan hisobotingizni "
         "qayta yubordim (tekshiruv hisoblanmadi). Ball: <b>{band}</b>",
         "ru": "♻️ Это та же самая запись, что и в сессии №{number}, поэтому я отправил сохранённый отчёт "
         "(проверка не засчитана). Балл: <b>{band}</b>",
+    },
+    "speaking.listen_prompt": {
+        "uz": "🔊 Model javoblarni ovozli tinglash uchun bosing:",
+        "ru": "🔊 Нажмите, чтобы прослушать образцовые ответы:",
+    },
+    "speaking.listen_gone": {
+        "uz": "Bu model javob topilmadi.",
+        "ru": "Этот образцовый ответ не найден.",
+    },
+    "speaking.listen_failed": {
+        "uz": "Ovozni tayyorlab bo'lmadi, birozdan so'ng qayta bosib ko'ring.",
+        "ru": "Не удалось подготовить аудио, попробуйте нажать ещё раз чуть позже.",
     },
     "speaking.model_voice_caption": {
         "uz": "Model answer · {label} · aimed at Band {band} (AI example)",

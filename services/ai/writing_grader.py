@@ -46,7 +46,7 @@ from services.ai.essay_marking import (
     build_report,
     find_copied_spans,
 )
-from services.ai.openai_client import client
+from services.ai.openai_client import parse_flex
 from services.ai.schemas import CriterionScores, Mistake, MissedMistake, MissedMistakes, Verdicts, WritingFeedback
 from services.ai.scoring import LENIENCY_NOTE, median_of_runs, overall_band, target_band, whole_band
 
@@ -151,23 +151,26 @@ def _system_prompt(task_type: str, bands: dict[str, float], overall: float, targ
         gap_examples = ("develop your second point with an example, make the conclusion match the body, "
                         "sharpen collocations")
     high_note = (
-        f" The overall band is {overall:.1f}: where real mistakes are few, take priorities from what separates "
-        f"this band from the next in the descriptors ({gap_examples}). Never build a priority around one "
-        "trivial word."
-        if overall >= 7 else " Never build a priority around one trivial word."
+        f"The overall band is {overall:.1f}: where real mistakes are few, take priorities from what separates "
+        f"this band from the next in the descriptors ({gap_examples})."
+        if overall >= 7 else ""
     )
+    # The task's fixed rules first - the same for every essay of this task
+    # type, so OpenAI's prompt cache bills them at a tenth of the price when
+    # checks follow each other - and this essay's scores at the end.
+    scores = (
+        f"THE SCORES ARE ALREADY DECIDED (separate scoring runs): {first} {bands['TR_or_TA']:.0f}, Coherence "
+        f"& Cohesion {bands['CC']:.0f}, Lexical Resource {bands['LR']:.0f}, Grammatical Range & Accuracy "
+        f"{bands['GRA']:.0f}; overall band {overall:.1f}; the student's next target is {target:.1f}. Everything "
+        f"you write must be consistent with these scores. {high_note}"
+    ).strip()
     return f"""You are a certified, meticulous IELTS Writing examiner AND a warm, encouraging ESL \
-tutor writing a feedback report.
+tutor writing a feedback report. The decided scores are given at the end.
 
 {_task_instructions(task_type)}
 
 IELTS WRITING BAND DESCRIPTORS (summary):
 {BAND_DESCRIPTORS}
-
-THE SCORES ARE ALREADY DECIDED (separate scoring runs): {first} {bands['TR_or_TA']:.0f}, Coherence \
-& Cohesion {bands['CC']:.0f}, Lexical Resource {bands['LR']:.0f}, Grammatical Range & Accuracy \
-{bands['GRA']:.0f}; overall band {overall:.1f}; the student's next target is {target:.1f}. Everything \
-you write must be consistent with these scores.
 
 {ESL_WORDING}
 
@@ -221,7 +224,7 @@ whole category like "grammar"): title (2-6 words), rule (one short line, 15 word
 example_wrong (2-6 words copied exactly from the student's text, no "...") and example_right \
 (that piece corrected), criteria (its tag or tags), mistake_ids (2-5 ids from `mistakes` that show \
 THIS pattern; each must have one of the priority's criteria; never all the mistakes of a \
-category).{high_note}
+category). Never build a priority around one trivial word.
 6. vocabulary - 10-12 words or phrases useful {vocab_scope}, about one band above the student's \
 level: term, plain-English meaning, an English example sentence on this topic.
 7. checklist - 5-6 short lines for "Before you send your next {piece}", built ONLY from this \
@@ -230,7 +233,9 @@ introduction paraphrases the question.") - never "I fixed ..."; ref = "Priority 
 or "Mistake <id>".
 
 Plain text only. In why, rule and checklist you may put a key word in **double asterisks** (bold) \
-or *single asterisks* (italics); no other markup."""
+or *single asterisks* (italics); no other markup.
+
+{scores}"""
 
 
 def _scoring_system(task_type: str) -> str:
@@ -346,7 +351,7 @@ async def _parse(purpose: str, max_tokens: int, messages: list[dict], response_f
     A call cut off at the limit raises openai.LengthFinishReasonError; its
     cost is logged all the same."""
     try:
-        response = await client.beta.chat.completions.parse(
+        response = await parse_flex(  # the Flex tier, the default as a fallback (openai_client)
             model=settings.openai_model_grading,
             messages=messages,
             response_format=response_format,

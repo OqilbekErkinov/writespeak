@@ -52,7 +52,7 @@ from bot.config import settings
 from bot.utils.speaking_questions import same_question
 from services.ai import usage
 from services.ai.essay_marking import count_words
-from services.ai.openai_client import client
+from services.ai.openai_client import client, parse_flex
 from services.ai.sample_bank import _cosine, _slug, embed_texts, forbidden_names, names_in, write_json
 from services.ai.schemas import StyleProfile
 from services.ai.scoring import aim_band
@@ -462,7 +462,7 @@ async def _quality_check(pairs: list[tuple[Target, str]]) -> dict[str, str]:
         "4. It doesn't open with the same stock phrase as another answer in this set.\n"
         "5. It states no invented statistics or real-world facts as true."
     )
-    response = await client.beta.chat.completions.parse(
+    response = await parse_flex(  # gpt-5: the Flex tier, see openai_client
         model=settings.openai_model_grading,
         messages=[{"role": "system", "content": system}, {"role": "user", "content": text}],
         response_format=_Checks, max_completion_tokens=6000,

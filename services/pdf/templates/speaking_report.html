@@ -301,7 +301,7 @@ table.intt td.sv { width: 66mm; padding-right: 4mm; }
 {% for a in answers %}
 <div class="mans">{% if not answers_band %}<span class="mb"><b>Aimed at</b>{{ "%.1f"|format(a.band) }}</span>{% endif %}<div class="qn">{{ a.label }}</div><div class="qt">{{ a.question }}</div><div class="txt">{% for p in a.html_paragraphs %}{{ p|safe }}{% if not loop.last %}<br><br>{% endif %}{% endfor %}</div>
 {% if a.shows %}<div class="shows">{% for s in a.shows %}<div><span class="k">{{ loop.index }}</span> <b>Priority {{ s.n }} · {{ s.title }}</b> — {{ s.note }}</div>{% endfor %}</div>{% endif %}
-<div class="ft"><span>{{ a.words }} words · about {{ a.seconds }} seconds · {{ "Published reference" if a.source == "published_reference" else "AI example" }}</span>{% if a.voice %}<span class="listen">▶ Sent as a voice message in Telegram</span>{% endif %}</div></div>
+<div class="ft"><span>{{ a.words }} words · about {{ a.seconds }} seconds · {{ "Published reference" if a.source == "published_reference" else "AI example" }}</span>{% if a.voice %}<span class="listen">▶ Listen to it in Telegram</span>{% endif %}</div></div>
 {% else %}
 <div class="unmarked">Model answers could not be prepared this time.</div>
 {% endfor %}

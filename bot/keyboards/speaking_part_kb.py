@@ -9,6 +9,7 @@ CB_PART3 = "speaking:part3"
 CB_FULL_TEST = "speaking:full"  # Part 1 + 2 + 3 from the question bank, one report
 CB_SPEAKING_MENU = "speaking:menu"  # back to the Part 1/2/3 picker
 CB_FINISH_NOW = "speaking:finish"  # grade the answers collected so far
+CB_LISTEN_PREFIX = "speaking:listen:"  # + "<submission id>:<model answer index>"
 
 PART_CALLBACKS = {CB_PART1: "part1", CB_PART2: "part2", CB_PART3: "part3"}
 
@@ -25,6 +26,15 @@ def speaking_part_kb(lang: str = "uz") -> InlineKeyboardMarkup:
             [back_button(lang)],
         ]
     )
+
+
+def listen_kb(submission_id: int, labels: list[str]) -> InlineKeyboardMarkup:
+    """One "🔊 Q1" button per model answer, three to a row."""
+    buttons = [
+        InlineKeyboardButton(text=f"🔊 {label}", callback_data=f"{CB_LISTEN_PREFIX}{submission_id}:{i}")
+        for i, label in enumerate(labels)
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=[buttons[i:i + 3] for i in range(0, len(buttons), 3)])
 
 
 def question_kb(lang: str, back_callback: str, can_finish: bool) -> InlineKeyboardMarkup:

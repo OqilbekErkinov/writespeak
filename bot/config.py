@@ -41,6 +41,12 @@ class Settings(BaseSettings):
     # report's 25 mistakes: "low" found 24/25 with the same bands as the
     # default, at about half the cost and time.
     openai_grading_reasoning_effort: str = "low"
+    # The grading calls (gpt-5: scores, feedback, missed-errors pass, checks) run
+    # on OpenAI's Flex tier - half the token price, sometimes slower - and fall
+    # back to the default tier when Flex is busy or takes longer than
+    # openai_flex_timeout seconds (services/ai/openai_client.py). "" = default tier.
+    openai_service_tier: str = "flex"
+    openai_flex_timeout: float = 240.0
     openai_model_audio: str = "gpt-audio-1.5"
     openai_model_transcribe: str = "whisper-1"
     openai_embedding_model: str = "text-embedding-3-small"
