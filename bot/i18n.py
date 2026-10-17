@@ -68,12 +68,12 @@ _T: dict[str, dict[str, str]] = {
         "ru": "⚠️ <b>Недостаточно coin.</b> Выберите пакет coin (в большом дешевле):",
     },
     "quota.price_list": {
-        "uz": "🪙 <b>Tekshiruv narxlari (coin):</b>\n✍️ Writing Task 1 — <b>{w1}</b> · Task 2 — <b>{w2}</b>\n🎙 Speaking Part 1 — <b>{s1}</b> · Part 2 — <b>{s2}</b> · Part 3 — <b>{s3}</b>\n🎯 To'liq Speaking (Part 1+2+3) — <b>{full}</b>\n<i>1 coin = {coin} so'm, katta paketlarda arzonroq. Coinning muddati tugamaydi.</i>",
-        "ru": "🪙 <b>Цены проверок (coin):</b>\n✍️ Writing Task 1 — <b>{w1}</b> · Task 2 — <b>{w2}</b>\n🎙 Speaking Part 1 — <b>{s1}</b> · Part 2 — <b>{s2}</b> · Part 3 — <b>{s3}</b>\n🎯 Полный Speaking (Part 1+2+3) — <b>{full}</b>\n<i>1 coin = {coin} сум, в больших пакетах дешевле. Coin не сгорают.</i>",
+        "uz": "🟡 <b>Tekshiruv narxlari:</b>\n✍️ Writing Task 1 — <b>{w1} coin</b> · Task 2 — <b>{w2} coin</b>\n🎙 Speaking Part 1 — <b>{s1} coin</b> · Part 2 — <b>{s2} coin</b> · Part 3 — <b>{s3} coin</b>\n🎯 To'liq Speaking (Part 1+2+3) — <b>{full} coin</b>\n<i>1 coin = {coin} so'm, katta paketlarda arzonroq. Coinning muddati tugamaydi.</i>",
+        "ru": "🟡 <b>Цены проверок:</b>\n✍️ Writing Task 1 — <b>{w1} coin</b> · Task 2 — <b>{w2} coin</b>\n🎙 Speaking Part 1 — <b>{s1} coin</b> · Part 2 — <b>{s2} coin</b> · Part 3 — <b>{s3} coin</b>\n🎯 Полный Speaking (Part 1+2+3) — <b>{full} coin</b>\n<i>1 coin = {coin} сум, в больших пакетах дешевле. Coin не сгорают.</i>",
     },
     "quota.price_note": {
-        "uz": "🪙 Bu tekshiruv — <b>{price} coin</b>. Hisobot tayyor bo'lganda yechiladi, balansingizda <b>{left} coin</b> qoladi.",
-        "ru": "🪙 Эта проверка — <b>{price} coin</b>. Спишется, когда отчёт будет готов; на балансе останется <b>{left} coin</b>.",
+        "uz": "🟡 Bu tekshiruv — <b>{price} coin</b>. Hisobot tayyor bo'lganda yechiladi, balansingizda <b>{left} coin</b> qoladi.",
+        "ru": "🟡 Эта проверка — <b>{price} coin</b>. Спишется, когда отчёт будет готов; на балансе останется <b>{left} coin</b>.",
     },
     # Shown during a test window (settings.checks_only_for) to everyone else.
     "quota.paused": {
@@ -84,12 +84,12 @@ _T: dict[str, dict[str, str]] = {
     },
     # --- Payments (bot/handlers/payments.py, bot/keyboards/payment_kb.py) ---
     "pay.pack_button": {
-        "uz": "🪙 {coins} coin — {price} so'm",
-        "ru": "🪙 {coins} coin — {price} сум",
+        "uz": "🟡 {coins} coin — {price} so'm",
+        "ru": "🟡 {coins} coin — {price} сум",
     },
     "pay.pack_button_discount": {
-        "uz": "🪙 {coins} coin — {price} so'm (−{off}%)",
-        "ru": "🪙 {coins} coin — {price} сум (−{off}%)",
+        "uz": "🟡 {coins} coin — {price} so'm (−{off}%)",
+        "ru": "🟡 {coins} coin — {price} сум (−{off}%)",
     },
     "pay.center_packs_header": {
         "uz": "🏫 O'quv markazlar va o'qituvchilar uchun:",
@@ -399,8 +399,8 @@ _T: dict[str, dict[str, str]] = {
         "ru": "♾️ Подписка активна — ещё {days} дн.",
     },
     "account.coin_balance": {
-        "uz": "🪙 Balans: <b>{coins} coin</b> (muddatsiz)",
-        "ru": "🪙 Баланс: <b>{coins} coin</b> (бессрочно)",
+        "uz": "🟡 Balans: <b>{coins} coin</b> (muddatsiz)",
+        "ru": "🟡 Баланс: <b>{coins} coin</b> (бессрочно)",
     },
     "account.vocab_progress": {
         "uz": "📚 Lug'atim: {learned}/{total} so'z o'zlashtirildi",

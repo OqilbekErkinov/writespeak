@@ -271,7 +271,7 @@ def _paid_line(paid: dict, user: User | None, payer: User | None) -> tuple[str, 
         n, unit, price = paid.get("credits") or 0, "kredit", LEGACY_CREDIT_PRICE
     if mode == "coins":
         left = user.coin_balance if user is not None else "?"
-        return f"🪙 Coin bilan: {n} coin · balansda {left} coin", n * price
+        return f"🟡 Coin bilan: {n} coin · balansda {left} coin", n * price
     if mode == "credit":
         left = user.coin_balance if user is not None else "?"
         return f"💳 Kredit bilan (eski): {n} ta · hozir balansda {left} coin", n * price
