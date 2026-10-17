@@ -34,6 +34,11 @@ _TEXT = {
         "chart": "Динамика баллов", "crit": "Критерии · последние {n} работ", "none": "пока нет",
         "weak": "Слабое место", "strong": "Сильная сторона",
     },
+    "en": {
+        "title": "STATISTICS", "checks": "checks", "avg": "average Band", "best": "best",
+        "chart": "Band trend", "crit": "Criteria · last {n} works", "none": "none yet",
+        "weak": "Weakest area", "strong": "Strongest area",
+    },
 }
 W_CRITERIA = (("TA", "Task"), ("CC", "Coherence"), ("LR", "Lexical"), ("GRA", "Grammar"))
 S_CRITERIA = (("FC", "Fluency"), ("LR", "Lexical"), ("GRA", "Grammar"), ("Pronunciation", "Pronunc."))

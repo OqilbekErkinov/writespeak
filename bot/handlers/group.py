@@ -32,7 +32,7 @@ from aiogram.types import BufferedInputFile, CallbackQuery, Message
 from bot.config import settings
 from bot.i18n import t
 from bot.keyboards import group_kb as kb
-from bot.keyboards.main_menu_kb import BTN_GROUP_RU, BTN_GROUP_UZ, MENU_BUTTON_TEXTS
+from bot.keyboards.main_menu_kb import BTN_GROUP_EN, BTN_GROUP_RU, BTN_GROUP_UZ, MENU_BUTTON_TEXTS
 from bot.keyboards.payment_kb import buy_coins_kb
 from bot.states.group_states import GroupStates
 from bot.utils import crm_events
@@ -146,7 +146,7 @@ def _member_home_text(memberships, lang: str) -> str:
     return "\n".join(lines)
 
 
-@router.message(F.text.in_({BTN_GROUP_UZ, BTN_GROUP_RU}))
+@router.message(F.text.in_({BTN_GROUP_UZ, BTN_GROUP_RU, BTN_GROUP_EN}))
 async def open_group(message: Message, state: FSMContext, lang: str) -> None:
     await state.clear()
     text, markup = await _home(message.from_user.id, lang)

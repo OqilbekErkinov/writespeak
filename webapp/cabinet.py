@@ -11,6 +11,7 @@ A teacher sees the groups they manage - their own, and for a center owner
 every group of the center - with the same rules as in the bot
 (db/crud.py's group section): only work submitted after a student joined.
 Read-only: tables, charts, assignment results, report PDFs, Excel/PDF exports.
+In the teacher's bot language (uz/ru/en - webapp/cabinet_i18n.py).
 """
 from __future__ import annotations
 
@@ -20,11 +21,13 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 
+from bot.i18n import LANGS
 from bot.utils.cabinet_auth import read_login_token
 from db import crud
 from db.crud import CRITERIA_LABELS
 from db.database import get_session
 from services.pdf.group_reports import band_chart, build_group_excel, build_group_pdf, build_parent_report_pdf
+from webapp.cabinet_i18n import TEXTS, cabinet_lang
 
 router = APIRouter(prefix="/cabinet")
 templates = None  # set by webapp.main (shared Jinja2Templates)
@@ -44,8 +47,14 @@ def _weakest(weakest) -> str:
     return f"{CRITERIA_LABELS.get(weakest[0], weakest[0])} ({weakest[1]:.1f})" if weakest else "—"
 
 
+def _lang(request: Request) -> str:
+    return cabinet_lang(request.session.get("cabinet_lang"))
+
+
 def _render(request: Request, name: str, context: dict, status_code: int = 200):
-    context.update(day=_day, band=_band, weakest=_weakest, user_name=request.session.get("cabinet_name", ""))
+    lang = _lang(request)
+    context.update(day=_day, band=_band, weakest=_weakest, user_name=request.session.get("cabinet_name", ""),
+                   lang=lang, T=TEXTS[lang], langs=LANGS, here=request.url.path)
     return templates.TemplateResponse(request, f"cabinet/{name}", context, status_code=status_code)
 
 
@@ -81,12 +90,20 @@ async def login(request: Request, token: str = ""):
         return _login_redirect()
     request.session["cabinet_uid"] = uid
     request.session["cabinet_name"] = user.full_name
+    request.session["cabinet_lang"] = cabinet_lang(user.language)
     return RedirectResponse("/cabinet/", status_code=303)
 
 
 @router.get("/expired", response_class=HTMLResponse)
 async def expired(request: Request):
     return _render(request, "expired.html", {}, status_code=401)
+
+
+@router.get("/lang/{code}")
+async def set_language(request: Request, code: str, back: str = "/cabinet/"):
+    """The top bar's UZ · RU · EN switch: for this session only."""
+    request.session["cabinet_lang"] = cabinet_lang(code)
+    return RedirectResponse(back if back.startswith("/cabinet/") else "/cabinet/", status_code=303)
 
 
 @router.get("/logout")
@@ -143,7 +160,7 @@ async def group_page(request: Request, group_id: int):
     return _render(request, "group.html", {
         "group": group, "teacher": teacher, "overview": overview, "rows": rows, "board": board,
         "assignments": assignments, "now": datetime.now(timezone.utc),
-        "chart": await asyncio.to_thread(band_chart, all_works, "Ballar dinamikasi (kunlik o'rtacha)", True),
+        "chart": await asyncio.to_thread(band_chart, all_works, TEXTS[_lang(request)]["band_trend_daily"], True),
     })
 
 
@@ -165,7 +182,7 @@ async def student_page(request: Request, group_id: int, student_id: int):
         "group": group, "student": student, "joined": membership.joined_at, "s": s, "works": works,
         "comments": comments, "criteria": [(CRITERIA_LABELS.get(k, k), v) for k, v in criteria],
         "streak": crud.activity_streak(works),
-        "chart": await asyncio.to_thread(band_chart, works, "Ballar dinamikasi"),
+        "chart": await asyncio.to_thread(band_chart, works, TEXTS[_lang(request)]["band_trend"]),
     })
 
 
@@ -223,7 +240,7 @@ async def export_excel(request: Request, group_id: int):
     if group is None:
         return _login_redirect()
     members, _, assignments, _ = await _export_data(group)
-    content = await asyncio.to_thread(build_group_excel, group.name, members, assignments, "uz")
+    content = await asyncio.to_thread(build_group_excel, group.name, members, assignments, _lang(request))
     return _download(content, f"Bandzilla_{group.name}.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 
@@ -233,7 +250,9 @@ async def export_pdf(request: Request, group_id: int):
     if group is None:
         return _login_redirect()
     members, overview, assignments, teacher = await _export_data(group)
-    content = await asyncio.to_thread(build_group_pdf, group.name, teacher.full_name if teacher else "", overview, members, assignments, "uz")
+    content = await asyncio.to_thread(
+        build_group_pdf, group.name, teacher.full_name if teacher else "", overview, members, assignments, _lang(request)
+    )
     return _download(content, f"Bandzilla_{group.name}.pdf", "application/pdf")
 
 
@@ -264,6 +283,7 @@ async def monthly_pdf(request: Request, group_id: int, student_id: int):
         works_month=works_month, works_prev=works_prev,
         comments=[(w, comments[(w["kind"], w["id"])]) for w in works_month if (w["kind"], w["id"]) in comments],
         assignments_done=sum(1 for a in assignments if len(a["done"]) == len(a["parts"])),
-        assignments_total=len(assignments), period_start=max(month_start, membership.joined_at), period_end=now, lang="uz",
+        assignments_total=len(assignments), period_start=max(month_start, membership.joined_at), period_end=now,
+        lang=_lang(request),
     )
     return _download(content, f"Bandzilla_{student.full_name}_{_day(now)}.pdf", "application/pdf")

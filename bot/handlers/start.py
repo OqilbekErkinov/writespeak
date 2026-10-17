@@ -25,7 +25,7 @@ from aiogram.types import Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.config import settings
-from bot.i18n import t
+from bot.i18n import DEFAULT_LANG, LANGS, t
 from bot.keyboards.lang_kb import CB_LANG_ONBOARD_PREFIX, lang_picker_kb
 from bot.keyboards.main_menu_kb import main_menu_kb
 from bot.utils import crm_events
@@ -81,12 +81,12 @@ async def cmd_start(message: Message, command: CommandObject, lang: str) -> None
         # they tap a flag below, and confirms a group join (if any) then.
         if join is not None and join.status == "expired":
             await message.answer(
-                t("group.join_expired", "uz") + "\n\n" + t("group.join_expired", "ru")
+                "\n\n".join(t("group.join_expired", code) for code in LANGS)
             )
         if center_join is not None:
-            await message.answer(_center_notice(center_join, "uz") + "\n\n" + _center_notice(center_join, "ru"))
+            await message.answer("\n\n".join(_center_notice(center_join, code) for code in LANGS))
         await message.answer(
-            "🌐 Tilni tanlang / Выберите язык:",
+            t("account.language_button", DEFAULT_LANG),
             reply_markup=lang_picker_kb(CB_LANG_ONBOARD_PREFIX),
         )
         return

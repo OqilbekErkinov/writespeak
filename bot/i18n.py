@@ -1,4 +1,4 @@
-"""Minimal i18n for the bot's two supported UI languages (uz/ru) - the AI
+"""Minimal i18n for the bot's three UI languages (uz/ru/en) - the AI
 grading output itself is unaffected (see services/ai/*, which always grades
 and comments in English, matching the exam language).
 
@@ -9,13 +9,19 @@ current user's `lang` into every handler's data, so any handler can just
 declare a `lang: str` parameter to receive it - aiogram wires it in
 automatically, the same way it wires in `message`/`state`.
 
+The English texts live in bot/i18n_en.py (merged into _T below), so
+adding a key means adding its English there too (scripts/check_i18n.py).
+
 Exam terminology (Writing/Speaking/Task 1/Task 2/Part 1-3) is left in
-English in both languages, matching how IELTS materials are conventionally
+English in uz and ru too, matching how IELTS materials are conventionally
 written/discussed in Uzbekistan regardless of the surrounding language.
 """
 from __future__ import annotations
 
+from bot.i18n_en import EN
+
 DEFAULT_LANG = "uz"
+LANGS = ("uz", "ru", "en")
 
 _T: dict[str, dict[str, str]] = {
     # --- Language picker (bot/handlers/start.py) ---
@@ -431,7 +437,10 @@ _T: dict[str, dict[str, str]] = {
         "uz": "🔗 Do'stlaringizni taklif qiling — do'stingiz birinchi marta coin sotib olganda <b>ikkalangizga {coins} coin</b> bonus beriladi ({count} ta taklif qilingan):\n{link}",
         "ru": "🔗 Приглашайте друзей — когда друг впервые купит coin, <b>вы оба получите по {coins} coin</b> (приглашено: {count}):\n{link}",
     },
-    "account.language_button": {"uz": "🌐 Tilni tanlang / Выберите язык:", "ru": "🌐 Tilni tanlang / Выберите язык:"},
+    "account.language_button": {
+        "uz": "🌐 Tilni tanlang / Выберите язык / Choose language:",
+        "ru": "🌐 Tilni tanlang / Выберите язык / Choose language:",
+    },
     "start.welcome_coins": {
         "uz": "🎁 <b>Sizga {coins} coin sovg'a!</b>\n\nCoin — Bandzilla'dagi to'lov birligi: har bir tekshiruv "
               "o'z narxida coindan yechiladi. {coins} coin ikkita Writing Task 1 ga yoki bitta Writing Task 2 "
@@ -462,7 +471,7 @@ _T: dict[str, dict[str, str]] = {
     "acc.btn_topup": {"uz": "💳 Hisobni to'ldirish", "ru": "💳 Пополнить баланс"},
     "acc.btn_history": {"uz": "📜 Tarix", "ru": "📜 История"},
     "acc.btn_stats": {"uz": "📊 Statistika", "ru": "📊 Статистика"},
-    "acc.btn_lang": {"uz": "🌐 Til / Язык", "ru": "🌐 Til / Язык"},
+    "acc.btn_lang": {"uz": "🌐 Til / Язык / Language", "ru": "🌐 Til / Язык / Language"},
     "acc.btn_support": {"uz": "💬 Admin bilan aloqa", "ru": "💬 Связь с админом"},
     "acc.btn_back_main": {"uz": "⬅️ Asosiy menyu", "ru": "⬅️ Главное меню"},
     "acc.btn_back": {"uz": "⬅️ Hisobim", "ru": "⬅️ Профиль"},
@@ -1250,9 +1259,13 @@ _T: dict[str, dict[str, str]] = {
     "share.button": {"uz": "📤 Ulashish uchun rasm", "ru": "📤 Изображение для публикации"},
 }
 
+for _key, _text in EN.items():
+    if _key in _T:
+        _T[_key]["en"] = _text
+
 
 def t(key: str, lang: str | None = None, **kwargs: object) -> str:
-    """Looks up `key` for `lang` ("uz"/"ru"), falling back to Uzbek (then to
+    """Looks up `key` for `lang` ("uz"/"ru"/"en"), falling back to Uzbek (then to
     whatever's available) if the language or the key itself is missing -
     a translation gap degrades gracefully instead of crashing or leaking a
     raw key into the chat."""

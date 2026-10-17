@@ -10,7 +10,7 @@ from aiogram import F, Router
 from aiogram.types import BufferedInputFile, CallbackQuery
 
 from bot.config import settings
-from bot.i18n import t
+from bot.i18n import LANGS, t
 from bot.keyboards.lang_kb import CB_LANG_CHANGE_PREFIX, CB_LANG_ONBOARD_PREFIX
 from bot.keyboards.main_menu_kb import main_menu_kb
 from bot.utils import stickers
@@ -34,7 +34,7 @@ async def _save_language(user_id: int, lang: str) -> None:
 async def onboard_set_language(callback: CallbackQuery) -> None:
     await callback.answer()
     lang = callback.data.removeprefix(CB_LANG_ONBOARD_PREFIX)
-    if lang not in ("uz", "ru"):
+    if lang not in LANGS:
         return
     await _save_language(callback.from_user.id, lang)
     await callback.message.edit_reply_markup(reply_markup=None)
@@ -46,7 +46,7 @@ async def onboard_set_language(callback: CallbackQuery) -> None:
     # In the student's language; rendered off the event loop (WeasyPrint is CPU-bound).
     pdf_bytes = await asyncio.to_thread(build_sample_report_pdf, lang)
     await callback.message.answer_document(
-        BufferedInputFile(pdf_bytes, filename="Namuna_Hisobot.pdf"),
+        BufferedInputFile(pdf_bytes, filename="Sample_Report.pdf" if lang == "en" else "Namuna_Hisobot.pdf"),
         caption=t("start.sample_caption", lang),
     )
     # The welcome coins, then - on its own, with the Tip sticker - to spend
@@ -69,7 +69,7 @@ async def onboard_set_language(callback: CallbackQuery) -> None:
 async def change_language(callback: CallbackQuery) -> None:
     await callback.answer()
     lang = callback.data.removeprefix(CB_LANG_CHANGE_PREFIX)
-    if lang not in ("uz", "ru"):
+    if lang not in LANGS:
         return
     await _save_language(callback.from_user.id, lang)
     await callback.message.edit_reply_markup(reply_markup=None)

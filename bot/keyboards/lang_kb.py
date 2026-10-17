@@ -16,6 +16,7 @@ def lang_picker_kb(prefix: str) -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton(text="🇺🇿 O'zbekcha", callback_data=f"{prefix}uz"),
                 InlineKeyboardButton(text="🇷🇺 Русский", callback_data=f"{prefix}ru"),
+                InlineKeyboardButton(text="🇬🇧 English", callback_data=f"{prefix}en"),
             ]
         ]
     )

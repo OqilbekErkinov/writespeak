@@ -2,8 +2,8 @@
 {% block content %}
 <div class="card" style="max-width: 520px; margin: 40px auto; text-align: center;">
   <img src="https://bandzilla.uz/assets/symbol.webp" alt="" width="229" height="256" style="display: block; height: 64px; width: auto; margin: 6px auto 16px;">
-  <h1>Kirish havolasi eskirgan</h1>
-  <p class="sub">Kabinetga kirish uchun botda <b>🏫 Guruh → 🖥 Web-kabinet</b> tugmasini bosing — yangi havola 10 daqiqa amal qiladi.</p>
-  <a class="btn btn-primary" href="https://t.me/bandzilla_bot">Botni ochish</a>
+  <h1>{{ T.expired_h1 }}</h1>
+  <p class="sub">{{ T.expired_text|safe }}</p>
+  <a class="btn btn-primary" href="https://t.me/bandzilla_bot">{{ T.open_bot }}</a>
 </div>
 {% endblock %}

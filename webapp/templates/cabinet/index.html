@@ -1,10 +1,10 @@
 {% extends "cabinet/base.html" %}
 {% block content %}
-<h1>Guruhlaringiz</h1>
+<h1>{{ T.groups_h1 }}</h1>
 {% if center %}
-<p class="sub">🏢 Markaz: <b>{{ center.name }}</b>{% if is_owner %} · markaz balansi: <b>{{ balance }}</b> coin{% endif %}</p>
+<p class="sub">🏢 {{ T.center }}: <b>{{ center.name }}</b>{% if is_owner %} · {{ T.center_balance }}: <b>{{ balance }}</b> coin{% endif %}</p>
 {% else %}
-<p class="sub">Talabalaringizning faqat guruhga qo'shilganidan keyingi ishlari ko'rsatiladi.</p>
+<p class="sub">{{ T.only_after_join }}</p>
 {% endif %}
 
 {% if cards %}
@@ -12,10 +12,10 @@
   {% for c in cards %}
   <a class="gcard" href="/cabinet/group/{{ c.group.id }}">
     <div class="t">{{ c.group.name }}</div>
-    <div class="m">O'qituvchi: {{ c.teacher }}{% if c.group.sponsor_checks %} · <span class="pill pill-good">to'lov: guruh</span>{% endif %}</div>
+    <div class="m">{{ T.teacher }}: {{ c.teacher }}{% if c.group.sponsor_checks %} · <span class="pill pill-good">{{ T.paid_by_group }}</span>{% endif %}</div>
     <div class="nums">
-      <div><b>{{ c.students }}</b>talaba</div>
-      <div><b>{{ c.week }}</b>7 kunda</div>
+      <div><b>{{ c.students }}</b>{{ T.students_short }}</div>
+      <div><b>{{ c.week }}</b>{{ T.in_7_days }}</div>
       <div><b>{{ band(c.summary.writing_avg) }}</b>Writing</div>
       <div><b>{{ band(c.summary.speaking_avg) }}</b>Speaking</div>
     </div>
@@ -23,6 +23,6 @@
   {% endfor %}
 </div>
 {% else %}
-<div class="card muted">Hali guruh yo'q. Botda <b>🏫 Guruh → ➕ Yangi guruh</b> orqali oching.</div>
+<div class="card muted">{{ T.no_groups|safe }}</div>
 {% endif %}
 {% endblock %}

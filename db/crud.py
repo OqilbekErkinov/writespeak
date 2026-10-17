@@ -430,6 +430,34 @@ CRITERIA_TIPS = {
     "Pronunciation": "So'zlarni aniqroq talaffuz qiling va gap urg'usiga e'tibor "
     "bering - sekinroq gapirib mashq qilish talaffuzni yaxshilaydi.",
 }
+CRITERIA_TIPS_RU = {
+    "TA": "Отвечайте на все части вопроса и сразу формулируйте свою позицию во вступлении.",
+    "CC": "Связывайте абзацы и идеи (however, therefore, in addition); одна главная мысль на абзац.",
+    "LR": "Учите тематические словосочетания и используйте их вместо общих слов.",
+    "GRA": "Чередуйте простые и сложные предложения и проверяйте времена и артикли.",
+    "FC": "Говорите дольше без пауз: тренируйтесь отвечать 1-2 минуты на один вопрос.",
+    "Pronunciation": "Слушайте носителей и повторяйте за ними ударение и интонацию.",
+}
+CRITERIA_TIPS_EN = {
+    "TA": "Answer every part of the question in full and state your main position clearly "
+    "in the introduction.",
+    "CC": "Link paragraphs and ideas with linking words (however, therefore, in addition); "
+    "keep one main idea per paragraph.",
+    "LR": "Use the words from \"📚 My vocabulary\" in your next answers, and try replacing "
+    "simple words with synonyms.",
+    "GRA": "Use a variety of sentence structures (complex sentences, conditionals) - more "
+    "practice in the Practice section helps.",
+    "FC": "Pause naturally while you answer and finish every sentence - don't drop an idea "
+    "halfway.",
+    "Pronunciation": "Pronounce words more clearly and mind sentence stress - practising "
+    "at a slower pace improves pronunciation.",
+}
+
+
+def criteria_tip(key: str, lang: str) -> str:
+    """The advice for a (weakest) criterion in the reader's language."""
+    tips = {"ru": CRITERIA_TIPS_RU, "en": CRITERIA_TIPS_EN}.get(lang, CRITERIA_TIPS)
+    return tips.get(key, "")
 
 
 async def get_criteria_averages(

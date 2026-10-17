@@ -66,7 +66,8 @@ def teacher_needed_kb(lang: str) -> InlineKeyboardMarkup:
 
 def lang_kb(lang: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
-        [_b("🇺🇿 O‘zbekcha", f"{CB_LANG_CHANGE_PREFIX}uz"), _b("🇷🇺 Русский", f"{CB_LANG_CHANGE_PREFIX}ru")],
+        [_b("🇺🇿 O‘zbekcha", f"{CB_LANG_CHANGE_PREFIX}uz"), _b("🇷🇺 Русский", f"{CB_LANG_CHANGE_PREFIX}ru"),
+         _b("🇬🇧 English", f"{CB_LANG_CHANGE_PREFIX}en")],
         [_b(t("acc.btn_back", lang), CB_HOME)],
     ])
 

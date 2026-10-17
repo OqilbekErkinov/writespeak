@@ -40,6 +40,12 @@ _TEXT = {
         "estimate": "Оценено по 4 критериям IELTS",
         "footer": "Попробуйте и вы: @{bot}",
     },
+    "en": {
+        "found": "Mistakes found: {n}",
+        "clean": "No mistakes found",
+        "estimate": "Scored on the 4 IELTS criteria",
+        "footer": "Try it yourself: @{bot}",
+    },
 }
 
 

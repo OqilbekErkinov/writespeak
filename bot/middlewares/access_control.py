@@ -1,7 +1,7 @@
 """Gatekeeper middleware: only `approved` users (and configured admins) may
 reach any handler other than /start. Applied to both message and
 callback_query pipelines in bot/main.py. Also injects `lang` (the user's
-stored UI language, "uz"/"ru" - see bot/i18n.py) into every handler's data,
+stored UI language, "uz"/"ru"/"en" - see bot/i18n.py) into every handler's data,
 so handlers never need to fetch the user row again just for that.
 """
 from __future__ import annotations
@@ -16,8 +16,17 @@ from db import crud
 from db.database import get_session
 from db.models import UserStatus
 
-PENDING_TEXT = "⏳ Hisobingiz hali admin tomonidan tasdiqlanmagan. Iltimos, kuting."
-DENIED_TEXT = "⛔ Sizning so'rovingiz rad etilgan. Savollar bo'lsa, admin bilan bog'laning."
+PENDING_TEXT = {
+    "uz": "⏳ Hisobingiz hali admin tomonidan tasdiqlanmagan. Iltimos, kuting.",
+    "ru": "⏳ Ваш аккаунт ещё не подтверждён администратором. Пожалуйста, подождите.",
+    "en": "⏳ Your account hasn't been approved by an admin yet. Please wait.",
+}
+DENIED_TEXT = {
+    "uz": "⛔ Sizning so'rovingiz rad etilgan. Savollar bo'lsa, admin bilan bog'laning.",
+    "ru": "⛔ Ваш запрос отклонён. Если есть вопросы, свяжитесь с администратором.",
+    "en": "⛔ Your request was declined. If you have questions, contact the admin.",
+}
+# No user row yet, so no language either: the default one.
 UNKNOWN_TEXT = "Botdan foydalanish uchun avval /start buyrug'ini yuboring."
 
 
@@ -60,9 +69,9 @@ class AccessControlMiddleware(BaseMiddleware):
         if user is None:
             return await self._block(event, UNKNOWN_TEXT)
         if user.status == UserStatus.pending:
-            return await self._block(event, PENDING_TEXT)
+            return await self._block(event, PENDING_TEXT.get(user.language, PENDING_TEXT["uz"]))
         if user.status == UserStatus.denied:
-            return await self._block(event, DENIED_TEXT)
+            return await self._block(event, DENIED_TEXT.get(user.language, DENIED_TEXT["uz"]))
 
         return await handler(event, data)
 

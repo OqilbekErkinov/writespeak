@@ -20,7 +20,7 @@
       <td class="strong">{{ u.id }}</td>
       <td>{{ u.full_name }}</td>
       <td>{{ "@" + u.username if u.username else "—" }}</td>
-      <td>{{ "🇷🇺 RU" if u.language == "ru" else "🇺🇿 UZ" }}</td>
+      <td>{{ {"ru": "🇷🇺 RU", "en": "🇬🇧 EN"}.get(u.language, "🇺🇿 UZ") }}</td>
       <td>{{ u.coin_balance }}</td>
       <td>
         {% if u.subscription_expires_at and u.subscription_expires_at > now %}

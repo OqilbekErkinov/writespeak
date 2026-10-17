@@ -3,7 +3,7 @@ teacher web cabinet): a group's Excel workbook, a group summary PDF and a
 monthly progress PDF about one student, written for their parents.
 
 Everything here covers only work a student submitted after joining the group
-(db/crud.py's group section). Texts are in the teacher's language (uz/ru).
+(db/crud.py's group section). Texts are in the teacher's language (uz/ru/en).
 """
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ from openpyxl.styles import Alignment, Font, PatternFill  # noqa: E402
 from openpyxl.utils import get_column_letter  # noqa: E402
 from weasyprint import HTML  # noqa: E402
 
-from db.crud import CRITERIA_TIPS, criteria_averages, summarize_works  # noqa: E402
+from db.crud import criteria_averages, criteria_tip, summarize_works  # noqa: E402
 from services.pdf.report_builder import TEMPLATE_DIR, _env  # noqa: E402
 
 _TASHKENT = timedelta(hours=5)
@@ -36,14 +36,11 @@ CRITERIA_NAMES = {
         "TA": "Выполнение задания (TA/TR)", "CC": "Связность (CC)", "LR": "Лексика (LR)",
         "GRA": "Грамматика (GRA)", "FC": "Беглость (FC)", "Pronunciation": "Произношение",
     },
-}
-TIPS_RU = {
-    "TA": "Отвечайте на все части вопроса и сразу формулируйте свою позицию во вступлении.",
-    "CC": "Связывайте абзацы и идеи (however, therefore, in addition); одна главная мысль на абзац.",
-    "LR": "Учите тематические словосочетания и используйте их вместо общих слов.",
-    "GRA": "Чередуйте простые и сложные предложения и проверяйте времена и артикли.",
-    "FC": "Говорите дольше без пауз: тренируйтесь отвечать 1-2 минуты на один вопрос.",
-    "Pronunciation": "Слушайте носителей и повторяйте за ними ударение и интонацию.",
+    "en": {
+        "TA": "Task Achievement / Response (TA/TR)", "CC": "Coherence & Cohesion (CC)",
+        "LR": "Lexical Resource (LR)", "GRA": "Grammar (GRA)", "FC": "Fluency & Coherence (FC)",
+        "Pronunciation": "Pronunciation",
+    },
 }
 
 LABELS = {
@@ -84,6 +81,25 @@ LABELS = {
         "disclaimer": "Баллы выставлены по 4 критериям IELTS Band Descriptors. Bandzilla — независимый сервис; "
                       "официальный результат IELTS выдаёт только экзаменационный центр.",
         "of": "из",
+    },
+    "en": {
+        "students": "Students", "works": "Works", "assignments": "Assignments",
+        "name": "Name", "joined": "Joined", "writing": "Writing", "speaking": "Speaking",
+        "count": "count", "avg": "average", "weakest": "Weakest criterion", "last": "Last active",
+        "this_week": "This week", "date": "Date", "student": "Student", "type": "Type", "band": "Band",
+        "assignment": "Assignment", "paid": "Paid by", "paid_self": "student", "paid_sponsor": "group",
+        "due": "Deadline", "overall": "Overall (W+S)", "teacher_comment": "Teacher's comment",
+        "group_title": "Group report", "generated": "Generated on",
+        "active_week": "Active in 7 days", "checks": "Checks", "members": "Students",
+        "group_weakest": "Group's weakest criterion", "no_work": "no works yet",
+        "parent_title": "Monthly progress report", "period": "Period", "group": "Group",
+        "teacher": "Teacher", "this_month": "This month", "prev_month": "Last month",
+        "band_trend": "Band trend", "criteria": "Average band by criterion",
+        "criterion": "Criterion", "assignments_done": "Assignments done", "recommendation": "Recommendation",
+        "comments": "Teacher's comments", "no_works_month": "No checks were submitted this month.",
+        "disclaimer": "Bands are given on the 4 criteria of the IELTS Band Descriptors. Bandzilla is an "
+                      "independent service; only a test centre issues an official IELTS result.",
+        "of": "of",
     },
 }
 
@@ -288,7 +304,7 @@ def build_parent_report_pdf(
     tip = None
     if month["weakest"]:
         key = month["weakest"][0]
-        tip = (TIPS_RU.get(key) if lang == "ru" else CRITERIA_TIPS.get(key))
+        tip = criteria_tip(key, lang) or None
     comment_rows = [
         {"date": _day(work["created_at"]), "label": work["label"], "band": _band(work["band"]),
          "text": c.text, "teacher_band": _band(c.band) if c.band is not None else None}

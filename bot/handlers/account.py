@@ -39,11 +39,11 @@ from bot.keyboards.account_kb import (
     teacher_needed_kb,
     topup_kb,
 )
-from bot.keyboards.main_menu_kb import BTN_ACCOUNT_RU, BTN_ACCOUNT_UZ, BTN_MY_WORKS
+from bot.keyboards.main_menu_kb import BTN_ACCOUNT_EN, BTN_ACCOUNT_RU, BTN_ACCOUNT_UZ, BTN_MY_WORKS
 from bot.utils.messages import remove_message, show_screen
 from bot.utils.quota import price_list
 from db import crud
-from db.crud import CRITERIA_LABELS, CRITERIA_TIPS
+from db.crud import CRITERIA_LABELS, criteria_tip
 from db.database import get_session
 from services.image.stats_card import build_stats_card
 
@@ -72,14 +72,14 @@ async def _home_text(tg, lang: str) -> str:
     if criteria_averages:
         key = min(criteria_averages, key=criteria_averages.get)
         lines.append(t("account.weakest", lang, label=CRITERIA_LABELS.get(key, key), avg=criteria_averages[key],
-                       tip=CRITERIA_TIPS.get(key, "")))
+                       tip=criteria_tip(key, lang)))
     lines += ["", t("account.referral", lang, count=referral_count, coins=settings.referral_coins,
                     link=f"https://t.me/{settings.telegram_bot_username}?start=ref_{tg.id}"),
               "", t("acc.choose", lang)]
     return "\n".join(lines)
 
 
-@router.message(F.text.in_({BTN_ACCOUNT_UZ, BTN_ACCOUNT_RU, BTN_MY_WORKS}))
+@router.message(F.text.in_({BTN_ACCOUNT_UZ, BTN_ACCOUNT_RU, BTN_ACCOUNT_EN, BTN_MY_WORKS}))
 async def show_account(message: Message, state: FSMContext, lang: str) -> None:
     await state.clear()  # leaving whatever flow was in progress
     await message.answer(await _home_text(message.from_user, lang), reply_markup=account_kb(lang),
@@ -190,7 +190,7 @@ async def show_stats(callback: CallbackQuery, lang: str) -> None:
     caption = t("acc.stats_caption", lang, last=f"{works[0]['band']:.1f}", trend=_trend(chronological, lang))
     if criteria_averages:
         key = min(criteria_averages, key=criteria_averages.get)
-        caption += "\n💡 " + CRITERIA_TIPS.get(key, "")
+        caption += "\n💡 " + criteria_tip(key, lang)
     await remove_message(callback.message)
     await callback.message.answer_photo(
         BufferedInputFile(png, filename="bandzilla_statistika.png"), caption=caption,

@@ -12,7 +12,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
 from bot.i18n import t
-from bot.keyboards.main_menu_kb import BTN_SUPPORT_RU, BTN_SUPPORT_UZ, MENU_BUTTON_TEXTS
+from bot.keyboards.main_menu_kb import BTN_SUPPORT_EN, BTN_SUPPORT_RU, BTN_SUPPORT_UZ, MENU_BUTTON_TEXTS
 from bot.keyboards.nav_kb import back_kb
 from bot.keyboards.support_kb import CB_SUPPORT_WRITE
 from bot.states.support_states import SupportStates
@@ -23,7 +23,7 @@ router = Router(name="support")
 MAX_PER_HOUR = 30  # messages a student may send the admins in an hour
 
 
-@router.message(F.text.in_({BTN_SUPPORT_UZ, BTN_SUPPORT_RU}))
+@router.message(F.text.in_({BTN_SUPPORT_UZ, BTN_SUPPORT_RU, BTN_SUPPORT_EN}))
 async def open_support(message: Message, state: FSMContext, lang: str) -> None:
     await state.clear()
     await _ask(message, state, lang)

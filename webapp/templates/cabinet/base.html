@@ -1,11 +1,11 @@
 <!DOCTYPE html>
-<html lang="uz">
+<html lang="{{ lang }}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <meta name="theme-color" content="#062018">
-<title>{% block title %}Ustoz kabineti — Bandzilla{% endblock %}</title>
+<title>{% block title %}{{ T.title }} — Bandzilla{% endblock %}</title>
 <link rel="icon" type="image/png" sizes="32x32" href="https://bandzilla.uz/assets/favicon-32.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -41,6 +41,8 @@
   .topbar .who a { display: inline-block; color: rgba(255,255,255,.75); margin-left: 10px; padding: 4px 12px; border-radius: 100px;
     border: 1px solid rgba(255,255,255,.22); }
   .topbar .who a:hover { color: var(--ink); background: var(--lime); border-color: var(--lime); text-decoration: none; }
+  .topbar .who .lang { margin-left: 4px; padding: 4px 8px; border-color: transparent; }
+  .topbar .who .lang.on { color: var(--lime); }
 
   .wrap { max-width: 1120px; margin: 0 auto; padding: 32px 16px 60px; }
   .crumbs { font-size: 13px; font-weight: 600; color: var(--ink-faint); margin-bottom: 10px; }
@@ -108,8 +110,8 @@
 </head>
 <body>
   <div class="topbar"><div class="in">
-    <a class="brand" href="/cabinet/"><img src="https://bandzilla.uz/assets/logo-on-dark.webp" alt="Bandzilla" width="720" height="126"> <span>· Ustoz kabineti</span></a>
-    {% if user_name %}<div class="who">{{ user_name }}<a href="/cabinet/logout">Chiqish</a></div>{% endif %}
+    <a class="brand" href="/cabinet/"><img src="https://bandzilla.uz/assets/logo-on-dark.webp" alt="Bandzilla" width="720" height="126"> <span>· {{ T.title }}</span></a>
+    <div class="who">{{ user_name }}{% for code in langs %}<a class="lang{% if code == lang %} on{% endif %}" href="/cabinet/lang/{{ code }}?back={{ here|urlencode }}">{{ code|upper }}</a>{% endfor %}{% if user_name %}<a href="/cabinet/logout">{{ T.logout }}</a>{% endif %}</div>
   </div></div>
   <div class="wrap">
     {% block content %}{% endblock %}

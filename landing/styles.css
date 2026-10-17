@@ -200,6 +200,12 @@ mark.hl, .hl {
 .lang button[aria-pressed="true"] { background: var(--lime); color: var(--ink); }
 .head-cta { display: none; min-height: 42px; padding: 9px 16px; font-size: 0.95rem; border-radius: 12px; }
 @media (min-width: 560px) { .head-cta { display: inline-flex; } }
+/* Logo + three language buttons on the narrowest phones */
+@media (max-width: 400px) {
+  .head-in { gap: 8px; }
+  .lang button { min-width: 40px; padding: 8px 6px; }
+}
+@media (max-width: 350px) { .brand img { height: 26px; } }
 @media (min-width: 1080px) {
   .head-in { height: 72px; gap: 16px; }
   .brand img { height: 36px; }

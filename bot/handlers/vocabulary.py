@@ -37,7 +37,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, Message
 
 from bot.i18n import t
-from bot.keyboards.main_menu_kb import BTN_VOCAB_RU, BTN_VOCAB_UZ, MENU_BUTTON_TEXTS
+from bot.keyboards.main_menu_kb import BTN_VOCAB_EN, BTN_VOCAB_RU, BTN_VOCAB_UZ, MENU_BUTTON_TEXTS
 from bot.keyboards.vocab_kb import (
     CB_VOCAB_ADD,
     CB_VOCAB_ANSWER,
@@ -73,7 +73,7 @@ from db import crud
 from db.crud import VOCAB_MANUAL_DAILY_LIMIT, VOCAB_MASTERED_BOX, vocab_key
 from db.database import get_session
 from db.models import VocabularyEntry
-from services.ai.vocab_helper import describe_words, translate_words
+from services.ai.vocab_helper import LANG_NAMES, describe_words, translate_words
 
 logger = logging.getLogger(__name__)
 
@@ -144,12 +144,15 @@ def _card_back(card: dict, lang: str) -> str:
 
 
 def _needs_translation(entries: list[VocabularyEntry], lang: str) -> bool:
-    return any(not (e.translations or {}).get(lang) for e in entries)
+    return lang in LANG_NAMES and any(not (e.translations or {}).get(lang) for e in entries)
 
 
 async def _translations(user_id: int, entries: list[VocabularyEntry], lang: str) -> dict[int, str]:
     """Each entry's translation into `lang`, fetching (and saving) the missing
-    ones in one call. If that call fails the cards just go without."""
+    ones in one call. If that call fails the cards just go without. An
+    English UI gets none: the words are English already."""
+    if lang not in LANG_NAMES:
+        return {}
     known = {e.id: (e.translations or {}).get(lang) for e in entries}
     missing = [(e.id, e.word_or_phrase, e.meaning) for e in entries if not known[e.id]]
     if missing:
@@ -269,7 +272,7 @@ async def _show_menu(callback: CallbackQuery, lang: str) -> None:
     await show_screen(callback, text, kb)
 
 
-@router.message(F.text.in_({BTN_VOCAB_UZ, BTN_VOCAB_RU}))
+@router.message(F.text.in_({BTN_VOCAB_UZ, BTN_VOCAB_RU, BTN_VOCAB_EN}))
 async def show_vocab_menu(message: Message, state: FSMContext, lang: str) -> None:
     await state.clear()
     text, kb = await _menu_screen(message.from_user.id, lang)
