@@ -55,7 +55,8 @@ def _is_admin(user_id: int) -> bool:
 def sees_center_packs(user: User | None) -> bool:
     """Teachers (center owners are teachers too) and admins pay for students
     and see the center packs."""
-    return user is not None and user.role in (UserRole.teacher, UserRole.admin)
+    # an admin's own row may say "student" - settings.admin_ids decides who is one
+    return user is not None and (user.role in (UserRole.teacher, UserRole.admin) or user.id in settings.admin_ids)
 
 
 @router.callback_query(F.data == CB_PAY_NOOP)

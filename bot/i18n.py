@@ -46,10 +46,6 @@ _T: dict[str, dict[str, str]] = {
         "ru": "📄 Именно такой подробный отчёт вы получите за каждую проверку Writing или "
         "Speaking!",
     },
-    "start.welcome_coins": {
-        "uz": "🎁 <b>Sizga {coins} coin sovg'a qilindi!</b>\n\n🪙 Coin — botdagi to'lov birligi. Har bir tekshiruv o'z narxida coindan yechiladi: masalan, sovg'a ikkita Writing Task 1 ga yoki bitta Writing Task 2 yoki Speaking tekshiruviga yetadi.\n\n❗️ <b>Iltimos, ularni shunchaki sinab ko'rish uchun tasodifiy matn yoki bir-ikki gap yuborib sarflab qo'ymang.</b> Haqiqiy IELTS savolini oling (Writing Task 1, Task 2 yoki Speaking savoli) va javobingizni imtihondagidek to'liq yozing yoki gapiring — shundagina hisobot sizga haqiqiy foyda beradi.\n\nℹ️ Coin faqat hisobot tayyor bo'lganda yechiladi.",
-        "ru": "🎁 <b>Вам подарено {coins} coin!</b>\n\n🪙 Coin — валюта бота. Каждая проверка списывает свою цену в coin: например, подарка хватит на две проверки Writing Task 1 или на одну Writing Task 2 либо одну часть Speaking.\n\n❗️ <b>Пожалуйста, не тратьте их на проверку «просто посмотреть» — случайный текст или пару фраз.</b> Возьмите настоящее задание IELTS (Writing Task 1, Task 2 или вопрос Speaking) и ответьте полностью, как на экзамене — только тогда отчёт принесёт реальную пользу.\n\nℹ️ Coin списываются, только когда отчёт готов.",
-    },
     # --- main_menu.py ---
     "menu.shown": {
         "uz": "Asosiy menyu:",
@@ -420,7 +416,88 @@ _T: dict[str, dict[str, str]] = {
         "uz": "🔗 Do'stlaringizni taklif qiling — do'stingiz birinchi marta coin sotib olganda <b>ikkalangizga {coins} coin</b> bonus beriladi ({count} ta taklif qilingan):\n{link}",
         "ru": "🔗 Приглашайте друзей — когда друг впервые купит coin, <b>вы оба получите по {coins} coin</b> (приглашено: {count}):\n{link}",
     },
-    "account.language_button": {"uz": "🌐 Til / Язык", "ru": "🌐 Til / Язык"},
+    "account.language_button": {"uz": "🌐 Tilni tanlang / Выберите язык:", "ru": "🌐 Tilni tanlang / Выберите язык:"},
+    "start.welcome_coins": {
+        "uz": "🎁 <b>Sizga {coins} coin sovg'a!</b>\n\nCoin — Bandzilla'dagi to'lov birligi: har bir tekshiruv "
+              "o'z narxida coindan yechiladi. {coins} coin ikkita Writing Task 1 ga yoki bitta Writing Task 2 "
+              "yoki bitta Speaking tekshiruviga yetadi.\n\nNarxlar va hisobni to'ldirish — <b>👤 Hisobim</b> bo'limida.",
+        "ru": "🎁 <b>Вам подарок — {coins} coin!</b>\n\nCoin — валюта Bandzilla: каждая проверка списывает свою "
+              "цену в coin. {coins} coin хватит на две проверки Writing Task 1 или на одну Writing Task 2 либо "
+              "одну часть Speaking.\n\nЦены и пополнение — в разделе <b>👤 Профиль</b>.",
+    },
+    "start.real_task": {
+        "uz": "⚠️ <b>Muhim maslahat</b>\n\nSovg'a coinlarni shunchaki sinab ko'rish uchun tasodifiy matn yoki bir-ikki "
+              "gapga sarflab qo'ymang — Bandzilla ularni ham tekshiradi va coin yechiladi.\n\n✅ Haqiqiy IELTS "
+              "savolini oling: Writing Task 1, Task 2 yoki Speaking.\n✅ Javobni imtihondagidek to'liq yozing yoki "
+              "gapiring.\n✅ Savol yo'qmi? <b>📝 Practice</b> bo'limida tayyor savollar bor.\n\nShunda hisobot "
+              "haqiqiy xatolaringizni topadi va ballingizni o'stiradi 🦖",
+        "ru": "⚠️ <b>Важный совет</b>\n\nНе тратьте подарочные coin на проверку «просто посмотреть» — случайный "
+              "текст или пару фраз: Bandzilla проверит и их, и coin спишутся.\n\n✅ Возьмите настоящее задание "
+              "IELTS: Writing Task 1, Task 2 или Speaking.\n✅ Ответьте полностью, как на экзамене.\n✅ Нет "
+              "задания? Готовые вопросы есть в разделе <b>📝 Practice</b>.\n\nТогда отчёт найдёт ваши настоящие "
+              "ошибки и поможет поднять балл 🦖",
+    },
+    # --- Hisobim hub (bot/handlers/account.py, bot/keyboards/account_kb.py) ---
+    "acc.title": {"uz": "👤 <b>Hisobim</b> · {name}", "ru": "👤 <b>Профиль</b> · {name}"},
+    "acc.checks_line": {
+        "uz": "📝 Tekshiruvlar: <b>{total}</b> ta · Writing {w} · Speaking {s}",
+        "ru": "📝 Проверок: <b>{total}</b> · Writing {w} · Speaking {s}",
+    },
+    "acc.choose": {"uz": "Kerakli bo'limni tanlang 👇", "ru": "Выберите раздел 👇"},
+    "acc.btn_topup": {"uz": "💳 Hisobni to'ldirish", "ru": "💳 Пополнить баланс"},
+    "acc.btn_history": {"uz": "📜 Tarix", "ru": "📜 История"},
+    "acc.btn_stats": {"uz": "📊 Statistika", "ru": "📊 Статистика"},
+    "acc.btn_lang": {"uz": "🌐 Til / Язык", "ru": "🌐 Til / Язык"},
+    "acc.btn_support": {"uz": "💬 Admin bilan aloqa", "ru": "💬 Связь с админом"},
+    "acc.btn_back_main": {"uz": "⬅️ Asosiy menyu", "ru": "⬅️ Главное меню"},
+    "acc.btn_back": {"uz": "⬅️ Hisobim", "ru": "⬅️ Профиль"},
+    "acc.btn_back_topup": {"uz": "⬅️ Orqaga", "ru": "⬅️ Назад"},
+    "acc.btn_for_students": {"uz": "🎓 O'quvchilar uchun", "ru": "🎓 Для учеников"},
+    "acc.btn_for_centers": {"uz": "🏫 O'qituvchi va o'quv markazlari uchun", "ru": "🏫 Для преподавателей и учебных центров"},
+    "acc.btn_become_teacher": {"uz": "🙋 O'qituvchi bo'lish so'rovini yuborish", "ru": "🙋 Отправить заявку преподавателя"},
+    "acc.topup": {
+        "uz": "💳 <b>Hisobni to'ldirish</b>\n\nBandzilla'da har bir tekshiruv <b>coin</b> bilan to'lanadi. Coin — "
+              "botning ichki puli: bir marta sotib olasiz va xohlagan vaqtda ishlatasiz.\n\n{prices}\n\n"
+              "✅ Coin faqat hisobot tayyor bo'lganda yechiladi — tekshiruv xato bilan tugasa, coin joyida qoladi.\n\n"
+              "<b>Qanday to'ldiriladi:</b>\n1️⃣ Quyida kim uchun ekanini tanlang va paketni bosing.\n"
+              "2️⃣ Bot ko'rsatgan kartaga pulni o'tkazing.\n3️⃣ Chekning rasmini shu chatga yuboring — admin "
+              "tekshirgach, coin hisobingizga tushadi.\n\nKim uchun to'ldiryapsiz? 👇",
+        "ru": "💳 <b>Пополнение баланса</b>\n\nВ Bandzilla каждая проверка оплачивается <b>coin</b>. Coin — "
+              "внутренние деньги бота: покупаете один раз и тратите когда угодно.\n\n{prices}\n\n"
+              "✅ Coin списываются только когда отчёт готов — если проверка сорвалась, coin остаются у вас.\n\n"
+              "<b>Как пополнить:</b>\n1️⃣ Ниже выберите, для кого пакет, и нажмите на него.\n"
+              "2️⃣ Переведите деньги на карту, которую покажет бот.\n3️⃣ Отправьте фото чека в этот чат — после "
+              "проверки админом coin поступят на баланс.\n\nДля кого пополняете? 👇",
+    },
+    "acc.packs_students": {
+        "uz": "🎓 <b>O'quvchilar uchun paketlar</b>\n\nO'z tekshiruvlaringiz uchun. Katta paketda har bir coin "
+              "arzonroq — chegirma tugmada yozilgan.\n\nPaketni tanlang 👇",
+        "ru": "🎓 <b>Пакеты для учеников</b>\n\nДля ваших собственных проверок. В большом пакете каждый coin "
+              "дешевле — скидка указана на кнопке.\n\nВыберите пакет 👇",
+    },
+    "acc.packs_centers": {
+        "uz": "🏫 <b>O'qituvchi va o'quv markazlari uchun</b>\n\nGuruhingizdagi o'quvchilarning tekshiruvlarini "
+              "to'lash va ularga coin sovg'a qilish uchun. Katta hajm — eng arzon coin.\n\nPaketni tanlang 👇",
+        "ru": "🏫 <b>Для преподавателей и учебных центров</b>\n\nЧтобы оплачивать проверки учеников вашей группы "
+              "и дарить им coin. Большой объём — самый дешёвый coin.\n\nВыберите пакет 👇",
+    },
+    "acc.centers_only": {
+        "uz": "🏫 <b>O'qituvchi va o'quv markazlari uchun</b>\n\nBu paketlar o'qituvchi hisoblari uchun: ular bilan "
+              "guruhingizdagi o'quvchilarning tekshiruvlarini to'laysiz va ularga coin sovg'a qilasiz.\n\n"
+              "O'qituvchimisiz? So'rov yuboring — admin tasdiqlagach, bu paketlar shu yerda ochiladi.",
+        "ru": "🏫 <b>Для преподавателей и учебных центров</b>\n\nЭти пакеты — для аккаунтов преподавателей: с ними "
+              "вы оплачиваете проверки учеников своей группы и дарите им coin.\n\nВы преподаватель? Отправьте "
+              "заявку — после одобрения админом пакеты откроются здесь.",
+    },
+    "acc.history": {
+        "uz": "📜 <b>Tarix</b> · {start}–{end} / {total}\n\nHisobotni qayta yuklab olish uchun ishni bosing 👇",
+        "ru": "📜 <b>История</b> · {start}–{end} из {total}\n\nНажмите на работу, чтобы снова скачать отчёт 👇",
+    },
+    "acc.stats_wait": {"uz": "📊 Statistika tayyorlanmoqda…", "ru": "📊 Готовлю статистику…"},
+    "acc.stats_caption": {
+        "uz": "📊 <b>Statistika</b>\nSo'nggi ball: <b>{last}</b> · {trend}",
+        "ru": "📊 <b>Статистика</b>\nПоследний балл: <b>{last}</b> · {trend}",
+    },
     # --- Groups / B2B (bot/handlers/group.py, bot/handlers/start.py) ---
     "group.no_group": {
         "uz": "🏫 <b>Guruh</b>\n\nSiz hali hech qanday guruhda emassiz.\n\n"

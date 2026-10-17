@@ -1199,7 +1199,7 @@ async def get_user_history(session: AsyncSession, user_id: int, limit: int = 20)
         {
             "type": "writing",
             "id": r.id,
-            "label": f"Writing {r.task_type.value.upper()}",
+            "label": f"Writing Task {r.task_type.value[-1]}",
             "band": r.overall_band,
             "date": r.created_at,
             "pdf_path": r.feedback_pdf_path,

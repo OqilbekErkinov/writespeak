@@ -43,13 +43,13 @@ def main_menu_kb(lang: str = "uz") -> ReplyKeyboardMarkup:
     vocab_label = BTN_VOCAB_RU if lang == "ru" else BTN_VOCAB_UZ
     account_label = BTN_ACCOUNT_RU if lang == "ru" else BTN_ACCOUNT_UZ
     group_label = BTN_GROUP_RU if lang == "ru" else BTN_GROUP_UZ
-    support_label = BTN_SUPPORT_RU if lang == "ru" else BTN_SUPPORT_UZ
+    # My Works and Admin bilan aloqa live in Hisobim since 2026-10-17
+    # (bot/handlers/account.py); their old texts still work.
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text=BTN_WRITING), KeyboardButton(text=BTN_SPEAKING)],
-            [KeyboardButton(text=BTN_PRACTICE), KeyboardButton(text=BTN_MY_WORKS)],
-            [KeyboardButton(text=vocab_label), KeyboardButton(text=account_label)],
-            [KeyboardButton(text=group_label), KeyboardButton(text=support_label)],
+            [KeyboardButton(text=BTN_PRACTICE), KeyboardButton(text=vocab_label)],
+            [KeyboardButton(text=account_label), KeyboardButton(text=group_label)],
         ],
         resize_keyboard=True,
         # Collapses after each tap so the section's own (inline) buttons get

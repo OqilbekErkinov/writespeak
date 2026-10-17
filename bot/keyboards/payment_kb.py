@@ -14,7 +14,7 @@ CB_PAY_REJECT_PREFIX = "pay_reject:"
 CB_PAY_NOOP = "pay:noop"  # the "center packs" heading
 
 
-def _pack_button(coins: int, price: int, lang: str) -> InlineKeyboardButton:
+def pack_button(coins: int, price: int, lang: str) -> InlineKeyboardButton:
     from bot.utils.quota import format_som  # local import: avoids a circular import with quota.py
 
     off = discount_percent(coins, price, settings.coin_price)
@@ -26,10 +26,10 @@ def _pack_button(coins: int, price: int, lang: str) -> InlineKeyboardButton:
 
 def buy_coins_kb(lang: str = "uz", with_center_packs: bool = False) -> InlineKeyboardMarkup:
     """The coin packs; teachers and center owners also see the center packs."""
-    rows = [[_pack_button(coins, price, lang)] for coins, price in COIN_PACKS]
+    rows = [[pack_button(coins, price, lang)] for coins, price in COIN_PACKS]
     if with_center_packs:
         rows.append([InlineKeyboardButton(text=t("pay.center_packs_header", lang), callback_data=CB_PAY_NOOP)])
-        rows += [[_pack_button(coins, price, lang)] for coins, price in CENTER_PACKS]
+        rows += [[pack_button(coins, price, lang)] for coins, price in CENTER_PACKS]
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
