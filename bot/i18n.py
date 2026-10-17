@@ -179,6 +179,21 @@ _T: dict[str, dict[str, str]] = {
         "uz": "✅ Qabul qilindi.\n\n✏️ Endi javobingizni yuboring (kamida {min_words} so'z).",
         "ru": "✅ Принято.\n\n✏️ Теперь отправьте свой ответ (минимум {min_words} слов).",
     },
+    "writing.send_chart": {
+        "uz": "✅ Savol qabul qilindi.\n\n📊 Endi shu Task 1 ning <b>grafik yoki diagramma rasmini</b> yuboring.\n\n"
+        "Task 1 da ball rasmdagi ma'lumotga qarab qo'yiladi: Bandzilla javobingizdagi har bir raqam, "
+        "taqqoslash va umumiy xulosani shu rasm bilan solishtiradi. Rasmsiz faqat matn tekshiriladi.",
+        "ru": "✅ Вопрос принят.\n\n📊 Теперь отправьте <b>картинку графика или диаграммы</b> к этому Task 1.\n\n"
+        "В Task 1 балл ставится по данным на картинке: Bandzilla сверит с ней каждую цифру, сравнение и "
+        "общий вывод вашего ответа. Без картинки проверяется только текст.",
+    },
+    "writing.chart_photo_only": {
+        "uz": "📊 Bu qadamda grafik rasmini yuboring — rasm yoki rasm-fayl. Rasm bo'lmasa, "
+        "«➡️ Rasmsiz davom etish»ni bosing.",
+        "ru": "📊 На этом шаге отправьте картинку графика — фото или файл-картинку. Если картинки нет, "
+        "нажмите «➡️ Продолжить без картинки».",
+    },
+    "writing.btn_no_chart": {"uz": "➡️ Rasmsiz davom etish", "ru": "➡️ Продолжить без картинки"},
     "writing.grading_in_progress": {
         "uz": "🦷 Tahlil qilyapman… tishlarim o'tkir! Bu 2–4 daqiqa oladi.",
         "ru": "🦷 Разбираю… зубы острые! Это займёт 2–4 минуты.",

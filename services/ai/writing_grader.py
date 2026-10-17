@@ -124,7 +124,14 @@ def _task_instructions(task_type: str) -> str:
             "This is Academic Writing TASK 1 (Report): the student described visual information (a "
             "graph, chart, table, diagram, map, or process) in at least 150 words. Grade 'Task "
             "Achievement' — a clear overview, coverage of key/main features, accurate data "
-            "comparisons. Personal opinion is NOT expected and should not raise the score."
+            "comparisons. Personal opinion is NOT expected and should not raise the score.\n"
+            "The VISUAL is the source of truth, not the report's own wording: Task Achievement is how "
+            "faithfully the report presents it - an overview of its main trends, differences or "
+            "stages; its key features selected and highlighted; figures, units, dates, categories and "
+            "comparisons that match it; nothing it doesn't show. In the descriptors' terms: no clear "
+            "overview keeps Task Achievement at 5 at most; key features inadequately covered keep it at "
+            "5 at most; inaccurate or irrelevant details keep it at 6 at most; 7+ needs a clear overview "
+            "of the main trends, differences or stages and key features clearly presented and highlighted."
         )
     return (
         "This is Writing TASK 2 (Essay): the student responded to an argument/problem/opinion "
@@ -136,6 +143,13 @@ def _task_instructions(task_type: str) -> str:
 
 def _piece(task_type: str) -> str:
     return "report" if task_type == "task1" else "essay"
+
+
+def _ta_note(task_type: str) -> str:
+    if task_type != "task1":
+        return ""
+    return (" The Task Achievement line names what the report gets right or wrong about the VISUAL - a "
+            "missing or unclear overview, a key feature left out, wrong figures.")
 
 
 def _system_prompt(task_type: str, bands: dict[str, float], overall: float, target: float) -> str:
@@ -215,7 +229,7 @@ least one error segment.
    Joining all segment texts must give back the original {piece}: copy punctuation exactly even \
 when it is wrong or missing, and never add, drop or repeat words between segments. Never correct \
 anything inside "text" or "good" segments, and don't number anything.
-3. criterion_notes - one short line per criterion (6-12 words) saying what drives that score.
+3. criterion_notes - one short line per criterion (6-12 words) saying what drives that score.{_ta_note(task_type)}
 4. strength - text: 1-2 sentences (40 words at most) on what the {piece} genuinely does well, \
 quoting 1-2 of the phrases you marked "good", word for word, in double quotes; quoted_phrases: \
 those phrases exactly as in the {piece}. No generic praise - this is the only praise in the report.
@@ -240,13 +254,24 @@ or *single asterisks* (italics); no other markup.
 
 def _scoring_system(task_type: str) -> str:
     first = "Task Achievement" if task_type == "task1" else "Task Response"
+    if task_type == "task1":
+        check = (
+            "Check before you score: read the visual FIRST - its type, units, period and categories, "
+            "its main trends, differences or stages, and its key figures. Then compare the report with "
+            "it: is there a clear overview of what the visual mainly shows? Are all its key features "
+            "covered and compared? Does every figure, unit, date and trend match the visual? Is anything "
+            "described that the visual doesn't show?"
+        )
+    else:
+        check = (
+            "Check before you score: does the answer do exactly what the question asks (all of its "
+            "parts, its type - advantages AND disadvantages, both views, ...)? Is the position the same "
+            "from the introduction to the conclusion? Are main ideas extended and supported?"
+        )
     return (
         "You are a certified IELTS Writing examiner. Score the answer against the IELTS Writing Band "
         f"Descriptors below.\n\n{_task_instructions(task_type)}\n\nIELTS WRITING BAND DESCRIPTORS "
-        f"(summary):\n{BAND_DESCRIPTORS}\n\n{LENIENCY_NOTE}\n\nCheck before you score: does the "
-        "answer do exactly what the question asks (all of its parts, its type - advantages AND "
-        "disadvantages, both views, ...)? Is the position the same from the introduction to the "
-        "conclusion? Are main ideas extended and supported? Return the four bands (TR_or_TA = "
+        f"(summary):\n{BAND_DESCRIPTORS}\n\n{LENIENCY_NOTE}\n\n{check} Return the four bands (TR_or_TA = "
         f"{first}) as whole numbers."
     )
 
@@ -313,19 +338,31 @@ async def _verify_call(source_text: str, items: list[tuple[int, str, str, str, s
     return {v.id: (v.keep, v.reason) for v in parsed.verdicts} if parsed else {}
 
 
-def _with_images(text: str, prompt_images: list[tuple[bytes, str]] | None):
+NO_VISUAL_NOTE = (
+    "\n\nNO VISUAL WAS PROVIDED - the student sent this Task 1 question as text only. Check figures "
+    "only against the question text and for consistency within the report; never invent what the "
+    "visual might show, and don't count figures you can't verify as mistakes."
+)
+
+
+def _with_images(text: str, prompt_images: list[tuple[bytes, str]] | None, task1: bool = False):
+    """The user message: the text, plus the Task 1 visual in full detail (the
+    figures on a chart are small) - or, for a Task 1 without one, a note."""
     if not prompt_images:
-        return text
+        return text + NO_VISUAL_NOTE if task1 else text
     return [
         {
             "type": "text",
-            "text": text + "\n\nThe attached image(s) are the visual this task is based on - check "
-            "the student's data, comparisons and overview against them.",
+            "text": text + "\n\nThe attached image(s) are the visual this task is based on - the source "
+            "of truth for its data. Read it first: its type, units, period and categories, the main "
+            "trends, differences or stages, and the key figures. Then check the answer against it: every "
+            "figure, unit, date, trend and comparison, whether the overview matches what the visual "
+            "mainly shows, and which key features are missing.",
         },
         *(
             {
                 "type": "image_url",
-                "image_url": {"url": f"data:{mime};base64,{base64.b64encode(data).decode()}"},
+                "image_url": {"url": f"data:{mime};base64,{base64.b64encode(data).decode()}", "detail": "high"},
             }
             for data, mime in prompt_images
         ),
@@ -374,7 +411,7 @@ async def _feedback_call(task_type, prompt_text, answer_text, prompt_images, cop
     text = f"QUESTION PROMPT:\n{prompt_text}\n\nSTUDENT'S ANSWER:\n{answer_text}{_copied_note(copied)}"
     messages = [
         {"role": "system", "content": _system_prompt(task_type, bands, overall, target_band(overall))},
-        {"role": "user", "content": _with_images(text, prompt_images)},
+        {"role": "user", "content": _with_images(text, prompt_images, task_type == "task1")},
     ]
     try:
         response = await _parse("feedback", FEEDBACK_MAX_TOKENS, messages, WritingFeedback)
@@ -397,7 +434,7 @@ async def _missed_errors_call(
     )
     messages = [
         {"role": "system", "content": _missed_prompt(task_type)},
-        {"role": "user", "content": _with_images(text, prompt_images)},
+        {"role": "user", "content": _with_images(text, prompt_images, task_type == "task1")},
     ]
     response = await _parse("missed_errors", MISSED_MAX_TOKENS, messages, MissedMistakes)
     parsed = response.choices[0].message.parsed
@@ -489,7 +526,7 @@ async def _score_once(task_type, prompt_text, answer_text, prompt_images) -> dic
     text = f"QUESTION PROMPT:\n{prompt_text}\n\nANSWER:\n{answer_text}"
     messages = [
         {"role": "system", "content": _scoring_system(task_type)},
-        {"role": "user", "content": _with_images(text, prompt_images)},
+        {"role": "user", "content": _with_images(text, prompt_images, task_type == "task1")},
     ]
     response = await _parse("score", SCORE_MAX_TOKENS, messages, CriterionScores)
     scores = response.choices[0].message.parsed

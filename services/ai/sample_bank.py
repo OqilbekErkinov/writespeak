@@ -34,7 +34,7 @@ For each report:
      overview, key features, grouped comparisons, no unsupported detail),
      with 1-3 "what this shows" notes found in it by code. The writer lends
      the style; the level is the student's aim;
-  4. it must be 260-300 words (Task 1: 170-200), copy no 8-word run from any
+  4. it must be 300-340 words (Task 1: 170-200), copy no 8-word run from any
      book, reuse little of the student's own wording (REUSE_LIMIT) and name
      no writer or book; then our own scorer checks it (written once more if
      more than 0.5 below the aimed band), and a quality check (the question's
@@ -73,7 +73,9 @@ from services.ai.scoring import aim_band
 logger = logging.getLogger(__name__)
 
 TASK_TYPES = {"task1": "task1_academic", "task2": "task2"}  # bot task -> library task
-WORD_RANGE = {"task2": (260, 300), "task1_academic": (170, 200)}
+# Task 2 since 2026-10-17: 300-340 (aim 320) - a fuller answer shows the
+# student more clearly what each part of the question needs (the user's call).
+WORD_RANGE = {"task2": (300, 340), "task1_academic": (170, 200)}
 COPY_NGRAM = 8  # a shared run of this many words counts as a copied sentence
 SAME_QUESTION_RATIO = 0.9
 REFERENCES = 3
@@ -84,7 +86,7 @@ SELF_CHECK_MARGIN = 0.5
 DEFAULT_BAND = 8.0  # without the student's results
 REUSE_LIMIT = 0.25  # share of the answer's 5-word runs that may come from the student's essay
 MAX_SHOWS = 3
-ANSWER_MAX_TOKENS = 8000  # a ~300-word answer needs ~2-4k with reasoning; stops a runaway
+ANSWER_MAX_TOKENS = 8000  # a ~320-word answer needs ~2-4k with reasoning; stops a runaway
 INDEX_FIELDS = ("id", "author", "book", "task_type", "subtype", "topic", "question", "band", "word_count", "text")
 
 
@@ -207,7 +209,8 @@ _LABEL_RULES = {
 
 def _image_parts(prompt_images: list[tuple[bytes, str]] | None) -> list[dict]:
     return [
-        {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{base64.b64encode(data).decode()}"}}
+        {"type": "image_url",
+         "image_url": {"url": f"data:{mime};base64,{base64.b64encode(data).decode()}", "detail": "high"}}
         for data, mime in prompt_images or []
     ]
 

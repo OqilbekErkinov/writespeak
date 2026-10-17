@@ -100,6 +100,39 @@ async def read_text_input(message: Message, lang: str) -> ExtractedInput | None:
     return result
 
 
+async def read_images(message: Message, lang: str) -> list[str] | None:
+    """Saves the photos (or images sent as files) of `message` or its album
+    without reading their text - a Task 1 chart sent after a typed question.
+    None when there's nothing to act on: a non-first album item, or no image
+    (the user has been told)."""
+    messages = await collect_album(message)
+    if messages is None:
+        return None
+    paths: list[str] = []
+    try:
+        for m in messages:
+            if m.photo:
+                content = await _download(m.bot, m.photo[-1].file_id)  # highest resolution
+                paths.append(save_upload(m.from_user.id, content, ".jpg"))
+            elif m.document is not None:
+                mime = (m.document.mime_type or "").lower()
+                if mime.startswith("image/") or Path((m.document.file_name or "").lower()).suffix in IMAGE_EXTENSIONS:
+                    content = await _download(m.bot, m.document.file_id)
+                    image_bytes, _, image_ext = _normalize_image(content, mime, lang)
+                    paths.append(save_upload(m.from_user.id, image_bytes, image_ext))
+    except UnsupportedInputError as e:
+        await message.answer(str(e))
+        return None
+    except TelegramBadRequest as e:
+        logger.warning("Chart download failed for user %s: %s", message.from_user.id, e)
+        await message.answer(t("input.file_too_big" if "too big" in str(e).lower() else "writing.could_not_read", lang))
+        return None
+    if not paths:
+        await message.answer(t("writing.chart_photo_only", lang))
+        return None
+    return paths
+
+
 async def _extract_text(
     messages: list[Message], bot: Bot, user_id: int, lang: str
 ) -> ExtractedInput:

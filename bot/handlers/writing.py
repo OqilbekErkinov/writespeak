@@ -36,15 +36,17 @@ from bot.keyboards.nav_kb import CB_BACK_MAIN, back_kb, check_again_kb
 from bot.keyboards.practice_kb import CB_BACK_TO_LIST_PREFIX, after_result_kb
 from bot.keyboards.share_kb import share_card_kb
 from bot.keyboards.writing_task_kb import (
+    CB_NO_CHART,
     CB_TASK1,
     CB_TASK2,
     CB_WRITING_MENU,
     TASK_CALLBACKS,
+    chart_kb,
     writing_task_kb,
 )
 from bot.states.writing_states import WritingStates
 from bot.utils import crm_events, stickers
-from bot.utils.input_extraction import read_text_input
+from bot.utils.input_extraction import read_images, read_text_input
 from bot.utils.messages import show_screen, strip_buttons
 from bot.utils.mock_test_flow import record_mock_test_part
 from bot.utils.coins import writing_kind
@@ -139,8 +141,11 @@ async def _receive_input(message: Message, state: FSMContext, field: str, lang: 
 
     file_path = extracted.file_paths[0] if extracted.file_paths else None
     if field == "prompt":
-        # Kept for Task 1, so the grader sees the actual chart, not just its OCR'd labels.
-        await state.update_data(prompt_image_paths=extracted.image_paths)
+        # Kept for Task 1, so the grader sees the actual chart, not just its OCR'd
+        # labels - also when the student retypes the question after "Edit".
+        data = await state.get_data()
+        kept = data.get("prompt_image_paths") if data.get("_editing") == "prompt" else None
+        await state.update_data(prompt_image_paths=extracted.image_paths or kept or [], _editing=None)
 
     if extracted.source == SourceType.text:
         await state.update_data(
@@ -192,6 +197,7 @@ async def confirm_or_edit(callback: CallbackQuery, state: FSMContext, lang: str)
         back_state = (
             WritingStates.awaiting_prompt if field == "prompt" else WritingStates.awaiting_answer
         )
+        await state.update_data(_editing=field)
         await state.set_state(back_state)
         return
 
@@ -202,15 +208,44 @@ async def confirm_or_edit(callback: CallbackQuery, state: FSMContext, lang: str)
 async def _advance(message: Message, state: FSMContext, field: str, lang: str) -> None:
     if field == "prompt":
         data = await state.get_data()
-        min_words = MIN_ANSWER_WORDS[data["task_type"]]
-        await state.set_state(WritingStates.awaiting_answer)
-        await message.answer(
-            t("writing.send_answer", lang, min_words=min_words),
-            reply_markup=back_kb(lang, _back_target(data, "answer")),
-        )
+        if data["task_type"] == "task1" and not data.get("prompt_image_paths"):
+            # A Task 1 question typed as text: the report is checked against the
+            # chart/diagram itself, so ask for its picture first.
+            await state.set_state(WritingStates.awaiting_chart)
+            await message.answer(t("writing.send_chart", lang), reply_markup=chart_kb(lang, _back_target(data, "answer")))
+            return
+        await _ask_for_answer(message, state, data, lang)
     else:
         await state.set_state(WritingStates.processing)
         await _run_grading(message, state, lang)
+
+
+async def _ask_for_answer(message: Message, state: FSMContext, data: dict, lang: str) -> None:
+    await state.set_state(WritingStates.awaiting_answer)
+    await message.answer(
+        t("writing.send_answer", lang, min_words=MIN_ANSWER_WORDS[data["task_type"]]),
+        reply_markup=back_kb(lang, _back_target(data, "answer")),
+    )
+
+
+@router.message(WritingStates.awaiting_chart, ~F.text.in_(MENU_BUTTON_TEXTS))
+async def receive_chart(message: Message, state: FSMContext, lang: str) -> None:
+    data = await state.get_data()
+    if message.text:
+        await message.answer(t("writing.chart_photo_only", lang), reply_markup=chart_kb(lang, _back_target(data, "answer")))
+        return
+    paths = await read_images(message, lang)
+    if paths is None:
+        return
+    await state.update_data(prompt_image_paths=paths[:MAX_PROMPT_IMAGES])
+    await _ask_for_answer(message, state, data, lang)
+
+
+@router.callback_query(WritingStates.awaiting_chart, F.data == CB_NO_CHART)
+async def skip_chart(callback: CallbackQuery, state: FSMContext, lang: str) -> None:
+    await callback.answer()
+    await strip_buttons(callback.message)
+    await _ask_for_answer(callback.message, state, await state.get_data(), lang)
 
 
 def _load_prompt_images(paths: list[str]) -> list[tuple[bytes, str]]:
