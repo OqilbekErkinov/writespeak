@@ -121,9 +121,9 @@ async def _finish(
         lines.append(f"🎙 Speaking (o'rtacha): <b>{s_avg:.1f}</b>")
     if overall is not None:
         lines.append("")
-        lines.append(f"📊 Taxminiy umumiy ball: <b>{overall}</b>")
+        lines.append(f"📊 Writing + Speaking umumiy bali: <b>{overall}</b>")
         lines.append(
-            "\n<i>Eslatma: haqiqiy IELTS umumiy bali 4 ta bo'lim (shu jumladan Reading va "
-            "Listening) asosida hisoblanadi — bu faqat Writing+Speaking bo'yicha taxmin.</i>"
+            "\n<i>IELTS'ning to'liq umumiy baliga Listening va Reading ham kiradi — bu ball "
+            "Writing va Speaking bo'yicha.</i>"
         )
     await message.answer("\n".join(lines), reply_markup=main_menu_kb())

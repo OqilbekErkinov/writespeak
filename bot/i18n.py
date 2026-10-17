@@ -189,12 +189,12 @@ _T: dict[str, dict[str, str]] = {
         "ru": "Ой, что-то пошло не так — проверка не завершилась, coin не списаны. Попробуйте ещё раз чуть позже.",
     },
     "writing.done_caption": {
-        "uz": "Gotcha! {mistakes} ta xato topdim 🦖\nTaxminiy Band: <b>{band}</b> — rasmiy IELTS natijasi emas.",
-        "ru": "Gotcha! Нашёл ошибок: {mistakes} 🦖\nПримерный Band: <b>{band}</b> — это не официальный результат IELTS.",
+        "uz": "Gotcha! {mistakes} ta xato topdim 🦖\nNatijangiz: <b>Band {band}</b>",
+        "ru": "Gotcha! Нашёл ошибок: {mistakes} 🦖\nВаш результат: <b>Band {band}</b>",
     },
     "writing.done_caption_clean": {
-        "uz": "Xato topmadim — zo'r ish! 🦖\nTaxminiy Band: <b>{band}</b> — rasmiy IELTS natijasi emas.",
-        "ru": "Ошибок не нашёл — отличная работа! 🦖\nПримерный Band: <b>{band}</b> — это не официальный результат IELTS.",
+        "uz": "Xato topmadim — zo'r ish! 🦖\nNatijangiz: <b>Band {band}</b>",
+        "ru": "Ошибок не нашёл — отличная работа! 🦖\nВаш результат: <b>Band {band}</b>",
     },
     "writing.resubmitted": {
         "uz": "♻️ Bu — #{number} inshodagi aynan o'sha matn, shuning uchun saqlangan hisobotingizni qayta "
@@ -966,8 +966,8 @@ _T: dict[str, dict[str, str]] = {
         "ru": "📝 <b>{title}</b>\n⏰ Срок: {due}\n✅ Выполнили полностью: {complete}/{members}\n",
     },
     "as.mock_legend": {
-        "uz": "\n<i>Tartib: W1 · W2 · S1 · S2 · S3 → Writing+Speaking umumiy taxminiy ball.</i>",
-        "ru": "\n<i>Порядок: W1 · W2 · S1 · S2 · S3 → общий ориентировочный балл Writing+Speaking.</i>",
+        "uz": "\n<i>Tartib: W1 · W2 · S1 · S2 · S3 → Writing+Speaking umumiy bali.</i>",
+        "ru": "\n<i>Порядок: W1 · W2 · S1 · S2 · S3 → общий балл Writing+Speaking.</i>",
     },
     "as.more_in_excel": {"uz": "… yana {n} ta talaba — to'liq jadval Excel'da.", "ru": "… ещё {n} учеников — полная таблица в Excel."},
     "as.btn_remind": {"uz": "🔔 Bajarmaganlarga eslatish", "ru": "🔔 Напомнить невыполнившим"},

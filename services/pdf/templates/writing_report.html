@@ -150,14 +150,14 @@
 <div class="kick">04 · Model answer</div>
 <div class="mhead">
   <div><h2 id="s-model">Model answer</h2>
-  <div class="sub" style="margin:0">An answer to your exact question, written for your priorities and aimed at about one band above yours. Compare it with your own {{ piece }}.</div></div>
+  <div class="sub" style="margin:0">An answer to your exact question, built around your three priorities. Compare it with your own {{ piece }}.</div></div>
   <div class="bandbadge"><span>Aimed at</span><b>{{ "%.1f"|format(answer.band) }}</b></div>
 </div>
 <div class="qbox"><div class="ql">Question</div><div class="qt">{{ report.question }}</div>{% for img in chart_images %}<img class="qimg" src="{{ img }}">{% endfor %}</div>
 <div class="sample">{% for p in answer_paragraphs %}<p>{{ p|safe }}</p>{% endfor %}</div>
 {% if answer.shows %}<div class="shows">{% for s in answer.shows %}<div><span class="k">{{ loop.index }}</span> <b>Priority {{ s.n }} · {{ s.title }}</b> — {{ s.note }}</div>{% endfor %}</div>{% endif %}
 <div class="sample-meta">{{ answer.word_count }} words · {{ "Published reference" if answer.source == "published_reference" else "AI example" }}</div>
-<div class="mnote">This is an AI-written practice example aimed at an approximate band, not an official IELTS answer - and not the only good way to answer. Compare it with your own {{ piece }} on page 2.</div>
+<div class="mnote">One strong way to answer this question, not the only one. Put it next to your own {{ piece }} on page 2 and borrow what works.</div>
 {% endif %}
 
 <!-- ================= PROGRESS ================= -->
@@ -182,5 +182,5 @@
 </div>
 {% endif %}
 
-<div class="disc">This score is an AI estimate based on the IELTS Band Descriptors, adjusted for ESL learners. It is supportive guidance, not an official IELTS result.</div>
+<div class="disc">Scored against the IELTS Writing Band Descriptors: the four criteria and the 0–9 scale examiners use. Each criterion is scored three times and the middle score counts. Bandzilla is an independent service; official IELTS results come only from a test centre.</div>
 </body></html>

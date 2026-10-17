@@ -1,7 +1,7 @@
 """The shareable result card (PNG, 1080x1080) in the Bandzilla brand (Brand
 Guidelines v1.0, p. 50): the logo, the task, a big Band number in Unbounded,
-the Gotcha count, the mascot in the mood that fits the result, an honest
-"estimate" line and the bot's name in the same place every time.
+the Gotcha count, the mascot in the mood that fits the result, a line on
+how it was scored and the bot's name in the same place every time.
 
 Pillow draws it directly - a single fixed layout doesn't need the HTML/CSS
 pipeline. Fonts are the brand's variable TTFs in fonts/ (SIL OFL), the logo
@@ -31,13 +31,13 @@ _TEXT = {
     "uz": {
         "found": "{n} ta xato topildi",
         "clean": "Xato topilmadi",
-        "estimate": "Taxminiy baho · rasmiy IELTS natijasi emas",
+        "estimate": "IELTS’ning 4 mezoni bo‘yicha baholandi",
         "footer": "Siz ham sinab ko‘ring: @{bot}",
     },
     "ru": {
         "found": "Найдено ошибок: {n}",
         "clean": "Ошибок не найдено",
-        "estimate": "Примерная оценка · не официальный результат IELTS",
+        "estimate": "Оценено по 4 критериям IELTS",
         "footer": "Попробуйте и вы: @{bot}",
     },
 }

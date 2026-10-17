@@ -62,7 +62,8 @@ LABELS = {
         "band_trend": "Ballar dinamikasi", "criteria": "Mezonlar bo'yicha o'rtacha ball",
         "criterion": "Mezon", "assignments_done": "Bajarilgan vazifalar", "recommendation": "Tavsiya",
         "comments": "O'qituvchi izohlari", "no_works_month": "Bu oyda tekshiruv topshirilmagan.",
-        "disclaimer": "Ballar AI tomonidan IELTS Band Descriptors asosida taxminan berilgan; rasmiy IELTS natijasi emas.",
+        "disclaimer": "Ballar IELTS Band Descriptors'ning 4 mezoni bo'yicha qo'yilgan. Bandzilla mustaqil xizmat; "
+                      "rasmiy IELTS natijasini faqat imtihon markazi beradi.",
         "of": "dan",
     },
     "ru": {
@@ -80,7 +81,8 @@ LABELS = {
         "band_trend": "Динамика баллов", "criteria": "Средний балл по критериям",
         "criterion": "Критерий", "assignments_done": "Выполнено заданий", "recommendation": "Рекомендация",
         "comments": "Комментарии преподавателя", "no_works_month": "В этом месяце проверок не было.",
-        "disclaimer": "Баллы — ориентировочная оценка ИИ по IELTS Band Descriptors, не официальный результат IELTS.",
+        "disclaimer": "Баллы выставлены по 4 критериям IELTS Band Descriptors. Bandzilla — независимый сервис; "
+                      "официальный результат IELTS выдаёт только экзаменационный центр.",
         "of": "из",
     },
 }

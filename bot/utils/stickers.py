@@ -23,10 +23,13 @@ STICKER_DIR = Path(__file__).resolve().parents[2] / "branding" / "bandzilla" / "
 
 
 def for_result(band: float, mistakes: int) -> str:
-    """The sticker after a report: Band 7+ (Cool), mistakes eaten (Gotcha),
-    nothing to eat (Yum)."""
+    """The sticker after a report: Band 7+ (Cool, its bubble saying the band
+    itself - band7, band7_5 ... band9), mistakes eaten (Gotcha), nothing to
+    eat (Yum). Band 7 is the brand's own sticker; 7.5-9 were drawn from it
+    with the same bubble, tilt and Unbounded lettering."""
     if band >= 7:
-        return "band7"
+        half = round(min(band, 9) * 2) / 2
+        return "band" + f"{half:g}".replace(".", "_")
     return "gotcha" if mistakes else "yum"
 
 

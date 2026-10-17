@@ -466,13 +466,12 @@ class SpeakingReport:
 
 
 def _disclaimer(part: str) -> str:
+    scored = ("Scored against the IELTS Speaking Band Descriptors: the four criteria and the 0–9 scale examiners "
+              "use. Each criterion is scored three times and the middle score counts.")
+    official = " Bandzilla is an independent service; official IELTS results come only from a test centre."
     if part == "full":
-        return ("This score is an AI estimate based on the IELTS Speaking Band Descriptors and adjusted for "
-                "ESL learners. It is supportive guidance, not an official IELTS result.")
-    name = PART_NAMES[part]
-    return (f"This score is an AI estimate for {name} only, based on the IELTS Speaking Band Descriptors and "
-            "adjusted for ESL learners. A full Speaking band needs Parts 1–3. It is supportive guidance, not "
-            "an official IELTS result.")
+        return scored + official
+    return f"{scored} This band covers {PART_NAMES[part]}; a full Speaking band takes Parts 1–3.{official}"
 
 
 def _from_model(m, q: int, model_id: int | None) -> _Mistake:
@@ -697,7 +696,7 @@ def build_report(
             chip, cls = "Focus", "focus"
         note = getattr(fb.criterion_notes, key).strip()
         if key == "P" and pron is None:
-            note = note.rstrip(".") + ". (estimated)"
+            note = note.rstrip(".") + ". (Scored from the transcript: no audio measurement this time.)"
         criteria.append({"key": key, "name": name, "band": band, "note": note, "chip": chip, "cls": cls})
 
     # Question cards.

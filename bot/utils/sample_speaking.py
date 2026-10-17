@@ -20,6 +20,7 @@ from services.ai.schemas import (
     Strength,
     VocabEntry,
 )
+from services.ai.pronunciation import Assessment
 from services.ai.speaking_grader import SessionItem
 from services.ai.speaking_marking import build_progress, build_report
 from services.ai.voice import AnswerAudio, Filler, Pause, Pitch, _tokens, measure
@@ -200,7 +201,9 @@ def build_speaking_sample_pdf(student_name: str = "Sample Student", when: dateti
                1.0, 1.2, 0.9, 0.6, 0.5, 0.8, 1.2, 1.6, 1.4, 1.1, 0.8, 0.6, 0.9, 1.3, 1.1, 0.7, 0.4, 0.3, 0.6, 1.0,
                1.3, 1.0, 0.7, 0.5, 0.3, 0.1, -0.2, -0.4]
     pitch = Pitch(span=4.2, contour=contour, voiced_seconds=sum(i.audio.speaking_seconds for i in items))
-    report = build_report("part1", items, feedback, [], set(), set(), bands, metrics, None, None, pitch)
+    # the voice measured, as in a real check (its Pronunciation band is set above)
+    pron = Assessment(seconds=60.0, accuracy=82.0, fluency=78.0, completeness=96.0, prosody=71.0, pron=79.0, words=[])
+    report = build_report("part1", items, feedback, [], set(), set(), bands, metrics, pron, None, pitch)
     answers = []
     for i, ((question, *_), (text, shows)) in enumerate(zip(_ANSWERS, _MODEL), 1):
         words = len(text.split())

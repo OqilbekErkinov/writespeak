@@ -380,7 +380,7 @@ async def _check_cards(kind: str, submission_id: int, rate: float | None = None)
     else:
         label = SPEAKING_LABELS.get(_value(sub.part), "Speaking")
         scores = sub.criteria_scores or {}
-        estimated = " (taxminiy)" if data.get("pronunciation_measured") is False else ""
+        estimated = " (audiosiz, matndan)" if data.get("pronunciation_measured") is False else ""
         lines = [
             f"🎙 <b>{label}</b> · #{sub.id} · {data.get('number') or '?'}-sessiya",
             f"👤 {_user(user, sub.user_id)}",
