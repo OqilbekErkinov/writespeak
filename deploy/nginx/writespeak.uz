@@ -1,9 +1,11 @@
-# --- writespeak.uz - WriteSpeak IELTS bot (/opt/writespeak, docker compose).
-#     https://writespeak.uz         -> landing page (static: /opt/writespeak/landing)
-#     https://www.writespeak.uz     -> 301 to https://writespeak.uz (one canonical address)
-#     https://admin.writespeak.uz   -> web admin panel (admin_web container, 127.0.0.1:8088)
-#     https://writespeak.uz/cabinet/ -> teachers' web cabinet (same container, /cabinet routes only)
+# --- writespeak.uz - the old domain of the Bandzilla IELTS bot (/opt/writespeak, docker compose).
+#     https://writespeak.uz/*       -> 301 to https://bandzilla.uz/* (the site moved there on 2026-10-17;
+#                                      old links, /cabinet/ sign-in links included, keep working)
+#     https://www.writespeak.uz/*   -> the same
+#     https://admin.writespeak.uz   -> web admin panel (admin_web container, 127.0.0.1:8088) - stays here for now
 #     http://*                      -> 301 to the https address
+#
+# The site itself: deploy/nginx/bandzilla.uz.
 #
 # TLS: Let's Encrypt cert "writespeak.uz" covering all three names, issued with
 # `certbot --nginx` and auto-renewed by certbot's timer. Server copy:
@@ -12,59 +14,18 @@
 # Security headers are set per server; locations only use `expires` (an
 # add_header inside a location would silently drop the server-level ones).
 
-# Landing page
+# The old site address: every path to the same path on bandzilla.uz
 server {
     listen 443 ssl;
     listen [::]:443 ssl;
-    server_name writespeak.uz;
+    server_name writespeak.uz www.writespeak.uz;
 
     ssl_certificate /etc/letsencrypt/live/writespeak.uz/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/writespeak.uz/privkey.pem;
     include /etc/letsencrypt/options-ssl-nginx.conf;
     ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
 
-    add_header Strict-Transport-Security "max-age=31536000" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-
-    root /opt/writespeak/landing;
-    index index.html;
-    gzip_types image/svg+xml;
-
-    location / {
-        try_files $uri $uri/ =404;
-    }
-    # The page itself is always revalidated so copy/price changes show at once.
-    location = /index.html {
-        expires -1;
-    }
-    location ~* \.(png|svg|ico)$ {
-        expires 7d;
-    }
-    # Teachers' web cabinet: only /cabinet/ of the admin_web app (webapp/cabinet.py),
-    # signed in from the bot - the admin panel itself stays on admin.writespeak.uz.
-    location = /cabinet {
-        return 301 /cabinet/;
-    }
-    location ^~ /cabinet/ {
-        proxy_pass http://127.0.0.1:8088;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $remote_addr;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
-
-server {
-    listen 443 ssl;
-    listen [::]:443 ssl;
-    server_name www.writespeak.uz;
-
-    ssl_certificate /etc/letsencrypt/live/writespeak.uz/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/writespeak.uz/privkey.pem;
-    include /etc/letsencrypt/options-ssl-nginx.conf;
-    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
-
-    return 301 https://writespeak.uz$request_uri;
+    return 301 https://bandzilla.uz$request_uri;
 }
 
 # Web admin panel
@@ -104,7 +65,7 @@ server {
     server_name writespeak.uz www.writespeak.uz;
 
     location / {
-        return 301 https://writespeak.uz$request_uri;
+        return 301 https://bandzilla.uz$request_uri;
     }
 }
 

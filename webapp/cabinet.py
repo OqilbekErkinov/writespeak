@@ -1,5 +1,6 @@
-"""Teachers' web cabinet: https://writespeak.uz/cabinet (the host nginx proxies
-only /cabinet/ of that domain to this app - see deploy/nginx/writespeak.uz).
+"""Teachers' web cabinet: https://bandzilla.uz/cabinet (the host nginx proxies
+only /cabinet/ of that domain to this app - see deploy/nginx/bandzilla.uz;
+the old writespeak.uz/cabinet links 301 there).
 
 Sign-in is one tap from the bot's "Web-kabinet" button: it opens
 /cabinet/login with a token signed by the web session secret

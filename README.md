@@ -29,7 +29,7 @@ services/practice_import/  Practice savollarini Telegram kanallardan import qili
 data/books/     O'zingizning IELTS namuna kitoblaringiz (PDF) shu yerga qo'yiladi
 data/sample_library/  Model answer kutubxonasi: index.json, embeddings.json, styles/ (gitignore)
 scripts/        import_practice_questions.py, ingest_books.py, build_sample_index.py
-landing/        writespeak.uz landing sahifasi (statik, nginx beradi)
+landing/        bandzilla.uz landing sahifasi (statik, nginx beradi; writespeak.uz u yerga yo'naltiradi)
 branding/       Logo, Telegram bot avatari va bot tavsif rasmi (BotFather uchun)
 deploy/nginx/   Serverdagi nginx sozlamasi nusxasi
 ```

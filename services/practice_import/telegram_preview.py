@@ -20,7 +20,7 @@ import httpx  # installed with openai
 logger = logging.getLogger(__name__)
 
 BASE = "https://t.me/s/"
-HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; BandzillaBot/1.0; +https://writespeak.uz)"}
+HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; BandzillaBot/1.0; +https://bandzilla.uz)"}
 PAGE_DELAY = 0.7  # seconds between page requests - be gentle with t.me
 RETRIES = 3
 
