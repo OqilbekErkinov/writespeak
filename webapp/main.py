@@ -18,6 +18,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from aiogram import Bot
 from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
@@ -27,7 +28,7 @@ from bot.config import settings
 from bot.utils import crm_events
 from db import crud
 from db.database import get_session
-from db.models import PaymentStatus, PracticeModule, UserRole
+from db.models import PaymentRequest, PaymentStatus, PracticeModule, UserRole
 from services.storage.file_storage import delete_file, save_practice_image
 
 app = FastAPI(title="Bandzilla Admin")
@@ -159,6 +160,45 @@ async def payments_page(request: Request, status: str | None = None):
         "payments.html",
         {"active": "payments", "requests": requests_, "status": status or "all"},
     )
+
+
+# Receipt images by payment request id - a receipt never changes, so the
+# Telegram download happens once per image (the newest RECEIPT_CACHE kept).
+_receipts: dict[int, bytes] = {}
+RECEIPT_CACHE = 60
+
+
+async def _download_receipt(file_id: str) -> bytes | None:
+    """A Telegram file_id works only with the bot that received the photo:
+    receipts sent before the move to @bandzilla_bot (2026-10-17) belong to
+    @writespeak_bot, whose token is MOVED_BOT_TOKEN."""
+    for token in filter(None, (settings.telegram_bot_token, settings.moved_bot_token)):
+        bot = Bot(token)
+        try:
+            file = await bot.get_file(file_id)
+            return (await bot.download_file(file.file_path)).read()
+        except Exception:
+            continue
+        finally:
+            await bot.session.close()
+    return None
+
+
+@app.get("/payments/{request_id}/receipt")
+async def payment_receipt(request: Request, request_id: int):
+    if (redirect := _require_login(request)) is not None:
+        return redirect
+    image = _receipts.get(request_id)
+    if image is None:
+        async with get_session() as session:
+            payment = await session.get(PaymentRequest, request_id)
+        image = await _download_receipt(payment.receipt_file_id) if payment and payment.receipt_file_id else None
+        if image is None:
+            return Response(status_code=404)
+        _receipts[request_id] = image
+        while len(_receipts) > RECEIPT_CACHE:
+            _receipts.pop(next(iter(_receipts)))
+    return Response(image, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=86400"})
 
 
 @app.post("/payments/{request_id}/{action}")

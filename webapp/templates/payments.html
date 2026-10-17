@@ -15,7 +15,7 @@
   <div class="table-scroll">
   <table>
     <tr>
-      <th>Sana</th><th>Foydalanuvchi</th><th>Turi</th><th>Miqdor</th><th>Holat</th><th></th>
+      <th>Sana</th><th>Foydalanuvchi</th><th>Turi</th><th>Miqdor</th><th>Chek</th><th>Holat</th><th></th>
     </tr>
     {% for r in requests %}
     <tr>
@@ -35,6 +35,13 @@
         {% endif %}
       </td>
       <td>{{ "{:,}".format(r.amount).replace(",", " ") }} so'm</td>
+      <td>
+        {% if r.receipt_file_id %}
+        <a class="receipt" href="/payments/{{ r.id }}/receipt" target="_blank" title="Chekni ochish">
+          <img src="/payments/{{ r.id }}/receipt" alt="Chek" loading="lazy" onerror="this.parentNode.replaceWith('—')">
+        </a>
+        {% else %}—{% endif %}
+      </td>
       <td>
         {% if r.status.value == "pending" %}<span class="pill pill-warn">kutilmoqda</span>
         {% elif r.status.value == "approved" %}<span class="pill pill-good">tasdiqlangan</span>
@@ -58,4 +65,26 @@
   <div class="empty">Bu bo'limda hech narsa yo'q.</div>
   {% endif %}
 </div>
+
+<dialog id="receipt-view" class="receipt-view"><img alt="Chek"></dialog>
+<style>
+  .receipt { display: block; width: 52px; height: 52px; border-radius: 10px; overflow: hidden;
+    border: 1px solid var(--border-strong); background: var(--mint-2); }
+  .receipt img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .receipt:hover { border-color: var(--moss); }
+  .receipt-view { padding: 0; border: none; border-radius: 16px; background: transparent; max-width: 92vw; }
+  .receipt-view::backdrop { background: rgba(6, 32, 24, 0.75); }
+  .receipt-view img { display: block; max-width: 92vw; max-height: 88vh; border-radius: 16px; cursor: zoom-out; }
+</style>
+<script>
+  // A tap on the thumbnail shows the receipt over the page; a tap anywhere or Esc closes it.
+  const view = document.getElementById("receipt-view");
+  document.querySelectorAll("a.receipt").forEach((link) => link.addEventListener("click", (event) => {
+    if (event.ctrlKey || event.metaKey || !view.showModal) return;
+    event.preventDefault();
+    view.querySelector("img").src = link.href;
+    view.showModal();
+  }));
+  view.addEventListener("click", () => view.close());
+</script>
 {% endblock %}
