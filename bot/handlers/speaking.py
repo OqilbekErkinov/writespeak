@@ -67,6 +67,7 @@ from bot.utils.input_extraction import (
 )
 from bot.utils.messages import show_screen, strip_buttons
 from bot.utils.mock_test_flow import record_mock_test_part
+from bot.utils.report_names import report_filename
 from bot.utils import crm_events, stickers
 from bot.utils.coins import speaking_kind
 from bot.utils.quota import check_price, check_quota, free_check_note, payment_of, send_paywall
@@ -369,7 +370,7 @@ async def _send_saved_report(message: Message, state: FSMContext, data: dict, ea
     if not path or not Path(path).exists():
         return False
     await message.answer_document(
-        BufferedInputFile(read_file(path), filename="IELTS_Feedback.pdf"),
+        BufferedInputFile(read_file(path), filename=report_filename("speaking", earlier.part)),
         caption=t("speaking.resubmitted", lang, number=_session_number(earlier), band=earlier.overall_band),
         reply_markup=share_card_kb("speaking", earlier.id, lang),
     )
@@ -511,7 +512,7 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
     await processing_msg.delete()
     await stickers.send(message.bot, user_id, stickers.for_result(report.overall_band, found))  # the Gotcha moment
     await message.answer_document(
-        BufferedInputFile(pdf_bytes, filename="IELTS_Feedback.pdf"),
+        BufferedInputFile(pdf_bytes, filename=report_filename("speaking", part)),
         caption=caption,
         reply_markup=share_card_kb("speaking", submission.id, lang),
     )

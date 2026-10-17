@@ -25,9 +25,10 @@ For each report:
      2-3 of their samples of this task type (never a sample of the same
      question) - written for THIS student's results (candidate-specific
      samples, 2026-10-16): it starts once the feedback is final
-     (writing_grader's on_feedback), is aimed at about one band above the
-     student (scoring.aim_band: 6.0-8.0, shown as "Aimed at" and "AI example",
-     never as an official band) and demonstrates their priorities (Task
+     (writing_grader's on_feedback), is aimed above the student
+     (scoring.writing_aim_band: Band 9 from 8.0 up, Band 8 below - the user's
+     rule, 2026-10-17; shown as "Aimed at" and "AI example") and demonstrates
+     their priorities (Task
      Response: every part answered, ideas developed; Coherence: paragraphing,
      topic sentences, referencing; Lexical: precise collocations, not rare
      synonyms; Grammar: a useful variety of accurate structures; Task 1: the
@@ -68,7 +69,7 @@ from services.ai import usage
 from services.ai.essay_marking import WORD_RE, count_words
 from services.ai.openai_client import client
 from services.ai.schemas import GeneratedSample, StyleProfile, Task1Label, Task2Label
-from services.ai.scoring import aim_band
+from services.ai.scoring import writing_aim_band
 
 logger = logging.getLogger(__name__)
 
@@ -269,7 +270,7 @@ class Needs:
 
     @property
     def aim(self) -> float:
-        return aim_band(self.overall)
+        return writing_aim_band(self.overall)
 
 
 def needs_from_feedback(bands: dict[str, float], overall: float, fb, essay: str) -> Needs:

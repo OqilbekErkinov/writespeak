@@ -52,9 +52,16 @@ AIM_RANGE = (6.0, 8.0)
 
 
 def aim_band(overall: float) -> float:
-    """The band a model answer is aimed at: one above the student's, kept
-    between AIM_RANGE (candidate-specific samples, 2026-10-14)."""
+    """The band a Speaking model answer is aimed at: one above the student's,
+    kept between AIM_RANGE (candidate-specific samples, 2026-10-14)."""
     return min(AIM_RANGE[1], max(AIM_RANGE[0], overall + 1.0))
+
+
+def writing_aim_band(overall: float) -> float:
+    """The band a Writing model answer is aimed at (the user's rule,
+    2026-10-17): always better than the student's own - Band 9 from 8.0 up,
+    Band 8 below that."""
+    return 9.0 if overall >= 8.0 else 8.0
 
 
 def target_band(overall: float) -> float:
