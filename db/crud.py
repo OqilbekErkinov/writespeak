@@ -13,7 +13,7 @@ from datetime import date, datetime, timedelta, timezone
 from sqlalchemy import and_, case, delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import aliased
+from sqlalchemy.orm import aliased, selectinload
 
 from db.models import (
     Assignment,
@@ -2218,7 +2218,11 @@ async def list_users(session: AsyncSession, search: str | None = None, limit: in
 async def list_payment_requests(
     session: AsyncSession, status: PaymentStatus | None = None, limit: int = 200
 ) -> list[PaymentRequest]:
-    stmt = select(PaymentRequest).order_by(PaymentRequest.created_at.desc()).limit(limit)
+    # the buyer comes along for the admin panel's Foydalanuvchi column (@username)
+    stmt = (
+        select(PaymentRequest).options(selectinload(PaymentRequest.user))
+        .order_by(PaymentRequest.created_at.desc()).limit(limit)
+    )
     if status is not None:
         stmt = stmt.where(PaymentRequest.status == status)
     return list((await session.execute(stmt)).scalars().all())

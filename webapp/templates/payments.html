@@ -20,7 +20,13 @@
     {% for r in requests %}
     <tr>
       <td>{{ r.created_at.strftime("%d.%m.%Y %H:%M") if r.created_at else "—" }}</td>
-      <td class="strong">{{ r.user_id }}</td>
+      <td class="strong">
+        {% if r.user and r.user.username %}
+          <a href="https://t.me/{{ r.user.username }}" target="_blank" rel="noopener">@{{ r.user.username }}</a><br><span class="hint">{{ r.user.full_name }}</span>
+        {% elif r.user %}
+          {{ r.user.full_name }}<br><span class="hint">username yo'q · {{ r.user_id }}</span>
+        {% else %}{{ r.user_id }}{% endif %}
+      </td>
       <td>
         {% if r.kind.value == "subscription" %}
           Obuna ({{ r.subscription_months }} oy)
