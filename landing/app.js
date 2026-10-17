@@ -13,6 +13,9 @@
     "nav.pricing": "Цены",
     "nav.faq": "Вопросы",
     "nav.cta": "Открыть бота",
+    "nav.gift": "8 coin",
+    "nav.menu": "Меню",
+    "nav.teachers": "Преподавателям",
 
     "hero.cap": "IELTS Writing и Speaking · Telegram-бот",
     "hero.title": "Съедает ошибки.<br><span class=\"t-lime\">Растит балл.</span>",
@@ -214,6 +217,9 @@
     "nav.pricing": "Pricing",
     "nav.faq": "FAQ",
     "nav.cta": "Open the bot",
+    "nav.gift": "8 coins",
+    "nav.menu": "Menu",
+    "nav.teachers": "For teachers",
 
     "hero.cap": "IELTS Writing and Speaking · Telegram bot",
     "hero.title": "Eats your mistakes.<br><span class=\"t-lime\">Grows your band.</span>",
@@ -437,6 +443,7 @@
   var $$ = function (sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); };
   var lang = "uz";
   var activeMark = null;
+  var langHooks = [];  // run after every language switch (texts change width)
 
   // Remember the Uzbek originals so switching back needs no second dictionary.
   var textEls = $$("[data-i18n]");
@@ -473,18 +480,57 @@
     document.title = META[lang].title;
     var d = document.querySelector('meta[name="description"]');
     if (d) d.setAttribute("content", META[lang].desc);
-    $$(".lang button").forEach(function (b) {
+    langOpts.forEach(function (b) {
       b.setAttribute("aria-pressed", String(b.getAttribute("data-lang") === lang));
     });
+    if (langCur) langCur.textContent = lang.toUpperCase();
     if (activeMark) selectMark(activeMark);
+    langHooks.forEach(function (fn) { fn(); });
   }
 
-  $$(".lang button").forEach(function (b) {
+  // --- Language menu: the globe chip opens a card with the three languages ---
+  var langEl = document.getElementById("lang");
+  var langBtn = document.getElementById("langBtn");
+  var langCur = document.getElementById("langCur");
+  var langOpts = $$(".lang-opt");
+  function openLang(focusCurrent) {
+    langEl.classList.add("open");
+    langBtn.setAttribute("aria-expanded", "true");
+    if (focusCurrent) (langEl.querySelector('.lang-opt[aria-pressed="true"]') || langOpts[0]).focus();
+  }
+  function closeLang() {
+    langEl.classList.remove("open");
+    langBtn.setAttribute("aria-expanded", "false");
+  }
+  langBtn.addEventListener("click", function () {
+    if (langEl.classList.contains("open")) closeLang(); else openLang(false);
+  });
+  langBtn.addEventListener("keydown", function (e) {
+    if (e.key === "ArrowDown") { e.preventDefault(); openLang(true); }
+  });
+  langOpts.forEach(function (b, i) {
     b.addEventListener("click", function () {
       var v = b.getAttribute("data-lang");
+      var changed = v !== lang;
       storeSet(v);
       applyLang(v);
+      closeLang();
+      langBtn.focus();
+      if (changed && !reduceMotion) {
+        langCur.classList.remove("bump");
+        void langCur.offsetWidth;  // restart the animation
+        langCur.classList.add("bump");
+      }
     });
+    b.addEventListener("keydown", function (e) {
+      if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+      e.preventDefault();
+      langOpts[(i + (e.key === "ArrowDown" ? 1 : langOpts.length - 1)) % langOpts.length].focus();
+    });
+  });
+  document.addEventListener("click", function (e) { if (!langEl.contains(e.target)) closeLang(); });
+  langEl.addEventListener("focusout", function (e) {
+    if (e.relatedTarget && !langEl.contains(e.relatedTarget)) closeLang();
   });
 
   // --- Sample report: click (or hover) a marked phrase to read its note ---
@@ -621,8 +667,75 @@
     revealEls.forEach(function (r) { r.classList.add("in"); });
   }
 
-  // --- Header line + mobile sticky CTA (hidden over the hero CTA and the final CTA) ---
+  // --- Header: the teeth fill with Lime as the page is read ---
   var header = document.getElementById("header");
+  var ticking = false;
+  function paintProgress() {
+    ticking = false;
+    var max = document.documentElement.scrollHeight - window.innerHeight;
+    var p = max > 0 ? Math.min(1, Math.max(0, window.scrollY / max)) : 0;
+    header.style.setProperty("--p", p.toFixed(4));
+  }
+  function onScroll() {
+    if (!ticking) { ticking = true; window.requestAnimationFrame(paintProgress); }
+  }
+  window.addEventListener("scroll", onScroll, { passive: true });
+  window.addEventListener("resize", onScroll);
+  paintProgress();
+
+  // --- Header: the section on screen gets the sliding Lime pill (desktop) / Lime text (menu) ---
+  var nav = document.getElementById("nav");
+  var navPill = document.getElementById("navPill");
+  var sectionLinks = $$('.nav a[href^="#"], .mnav-list a[href^="#"]');
+  var current = "";
+  function placePill() {
+    var a = nav.querySelector("a.on");
+    if (!a || !nav.offsetWidth) { navPill.classList.remove("on"); return; }
+    navPill.style.setProperty("--x", a.offsetLeft + "px");
+    navPill.style.setProperty("--w", a.offsetWidth + "px");
+    navPill.classList.add("on");
+  }
+  function setCurrent(id) {
+    if (id === current) return;
+    current = id;
+    sectionLinks.forEach(function (a) {
+      var on = a.getAttribute("href") === "#" + id;
+      a.classList.toggle("on", on);
+      if (on) a.setAttribute("aria-current", "true"); else a.removeAttribute("aria-current");
+    });
+    placePill();
+  }
+  if ("IntersectionObserver" in window) {
+    var spy = new IntersectionObserver(function (es) {
+      es.forEach(function (e) { if (e.isIntersecting) setCurrent(e.target.id); });
+    }, { rootMargin: "-45% 0px -54% 0px" });
+    $$("main section[id]").forEach(function (s) { spy.observe(s); });
+  }
+  window.addEventListener("resize", placePill);
+  langHooks.push(placePill);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(placePill);
+
+  // --- Mobile menu ---
+  var root = document.documentElement;
+  var burger = document.getElementById("burger");
+  var mnav = document.getElementById("mnav");
+  function setMenu(open) {
+    root.classList.toggle("menu-open", open);
+    burger.setAttribute("aria-expanded", String(open));
+    if (open) closeLang();
+  }
+  burger.addEventListener("click", function () { setMenu(!root.classList.contains("menu-open")); });
+  $$("a", mnav).forEach(function (a) { a.addEventListener("click", function () { setMenu(false); }); });
+  var wide = window.matchMedia("(min-width: 1080px)");
+  var onWide = function (m) { if (m.matches) setMenu(false); };
+  if (wide.addEventListener) wide.addEventListener("change", onWide); else if (wide.addListener) wide.addListener(onWide);
+  document.addEventListener("keydown", function (e) {
+    if (e.key !== "Escape") return;
+    if (langEl.classList.contains("open")) { closeLang(); langBtn.focus(); }
+    else if (root.classList.contains("menu-open")) { setMenu(false); burger.focus(); }
+  });
+
+  // --- Mobile sticky CTA (hidden over the hero CTA and the final CTA) ---
   var sticky = document.getElementById("stickyCta");
   var heroCta = document.getElementById("heroCta");
   var finalSec = document.getElementById("final");
@@ -632,9 +745,6 @@
     new IntersectionObserver(function (es) { heroVisible = es[0].isIntersecting; updateSticky(); }).observe(heroCta);
     new IntersectionObserver(function (es) { finalVisible = es[0].isIntersecting; updateSticky(); }).observe(finalSec);
   }
-  function onScroll() { header.classList.toggle("scrolled", window.scrollY > 8); }
-  window.addEventListener("scroll", onScroll, { passive: true });
-  onScroll();
 
   var year = document.getElementById("year");
   if (year) year.textContent = String(new Date().getFullYear());
