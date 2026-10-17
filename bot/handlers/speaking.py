@@ -509,12 +509,12 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
     if new_words:
         caption += "\n" + t("vocab.added_after_check", lang, count=new_words)
     await processing_msg.delete()
+    await stickers.send(message.bot, user_id, stickers.for_result(report.overall_band, found))  # the Gotcha moment
     await message.answer_document(
         BufferedInputFile(pdf_bytes, filename="IELTS_Feedback.pdf"),
         caption=caption,
         reply_markup=share_card_kb("speaking", submission.id, lang),
     )
-    await stickers.send(message.bot, user_id, stickers.for_result(report.overall_band, found))
     if listen:
         await message.answer(
             t("speaking.listen_prompt", lang),

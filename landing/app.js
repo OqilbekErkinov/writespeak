@@ -26,11 +26,9 @@
     "hero.sample": "Пример диалога",
 
     "chat.status": "бот",
-    "chat.wait": "Разбираю… зубы острые 🦷",
-    "chat.gotcha": "<b>Gotcha! Нашёл 7 ошибок.</b><br>Первая: <s>informations</s> → <b>information</b>",
-    "chat.band": "Writing · Task 2 · Примерный Band: <b>6.5</b>",
-    "chat.pdf": "PDF-отчёт",
-    "chat.honest": "Балл — примерная оценка, а не официальный результат IELTS.",
+    "chat.wait": "🦷 Разбираю… зубы острые! Это займёт 2–4 минуты.",
+    "chat.pdf": "PDF-отчёт · 6 страниц",
+    "chat.caption": "<b>Gotcha! Нашёл ошибок: 8 🦖</b><br>Примерный Band: <b>6.5</b> — это не официальный результат IELTS.",
     "chat.again": "🔁 Проверить ещё",
     "chat.share": "📤 Поделиться",
     "chat.input": "Сообщение",
@@ -310,7 +308,8 @@
     if (finePointer) m.addEventListener("mouseenter", function () { selectMark(m); });
   });
 
-  // --- Hero chat: essay in -> "chewing" -> Gotcha! sticker -> PDF ---
+  // --- Hero chat: essay in -> "chewing" -> Gotcha! sticker, the mistakes in
+  // the essay get eaten (struck out, fixed) -> the PDF with the bot's caption ---
   var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   var chat = document.getElementById("heroChat");
   var typing = document.getElementById("heroTyping");
@@ -324,20 +323,23 @@
     timers.forEach(clearTimeout);
     timers = [];
     $$(".msg", chat).forEach(function (m) { m.classList.remove("show"); });
+    step("essay").classList.remove("marked");
     typing.classList.remove("show");
     at(400, function () { show("essay"); });
-    at(1200, function () { typing.classList.add("show"); });
-    at(2400, function () { typing.classList.remove("show"); show("wait"); });
-    at(3400, function () { typing.classList.add("show"); });
-    at(5200, function () { typing.classList.remove("show"); hide("wait"); show("sticker"); });
-    at(6200, function () { show("gotcha"); });
-    at(7800, function () { show("pdf"); });
-    at(15000, playChat);
+    at(1300, function () { typing.classList.add("show"); });
+    at(2300, function () { typing.classList.remove("show"); show("wait"); });
+    at(3300, function () { typing.classList.add("show"); });
+    at(5000, function () { typing.classList.remove("show"); hide("wait"); show("sticker"); });
+    at(5700, function () { step("essay").classList.add("marked"); });
+    at(8800, function () { show("pdf"); });
+    at(17500, playChat);
   }
 
   if (chat && typing) {
     if (reduceMotion) {
-      ["essay", "sticker", "gotcha", "pdf"].forEach(show);
+      // no motion: the marked essay and the report (both fit the screen)
+      ["essay", "pdf"].forEach(show);
+      step("essay").classList.add("marked");
     } else if ("IntersectionObserver" in window) {
       var playing = false;
       new IntersectionObserver(function (entries) {

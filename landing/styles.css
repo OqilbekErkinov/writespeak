@@ -283,7 +283,17 @@ mark.hl, .hl {
 .doc-ico svg { width: 20px; height: 20px; }
 .doc b { display: block; font-size: 0.82rem; }
 .doc small { font-size: 0.72rem; color: var(--ink-soft); }
-.honest { margin-top: 6px; font-size: 0.72rem; color: var(--ink-soft); }
+.cap-text { margin-top: 6px; font-size: 0.78rem; line-height: 1.4; }
+/* the essay's mistakes: plain until the Gotcha moment, then struck in red pen with the fix beside */
+.essay-msg .fx s { text-decoration: none; transition: color .3s; }
+.essay-msg .fx b { display: none; margin-left: 3px; padding: 0 4px; border-radius: 4px; background: var(--white); color: var(--ink); font-weight: 800; }
+.marked .essay-msg .fx s { color: var(--ink); text-decoration: line-through; text-decoration-color: var(--red); text-decoration-thickness: 2px; }
+.marked .essay-msg .fx b { display: inline; animation: pop .35s cubic-bezier(.2, .9, .3, 1.2) both; }
+.marked .essay-msg .fx:nth-child(2) b { animation-delay: .25s; }
+.marked .essay-msg .fx:nth-child(3) b { animation-delay: .5s; }
+.marked .essay-msg .fx:nth-child(4) b { animation-delay: .75s; }
+.doc-msg { padding-top: 5px; }
+.doc-thumb { display: block; width: 100%; height: 72px; object-fit: cover; object-position: top; border-radius: 10px; margin-bottom: 6px; }
 .typing { align-self: flex-start; display: none; gap: 4px; padding: 11px 13px; border-radius: 15px; border-bottom-left-radius: 5px; background: var(--white); }
 .typing.show { display: inline-flex; }
 .typing i { width: 7px; height: 7px; border-radius: 50%; background: var(--moss); animation: dot 1.2s infinite; }
