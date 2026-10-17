@@ -261,8 +261,15 @@
       </div>
     </div>
 
-    <div class="pages reveal">
-      <h3 class="pages-title" data-i18n="rep.pages">Haqiqiy hisobotdan sahifalar</h3>
+    <div class="pages reveal" id="namunalar">
+      <div class="pages-head">
+        <h3 class="pages-title" data-i18n="rep.pages">Haqiqiy hisobotdan sahifalar</h3>
+        <div class="pages-tabs" role="tablist" aria-label="Namuna hisobot">
+          <button type="button" role="tab" id="tab-w" aria-controls="pages-w" aria-selected="true">✍️ Writing</button>
+          <button type="button" role="tab" id="tab-s" aria-controls="pages-s" aria-selected="false">🎙 Speaking</button>
+        </div>
+      </div>
+      <div class="pages-panel" id="pages-w" role="tabpanel" aria-labelledby="tab-w">
       <div class="pages-row">
         <figure class="page-fig">
           <a class="page-box" href="assets/report-cover.webp" target="_blank" rel="noopener"><img src="assets/report-cover.webp" width="910" height="1287" loading="lazy" decoding="async" alt="Bandzilla PDF hisobotining muqovasi: taxminiy Band 6.5, 4 mezon bo‘yicha ball va 3 ta asosiy vazifa" data-i18n-attr="alt:rep.p1alt"></a>
@@ -276,6 +283,29 @@
           <a class="page-box" href="assets/report-model.webp" target="_blank" rel="noopener"><img src="assets/report-model.webp" width="910" height="1287" loading="lazy" decoding="async" alt="Hisobot sahifasi: o‘sha savolga yozilgan model javob, bir band yuqoriroq darajada" data-i18n-attr="alt:rep.p3alt"></a>
           <figcaption><span class="num">3</span><span data-i18n="rep.p3">Siz uchun yozilgan model javob</span></figcaption>
         </figure>
+      </div>
+      <a class="pages-dl" href="assets/Bandzilla_Writing_namuna.pdf" download><svg aria-hidden="true"><use href="#i-down"/></svg><span data-i18n="rep.dlW">To‘liq Writing namunasini yuklab olish (PDF, 6 sahifa)</span></a>
+      </div>
+      <div class="pages-panel" id="pages-s" role="tabpanel" aria-labelledby="tab-s">
+      <div class="pages-row pages-row--4">
+        <figure class="page-fig">
+          <a class="page-box" href="assets/sp-cover.webp" target="_blank" rel="noopener"><img src="assets/sp-cover.webp" width="910" height="1287" loading="lazy" decoding="async" alt="Speaking hisobotining muqovasi: taxminiy Band 6.0, 4 mezon bo‘yicha ball va 3 ta asosiy vazifa" data-i18n-attr="alt:rep.s1alt"></a>
+          <figcaption><span class="num">1</span><span data-i18n="rep.s1">Muqova: taxminiy ball, 4 mezon va 3 ta asosiy vazifa</span></figcaption>
+        </figure>
+        <figure class="page-fig">
+          <a class="page-box" href="assets/sp-answers.webp" target="_blank" rel="noopener"><img src="assets/sp-answers.webp" width="910" height="1287" loading="lazy" decoding="async" alt="Speaking hisobot sahifasi: javoblar matni, xatolar, tuzatishlar va parazit so‘zlar belgilangan" data-i18n-attr="alt:rep.s2alt"></a>
+          <figcaption><span class="num">2</span><span data-i18n="rep.s2">Javoblaringiz matni — xatolar va parazit so‘zlar belgilangan</span></figcaption>
+        </figure>
+        <figure class="page-fig">
+          <a class="page-box" href="assets/sp-voice.webp" target="_blank" rel="noopener"><img src="assets/sp-voice.webp" width="910" height="1287" loading="lazy" decoding="async" alt="Speaking hisobot sahifasi: nutq tezligi, uzun pauzalar, parazit so‘zlar va intonatsiya" data-i18n-attr="alt:rep.s3alt"></a>
+          <figcaption><span class="num">3</span><span data-i18n="rep.s3">Ovozingiz o‘lchandi: sur’at, pauzalar, intonatsiya</span></figcaption>
+        </figure>
+        <figure class="page-fig">
+          <a class="page-box" href="assets/sp-model.webp" target="_blank" rel="noopener"><img src="assets/sp-model.webp" width="910" height="1287" loading="lazy" decoding="async" alt="Speaking hisobot sahifasi: har bir savolga model javob, Telegram’da ovozini tinglash mumkin" data-i18n-attr="alt:rep.s4alt"></a>
+          <figcaption><span class="num">4</span><span data-i18n="rep.s4">Har bir savolga model javob — ovozini ham tinglaysiz</span></figcaption>
+        </figure>
+      </div>
+      <a class="pages-dl" href="assets/Bandzilla_Speaking_namuna.pdf" download><svg aria-hidden="true"><use href="#i-down"/></svg><span data-i18n="rep.dlS">To‘liq Speaking namunasini yuklab olish (PDF, 7 sahifa)</span></a>
       </div>
     </div>
   </div>
@@ -322,6 +352,7 @@
           <p>and explain why you found it beautiful.</p>
         </div>
       </div>
+      <a class="speak-sample" href="#namunalar" data-tab="s"><span data-i18n="sp.sample">Speaking hisobot namunasini ko‘rish</span> →</a>
     </div>
   </div>
 </section>

@@ -64,6 +64,17 @@
     "rep.disc": "Балл — примерная оценка по IELTS Band Descriptors, а не официальный результат IELTS.",
     "rep.cta": "Проверить своё эссе",
     "rep.pages": "Страницы настоящего отчёта",
+    "rep.dlW": "Скачать весь пример Writing (PDF, 6 страниц)",
+    "rep.dlS": "Скачать весь пример Speaking (PDF, 7 страниц)",
+    "rep.s1": "Обложка: примерный балл, 4 критерия и 3 приоритета",
+    "rep.s2": "Ваши ответы текстом — ошибки и слова-паразиты отмечены",
+    "rep.s3": "Ваш голос измерен: темп, паузы, интонация",
+    "rep.s4": "Модельный ответ на каждый вопрос — его можно и послушать",
+    "rep.s1alt": "Обложка отчёта Speaking: примерный Band 6.0, баллы по 4 критериям и 3 приоритета",
+    "rep.s2alt": "Страница отчёта Speaking: текст ответов с ошибками, исправлениями и словами-паразитами",
+    "rep.s3alt": "Страница отчёта Speaking: темп речи, длинные паузы, слова-паразиты и интонация",
+    "rep.s4alt": "Страница отчёта Speaking: модельный ответ на каждый вопрос, его голос можно послушать в Telegram",
+    "sp.sample": "Посмотреть пример отчёта Speaking",
     "rep.p1": "Обложка: примерный балл, 4 критерия и 3 приоритета",
     "rep.p2": "Каждая ошибка — с исправлением и объяснением",
     "rep.p3": "Модельный ответ, написанный для вас",
@@ -307,6 +318,33 @@
     });
     if (finePointer) m.addEventListener("mouseenter", function () { selectMark(m); });
   });
+
+  // --- Sample report pages: Writing | Speaking tabs (without JS both show) ---
+  var tabs = $$(".pages-tabs [role=tab]");
+  function openTab(which) {
+    tabs.forEach(function (t) {
+      var on = t.id === "tab-" + which;
+      t.setAttribute("aria-selected", on ? "true" : "false");
+      t.tabIndex = on ? 0 : -1;
+      document.getElementById(t.getAttribute("aria-controls")).hidden = !on;
+    });
+  }
+  if (tabs.length) {
+    openTab("w");
+    tabs.forEach(function (t) {
+      t.addEventListener("click", function () { openTab(t.id.slice(4)); });
+      t.addEventListener("keydown", function (e) {
+        if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+          var next = t.id === "tab-w" ? "s" : "w";
+          openTab(next);
+          document.getElementById("tab-" + next).focus();
+        }
+      });
+    });
+    $$("[data-tab]").forEach(function (a) {
+      a.addEventListener("click", function () { openTab(a.getAttribute("data-tab")); });
+    });
+  }
 
   // --- Hero chat: essay in -> "chewing" -> Gotcha! sticker, the mistakes in
   // the essay get eaten (struck out, fixed) -> the PDF with the bot's caption ---
