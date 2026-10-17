@@ -2,15 +2,16 @@
 #     https://bandzilla.uz           -> landing page (static: /opt/writespeak/landing)
 #     https://bandzilla.uz/cabinet/  -> teachers' web cabinet (admin_web container, /cabinet routes only)
 #     https://www.bandzilla.uz       -> 301 to https://bandzilla.uz (one canonical address)
+#     https://admin.bandzilla.uz     -> web admin panel (admin_web container, 127.0.0.1:8088)
 #     http://*                       -> 301 to the https address
 #
-# The site moved here from writespeak.uz on 2026-10-17; writespeak.uz now
-# 301s every path here, and the admin panel stays on admin.writespeak.uz for
-# now (deploy/nginx/writespeak.uz).
+# The site and the admin panel moved here from writespeak.uz on 2026-10-17;
+# writespeak.uz and admin.writespeak.uz now 301 every path here
+# (deploy/nginx/writespeak.uz).
 #
-# TLS: Let's Encrypt cert "bandzilla.uz" (bandzilla.uz + www), issued with
-# `certbot certonly --nginx --cert-name bandzilla.uz -d bandzilla.uz -d www.bandzilla.uz`
-# against the port-80 server below and auto-renewed by certbot's timer. Server
+# TLS: Let's Encrypt cert "bandzilla.uz" (all three names), issued with
+# `certbot certonly --nginx --cert-name bandzilla.uz -d bandzilla.uz -d www.bandzilla.uz -d admin.bandzilla.uz`
+# against the port-80 servers below and auto-renewed by certbot's timer. Server
 # copy: /etc/nginx/sites-available/bandzilla.uz (symlinked into sites-enabled).
 #
 # Security headers are set per server; locations only use `expires` (an
@@ -46,7 +47,7 @@ server {
         expires 7d;
     }
     # Teachers' web cabinet: only /cabinet/ of the admin_web app (webapp/cabinet.py),
-    # signed in from the bot - the admin panel itself stays on admin.writespeak.uz.
+    # signed in from the bot - the admin panel itself is on admin.bandzilla.uz.
     location = /cabinet {
         return 301 /cabinet/;
     }
@@ -71,6 +72,35 @@ server {
     return 301 https://bandzilla.uz$request_uri;
 }
 
+# Web admin panel
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    server_name admin.bandzilla.uz;
+
+    ssl_certificate /etc/letsencrypt/live/bandzilla.uz/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/bandzilla.uz/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Referrer-Policy "same-origin" always;
+    add_header X-Robots-Tag "noindex, nofollow" always;
+
+    # Practice question images (the webapp accepts up to 10 MB).
+    client_max_body_size 12m;
+
+    location / {
+        proxy_pass http://127.0.0.1:8088;
+        proxy_set_header Host $host;
+        # Overwritten, not appended: the webapp's login brute-force guard keys on it.
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
 # Plain http -> https. The redirect sits inside `location /` so certbot's
 # issuing and renewal can still answer /.well-known/acme-challenge/ here.
 server {
@@ -80,5 +110,15 @@ server {
 
     location / {
         return 301 https://bandzilla.uz$request_uri;
+    }
+}
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name admin.bandzilla.uz;
+
+    location / {
+        return 301 https://admin.bandzilla.uz$request_uri;
     }
 }

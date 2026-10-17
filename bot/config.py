@@ -111,7 +111,7 @@ class Settings(BaseSettings):
 
     # --- Web admin panel (webapp/main.py) ---
     # Single shared login, not tied to Telegram accounts - see webapp/main.py's
-    # module docstring. Served as https://admin.writespeak.uz via the host's
+    # module docstring. Served as https://admin.bandzilla.uz via the host's
     # nginx (TLS from certbot) since 2026-10-06; the container port is only
     # published on 127.0.0.1 (docker-compose.yml).
     web_admin_username: str = "admin"

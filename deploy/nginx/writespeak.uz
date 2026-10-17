@@ -1,18 +1,15 @@
 # --- writespeak.uz - the old domain of the Bandzilla IELTS bot (/opt/writespeak, docker compose).
-#     https://writespeak.uz/*       -> 301 to https://bandzilla.uz/* (the site moved there on 2026-10-17;
-#                                      old links, /cabinet/ sign-in links included, keep working)
-#     https://www.writespeak.uz/*   -> the same
-#     https://admin.writespeak.uz   -> web admin panel (admin_web container, 127.0.0.1:8088) - stays here for now
-#     http://*                      -> 301 to the https address
-#
-# The site itself: deploy/nginx/bandzilla.uz.
+# Everything moved to bandzilla.uz on 2026-10-17 (deploy/nginx/bandzilla.uz); every
+# path here 301s to the same path there, so old links keep working:
+#     https://writespeak.uz/*, https://www.writespeak.uz/*  -> https://bandzilla.uz/*
+#                                    (/cabinet/ sign-in links included)
+#     https://admin.writespeak.uz/*  -> https://admin.bandzilla.uz/*
+#     http://*                       -> the same, via https
 #
 # TLS: Let's Encrypt cert "writespeak.uz" covering all three names, issued with
-# `certbot --nginx` and auto-renewed by certbot's timer. Server copy:
+# `certbot --nginx` and auto-renewed by certbot's timer - kept while the domain
+# is paid, so the https redirects keep working. Server copy:
 # /etc/nginx/sites-available/writespeak.uz (symlinked into sites-enabled).
-#
-# Security headers are set per server; locations only use `expires` (an
-# add_header inside a location would silently drop the server-level ones).
 
 # The old site address: every path to the same path on bandzilla.uz
 server {
@@ -28,7 +25,7 @@ server {
     return 301 https://bandzilla.uz$request_uri;
 }
 
-# Web admin panel
+# The old admin panel address
 server {
     listen 443 ssl;
     listen [::]:443 ssl;
@@ -39,26 +36,11 @@ server {
     include /etc/letsencrypt/options-ssl-nginx.conf;
     ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
 
-    add_header Strict-Transport-Security "max-age=31536000" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header X-Frame-Options "DENY" always;
-    add_header Referrer-Policy "same-origin" always;
-    add_header X-Robots-Tag "noindex, nofollow" always;
-
-    # Practice question images (the webapp accepts up to 10 MB).
-    client_max_body_size 12m;
-
-    location / {
-        proxy_pass http://127.0.0.1:8088;
-        proxy_set_header Host $host;
-        # Overwritten, not appended: the webapp's login brute-force guard keys on it.
-        proxy_set_header X-Forwarded-For $remote_addr;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
+    return 301 https://admin.bandzilla.uz$request_uri;
 }
 
-# Plain http -> https. The redirect sits inside `location /` so certbot's
-# renewal can still answer its /.well-known/acme-challenge/ requests here.
+# Plain http. The redirect sits inside `location /` so certbot's renewal can
+# still answer its /.well-known/acme-challenge/ requests here.
 server {
     listen 80;
     listen [::]:80;
@@ -75,6 +57,6 @@ server {
     server_name admin.writespeak.uz;
 
     location / {
-        return 301 https://admin.writespeak.uz$request_uri;
+        return 301 https://admin.bandzilla.uz$request_uri;
     }
 }

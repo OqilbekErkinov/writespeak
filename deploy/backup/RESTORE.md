@@ -54,7 +54,7 @@ cp $B/env /opt/writespeak/.env && chmod 600 /opt/writespeak/.env
 5. `docker compose up -d --build`.
 6. nginx: `deploy/nginx/bandzilla.uz` va `deploy/nginx/writespeak.uz` ni `/etc/nginx/sites-available/` ga qo'ying,
    sites-enabled'ga link qiling, ikkala domen DNS'ini yangi IP'ga o'zgartiring va
-   `certbot --nginx --cert-name bandzilla.uz -d bandzilla.uz -d www.bandzilla.uz`,
+   `certbot --nginx --cert-name bandzilla.uz -d bandzilla.uz -d www.bandzilla.uz -d admin.bandzilla.uz`,
    `certbot --nginx --cert-name writespeak.uz -d writespeak.uz -d www.writespeak.uz -d admin.writespeak.uz`.
 7. Kunlik zaxirani qayta yoqing: `cp deploy/backup/writespeak-backup.cron /etc/cron.d/writespeak-backup`.
 

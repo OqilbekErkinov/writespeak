@@ -65,7 +65,7 @@ deploy/nginx/   Serverdagi nginx sozlamasi nusxasi
    `--replace-old` kanaldan kelmagan savollarni o'chiradi; `--only writing|speaking`,
    `--since YYYY-MM-DD`, `--limit N` ham bor. Birinchi Writing importi 2026-04-01 dan beri
    postlarni o'qiydi. Savollarni admin panelning **Savollar** sahifasida
-   (`https://admin.writespeak.uz/questions`) tahrirlash/o'chirish mumkin. Speaking formati: Part
+   (`https://admin.bandzilla.uz/questions`) tahrirlash/o'chirish mumkin. Speaking formati: Part
    1/3 da **har bir qator bitta savol**, bot ularni birma-bir so'raydi va oxirida hammasini bitta
    tekshiruv sifatida baholaydi. Part 2 da butun matn bitta cue card bo'ladi.
 4. IELTS namuna kitoblaringizni `data/books/*.pdf` ga qo'ying, so'ng:

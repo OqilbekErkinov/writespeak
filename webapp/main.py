@@ -7,7 +7,7 @@ same Docker image as the bot (see docker-compose.yml's `admin_web` service):
 
 Auth is a single shared login (WEB_ADMIN_USERNAME/PASSWORD in .env) - a
 different surface for the same business owner, not a multi-tenant system.
-In production it sits behind the host's nginx at https://admin.writespeak.uz
+In production it sits behind the host's nginx at https://admin.bandzilla.uz
 (see bot/config.py's web panel comment), which passes the real client IP in
 X-Forwarded-For for the small brute-force guard below.
 """

@@ -88,8 +88,8 @@ services:
       # (Savollar page) are sent to students by the bot container.
       - ./data:/data
     ports:
-      # Localhost only: the public way in is https://admin.writespeak.uz via
-      # the host's nginx (/etc/nginx/sites-available/writespeak.uz), which
+      # Localhost only: the public way in is https://admin.bandzilla.uz via
+      # the host's nginx (/etc/nginx/sites-available/bandzilla.uz), which
       # proxies to this port.
       - "127.0.0.1:8088:8000"
     # --proxy-headers: take the client IP from nginx's X-Forwarded-For (safe
