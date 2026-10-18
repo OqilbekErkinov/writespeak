@@ -28,7 +28,7 @@ from aiogram.types import Message, ReactionTypeEmoji
 from bot.config import settings
 from bot.i18n import t
 from bot.keyboards.support_kb import support_reply_kb
-from bot.utils import crm, crm_events
+from bot.utils import crm, crm_events, support_log
 from db import crud
 from db.database import get_session
 
@@ -241,4 +241,7 @@ async def _deliver(bot: Bot, user_id: int, message: Message) -> str | None:
     except TelegramBadRequest as e:
         return f"⛔ Yetkazilmadi: {e.message}"
     logger.info("Admins' group: an answer went to user %s", user_id)
+    kind, text, file_id = support_log.describe(message)
+    await support_log.save(user_id, "out", kind=kind, text=text, file_id=file_id, via="group",
+                           admin=message.from_user.full_name if message.from_user else None)
     return None

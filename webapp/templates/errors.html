@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Xatolar — Bandzilla Admin{% endblock %}
+{% block wrapclass %}wide{% endblock %}
+{% block content %}
+<div class="e-head">
+  <h1>Xatolar <span class="muted num">{{ entries|length }}</span></h1>
+  {% if owner and entries %}
+  <form method="post" action="/errors/clear" onsubmit="return confirm('Barcha xatolar ro\'yxatdan o\'chirilsinmi?');">
+    <button type="submit" class="btn btn-sm">Ro'yxatni tozalash</button>
+  </form>
+  {% endif %}
+</div>
+<p class="hint" style="margin:-12px 0 16px">Bot, savol import qiluvchi va shu panelda yuz bergan xatolar (oxirgi 500 tasi), eng yangisi tepada.
+  Bir xil xato 10 daqiqa ichida qaytarilsa, bitta yozuv bo'ladi. So'nggi 24 soatda: <b>{{ last24 }}</b>.</p>
+
+<div class="filters">
+  <a href="/errors" class="{{ 'active' if src == 'all' else '' }}">Barchasi</a>
+  {% for s in sources %}
+  <a href="/errors?src={{ s }}" class="{{ 'active' if src == s else '' }}">{{ {"bot": "🤖 Bot", "importer": "📥 Import", "panel": "🖥 Panel"}.get(s, s) }}</a>
+  {% endfor %}
+</div>
+
+{% if entries %}
+<div class="e-list">
+  {% for e in entries %}
+  <details class="card e-item {{ 'warn' if e.level == 'WARNING' else '' }}">
+    <summary>
+      <span class="pill {{ 'pill-warn' if e.level == 'WARNING' else 'pill-bad' }}">{{ "ogohlantirish" if e.level == "WARNING" else "xato" }}</span>
+      <span class="e-src">{{ {"bot": "bot", "importer": "import", "panel": "panel"}.get(e.process, e.process) }}</span>
+      <span class="e-msg">{{ e.message }}</span>
+      <time title="{{ e.when }}">{{ e.ago }}</time>
+    </summary>
+    <div class="e-meta"><code>{{ e.logger }}:{{ e.line }}</code> · {{ e.when }}{% if e.again %} · bundan oldin yana <b>{{ e.again }}</b> marta{% endif %}</div>
+    {% if e.message|length > 160 %}<pre class="e-pre">{{ e.message }}</pre>{% endif %}
+    {% if e.exc %}<pre class="e-pre">{{ e.exc }}</pre>{% endif %}
+  </details>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card"><div class="empty">🎉 Xato yo'q.</div></div>
+{% endif %}
+
+<style>
+  .e-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .e-list { display: grid; gap: 8px; }
+  .e-list > * { min-width: 0; }
+  .e-item { margin: 0; padding: 0; border-left: 4px solid var(--red); }
+  .e-item.warn { border-left-color: var(--yellow); }
+  .e-item summary { display: flex; align-items: center; gap: 10px; padding: 12px 16px; cursor: pointer; list-style: none; min-width: 0; }
+  .e-item summary::-webkit-details-marker { display: none; }
+  .e-src { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; color: var(--moss); }
+  .e-msg { flex: 1; min-width: 0; color: var(--ink); font-weight: 700; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .e-item summary time { font-size: 12px; color: var(--ink-faint); white-space: nowrap; }
+  .e-meta { padding: 0 16px 10px; font-size: 12.5px; color: var(--ink-soft); }
+  .e-pre { margin: 0 16px 14px; padding: 12px 14px; max-height: 420px; overflow: auto; border-radius: 10px; background: var(--ink);
+    color: #d8f5e6; font-size: 12px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+</style>
+{% endblock %}

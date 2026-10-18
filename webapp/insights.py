@@ -21,6 +21,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import load_only
 
 from bot.config import settings
+from bot.utils import runtime
 from bot.utils.activity import DAY_KEY, LAST_SEEN_KEY, tashkent_day
 from bot.utils.crm import redis
 from db import crud
@@ -39,6 +40,7 @@ from db.models import (
     SpeakingSubmission,
     User,
     UserRole,
+    UserStatus,
     WritingSubmission,
 )
 
@@ -160,11 +162,12 @@ async def _active_days(user_id: int, days: int = 30) -> int:
 SEGMENTS = {
     "all": "Barchasi", "online": "Hozir faol", "new": "Bugun qo'shilgan", "active": "7 kunda faol",
     "paying": "To'lov qilgan", "checked": "Tekshiruv qilgan", "nochecks": "Hali tekshiruvsiz", "teachers": "O'qituvchilar",
+    "blocked": "Bloklangan",
 }
 
 
-async def users_overview(session, q: str | None, segment: str) -> dict:
-    users = await crud.list_users(session, search=q, limit=2000)
+async def users_overview(session, q: str | None, segment: str, limit: int = 2000) -> dict:
+    users = await crud.list_users(session, search=q, limit=limit)
     w = {uid: (n, last) for uid, n, last in (await session.execute(
         select(WritingSubmission.user_id, func.count(), func.max(WritingSubmission.created_at))
         .group_by(WritingSubmission.user_id))).all()}
@@ -198,6 +201,7 @@ async def users_overview(session, q: str | None, segment: str) -> dict:
         "checked": lambda r: r["checks"] > 0,
         "nochecks": lambda r: r["checks"] == 0,
         "teachers": lambda r: r["is_teacher"],
+        "blocked": lambda r: r["user"].status == UserStatus.denied,
     }
     counts = {k: sum(1 for r in rows if f(r)) for k, f in tests.items()}
     segment = segment if segment in tests else "all"
@@ -476,7 +480,7 @@ async def dashboard(session) -> dict:
 
     top = Counter(x.user_id for _, x in checks if between(x.created_at, month)).most_common(6)
     pending = sorted((p for p in payments if p.status == PaymentStatus.pending), key=lambda p: p.created_at, reverse=True)
-    testers = settings.checks_only_for_ids
+    testers = await runtime.testers()  # the panel's switch, else .env
 
     return {
         "greeting_date": f"{local(t_now).day}-{MONTHS[local(t_now).month - 1]}, {local(t_now).year}",

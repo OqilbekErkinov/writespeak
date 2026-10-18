@@ -67,6 +67,27 @@
   .topbar nav a.active { color: var(--ink); background: var(--lime); }
   .topbar .logout { color: rgba(255,255,255,0.7); font-size: 13px; font-weight: 700; white-space: nowrap; }
   .topbar .logout:hover { color: var(--lime); }
+  .topbar .logout .me { color: rgba(255,255,255,0.5); font-weight: 600; }
+  .topbar .nb { display: inline-block; min-width: 18px; margin-left: 4px; padding: 0 5px; border-radius: 100px;
+    background: var(--red); color: var(--ink); font-size: 11px; font-weight: 800; line-height: 18px; text-align: center; }
+  .tb-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+  .tw-chip { padding: 5px 11px; border-radius: 100px; background: var(--yellow); color: var(--ink) !important; font-size: 12.5px;
+    font-weight: 800; white-space: nowrap; }
+  .tw-chip:hover { text-decoration: none; box-shadow: 0 0 0 3px rgba(255,224,102,0.35); }
+  .more { position: relative; }
+  .more summary { list-style: none; cursor: pointer; color: rgba(255,255,255,0.78); padding: 8px 12px; border-radius: 100px;
+    font-size: 14px; font-weight: 700; white-space: nowrap; user-select: none; }
+  .more summary::-webkit-details-marker { display: none; }
+  .more summary:hover, .more[open] summary { color: #fff; background: rgba(91,242,166,0.12); }
+  .more.active summary { color: var(--ink); background: var(--lime); }
+  .more .menu { position: absolute; right: 0; top: calc(100% + 12px); z-index: 50; min-width: 230px; padding: 6px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 14px 36px rgba(6,32,24,0.2); }
+  .more .menu a { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 10px; color: var(--ink);
+    font-size: 14px; white-space: nowrap; }
+  .more .menu a:hover { background: var(--mint-2); text-decoration: none; }
+  .more .menu a.on { background: var(--mint); }
+  .more .menu .sep { height: 1px; margin: 5px 8px; background: var(--border); }
+  .more .menu .nb { margin-left: auto; }
 
   .wrap { max-width: 1120px; margin: 0 auto; padding: 36px 24px 60px; }
   .wrap.wide { max-width: 1320px; }
@@ -168,14 +189,20 @@
 
   .empty { color: var(--ink-faint); font-size: 14px; padding: 20px 0; text-align: center; }
 
-  /* Phones and narrow windows: logo + logout on top, nav scrolls sideways under them */
+  /* Laptops and narrower: logo + menu + logout on top, the nav on its own row under them
+     (scrolling sideways on phones) */
+  @media (max-width: 1560px) {
+    .topbar { flex-wrap: wrap; gap: 8px 16px; padding: 12px 24px 10px; }
+    .tb-right { margin-left: auto; }
+    .topbar nav { order: 3; flex: 1 0 100%; margin: 0 -24px; padding: 0 24px; }
+  }
   @media (max-width: 1060px) {
-    .topbar { flex-wrap: wrap; gap: 8px 16px; padding: 12px 16px 10px; }
-    .topbar .logout { margin-left: auto; }
-    .topbar nav { order: 3; flex: 1 0 100%; margin: 0 -16px; padding: 0 16px; }
+    .topbar { padding: 12px 16px 10px; }
+    .topbar nav { margin: 0 -16px; padding: 0 16px; }
     .wrap { padding: 30px 16px 48px; }
   }
   @media (max-width: 560px) {
+    .tw-chip .t, .topbar .logout .me { display: none; }
     h1 { font-size: 20px; }
     .card { padding: 16px; border-radius: 14px; }
     .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
@@ -187,17 +214,40 @@
 <body>
   <div class="topbar">
     <div class="brand"><img src="https://bandzilla.uz/assets/logo-on-dark.webp" alt="Bandzilla" width="720" height="126"><span class="tag">Admin</span></div>
+    {% set nav = request.state.nav if request.state.nav is defined else {} %}
     <nav>
       <a href="/" class="{{ 'active' if active == 'dashboard' else '' }}">Dashboard</a>
       <a href="/users" class="{{ 'active' if active == 'users' else '' }}">Foydalanuvchilar</a>
       <a href="/checks" class="{{ 'active' if active == 'checks' else '' }}">Tekshiruvlar</a>
-      <a href="/payments" class="{{ 'active' if active == 'payments' else '' }}">To'lovlar</a>
+      <a href="/payments" class="{{ 'active' if active == 'payments' else '' }}">To'lovlar{% if nav.payments %}<span class="nb" title="tasdiq kutmoqda">{{ nav.payments }}</span>{% endif %}</a>
+      <a href="/support" class="{{ 'active' if active == 'support' else '' }}">Murojaatlar{% if nav.support %}<span class="nb" title="o'qilmagan">{{ nav.support }}</span>{% endif %}</a>
       <a href="/groups" class="{{ 'active' if active == 'groups' else '' }}">Guruhlar</a>
       <a href="/teachers" class="{{ 'active' if active == 'teachers' else '' }}">O'qituvchilar</a>
       <a href="/questions" class="{{ 'active' if active == 'questions' else '' }}">Savollar</a>
     </nav>
-    <a href="/logout" class="logout">Chiqish</a>
+    <div class="tb-right">
+      {% if nav.window %}{% if nav.owner %}<a class="tw-chip" href="/settings" title="Faqat sinovchilar va adminlar tekshira oladi">🧪<span class="t"> Test rejimi</span></a>{% else %}<span class="tw-chip" title="Faqat sinovchilar va adminlar tekshira oladi">🧪<span class="t"> Test rejimi</span></span>{% endif %}{% endif %}
+      <details class="more {{ 'active' if active in ('broadcast', 'errors', 'settings', 'admins', 'audit') else '' }}">
+        <summary>Boshqaruv ▾{% if nav.errors %}<span class="nb" title="bugungi xatolar">{{ nav.errors }}</span>{% endif %}</summary>
+        <div class="menu">
+          <a href="/broadcast" class="{{ 'on' if active == 'broadcast' }}">📣 Ommaviy xabar</a>
+          <a href="/errors" class="{{ 'on' if active == 'errors' }}">⚠️ Xatolar{% if nav.errors %}<span class="nb">{{ nav.errors }}</span>{% endif %}</a>
+          {% if nav.owner %}
+          <div class="sep"></div>
+          <a href="/settings" class="{{ 'on' if active == 'settings' }}">🧪 Test rejimi</a>
+          <a href="/admins" class="{{ 'on' if active == 'admins' }}">👥 Adminlar</a>
+          <a href="/audit" class="{{ 'on' if active == 'audit' }}">📜 Kim nima qildi</a>
+          {% endif %}
+        </div>
+      </details>
+      <a href="/logout" class="logout">{% if nav.admin %}<span class="me">{{ nav.admin }} · </span>{% endif %}Chiqish</a>
+    </div>
   </div>
+  <script>
+    document.addEventListener("click", function (e) {
+      document.querySelectorAll("details.more[open]").forEach(function (d) { if (!d.contains(e.target)) d.removeAttribute("open"); });
+    });
+  </script>
   <div class="wrap {% block wrapclass %}{% endblock %}">
     {% block content %}{% endblock %}
   </div>

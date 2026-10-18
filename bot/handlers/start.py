@@ -13,9 +13,9 @@ are refused with a "ask your teacher for a new link" note. A coin gift's
 the bot, and after the language pick by a new one, whose referrer becomes
 the gift's buyer.
 
-(A user can still be manually blocked by setting their row's status to
-UserStatus.denied - see bot/middlewares/access_control.py - but nothing in
-this flow does that automatically any more.)
+(A user blocked from the admin panel - UserStatus.denied, see
+bot/middlewares/access_control.py - only gets the "blocked" note here;
+nothing in this flow blocks anyone automatically any more.)
 """
 from __future__ import annotations
 
@@ -31,6 +31,7 @@ from bot.config import settings
 from bot.i18n import DEFAULT_LANG, LANGS, t
 from bot.keyboards.lang_kb import CB_LANG_ONBOARD_PREFIX, lang_picker_kb
 from bot.keyboards.main_menu_kb import main_menu_kb
+from bot.middlewares.access_control import DENIED_TEXT
 from bot.utils import crm_events, gifts
 from bot.utils.group_invite import (
     is_center_payload,
@@ -41,6 +42,7 @@ from bot.utils.group_invite import (
 )
 from db import crud
 from db.database import get_session
+from db.models import UserStatus
 
 router = Router(name="start")
 
@@ -62,6 +64,11 @@ async def cmd_start(message: Message, command: CommandObject, lang: str) -> None
     referrer_id = None
     async with get_session() as session:
         user = await crud.get_user(session, tg.id)
+        if user is not None and user.status == UserStatus.denied:
+            # Blocked from the admin panel: no menu - and no group join, gift
+            # or referral through the link either.
+            await message.answer(DENIED_TEXT.get(user.language, DENIED_TEXT["uz"]))
+            return
         is_new = user is None
         if is_new:
             referrer_id = await _parse_referrer(session, command.args, new_user_id=tg.id)

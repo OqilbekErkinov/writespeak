@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Kim nima qildi — Bandzilla Admin{% endblock %}
+{% block wrapclass %}wide{% endblock %}
+{% block content %}
+<h1>Kim nima qildi</h1>
+<p class="hint" style="margin:-12px 0 16px">Paneldagi har bir muhim harakat: kirishlar, to'lovlar, coinlar, xabarlar, bloklash, sozlamalar.
+  Oxirgi 400 tasi, eng yangisi tepada.</p>
+
+<form method="get" action="/audit" class="filters a-filters">
+  <select name="admin" onchange="this.form.submit()" aria-label="Admin">
+    <option value="">Barcha adminlar</option>
+    {% for a in admins %}<option value="{{ a }}"{{ ' selected' if a == admin }}>{{ a }}</option>{% endfor %}
+  </select>
+  <select name="action" onchange="this.form.submit()" aria-label="Harakat">
+    <option value="">Barcha harakatlar</option>
+    {% for key, label in actions.items() %}<option value="{{ key }}"{{ ' selected' if key == action }}>{{ label }}</option>{% endfor %}
+  </select>
+  {% if admin or action %}<a href="/audit">✕ Tozalash</a>{% endif %}
+  <noscript><button type="submit" class="btn">Ko'rsatish</button></noscript>
+</form>
+
+<div class="card" style="padding:8px 10px">
+  {% if rows %}
+  <div class="table-scroll"><table>
+    <tr><th>Qachon</th><th>Admin</th><th>Harakat</th><th>Kimga</th><th>Tafsilot</th></tr>
+    {% for a in rows %}
+    <tr>
+      <td class="num" style="white-space:nowrap">{{ a.when }}</td>
+      <td class="strong">{{ a.admin }}</td>
+      <td><span class="pill {{ 'pill-bad' if a.action in ('login_failed', 'user_blocked', 'payment_reject', 'admin_disabled') else 'pill-good' if a.action in ('payment_approve', 'login') else 'pill-warn' if a.action in ('broadcast', 'test_window_on', 'test_window_off') else '' }}"
+        style="{{ '' if a.action in ('login_failed', 'user_blocked', 'payment_reject', 'admin_disabled', 'payment_approve', 'login', 'broadcast', 'test_window_on', 'test_window_off') else 'background:var(--mint-2)' }}">{{ a.label }}</span></td>
+      <td>{% if a.target_user_id %}{% set u = users.get(a.target_user_id) %}<a href="/users/{{ a.target_user_id }}">{{ u.full_name if u else a.target_user_id }}</a>{% else %}<span class="muted">—</span>{% endif %}</td>
+      <td style="max-width:460px;word-break:break-word">{{ a.details or "" }}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  {% else %}<div class="empty">Hali yozuv yo'q.</div>{% endif %}
+</div>
+<style>.a-filters select { min-width: 200px; }</style>
+{% endblock %}

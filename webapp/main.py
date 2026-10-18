@@ -5,8 +5,10 @@ same Docker image as the bot (see docker-compose.yml's `admin_web` service):
 
     uvicorn webapp.main:app --host 0.0.0.0 --port 8000 --proxy-headers ...
 
-Auth is a single shared login (WEB_ADMIN_USERNAME/PASSWORD in .env) - a
-different surface for the same business owner, not a multi-tenant system.
+Sign-in: the owner's login from .env (WEB_ADMIN_USERNAME/PASSWORD - always
+works, the break-glass login) or a separate admin login the owner made on
+/admins (since 2026-10-18; webapp/panel.py), and what each one did goes to
+the audit log.
 In production it sits behind the host's nginx at https://admin.bandzilla.uz
 (see bot/config.py's web panel comment), which passes the real client IP in
 X-Forwarded-For for the small brute-force guard below.
@@ -29,7 +31,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from bot.config import settings
 from bot.i18n import t
-from bot.utils import crm_events
+from bot.utils import crm_events, support_log
 from db import crud
 from db.database import get_session
 from db.models import PaymentRequest, PaymentStatus, PracticeModule, SpeakingSubmission, UserRole, WritingSubmission
@@ -37,6 +39,22 @@ from services.storage.file_storage import delete_file, save_practice_image
 
 logger = logging.getLogger(__name__)
 app = FastAPI(title="Bandzilla Admin")
+
+
+@app.middleware("http")
+async def admin_session(request: Request, call_next):
+    """Signs out a web admin who was disabled or got a new password, and
+    counts the top bar's badges (unread support messages, payments waiting,
+    ...). Added before SessionMiddleware, so it runs inside it and sees the
+    session."""
+    if request.session.get("logged_in"):
+        if not await panel.session_valid(request):
+            request.session.clear()
+        elif request.method == "GET" and not request.url.path.startswith(panel.NAV_SKIP):
+            request.state.nav = await panel.nav_counts(request)
+    return await call_next(request)
+
+
 app.add_middleware(
     SessionMiddleware,
     secret_key=settings.web_session_secret,
@@ -46,10 +64,20 @@ app.add_middleware(
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
 # Teachers' web cabinet (/cabinet, its own sign-in from the bot) - see webapp/cabinet.py.
-from webapp import cabinet, insights  # noqa: E402
+from webapp import cabinet, insights, panel  # noqa: E402
 
 cabinet.templates = templates
 app.include_router(cabinet.router)
+# Test window, broadcast, support inbox, errors, Excel, blocking, admins + audit.
+panel.templates = templates
+app.include_router(panel.router)
+
+
+@app.on_event("startup")
+async def _errors_to_the_panel() -> None:
+    from bot.utils import crm
+
+    crm.install_error_forwarding("panel")
 
 # --- tiny in-memory brute-force guard (per client IP, as forwarded by nginx) ---
 _failed_attempts: dict[str, list[float]] = {}
@@ -97,10 +125,14 @@ async def login_submit(request: Request, username: str = Form(...), password: st
             {"error": "Juda ko'p urinish. 15 daqiqadan so'ng qayta urining."},
             status_code=429,
         )
-    if username == settings.web_admin_username and password == settings.web_admin_password:
-        request.session["logged_in"] = True
+    found = await panel.authenticate(username.strip(), password)
+    if found is not None:
+        request.session.clear()  # a fresh session for every sign-in
+        request.session.update(logged_in=True, **found)
+        await panel.audit(found["admin"], "login", details=ip)
         return RedirectResponse("/", status_code=303)
     _record_failure(ip)
+    await panel.audit("—", "login_failed", details=f"{ip} · {username.strip()[:50]}")
     return templates.TemplateResponse(
         request, "login.html", {"error": "Login yoki parol noto'g'ri."}, status_code=401
     )
@@ -140,7 +172,7 @@ async def users_page(request: Request, q: str | None = None, s: str = "all"):
 
 
 @app.get("/users/{user_id}", response_class=HTMLResponse)
-async def user_detail(request: Request, user_id: int, sent: str | None = None):
+async def user_detail(request: Request, user_id: int, sent: str | None = None, blocked: str | None = None):
     if (redirect := _require_login(request)) is not None:
         return redirect
     async with get_session() as session:
@@ -148,22 +180,27 @@ async def user_detail(request: Request, user_id: int, sent: str | None = None):
     if profile is None:
         return RedirectResponse("/users", status_code=303)
     flash = {"1": "Xabar yuborildi.", "0": "Xabar yuborilmadi: foydalanuvchi botni bloklagan bo'lishi mumkin.",
-             "empty": "Xabar bo'sh."}.get(sent or "")
+             "empty": "Xabar bo'sh."}.get(sent or "") or {
+        "block": "Foydalanuvchi bloklandi: bot unga endi javob bermaydi.", "unblock": "Foydalanuvchi blokdan chiqarildi.",
+        "admin": "Adminni bloklab bo'lmaydi."}.get(blocked or "")
     return templates.TemplateResponse(request, "user_detail.html", {
-        "active": "users", **profile, "flash": flash, "flash_bad": sent in ("0", "empty"),
+        "active": "users", **profile, "flash": flash, "flash_bad": sent in ("0", "empty") or blocked == "admin",
+        "is_admin": user_id in settings.admin_ids, "blocked": profile["user"].status.value == "denied",
         "series_json": json.dumps(profile["series"]), "fmt": insights.fmt, "som": insights.som,
     })
 
 
 @app.post("/users/{user_id}/message")
-async def user_message(request: Request, user_id: int, text: str = Form("")):
+async def user_message(request: Request, user_id: int, text: str = Form(""), back: str = Form("")):
     """A message to the user in the bot, as the admins' support answer (they
-    can reply with its button); a copy goes to the admins' group."""
+    can reply with its button); a copy goes to the admins' group, and it is
+    kept in the support inbox. Sent from the profile or from the inbox."""
     if (redirect := _require_login(request)) is not None:
         return redirect
+    page = f"/support/{user_id}" if back == "support" else f"/users/{user_id}"
     text = text.strip()[:3500]
     if not text:
-        return RedirectResponse(f"/users/{user_id}?sent=empty", status_code=303)
+        return RedirectResponse(f"{page}?sent=empty", status_code=303)
     from bot.keyboards.support_kb import support_reply_kb
     from bot.utils import crm
 
@@ -174,9 +211,13 @@ async def user_message(request: Request, user_id: int, text: str = Form("")):
     sent = await _with_bot(lambda bot: bot.send_message(user_id, body, reply_markup=support_reply_kb(lang)))
     who = html.escape(user.full_name, quote=False) if user is not None else str(user_id)
     status = "yetkazildi" if sent else "yetkazilmadi"
-    await crm.post("support", f"✉️ <b>Web paneldan javob</b> → {who} (<code>{user_id}</code>) · {status}\n\n"
-                              f"{html.escape(text, quote=False)}")
-    return RedirectResponse(f"/users/{user_id}?sent={int(sent)}#message", status_code=303)
+    admin = panel.admin_name(request)
+    await crm.post("support", f"✉️ <b>Web paneldan javob</b> ({html.escape(admin)}) → {who} (<code>{user_id}</code>) · "
+                              f"{status}\n\n{html.escape(text, quote=False)}")
+    if sent:
+        await support_log.save(user_id, "out", text=text, via="web", admin=admin)
+    await panel.audit(request, "message", user_id, details=f"{status} · {text[:300]}")
+    return RedirectResponse(f"{page}?sent={int(sent)}" + ("" if back == "support" else "#message"), status_code=303)
 
 
 @app.get("/reports/{kind}/{submission_id}.pdf")
@@ -272,6 +313,8 @@ async def decide_payment_web(request: Request, request_id: int, action: str):
                 referral_coins=settings.referral_coins,
             )
         if decision.applied:
+            await panel.audit(request, f"payment_{action}", decision.request.user_id if decision.request else None,
+                              details=f"#{request_id}")
             await crm_events.payment_decided(request_id)
             # The buyer is told as in the bot (a gift's link included).
             from bot.handlers.payments import notify_decision
@@ -344,6 +387,8 @@ async def user_coins_submit(request: Request, user_id: int, delta: str = Form(..
     if adjustment is None:
         return RedirectResponse(f"{back}?done=balance", status_code=303)
     await crm_events.coins_adjusted(user_id, amount, adjustment.balance_after, note)
+    await panel.audit(request, "coins", user_id,
+                      details=f"{amount:+d} → {adjustment.balance_after}" + (f" · {note}" if note else ""))
     done = "added" if amount > 0 else "removed"
     if not notify:
         return RedirectResponse(f"{back}?done={done}", status_code=303)
@@ -392,6 +437,7 @@ async def make_center(request: Request, user_id: int, name: str = Form(...)):
             await crud.create_center(session, user_id, name)
     if created:
         await crm_events.center_created(user_id, name)
+        await panel.audit(request, "center_created", user_id, details=name)
     return RedirectResponse("/teachers?done=center", status_code=303)
 
 
@@ -406,6 +452,7 @@ async def revoke_teacher(request: Request, user_id: int):
             await crud.set_user_role(session, user_id, UserRole.student)
     if revoked:
         await crm_events.teacher_revoked(user_id)
+        await panel.audit(request, "teacher_revoked", user_id)
     return RedirectResponse("/teachers?done=revoked", status_code=303)
 
 
@@ -415,6 +462,7 @@ async def delete_center(request: Request, center_id: int):
         return redirect
     async with get_session() as session:
         await crud.delete_center(session, center_id)
+    await panel.audit(request, "center_deleted", details=f"#{center_id}")
     return RedirectResponse("/teachers?done=deleted", status_code=303)
 
 

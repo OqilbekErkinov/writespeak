@@ -379,6 +379,56 @@ class CoinAdjustment(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class SupportMessage(Base):
+    """One message of a student's conversation with the admins (since
+    2026-10-18, for the panel's support inbox): `in` from the student
+    (bot/handlers/support.py), `out` an admin's answer from the admins' group
+    (bot/handlers/crm.py) or the web panel."""
+
+    __tablename__ = "support_messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    direction: Mapped[str] = mapped_column(String(3))  # "in" | "out"
+    kind: Mapped[str] = mapped_column(String(20), default="text")  # text, photo, voice, document, video, ...
+    text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    file_id: Mapped[str | None] = mapped_column(String(255), nullable=True)  # a photo, to show in the panel
+    via: Mapped[str] = mapped_column(String(10), default="bot")  # bot, group, web
+    admin: Mapped[str | None] = mapped_column(String(100), nullable=True)  # who answered
+    read: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
+class WebAdmin(Base):
+    """A person who signs in to the web panel with their own login (since
+    2026-10-18). The owner's login in .env (WEB_ADMIN_USERNAME) keeps working
+    and is the only one who manages these accounts."""
+
+    __tablename__ = "web_admins"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    username: Mapped[str] = mapped_column(String(50), unique=True)
+    name: Mapped[str] = mapped_column(String(100))
+    password_hash: Mapped[str] = mapped_column(String(255))
+    active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AdminAction(Base):
+    """What was done in the web panel, by whom (the audit log): payment
+    decisions, coin changes, messages, broadcasts, blocks, settings, logins."""
+
+    __tablename__ = "admin_actions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    admin: Mapped[str] = mapped_column(String(100), index=True)
+    action: Mapped[str] = mapped_column(String(50), index=True)
+    target_user_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
+    details: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
 class VocabularyEntry(Base):
     """One word/phrase in a student's 'Lug'atim' word bank (bot/handlers/
     vocabulary.py) - from a graded submission's vocabulary list, or typed in

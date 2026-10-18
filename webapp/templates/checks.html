@@ -2,7 +2,10 @@
 {% block title %}Tekshiruvlar — Bandzilla Admin{% endblock %}
 {% block wrapclass %}wide{% endblock %}
 {% block content %}
-<h1>Tekshiruvlar</h1>
+<div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;margin-bottom:22px">
+  <h1 style="margin:0">Tekshiruvlar</h1>
+  <a class="btn" href="/export/checks.xlsx" title="Barcha tekshiruvlar Excel faylda">⬇ Excel</a>
+</div>
 
 <div class="c-bar">
   <div class="filters" style="margin:0">

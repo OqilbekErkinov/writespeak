@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}Ommaviy xabar — Bandzilla Admin{% endblock %}
+{% block wrapclass %}wide{% endblock %}
+{% block content %}
+<h1>Ommaviy xabar</h1>
+{% if started == "empty" %}<div class="error">O'zbekcha matn bo'sh — xabar yuborilmadi.</div>
+{% elif started %}<div class="flash">Yuborish boshlandi — pastda jarayonni kuzatib turing. Sahifani yopsangiz ham davom etadi.</div>{% endif %}
+
+<div class="b-grid">
+  <div class="card">
+    <h2>1. Kimga</h2>
+    <form method="get" action="/broadcast" class="b-who">
+      <label>Auditoriya
+        <select name="audience" onchange="this.form.submit()">
+          {% for key, label in audiences.items() %}<option value="{{ key }}"{{ ' selected' if key == audience }}>{{ label }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Til
+        <select name="lang" onchange="this.form.submit()">
+          {% for key, label in lang_filters.items() %}<option value="{{ key }}"{{ ' selected' if key == lang }}>{{ label }}</option>{% endfor %}
+        </select>
+      </label>
+      <noscript><button type="submit" class="btn">Hisoblash</button></noscript>
+    </form>
+    <div class="b-count">
+      <b class="num">{{ count }}</b> kishiga boradi
+      <span class="muted">· 🇺🇿 {{ langs.uz }} · 🇷🇺 {{ langs.ru }} · 🇬🇧 {{ langs.en }}</span>
+      {% if count > 60 %}<span class="muted">· ~{{ ((count * 0.07) / 60) | round(0, 'ceil') | int }} daqiqada</span>{% endif %}
+    </div>
+    <p class="hint">Bloklangan foydalanuvchilarga yuborilmaydi. Adminlar faqat «Faqat adminlar (sinov)» tanlanganda oladi —
+      katta yuborishdan oldin shu bilan sinab ko'ring.</p>
+  </div>
+
+  <form class="card" method="post" action="/broadcast/send" id="sendForm">
+    <h2>2. Matn</h2>
+    <input type="hidden" name="audience" value="{{ audience }}">
+    <input type="hidden" name="lang" value="{{ lang }}">
+    <label class="b-lab">🇺🇿 O'zbekcha <span class="muted">— majburiy</span></label>
+    <textarea name="text_uz" rows="6" maxlength="3500" required placeholder="Assalomu alaykum! Bandzilla'da yangilik…"></textarea>
+    <details class="b-more"{{ ' open' if langs.ru or langs.en }}>
+      <summary>Rus va ingliz tilidagi matn <span class="muted">— ixtiyoriy</span></summary>
+      <label class="b-lab">🇷🇺 Ruscha <span class="muted">— bo'sh qolsa, o'zbekcha matn boradi</span></label>
+      <textarea name="text_ru" rows="5" maxlength="3500" placeholder="Здравствуйте! Новость в Bandzilla…"></textarea>
+      <label class="b-lab">🇬🇧 Inglizcha <span class="muted">— bo'sh qolsa, o'zbekcha matn boradi</span></label>
+      <textarea name="text_en" rows="5" maxlength="3500" placeholder="Hello! News from Bandzilla…"></textarea>
+    </details>
+    <p class="hint">Har kim o'z tilidagi matnni oladi. Oddiy matn yuboriladi: emoji ishlaydi, havolalar o'zi bosiladigan bo'ladi.</p>
+    <button type="submit" class="btn btn-good b-send"{{ ' disabled' if not count }}>📣 {{ count }} kishiga yuborish</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Oldingi xabarlar</h2>
+  {% if history %}
+  <div class="table-scroll"><table>
+    <tr><th>Qachon</th><th>Kim</th><th>Kimga</th><th>Matn</th><th style="min-width:200px">Holat</th></tr>
+    {% for b in history %}
+    <tr class="b-row" data-id="{{ b.id }}" data-status="{{ b.status }}">
+      <td class="num" style="white-space:nowrap">{{ b.when }}</td>
+      <td>{{ b.admin }}</td>
+      <td>{{ b.audience }}<br><span class="muted" style="font-size:12px">{{ b.lang }}</span></td>
+      <td style="max-width:360px">{{ b.preview }}</td>
+      <td>
+        <div class="bar"><span style="width:{{ ((b.done|int) * 100 / ((b.total|int) or 1)) | round | int }}%"></span></div>
+        <div class="b-st"><b class="sent">{{ b.sent }}</b>/<span class="total">{{ b.total }}</span> yetkazildi
+          · <span class="blocked">{{ b.blocked }}</span> botni bloklagan · <span class="failed">{{ b.failed }}</span> xato
+          · <span class="state">{{ {"running": "⏳ yuborilmoqda", "done": "✅ tugadi", "stopped": "⛔ to'xtadi"}.get(b.status, b.status) }}</span></div>
+      </td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  {% else %}<div class="empty">Hali ommaviy xabar yuborilmagan.</div>{% endif %}
+</div>
+
+<style>
+  .b-grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 16px; align-items: start; }
+  .b-grid > * { min-width: 0; }
+  .b-who { display: flex; flex-wrap: wrap; gap: 12px; }
+  .b-who label { display: grid; gap: 4px; font-size: 12px; font-weight: 800; color: var(--moss); text-transform: uppercase;
+    letter-spacing: 0.05em; flex: 1 1 180px; }
+  .b-count { margin: 16px 0 6px; padding: 14px 16px; border-radius: 14px; background: var(--ink); color: #fff; font-size: 14px; }
+  .b-count b { font: 800 26px/1 var(--font-head); color: var(--lime); margin-right: 4px; }
+  .b-count .muted { color: rgba(255,255,255,0.65); }
+  .b-lab { display: block; margin: 12px 0 6px; font-size: 13px; font-weight: 800; color: var(--ink); }
+  .b-more { margin-top: 12px; }
+  .b-more summary { cursor: pointer; font-size: 13.5px; font-weight: 800; color: var(--moss); }
+  .b-send { margin-top: 14px; font-size: 15px; padding: 11px 20px; }
+  .bar { height: 8px; border-radius: 100px; background: var(--mint-2); overflow: hidden; border: 1px solid var(--border); }
+  .bar span { display: block; height: 100%; background: var(--skin); transition: width .4s; }
+  .b-st { margin-top: 6px; font-size: 12.5px; color: var(--ink-soft); }
+  .b-st b { color: var(--ink); }
+  @media (max-width: 1060px) { .b-grid { grid-template-columns: 1fr; } }
+</style>
+<script>
+  document.getElementById("sendForm").addEventListener("submit", function (e) {
+    if (!confirm({{ (count ~ " kishiga xabar yuborilsinmi? Yuborilgandan keyin bekor qilib bo'lmaydi.") | tojson }})) e.preventDefault();
+    else this.querySelector(".b-send").disabled = true;
+  });
+  const STATES = { running: "⏳ yuborilmoqda", done: "✅ tugadi", stopped: "⛔ to'xtadi" };
+  function poll() {
+    const rows = [...document.querySelectorAll(".b-row[data-status=running]")];
+    if (!rows.length) return;
+    Promise.all(rows.map(function (row) {
+      return fetch("/broadcast/" + row.dataset.id + ".json", { credentials: "same-origin" })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (b) {
+          if (!b || !b.total) return;
+          row.querySelector(".bar span").style.width = Math.round(100 * (+b.done || 0) / (+b.total || 1)) + "%";
+          ["sent", "total", "blocked", "failed"].forEach(function (k) { row.querySelector("." + k).textContent = b[k]; });
+          row.querySelector(".state").textContent = STATES[b.status] || b.status;
+          row.dataset.status = b.status;
+        });
+    })).finally(function () { setTimeout(poll, 2000); });
+  }
+  setTimeout(poll, 1500);
+</script>
+{% endblock %}

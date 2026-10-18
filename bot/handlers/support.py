@@ -16,7 +16,7 @@ from bot.keyboards.main_menu_kb import BTN_SUPPORT_EN, BTN_SUPPORT_RU, BTN_SUPPO
 from bot.keyboards.nav_kb import back_kb
 from bot.keyboards.support_kb import CB_SUPPORT_WRITE
 from bot.states.support_states import SupportStates
-from bot.utils import crm, crm_events
+from bot.utils import crm, crm_events, support_log
 
 router = Router(name="support")
 
@@ -57,6 +57,7 @@ async def receive(message: Message, state: FSMContext, lang: str) -> None:
         return
     await r.expire(key, 3600)
     await crm_events.support_message(message)
+    await support_log.save_incoming(message)  # the web panel's support inbox
     if message.media_group_id:
         # An album arrives as one message per photo: one confirmation for it.
         if (await state.get_data()).get("album") == message.media_group_id:

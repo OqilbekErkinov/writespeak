@@ -22,10 +22,11 @@ PENDING_TEXT = {
     "ru": "⏳ Ваш аккаунт ещё не подтверждён администратором. Пожалуйста, подождите.",
     "en": "⏳ Your account hasn't been approved by an admin yet. Please wait.",
 }
+# A user blocked from the admin panel (webapp/panel.py).
 DENIED_TEXT = {
-    "uz": "⛔ Sizning so'rovingiz rad etilgan. Savollar bo'lsa, admin bilan bog'laning.",
-    "ru": "⛔ Ваш запрос отклонён. Если есть вопросы, свяжитесь с администратором.",
-    "en": "⛔ Your request was declined. If you have questions, contact the admin.",
+    "uz": "⛔ Hisobingiz bloklangan. Bu xato deb hisoblasangiz, admin bilan bog'laning.",
+    "ru": "⛔ Ваш аккаунт заблокирован. Если вы считаете, что это ошибка, свяжитесь с администратором.",
+    "en": "⛔ Your account has been blocked. If you think this is a mistake, contact the admin.",
 }
 # No user row yet, so no language either: the default one.
 UNKNOWN_TEXT = "Botdan foydalanish uchun avval /start buyrug'ini yuboring."

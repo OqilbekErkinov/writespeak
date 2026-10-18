@@ -61,7 +61,7 @@ async def remove_manual_questions() -> int:
 
 
 async def main() -> None:
-    crm.install_error_forwarding()  # errors to the admins' group (bot/utils/crm.py)
+    crm.install_error_forwarding("importer")  # errors to the admins' group and the panel (bot/utils/crm.py)
     await asyncio.sleep(FIRST_RUN_DELAY)
     while True:
         result = await run_once()

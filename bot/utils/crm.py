@@ -448,9 +448,31 @@ class _ErrorForwarder(logging.Handler):
             again = seen[1] if seen is not None else 0
             self.seen[key] = [now, 0]
             exc = logging.Formatter().formatException(record.exc_info) if record.exc_info else record.exc_text
+            asyncio.run_coroutine_threadsafe(log_error(record, again, exc), self.loop)
             asyncio.run_coroutine_threadsafe(_post_error(error_card(record, again, exc)), self.loop)
         except Exception:  # noqa: BLE001 - logging must never fail
             pass
+
+
+ERRORS_LOG_KEY = "errors:log"  # the web panel's errors page (webapp/panel.py), newest first
+ERRORS_LOG_CAP = 500
+
+
+async def log_error(record: logging.LogRecord, again: int, exc: str | None) -> None:
+    """Keeps an error for the web panel's errors page - the last
+    ERRORS_LOG_CAP of them, with or without the admins' group."""
+    try:
+        entry = {
+            "at": record.created, "level": record.levelname, "logger": record.name, "line": record.lineno,
+            "process": PROCESS, "message": record.getMessage()[:2000], "again": again,
+            "exc": (exc or "")[-4000:],
+        }
+        pipe = redis().pipeline()
+        pipe.lpush(ERRORS_LOG_KEY, json.dumps(entry, ensure_ascii=False))
+        pipe.ltrim(ERRORS_LOG_KEY, 0, ERRORS_LOG_CAP - 1)
+        await pipe.execute()
+    except Exception:  # noqa: BLE001 - logging must never fail
+        pass
 
 
 async def _post_error(text: str) -> None:
@@ -485,7 +507,12 @@ def error_card(record: logging.LogRecord, again: int, exc: str | None) -> str:
     return "\n".join(lines)
 
 
-def install_error_forwarding() -> None:
+PROCESS = "bot"  # which process an error came from, on the panel's errors page
+
+
+def install_error_forwarding(process: str = "bot") -> None:
     """Called once from inside the running event loop of a process (the bot,
-    the importer)."""
+    the importer, the web panel)."""
+    global PROCESS
+    PROCESS = process
     logging.getLogger().addHandler(_ErrorForwarder(asyncio.get_running_loop()))

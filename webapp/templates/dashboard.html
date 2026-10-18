@@ -15,7 +15,10 @@
     <div class="d-alerts">
       <span class="d-chip d-chip-live"><span class="dot"></span> hozir botda: <b>{{ d.today.online }}</b></span>
       {% if d.pending_count %}<a class="d-chip d-chip-warn" href="/payments?status=pending">💳 {{ d.pending_count }} ta to'lov tasdiq kutmoqda →</a>{% endif %}
-      {% if d.test_window.on %}<span class="d-chip d-chip-test" title="CHECKS_ONLY_FOR yoqilgan">🧪 Test rejimi: faqat {{ d.test_window.testers }} kishi + adminlar tekshira oladi · {{ d.test_window.waiting }} kishi kutmoqda</span>{% endif %}
+      {% set nav = request.state.nav if request.state.nav is defined else {} %}
+      {% if nav.support %}<a class="d-chip d-chip-warn" href="/support?f=unread">💬 {{ nav.support }} ta o'qilmagan murojaat →</a>{% endif %}
+      {% if d.test_window.on %}<a class="d-chip d-chip-test" href="/settings" title="Test rejimi sozlamalari">🧪 Test rejimi: faqat {{ d.test_window.testers }} kishi + adminlar tekshira oladi · {{ d.test_window.waiting }} kishi kutmoqda →</a>{% endif %}
+      {% if nav.errors %}<a class="d-chip d-chip-test" href="/errors">⚠️ Bugun {{ nav.errors }} ta xato →</a>{% endif %}
     </div>
   </div>
   <img class="d-mascot" src="https://bandzilla.uz/assets/mascot-cool-cape.webp" alt="" width="483" height="640">
@@ -131,6 +134,7 @@
   .d-chip-warn { background: var(--yellow); color: var(--ink); }
   .d-chip-warn:hover { text-decoration: none; box-shadow: 0 0 0 3px rgba(255,224,102,0.35); }
   .d-chip-test { background: rgba(255,77,77,0.18); color: #fff; box-shadow: inset 0 0 0 1px rgba(255,77,77,0.6); }
+  a.d-chip-test:hover, a.d-chip-warn:hover { text-decoration: none; }
   .d-mascot { position: relative; z-index: 1; flex: none; width: 150px; height: auto; margin: -10px 0 -26px; filter: drop-shadow(0 10px 24px rgba(0,0,0,0.35)); }
 
   .d-kpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }

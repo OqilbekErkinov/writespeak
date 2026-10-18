@@ -2,8 +2,9 @@
 assignment entry points before they let a user start a new check.
 
 Every check costs its own number of coins (bot/utils/coins.py). Checked in
-order: (0) a test window (settings.checks_only_for) lets only the listed
-users and the admins check, free of charge; (1) a running unlimited
+order: (0) a test window (bot/utils/runtime.py: switched from the web panel,
+or CHECKS_ONLY_FOR in .env) lets only the listed users and the admins
+check, free of charge; (1) a running unlimited
 subscription (no longer sold since 2026-10-17) makes it free; (2) a group
 whose teacher/center pays for its students' checks covers it, within that
 group's daily limit (its assignments are never limited - see
@@ -25,6 +26,7 @@ from aiogram.types import Message
 from bot.config import settings
 from bot.i18n import t
 from bot.keyboards.payment_kb import buy_coins_kb
+from bot.utils import runtime
 from bot.utils.coins import check_coins
 from db import crud
 from db.database import get_session
@@ -40,22 +42,15 @@ class Quota:
     balance: int | None = None  # the student's coins, when they pay themselves
 
 
-def checks_paused_for(user_id: int) -> bool:
-    """True during a test window (settings.checks_only_for_ids) for everyone
-    but the listed users and the admins."""
-    allowed = settings.checks_only_for_ids
-    return bool(allowed) and user_id not in allowed | settings.admin_ids
-
-
 async def check_quota(user_id: int, kind: str, assignment_group_id: int | None = None) -> Quota:
     """`kind`: what is being checked - a bot/utils/coins.py CHECK_COINS key
     ("writing_task2", "speaking_full", ...). `assignment_group_id`: the check
     answers that group's assignment."""
     price = check_coins(kind)
-    if settings.checks_only_for_ids:
+    if await runtime.window_on():
         # Test window: the testers check free of charge, nobody else at all.
         # Nothing is changed in the database, so ending it restores everyone.
-        return Quota(not checks_paused_for(user_id), False, price=price)
+        return Quota(not await runtime.checks_paused_for(user_id), False, price=price)
     async with get_session() as session:
         if await crud.has_active_subscription(session, user_id):
             return Quota(True, False, price=price)
@@ -82,7 +77,7 @@ async def payment_of(user_id: int, coins: int, payer_id: int | None) -> dict:
         return {"mode": "sponsor", "coins": coins, "payer_id": payer_id}
     if coins:
         return {"mode": "coins", "coins": coins}
-    if settings.checks_only_for_ids:
+    if await runtime.window_on():
         return {"mode": "test", "coins": 0}
     async with get_session() as session:
         if await crud.has_active_subscription(session, user_id):
@@ -101,7 +96,7 @@ def free_check_note(quota: Quota, lang: str) -> str:
 
 
 async def send_paywall(message: Message, lang: str = "uz", quota: Quota | None = None) -> None:
-    if checks_paused_for(message.chat.id):
+    if await runtime.checks_paused_for(message.chat.id):
         await message.answer(t("quota.paused", lang))
         # It promises a message when checks are back: bot/utils/checks_back.py.
         from bot.utils.checks_back import remember

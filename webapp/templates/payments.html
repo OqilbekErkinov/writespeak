@@ -1,7 +1,10 @@
 {% extends "base.html" %}
 {% block title %}To'lovlar — Bandzilla Admin{% endblock %}
 {% block content %}
-<h1>To'lovlar</h1>
+<div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;margin-bottom:22px">
+  <h1 style="margin:0">To'lovlar</h1>
+  <a class="btn" href="/export/payments.xlsx" title="Barcha to'lovlar Excel faylda">⬇ Excel</a>
+</div>
 
 <div class="filters">
   <a href="/payments" class="{{ 'active' if status == 'all' else '' }}">Barchasi</a>

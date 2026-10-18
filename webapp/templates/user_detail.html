@@ -28,7 +28,15 @@
   <div class="p-actions">
     <a class="btn btn-primary" href="/users/{{ user.id }}/coins">🟡 Coin ±</a>
     <a class="btn btn-ghost" href="#message">✉️ Xabar yozish</a>
+    <a class="btn btn-ghost" href="/support/{{ user.id }}">💬 Yozishma</a>
     <a class="btn btn-ghost" href="tg://user?id={{ user.id }}">Telegram'da ochish</a>
+    {% if not is_admin %}
+    <form method="post" action="/users/{{ user.id }}/block" class="inline"
+          onsubmit='return confirm({{ (user.full_name ~ " blokdan chiqarilsinmi?") | tojson if blocked else (user.full_name ~ " bloklansinmi? Bot unga boshqa javob bermaydi: tekshiruv, menyu va murojaat yopiladi.") | tojson }});'>
+      <input type="hidden" name="action" value="{{ 'unblock' if blocked else 'block' }}">
+      <button type="submit" class="btn {{ 'btn-ghost' if blocked else 'btn-ghost btn-block' }}">{{ "✅ Blokdan chiqarish" if blocked else "⛔ Bloklash" }}</button>
+    </form>
+    {% endif %}
   </div>
 </section>
 
@@ -194,6 +202,7 @@
   .btn-ghost { background: transparent; color: #fff; border-color: rgba(255,255,255,0.35); }
   .btn-ghost:hover { background: rgba(91,242,166,0.14); border-color: var(--lime); color: #fff; }
   .p-hero .btn-primary { color: var(--ink); }
+  .btn-block:hover { background: rgba(255,77,77,0.18); border-color: var(--red); }
 
   .p-kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin-bottom: 16px; }
   .k { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px; }

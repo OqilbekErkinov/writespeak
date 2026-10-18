@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Test rejimi — Bandzilla Admin{% endblock %}
+{% block content %}
+<h1>Test rejimi</h1>
+{% if flash %}<div class="{{ 'error' if flash_bad else 'flash' }}">{{ flash }}</div>{% endif %}
+
+<section class="tw-hero {{ 'on' if on else 'off' }}">
+  <div>
+    <div class="tw-state">{% if on %}🧪 Test rejimi yoqilgan{% else %}✅ Tekshiruvlar hamma uchun ochiq{% endif %}</div>
+    <p class="tw-text">
+      {% if on %}Hozir Writing va Speaking tekshiruvini faqat quyidagi sinovchilar va adminlar qila oladi. Qolganlarga
+      «Bandzilla yangilanmoqda» degan chiroyli xabar chiqadi va ular kutayotganlar ro'yxatiga yoziladi.
+      {% else %}Barcha foydalanuvchilar odatdagidek tekshiruv qila oladi. Test rejimi yoqilsa, tekshiruvni faqat
+      sinovchilar va adminlar qila oladi.{% endif %}
+    </p>
+    {% if on %}<p class="tw-text"><b>{{ waiting }}</b> kishi tekshiruv ochilishini kutmoqda — rejim o'chirilishi bilan ularga
+      «Bandzilla yana ishlayapti» xabari boradi.</p>{% endif %}
+  </div>
+  <form method="post" action="/settings/test-window" onsubmit='return confirm({{ ("Tekshiruvlar hamma uchun ochilsinmi? " ~ waiting ~ " kishiga «yana ishlayapti» xabari boradi.") | tojson if on else "Test rejimi yoqilsinmi? Tekshiruvni faqat sinovchilar va adminlar qila oladi." | tojson }});'>
+    <input type="hidden" name="action" value="{{ 'off' if on else 'on' }}">
+    <button type="submit" class="btn {{ 'btn-primary' if on else 'btn-warn' }} tw-btn">{{ "Hamma uchun ochish" if on else "Test rejimini yoqish" }}</button>
+  </form>
+</section>
+
+<div class="card">
+  <h2>Sinovchilar <span class="muted num">{{ testers|length }}</span></h2>
+  <p class="hint" style="margin:-8px 0 14px">Test rejimida tekshiruv qila oladiganlar. Adminlar ro'yxatda bo'lmasa ham doim tekshira oladi.
+    Ro'yxat rejim o'chiq paytda ham saqlanadi.</p>
+  {% if testers %}
+  <div class="table-scroll"><table>
+    {% for uid in testers %}{% set u = users.get(uid) %}
+    <tr>
+      <td>{% if u %}<a class="who" href="/users/{{ uid }}"><span class="ava">{{ (u.full_name or "?")[:1] }}</span>
+        <span style="min-width:0"><span class="nm">{{ u.full_name }}</span><br><span class="sub">{{ "@" ~ u.username if u.username else "username yo'q" }} · {{ uid }}</span></span></a>
+        {% else %}<span class="num">{{ uid }}</span> <span class="muted">· botda topilmadi</span>{% endif %}</td>
+      <td style="text-align:right">
+        <form method="post" action="/settings/test-window" class="inline">
+          <input type="hidden" name="action" value="remove"><input type="hidden" name="user_id" value="{{ uid }}">
+          <button type="submit" class="btn btn-sm">Olib tashlash</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  {% else %}<div class="empty">Hali sinovchi yo'q.</div>{% endif %}
+
+  <form method="post" action="/settings/test-window" class="tw-add">
+    <input type="hidden" name="action" value="add">
+    <input type="text" name="user_id" placeholder="Telegram ID yoki @username" required aria-label="Sinovchi">
+    <button type="submit" class="btn btn-good">+ Sinovchi qo'shish</button>
+  </form>
+  <p class="hint">O'zgarish botga 5 soniya ichida yetib boradi — botni qayta ishga tushirish shart emas.</p>
+</div>
+
+{% if env_on %}
+<p class="hint">ℹ️ Server sozlamalarida (.env) ham CHECKS_ONLY_FOR ro'yxati bor. Bu sahifadagi sozlama undan ustun turadi;
+  .env dagi ro'yxat faqat Redis ma'lumotlari yo'qolsa ishlatiladi.</p>
+{% endif %}
+
+<style>
+  .tw-hero { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 18px; padding: 24px 26px;
+    margin-bottom: 20px; border-radius: 20px; }
+  .tw-hero > div { flex: 1 1 420px; min-width: 0; }
+  .tw-hero.on { background: var(--ink); color: #fff; }
+  .tw-hero.off { background: var(--mint); color: var(--ink); }
+  .tw-state { font: 800 20px/1.25 var(--font-head); letter-spacing: -0.01em; margin-bottom: 8px; }
+  .tw-hero.on .tw-state { color: var(--yellow); }
+  .tw-text { margin: 0 0 6px; font-size: 14.5px; max-width: 640px; }
+  .tw-hero.on .tw-text { color: rgba(255,255,255,0.82); }
+  .tw-hero.on .tw-text b { color: var(--lime); }
+  .tw-btn { font-size: 15px; padding: 11px 20px; }
+  .btn-warn { background: var(--yellow); border-color: var(--yellow); color: var(--ink); }
+  .btn-warn:hover { background: #f5d23f; border-color: #f5d23f; }
+  .tw-add { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+  .tw-add input { flex: 1 1 240px; }
+</style>
+{% endblock %}

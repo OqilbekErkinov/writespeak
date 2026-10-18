@@ -9,6 +9,7 @@
     <input type="text" name="q" value="{{ q }}" placeholder="Ism, @username yoki ID…" aria-label="Qidirish">
     <button type="submit" class="btn">Qidirish</button>
     {% if q %}<a class="btn" href="/users?s={{ segment }}">✕</a>{% endif %}
+    <a class="btn" href="/export/users.xlsx" title="Barcha foydalanuvchilar Excel faylda">⬇ Excel</a>
   </form>
 </div>
 
@@ -36,6 +37,7 @@
           <span style="min-width:0">
             <span class="nm">{{ u.full_name }}</span>
             {% if r.is_admin %}<span class="pill pill-good" style="margin-left:4px">admin</span>{% elif r.is_teacher %}<span class="pill pill-warn" style="margin-left:4px">o'qituvchi</span>{% endif %}
+            {% if u.status.value == "denied" %}<span class="pill pill-bad" style="margin-left:4px">bloklangan</span>{% endif %}
             <br><span class="sub">{{ "@" ~ u.username if u.username else "username yo'q" }} · {{ u.id }}</span>
           </span>
         </a>

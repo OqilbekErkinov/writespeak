@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Murojaatlar — Bandzilla Admin{% endblock %}
+{% block content %}
+<h1>Murojaatlar</h1>
+<p class="hint" style="margin:-12px 0 16px">«💬 Admin bilan aloqa» orqali yozilgan xabarlar. Javobni shu yerdan ham, admin guruhidagi
+  «Murojaatlar» bo'limidan ham berish mumkin — ikkalasi ham shu yerda saqlanadi.</p>
+
+<div class="filters">
+  {% for key, label in [("all", "Barchasi"), ("unread", "O'qilmagan"), ("waiting", "Javob kutayotgan")] %}
+  <a href="/support?f={{ key }}" class="{{ 'active' if f == key else '' }}">{{ label }}</a>
+  {% endfor %}
+</div>
+
+<div class="card" style="padding:6px">
+  {% if threads %}
+  <ul class="s-list">
+    {% for x in threads %}{% set u = x.user %}
+    <li>
+      <a href="/support/{{ u.id }}" class="s-item{{ ' unread' if x.unread }}">
+        <span class="ava">{{ (u.full_name or "?")[:1] }}</span>
+        <span class="s-body">
+          <span class="s-top"><span class="nm">{{ u.full_name }}</span>
+            <span class="sub">{{ "@" ~ u.username if u.username else u.id }}</span>
+            <time>{{ x.ago }}</time></span>
+          <span class="s-last">{% if x.m.direction == "out" %}<span class="muted">Siz{% if x.m.admin %} ({{ x.m.admin }}){% endif %}:</span> {% endif %}{% if x.m.kind != "text" %}{{ {"photo": "🖼 Rasm", "voice": "🎤 Ovozli xabar", "video": "🎬 Video", "video_note": "⏺ Video xabar", "audio": "🎵 Audio", "document": "📎 Fayl", "sticker": "Stiker", "animation": "GIF"}.get(x.m.kind, x.m.kind) }}{{ " · " if x.m.text }}{% endif %}{{ (x.m.text or "")[:140] }}</span>
+        </span>
+        {% if x.unread %}<span class="s-badge">{{ x.unread }}</span>{% elif x.m.direction == "in" %}<span class="pill pill-warn">javob kutmoqda</span>{% endif %}
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}<div class="empty">{{ "Bu yerda hech narsa yo'q." if f != "all" else "Hali murojaat yo'q. Yangi xabarlar shu yerda paydo bo'ladi." }}</div>{% endif %}
+</div>
+
+<style>
+  .s-list { list-style: none; margin: 0; padding: 0; }
+  .s-item { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 12px; color: var(--ink-soft); font-weight: 500; }
+  .s-item:hover { background: var(--paper); text-decoration: none; }
+  .s-list li + li .s-item { border-top: 1px solid var(--border); border-radius: 0; }
+  .s-item.unread { background: var(--mint-2); }
+  .s-body { flex: 1; min-width: 0; display: grid; gap: 2px; }
+  .s-top { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+  .s-top .nm { font-weight: 800; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .s-top .sub { font-size: 12px; color: var(--ink-faint); white-space: nowrap; }
+  .s-top time { margin-left: auto; font-size: 12px; color: var(--ink-faint); white-space: nowrap; }
+  .s-last { font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .s-item.unread .s-last { color: var(--ink); font-weight: 700; }
+  .s-badge { flex: none; min-width: 22px; padding: 0 7px; border-radius: 100px; background: var(--moss); color: #fff;
+    font-size: 12px; font-weight: 800; line-height: 22px; text-align: center; }
+</style>
+{% endblock %}

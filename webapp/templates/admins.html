@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Adminlar — Bandzilla Admin{% endblock %}
+{% block content %}
+<h1>Adminlar</h1>
+{% if flash %}<div class="{{ 'error' if flash_bad else 'flash' }}">{{ flash }}</div>{% endif %}
+
+{% if password %}
+<div class="pw-box">
+  <div><b>{{ password.username }}</b> uchun parol — faqat hozir ko'rinadi, nusxa olib qo'ying:</div>
+  <div class="pw-row"><code id="pw">{{ password.password }}</code>
+    <button type="button" class="btn btn-sm" onclick="navigator.clipboard.writeText(document.getElementById('pw').textContent); this.textContent='✓ Nusxa olindi';">Nusxa olish</button></div>
+  <div class="hint" style="color:rgba(255,255,255,0.7)">Kirish: admin.bandzilla.uz → login <b>{{ password.username }}</b> va shu parol.</div>
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>Kirish huquqi borlar</h2>
+  <div class="table-scroll"><table>
+    <tr><th>Admin</th><th>Login</th><th>Holat</th><th>Oxirgi kirish</th><th></th></tr>
+    <tr>
+      <td class="strong">Egasi <span class="pill pill-good">asosiy</span></td>
+      <td><code>{{ owner_login }}</code></td>
+      <td><span class="pill pill-good">faol</span></td>
+      <td class="muted">—</td>
+      <td class="muted" style="font-size:12.5px">Server sozlamalarida (.env) — hamma sahifaga kira oladi</td>
+    </tr>
+    {% for a in admins %}
+    <tr>
+      <td class="strong">{{ a.name }}</td>
+      <td><code>{{ a.username }}</code></td>
+      <td>{% if a.active %}<span class="pill pill-good">faol</span>{% else %}<span class="pill pill-bad">o'chirilgan</span>{% endif %}</td>
+      <td class="num">{{ a.last }}</td>
+      <td style="white-space:nowrap;text-align:right">
+        <form method="post" action="/admins/{{ a.id }}/reset" class="inline" onsubmit='return confirm({{ (a.name ~ " uchun yangi parol berilsinmi? Eskisi ishlamay qoladi.") | tojson }});'>
+          <button type="submit" class="btn btn-sm">Yangi parol</button></form>
+        <form method="post" action="/admins/{{ a.id }}/toggle" class="inline">
+          <button type="submit" class="btn btn-sm {{ 'btn-bad' if a.active else 'btn-good' }}">{{ "O'chirish" if a.active else "Yoqish" }}</button></form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  <p class="hint">Yangi adminlar Dashboard, foydalanuvchilar, to'lovlar, murojaatlar, ommaviy xabar va xatolar bilan ishlay oladi.
+    Test rejimi, adminlar va «Kim nima qildi» jurnali faqat egasiga ochiq.</p>
+</div>
+
+<form class="card a-new" method="post" action="/admins/create">
+  <h2>Yangi admin</h2>
+  <div class="a-row">
+    <label>Ismi<input type="text" name="name" maxlength="100" placeholder="Masalan: Dilnoza" required></label>
+    <label>Login<input type="text" name="username" maxlength="30" pattern="[A-Za-z0-9_]{3,30}" placeholder="dilnoza" required></label>
+    <button type="submit" class="btn btn-good">+ Qo'shish</button>
+  </div>
+  <p class="hint">Parolni tizim o'zi yaratadi va bir marta ko'rsatadi.</p>
+</form>
+
+<style>
+  .pw-box { margin-bottom: 20px; padding: 18px 20px; border-radius: 16px; background: var(--ink); color: #fff; display: grid; gap: 10px; }
+  .pw-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+  .pw-row code { font: 800 20px/1.3 ui-monospace, Consolas, monospace; color: var(--lime); letter-spacing: 0.04em;
+    background: rgba(91,242,166,0.1); padding: 6px 12px; border-radius: 10px; }
+  .a-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
+  .a-row label { display: grid; gap: 4px; flex: 1 1 200px; font-size: 12px; font-weight: 800; color: var(--moss);
+    text-transform: uppercase; letter-spacing: 0.05em; }
+  code { font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+</style>
+{% endblock %}
