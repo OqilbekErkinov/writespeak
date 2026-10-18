@@ -30,9 +30,9 @@
 <link rel="preload" href="fonts/unbounded-latin-800-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/manrope-latin-500-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/manrope-latin-800-normal.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="styles.css?v=nav1">
+<link rel="stylesheet" href="styles.css?v=cover3">
 <script>document.documentElement.classList.add('js')</script>
-<script src="app.js?v=hero2" defer></script>
+<script src="app.js?v=cover3" defer></script>
 </head>
 <body>
 
@@ -230,24 +230,59 @@
 
     <div class="rep-grid">
       <div class="rep reveal" id="report">
-        <div class="rep-top">
-          <div class="rep-brand"><img src="assets/symbol.webp" width="229" height="256" alt="" loading="lazy" decoding="async"><span>Bandzilla · Feedback report</span></div>
-          <div class="rep-score">
-            <div>
-              <span class="rep-chip">IELTS Writing · Task 2</span>
-              <p class="rep-topic">Technology and modern life</p>
-              <div class="band"><b>6.5</b><span data-i18n="rep.band">Umumiy Band</span></div>
-              <span class="target" data-i18n="rep.target">Keyingi maqsad · 7.0</span>
+        <!-- The PDF report's cover (services/pdf/templates/writing_report.html), as in
+             assets/Bandzilla_Writing_namuna.pdf - English, like the report itself. -->
+        <div class="cv-hero" lang="en">
+          <div class="cv-brandrow">
+            <img class="cv-logo" src="assets/logo-on-dark.webp" width="720" height="126" alt="Bandzilla" loading="lazy" decoding="async">
+            <span class="cv-task">IELTS Writing · Task 2 Essay</span>
+          </div>
+          <div class="cv-hero-in">
+            <div class="cv-who">
+              <p class="cv-kicker">Feedback report</p>
+              <p class="cv-name">Sample Student</p>
+              <p class="cv-meta">17 October 2026</p>
+              <ul class="cv-stats">
+                <li><b>194</b><span>words</span></li>
+                <li><b>4</b><span>paragraphs</span></li>
+                <li><b>8</b><span>fixes</span></li>
+                <li><b>4</b><span>strong phrases</span></li>
+              </ul>
             </div>
-            <img class="rep-mascot" src="assets/mascot-chomp.webp" width="480" height="640" alt="" loading="lazy" decoding="async">
+            <div class="cv-gauge">
+              <svg viewBox="0 0 130 130" aria-hidden="true">
+                <circle cx="65" cy="65" r="52" fill="none" stroke="#fff" stroke-opacity=".12" stroke-width="10"/>
+                <circle class="cv-ring" cx="65" cy="65" r="52" fill="none" stroke="#5BF2A6" stroke-width="10" stroke-linecap="round" transform="rotate(-90 65 65)"/>
+                <line x1="22.7" y1="57.5" x2="4.9" y2="54.4" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/>
+              </svg>
+              <b class="cv-num">6.5</b><span class="cv-lab">Overall band</span>
+              <span class="cv-target">Next target · 7.0</span>
+            </div>
           </div>
         </div>
-        <div class="crit">
-          <div class="crit-row">Task Response <b>7.0</b><span class="bar"><i style="--w:77.8%"></i></span></div>
-          <div class="crit-row">Coherence &amp; Cohesion <b>7.0</b><span class="bar"><i style="--w:77.8%"></i></span></div>
-          <div class="crit-row">Lexical Resource <b>6.0</b><span class="bar"><i style="--w:66.7%"></i></span></div>
-          <div class="crit-row">Grammatical Range &amp; Accuracy <b>6.0</b><span class="bar"><i style="--w:66.7%"></i></span></div>
+        <div class="cv-cards" lang="en">
+          <div class="cv-card st-top">
+            <div class="cv-l"><b>7.0</b><span>out of 9</span></div>
+            <div class="cv-r"><div class="cv-head"><span class="cv-cname">Task Response</span><span class="cv-chip c-top">Strong</span></div>
+              <div class="cv-bar"><i style="--w:77.8%"></i><s></s></div><p class="cv-note">Both views covered and a clear opinion.</p></div>
+          </div>
+          <div class="cv-card st-top">
+            <div class="cv-l"><b>7.0</b><span>out of 9</span></div>
+            <div class="cv-r"><div class="cv-head"><span class="cv-cname">Coherence &amp; Cohesion</span><span class="cv-chip c-top">Strong</span></div>
+              <div class="cv-bar"><i style="--w:77.8%"></i><s></s></div><p class="cv-note">Logical order, but one unclear sentence.</p></div>
+          </div>
+          <div class="cv-card st-focus">
+            <div class="cv-l"><b>6.0</b><span>out of 9</span></div>
+            <div class="cv-r"><div class="cv-head"><span class="cv-cname">Lexical Resource</span><span class="cv-chip c-focus">Focus</span></div>
+              <div class="cv-bar"><i style="--w:66.7%"></i><s></s></div><p class="cv-note">Good topic words; two word-partner mistakes.</p></div>
+          </div>
+          <div class="cv-card st-focus">
+            <div class="cv-l"><b>6.0</b><span>out of 9</span></div>
+            <div class="cv-r"><div class="cv-head"><span class="cv-cname">Grammatical Range &amp; Accuracy</span><span class="cv-chip c-focus">Focus</span></div>
+              <div class="cv-bar"><i style="--w:66.7%"></i><s></s></div><p class="cv-note">Verb forms and articles need attention.</p></div>
+          </div>
         </div>
+        <p class="cv-tickkey" lang="en">▮ marks your 7.0 target</p>
         <div class="rep-body">
           <div class="legend">
             <span><i class="sw sw-good"></i><span data-i18n="tone.good">Kuchli ibora</span></span>
