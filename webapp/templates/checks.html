@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Tekshiruvlar — Bandzilla Admin{% endblock %}
+{% block wrapclass %}wide{% endblock %}
+{% block content %}
+<h1>Tekshiruvlar</h1>
+
+<div class="c-bar">
+  <div class="filters" style="margin:0">
+    {% for key, label in [("all", "Barchasi"), ("w", "✍️ Writing"), ("s", "🎙 Speaking")] %}
+    <a href="/checks?kind={{ key }}&period={{ period }}" class="{{ 'active' if kind == key else '' }}">{{ label }}</a>
+    {% endfor %}
+  </div>
+  <div class="filters" style="margin:0">
+    {% for key, label in [("today", "Bugun"), ("7d", "7 kun"), ("30d", "30 kun"), ("all", "Hammasi")] %}
+    <a href="/checks?kind={{ kind }}&period={{ key }}" class="{{ 'active' if period == key else '' }}">{{ label }}</a>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="c-sum">
+  <div><b class="num">{{ summary.n }}</b><span>tekshiruv</span></div>
+  <div><b class="num">{{ "%.2f"|format(summary.avg) if summary.avg is not none else "—" }}</b><span>o'rtacha band</span></div>
+  <div><b class="num">{{ summary.coins }}</b><span>coin sarflangan</span></div>
+  <div><b class="num">${{ "%.2f"|format(summary.cost) }}</b><span>AI xarajati</span></div>
+</div>
+
+<div class="card" style="padding:8px 10px">
+  {% if rows %}
+  <div class="table-scroll"><table>
+    <tr><th>Sana</th><th>Foydalanuvchi</th><th>Turi</th><th>Band</th><th>Mezonlar</th><th>To'lov</th><th class="r">AI xarajat</th><th></th></tr>
+    {% for c in rows %}
+    <tr>
+      <td class="num">{{ c.when }}</td>
+      <td>{% if c.user %}<a class="who" href="/users/{{ c.user.id }}"><span class="ava">{{ (c.user.full_name or "?")[:1] }}</span><span class="nm">{{ c.user.full_name }}</span></a>{% else %}{{ c.user_id }}{% endif %}</td>
+      <td class="strong">{{ c.label }}{% if c.practice %} <span class="muted">· Practice</span>{% endif %}{% if c.assignment %} <span class="muted">· vazifa</span>{% endif %}</td>
+      <td>{% if c.band is not none %}<span class="band-chip {{ 'hi' if c.band >= 7 else ('lo' if c.band < 5.5 else '') }}">{{ "%.1f"|format(c.band) }}</span>{% else %}—{% endif %}</td>
+      <td class="muted" style="font-size:12.5px">{{ c.criteria }}</td>
+      <td>{{ (c.coins ~ " coin") if c.coins else c.paid }}</td>
+      <td class="r num">{{ "$%.3f"|format(c.cost) if c.cost else "—" }}</td>
+      <td>{% if c.pdf %}<a class="btn btn-sm" href="/reports/{{ c.kind }}/{{ c.id }}.pdf" target="_blank">PDF</a>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  {% else %}<div class="empty">Bu oraliqda tekshiruv yo'q.</div>{% endif %}
+</div>
+
+<style>
+  .c-bar { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+  .c-sum { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
+  .c-sum div { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 12px 16px; }
+  .c-sum b { display: block; font: 700 20px/1.2 var(--font-head); color: var(--ink); }
+  .c-sum span { font-size: 12px; color: var(--ink-soft); }
+  table .r, th.r { text-align: right; }
+  a.who:hover { text-decoration: none; }
+  @media (max-width: 560px) { .c-sum { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+</style>
+{% endblock %}

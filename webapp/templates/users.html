@@ -1,36 +1,52 @@
 {% extends "base.html" %}
 {% block title %}Foydalanuvchilar — Bandzilla Admin{% endblock %}
+{% block wrapclass %}wide{% endblock %}
 {% block content %}
-<h1>Foydalanuvchilar</h1>
+<div class="u-head">
+  <h1>Foydalanuvchilar <span class="muted num">{{ counts.all }}</span></h1>
+  <form method="get" action="/users" class="u-search">
+    <input type="hidden" name="s" value="{{ segment }}">
+    <input type="text" name="q" value="{{ q }}" placeholder="Ism, @username yoki ID…" aria-label="Qidirish">
+    <button type="submit" class="btn">Qidirish</button>
+    {% if q %}<a class="btn" href="/users?s={{ segment }}">✕</a>{% endif %}
+  </form>
+</div>
 
-<form method="get" action="/users" style="margin-bottom: 16px;">
-  <input type="text" name="q" value="{{ q }}" placeholder="Ism, username yoki ID bo'yicha qidirish..." style="width: 320px;">
-  <button type="submit" class="btn">Qidirish</button>
-</form>
+<div class="filters">
+  {% for key, label in segments.items() %}
+  <a href="/users?s={{ key }}{% if q %}&q={{ q|urlencode }}{% endif %}" class="{{ 'active' if segment == key else '' }}">
+    {% if key == 'online' %}<span class="dot"></span> {% endif %}{{ label }} <span class="cnt">{{ counts[key] }}</span>
+  </a>
+  {% endfor %}
+</div>
 
-<div class="card">
-  {% if users %}
+<div class="card" style="padding:8px 10px">
+  {% if rows %}
   <div class="table-scroll">
-  <table>
+  <table class="u-table">
     <tr>
-      <th>ID</th><th>Ism</th><th>Username</th><th>Til</th><th>Coin</th><th>Obuna</th><th>Qo'shilgan</th><th></th>
+      <th>Foydalanuvchi</th><th>Til</th><th class="r">Coin</th><th class="r">Tekshiruv</th>
+      <th class="r">To'lagan</th><th>Qo'shilgan</th><th>Oxirgi faollik</th><th></th>
     </tr>
-    {% for u in users %}
-    <tr>
-      <td class="strong">{{ u.id }}</td>
-      <td>{{ u.full_name }}</td>
-      <td>{{ "@" + u.username if u.username else "—" }}</td>
-      <td>{{ {"ru": "🇷🇺 RU", "en": "🇬🇧 EN"}.get(u.language, "🇺🇿 UZ") }}</td>
-      <td>{{ u.coin_balance }}</td>
+    {% for r in rows %}{% set u = r.user %}
+    <tr class="row-link" data-href="/users/{{ u.id }}">
       <td>
-        {% if u.subscription_expires_at and u.subscription_expires_at > now %}
-          <span class="pill pill-good">faol</span>
-        {% else %}
-          —
-        {% endif %}
+        <a class="who" href="/users/{{ u.id }}">
+          <span class="ava">{{ (u.full_name or "?")[:1] }}</span>
+          <span style="min-width:0">
+            <span class="nm">{{ u.full_name }}</span>
+            {% if r.is_admin %}<span class="pill pill-good" style="margin-left:4px">admin</span>{% elif r.is_teacher %}<span class="pill pill-warn" style="margin-left:4px">o'qituvchi</span>{% endif %}
+            <br><span class="sub">{{ "@" ~ u.username if u.username else "username yo'q" }} · {{ u.id }}</span>
+          </span>
+        </a>
       </td>
-      <td>{{ u.created_at.strftime("%d.%m.%Y") if u.created_at else "—" }}</td>
-      <td><a class="btn btn-sm" href="/users/{{ u.id }}/coins">🟡 ± Coin</a></td>
+      <td>{{ {"ru": "🇷🇺 RU", "en": "🇬🇧 EN"}.get(u.language, "🇺🇿 UZ") }}</td>
+      <td class="r num strong">{{ u.coin_balance }}</td>
+      <td class="r num">{% if r.checks %}<b class="strong">{{ r.checks }}</b> <span class="muted">· W{{ r.writing }} S{{ r.speaking }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+      <td class="r num">{% if r.paid %}<b class="strong">{{ r.paid_str }}</b>{% else %}<span class="muted">—</span>{% endif %}</td>
+      <td class="num">{{ r.joined }}</td>
+      <td>{% if r.online %}<span class="dot"></span> <b class="strong">hozir</b>{% else %}{{ r.last_active_str }}{% endif %}</td>
+      <td class="r"><a class="btn btn-sm" href="/users/{{ u.id }}/coins" title="Coin qo'shish yoki ayirish">🟡 ±</a></td>
     </tr>
     {% endfor %}
   </table>
@@ -39,4 +55,28 @@
   <div class="empty">Hech kim topilmadi.</div>
   {% endif %}
 </div>
+
+<style>
+  .u-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+  .u-head h1 { margin: 0; }
+  .u-search { display: flex; gap: 8px; align-items: center; }
+  .u-search input[type=text] { width: 300px; }
+  .filters .cnt { display: inline-block; margin-left: 4px; padding: 0 7px; border-radius: 100px; background: var(--mint-2);
+    font-size: 11.5px; color: var(--ink-soft); }
+  .filters a.active .cnt { background: rgba(6,32,24,0.12); color: var(--ink); }
+  .u-table td { vertical-align: middle; }
+  .u-table .r, .u-table th.r { text-align: right; }
+  .u-table a.who:hover { text-decoration: none; }
+  .u-table a.who:hover .nm { color: var(--moss); }
+  @media (max-width: 560px) { .u-search input[type=text] { width: 100%; } .u-search { flex: 1 1 100%; } }
+</style>
+<script>
+  // The whole row opens the profile; links and buttons inside keep their own.
+  document.querySelectorAll("tr.row-link").forEach(function (tr) {
+    tr.addEventListener("click", function (e) {
+      if (e.target.closest("a, button")) return;
+      window.location = tr.dataset.href;
+    });
+  });
+</script>
 {% endblock %}

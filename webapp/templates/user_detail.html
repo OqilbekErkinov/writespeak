@@ -1,0 +1,263 @@
+{% extends "base.html" %}
+{% block title %}{{ user.full_name }} — Bandzilla Admin{% endblock %}
+{% block wrapclass %}wide{% endblock %}
+{% block content %}
+{% set st = stats %}
+<p class="hint" style="margin:-14px 0 12px"><a href="/users">← Foydalanuvchilar</a></p>
+{% if flash %}<div class="{{ 'error' if flash_bad else 'flash' }}">{{ flash }}</div>{% endif %}
+
+<section class="p-hero">
+  <div class="p-id">
+    <span class="ava lg">{{ (user.full_name or "?")[:1] }}</span>
+    <div style="min-width:0">
+      <h1 class="p-name">{{ user.full_name }}</h1>
+      <div class="p-meta">
+        {% if user.username %}<a href="https://t.me/{{ user.username }}" target="_blank" rel="noopener">@{{ user.username }}</a>{% else %}<span>username yo'q</span>{% endif %}
+        <span>ID <b class="num">{{ user.id }}</b></span>
+        <span>{{ {"ru": "🇷🇺 Ruscha", "en": "🇬🇧 Inglizcha"}.get(user.language, "🇺🇿 O'zbekcha") }}</span>
+        {% if is_admin %}<span class="tag">admin</span>{% elif user.role.value == "teacher" %}<span class="tag tag-y">o'qituvchi</span>{% endif %}
+        {% if user.status.value == "denied" %}<span class="tag tag-r">bloklangan</span>{% endif %}
+      </div>
+      <div class="p-meta2">
+        {% if st.online %}<span><span class="dot"></span> hozir botda</span>{% else %}<span>Oxirgi faollik: <b>{{ st.last_active }}</b></span>{% endif %}
+        <span>Qo'shildi: <b>{{ st.joined }}</b> ({{ st.joined_ago }})</span>
+        <span>{% if referrer %}Taklif qilgan: <a href="/users/{{ referrer.id }}">{{ referrer.full_name }}</a>{% else %}O'zi kelgan{% endif %}</span>
+      </div>
+    </div>
+  </div>
+  <div class="p-actions">
+    <a class="btn btn-primary" href="/users/{{ user.id }}/coins">🟡 Coin ±</a>
+    <a class="btn btn-ghost" href="#message">✉️ Xabar yozish</a>
+    <a class="btn btn-ghost" href="tg://user?id={{ user.id }}">Telegram'da ochish</a>
+  </div>
+</section>
+
+<div class="p-kpis">
+  <div class="k k-ink"><b class="num">{{ user.coin_balance }}</b><span>coin balansda</span></div>
+  <div class="k"><b class="num">{{ st.writing + st.speaking }}</b><span>tekshiruv · W{{ st.writing }} · S{{ st.speaking }}</span></div>
+  <div class="k"><b class="num">{{ "%.1f"|format(st.avg_w) if st.avg_w is not none else "—" }} <small>/</small> {{ "%.1f"|format(st.avg_s) if st.avg_s is not none else "—" }}</b><span>o'rtacha band · Writing / Speaking</span></div>
+  <div class="k"><b class="num">{{ "%.1f"|format(st.best) if st.best is not none else "—" }}</b><span>eng yaxshi band</span></div>
+  <div class="k"><b class="num">{{ st.paid_str }}</b><span>so'm to'lagan · {{ st.payments }} ta to'lov</span></div>
+  <div class="k"><b class="num">{{ st.coins_spent }}</b><span>coin tekshiruvga sarflagan</span></div>
+  <div class="k"><b class="num">${{ "%.2f"|format(st.cost) }}</b><span>AI xarajati (OpenAI)</span></div>
+  <div class="k"><b class="num">{{ st.active_days }}<small>/30</small></b><span>kun faol (so'nggi 30 kun)</span></div>
+  <div class="k"><b class="num">{{ st.vocab_learned }}<small>/{{ st.vocab_total }}</small></b><span>lug'at: o'rganilgan / jami</span></div>
+  <div class="k"><b class="num">{{ st.practice }} · {{ st.referrals }}</b><span>Practice bajarilgan · taklif qilgan</span></div>
+</div>
+
+<nav class="p-tabs">
+  <a href="#tarix">Faollik tarixi <span>{{ events|length }}</span></a>
+  <a href="#tekshiruvlar">Tekshiruvlar <span>{{ checks|length }}</span></a>
+  <a href="#tolovlar">To'lovlar <span>{{ payments|length }}</span></a>
+  <a href="#coin">Coin o'zgarishlari <span>{{ adjustments|length }}</span></a>
+  <a href="#message">Xabar</a>
+</nav>
+
+<div class="p-grid">
+  <div class="p-main">
+    {% if series_json != "[]" %}
+    <div class="card">
+      <h2>Band dinamikasi</h2>
+      <div style="height:220px"><canvas id="bandChart"></canvas></div>
+    </div>
+    {% endif %}
+
+    <div class="card" id="tarix">
+      <h2>Faollik tarixi <span class="muted" style="font-family:var(--font);font-size:12px;font-weight:700">— eng yangisi tepada</span></h2>
+      <ol class="tl">
+        {% for e in events %}
+        <li class="tl-i {{ e.tone }}{{ ' tl-more' if loop.index > 25 }}">
+          <span class="tl-ic">{{ e.icon }}</span>
+          <div class="tl-b">
+            <div class="tl-t">{% if e.link %}<a href="{{ e.link }}"{% if e.pdf %} target="_blank"{% endif %}>{{ e.title }}</a>{% else %}{{ e.title }}{% endif %}</div>
+            {% if e.detail %}<div class="tl-d">{{ e.detail }}</div>{% endif %}
+          </div>
+          <time class="tl-w" title="{{ e.when }}">{{ e.when }}<br><span>{{ e.ago }}</span></time>
+        </li>
+        {% endfor %}
+      </ol>
+      {% if events|length > 25 %}<button type="button" class="btn" id="tlMore" style="margin-top:8px"
+        onclick="document.querySelectorAll('.tl-more').forEach(function (x) { x.classList.remove('tl-more'); }); this.remove();">
+        Yana {{ events|length - 25 }} ta voqeani ko'rsatish</button>{% endif %}
+    </div>
+  </div>
+
+  <aside class="p-side">
+    <div class="card" id="message">
+      <h2>✉️ Botda xabar yozish</h2>
+      <form method="post" action="/users/{{ user.id }}/message" onsubmit='return confirm({{ (user.full_name ~ " ga xabar yuborilsinmi?")|tojson }});'>
+        <textarea name="text" rows="5" maxlength="3500" placeholder="Masalan: Salom! To'lovingiz tekshirildi…" required></textarea>
+        <p class="hint">«💬 Admin javobi» sifatida boradi, foydalanuvchi «Javob yozish» tugmasi bilan javob qaytara oladi. Nusxasi admin guruhidagi «Murojaatlar»ga tushadi.</p>
+        <button type="submit" class="btn btn-good" style="margin-top:10px">Yuborish</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>🏫 Guruhlar</h2>
+      {% if memberships or own_groups %}
+      <ul class="plain">
+        {% for m, g in memberships %}<li>«{{ g.name }}» <span class="muted">· o'quvchi, {{ fmt(m.joined_at, False) }} dan · o'qituvchi {% if people.get(g.teacher_id) %}<a href="/users/{{ g.teacher_id }}">{{ people[g.teacher_id].full_name }}</a>{% else %}{{ g.teacher_id }}{% endif %}</span></li>{% endfor %}
+        {% for g in own_groups %}<li>«{{ g.name }}» <span class="muted">· o'zi ochgan, {{ fmt(g.created_at, False) }}</span></li>{% endfor %}
+      </ul>
+      {% else %}<p class="muted" style="margin:0">Hech qaysi guruhda emas.</p>{% endif %}
+    </div>
+
+    <div class="card">
+      <h2>🤝 Taklif qilganlari <span class="muted num">{{ referrals|length }}</span></h2>
+      {% if referrals %}
+      <ul class="plain">{% for r in referrals %}<li><a href="/users/{{ r.id }}">{{ r.full_name }}</a> <span class="muted">· {{ fmt(r.created_at, False) }}</span></li>{% endfor %}</ul>
+      {% else %}<p class="muted" style="margin:0">Hali hech kimni taklif qilmagan.</p>{% endif %}
+    </div>
+
+    <div class="card">
+      <h2>🎁 Sovg'alar</h2>
+      {% if gifts_bought or gifts_got %}
+      <ul class="plain">
+        {% for g in gifts_bought %}<li>Sovg'a qildi: <b>{{ g.coins }} coin</b> <span class="muted">· {% if g.claimed_by %}{% if people.get(g.claimed_by) %}<a href="/users/{{ g.claimed_by }}">{{ people[g.claimed_by].full_name }}</a>{% else %}{{ g.claimed_by }}{% endif %} oldi{% else %}hali olinmagan{% endif %}</span></li>{% endfor %}
+        {% for g in gifts_got %}<li>Sovg'a oldi: <b>{{ g.coins }} coin</b> <span class="muted">· {% if people.get(g.buyer_id) %}<a href="/users/{{ g.buyer_id }}">{{ people[g.buyer_id].full_name }}</a>{% else %}{{ g.buyer_id }}{% endif %} dan</span></li>{% endfor %}
+      </ul>
+      {% else %}<p class="muted" style="margin:0">Sovg'a yo'q.</p>{% endif %}
+    </div>
+  </aside>
+</div>
+
+<div class="card" id="tekshiruvlar">
+  <h2>Tekshiruvlar <span class="muted num">{{ checks|length }}</span></h2>
+  {% if checks %}
+  <div class="table-scroll"><table>
+    <tr><th>Sana</th><th>Turi</th><th>Band</th><th>Mezonlar</th><th>To'lov</th><th class="r">AI xarajat</th><th></th></tr>
+    {% for c in checks %}
+    <tr>
+      <td class="num">{{ c.when }}</td>
+      <td class="strong">{{ c.label }}{% if c.practice %} <span class="muted">· Practice</span>{% endif %}{% if c.assignment %} <span class="muted">· vazifa</span>{% endif %}</td>
+      <td>{% if c.band is not none %}<span class="band-chip {{ 'hi' if c.band >= 7 else ('lo' if c.band < 5.5 else '') }}">{{ "%.1f"|format(c.band) }}</span>{% else %}—{% endif %}</td>
+      <td class="muted" style="font-size:12.5px">{{ c.criteria }}</td>
+      <td>{{ (c.coins ~ " coin") if c.coins else c.paid }}</td>
+      <td class="r num">{{ "$%.3f"|format(c.cost) if c.cost else "—" }}</td>
+      <td>{% if c.pdf %}<a class="btn btn-sm" href="/reports/{{ c.kind }}/{{ c.id }}.pdf" target="_blank">PDF</a>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  {% else %}<div class="empty">Hali tekshiruv yo'q.</div>{% endif %}
+</div>
+
+<div class="card" id="tolovlar">
+  <h2>To'lovlar <span class="muted num">{{ payments|length }}</span></h2>
+  {% if payments %}
+  <div class="table-scroll"><table>
+    <tr><th>Sana</th><th>Nima</th><th class="r">Summa</th><th>Holat</th><th>Chek</th><th>Ko'rib chiqildi</th></tr>
+    {% for p in payments %}
+    <tr>
+      <td class="num">{{ fmt(p.created_at) }}</td>
+      <td class="strong">{% if p.kind.value == "gift" %}🎁 {{ p.coins }} coin · sovg'a{% elif p.kind.value == "subscription" %}Obuna ({{ p.subscription_months }} oy){% else %}{{ p.coins }} coin{% endif %}</td>
+      <td class="r num">{{ som(p.amount) }} so'm</td>
+      <td>{% if p.status.value == "pending" %}<span class="pill pill-warn">kutilmoqda</span>{% elif p.status.value == "approved" %}<span class="pill pill-good">tasdiqlangan</span>{% else %}<span class="pill pill-bad">rad etilgan</span>{% endif %}</td>
+      <td>{% if p.receipt_file_id %}<a class="thumb" href="/payments/{{ p.id }}/receipt" target="_blank"><img src="/payments/{{ p.id }}/receipt" alt="Chek" loading="lazy" onerror="this.parentNode.replaceWith('—')"></a>{% else %}—{% endif %}</td>
+      <td class="num muted">{{ fmt(p.reviewed_at) if p.reviewed_at else "—" }}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  {% else %}<div class="empty">To'lov yo'q.</div>{% endif %}
+</div>
+
+<div class="card" id="coin">
+  <h2>Coin qo'lda o'zgartirishlar <span class="muted num">{{ adjustments|length }}</span> <a class="btn btn-sm" href="/users/{{ user.id }}/coins" style="margin-left:8px">🟡 Coin ±</a></h2>
+  {% if adjustments %}
+  <div class="table-scroll"><table>
+    <tr><th>Sana</th><th>O'zgarish</th><th>Balans</th><th>Izoh</th></tr>
+    {% for a in adjustments %}
+    <tr>
+      <td class="num">{{ fmt(a.created_at) }}</td>
+      <td class="strong" style="color:{{ 'var(--moss)' if a.delta > 0 else '#c0392b' }}">{{ "+" if a.delta > 0 }}{{ a.delta }} coin</td>
+      <td class="num">{{ a.balance_after }} coin</td>
+      <td>{{ a.note or "—" }}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  {% else %}<div class="empty">Qo'lda o'zgartirish bo'lmagan.</div>{% endif %}
+</div>
+
+<style>
+  .p-hero { position: relative; overflow: hidden; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+    gap: 18px; padding: 24px 26px; margin-bottom: 16px; border-radius: 20px; color: #fff;
+    background: var(--ink) url(https://bandzilla.uz/assets/skin-ink.svg) 0 0 / 64px repeat; }
+  .p-id { display: flex; align-items: center; gap: 16px; min-width: 0; }
+  .p-name { margin: 0 0 6px; color: #fff; font-size: 26px; }
+  .p-meta, .p-meta2 { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; font-size: 13.5px; color: rgba(255,255,255,0.8); }
+  .p-meta2 { margin-top: 6px; color: rgba(255,255,255,0.7); }
+  .p-meta2 b { color: #fff; }
+  .p-hero a { color: var(--lime); }
+  .tag { font: 800 11px/1 var(--font); letter-spacing: 0.08em; text-transform: uppercase; padding: 5px 8px; border-radius: 100px;
+    background: var(--lime); color: var(--ink); }
+  .tag-y { background: var(--yellow); } .tag-r { background: var(--red); }
+  .p-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .btn-ghost { background: transparent; color: #fff; border-color: rgba(255,255,255,0.35); }
+  .btn-ghost:hover { background: rgba(91,242,166,0.14); border-color: var(--lime); color: #fff; }
+  .p-hero .btn-primary { color: var(--ink); }
+
+  .p-kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin-bottom: 16px; }
+  .k { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px; }
+  .k b { display: block; font: 700 22px/1.15 var(--font-head); color: var(--ink); letter-spacing: -0.02em; }
+  .k b small { font-size: 14px; color: var(--ink-faint); }
+  .k span { display: block; margin-top: 4px; font-size: 12px; color: var(--ink-soft); line-height: 1.35; }
+  .k-ink { background: var(--lime); border-color: var(--lime); }
+
+  .p-tabs { position: sticky; top: 0; z-index: 5; display: flex; gap: 6px; overflow-x: auto; padding: 10px 0; margin-bottom: 8px;
+    background: var(--paper); }
+  .p-tabs a { white-space: nowrap; padding: 6px 12px; border-radius: 100px; border: 1px solid var(--border-strong); background: var(--surface);
+    font-size: 13px; color: var(--ink); }
+  .p-tabs a span { color: var(--ink-faint); margin-left: 3px; }
+  .p-tabs a:hover { text-decoration: none; border-color: var(--moss); }
+
+  .p-grid { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; align-items: start; }
+  .p-side .card h2, .p-main .card h2 { margin-bottom: 12px; }
+  .plain { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; font-size: 14px; }
+
+  .tl { list-style: none; margin: 0; padding: 0; position: relative; }
+  .tl::before { content: ""; position: absolute; left: 17px; top: 6px; bottom: 6px; width: 2px; background: var(--border); }
+  .tl-i { position: relative; display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; gap: 12px; padding: 8px 0; }
+  .tl-ic { position: relative; z-index: 1; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%;
+    background: var(--surface); border: 2px solid var(--border); font-size: 16px; }
+  .tl-i.good .tl-ic { border-color: var(--skin); background: var(--mint-2); }
+  .tl-i.bad .tl-ic { border-color: var(--red); background: var(--red-tint); }
+  .tl-t { font-weight: 700; color: var(--ink); padding-top: 6px; }
+  .tl-d { font-size: 13px; color: var(--ink-soft); }
+  .tl-w { font-size: 12px; color: var(--ink-soft); text-align: right; white-space: nowrap; padding-top: 4px; }
+  .tl-w span { color: var(--ink-faint); }
+  .tl-i.tl-more { display: none; }
+
+  table .r, th.r { text-align: right; }
+  .thumb { display: block; width: 44px; height: 44px; border-radius: 8px; overflow: hidden; border: 1px solid var(--border-strong); }
+  .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+  @media (max-width: 1060px) { .p-grid { grid-template-columns: 1fr; } .p-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  @media (max-width: 560px) { .p-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } .p-hero { padding: 18px; }
+    .tl-i { grid-template-columns: 36px minmax(0, 1fr); } .tl-w { grid-column: 2; text-align: left; } }
+</style>
+{% if series_json != "[]" %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script>
+  const pts = {{ series_json | safe }};
+  Chart.defaults.font.family = "Manrope, system-ui, sans-serif";
+  Chart.defaults.color = "#3E5A4F";
+  new Chart(document.getElementById("bandChart"), {
+    type: "line",
+    data: {
+      labels: pts.map(p => p.d),
+      datasets: [
+        { label: "Writing", data: pts.map(p => p.k === "w" ? p.b : null), borderColor: "#0A7C4A", backgroundColor: "#0A7C4A",
+          spanGaps: true, tension: 0.3, pointRadius: 4 },
+        { label: "Speaking", data: pts.map(p => p.k === "s" ? p.b : null), borderColor: "#E0A800", backgroundColor: "#FFE066",
+          spanGaps: true, tension: 0.3, pointRadius: 4 },
+      ],
+    },
+    options: {
+      maintainAspectRatio: false,
+      plugins: { legend: { position: "top", align: "end", labels: { boxWidth: 10, boxHeight: 10 } },
+                 tooltip: { callbacks: { title: (items) => pts[items[0].dataIndex].d + " · " + pts[items[0].dataIndex].l } } },
+      scales: { y: { suggestedMin: 4, max: 9, ticks: { stepSize: 1 }, grid: { color: "#DCEBE3" } }, x: { grid: { display: false } } },
+    },
+  });
+</script>
+{% endif %}
+{% endblock %}

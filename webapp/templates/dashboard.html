@@ -1,96 +1,278 @@
 {% extends "base.html" %}
 {% block title %}Dashboard — Bandzilla Admin{% endblock %}
+{% block wrapclass %}wide{% endblock %}
 {% block content %}
-<h1>Dashboard</h1>
+<section class="d-hero">
+  <div class="d-hero-txt">
+    <p class="d-kick">{{ d.greeting_date }} · Toshkent</p>
+    <h1 class="d-title">Bugun Bandzilla'da</h1>
+    <div class="d-today">
+      <div><b class="num">{{ d.today.users }}</b><span>yangi foydalanuvchi</span></div>
+      <div><b class="num">{{ d.today.checks }}</b><span>tekshiruv</span></div>
+      <div><b class="num">{{ d.today.revenue }}</b><span>so'm tushum</span></div>
+      <div><b class="num">{{ d.today.dau }}</b><span>faol foydalanuvchi</span></div>
+    </div>
+    <div class="d-alerts">
+      <span class="d-chip d-chip-live"><span class="dot"></span> hozir botda: <b>{{ d.today.online }}</b></span>
+      {% if d.pending_count %}<a class="d-chip d-chip-warn" href="/payments?status=pending">💳 {{ d.pending_count }} ta to'lov tasdiq kutmoqda →</a>{% endif %}
+      {% if d.test_window.on %}<span class="d-chip d-chip-test" title="CHECKS_ONLY_FOR yoqilgan">🧪 Test rejimi: faqat {{ d.test_window.testers }} kishi + adminlar tekshira oladi · {{ d.test_window.waiting }} kishi kutmoqda</span>{% endif %}
+    </div>
+  </div>
+  <img class="d-mascot" src="https://bandzilla.uz/assets/mascot-cool-cape.webp" alt="" width="483" height="640">
+</section>
 
-<div class="stat-grid">
-  <div class="stat"><div class="n">{{ "{:,}".format(stats.revenue_today).replace(",", " ") }}</div><div class="l">Bugungi tushum (so'm)</div></div>
-  <div class="stat"><div class="n">{{ stats.new_users_today }}</div><div class="l">Yangi foydalanuvchi (bugun)</div></div>
-  <div class="stat"><div class="n">{{ stats.writing_today + stats.speaking_today }}</div><div class="l">Tekshiruvlar (bugun)</div></div>
-  <div class="stat"><div class="n">{{ active_subs }}</div><div class="l">Faol obunalar</div></div>
-  <div class="stat"><div class="n">{{ stats.pending_payments }}</div><div class="l">Ko'rib chiqilmagan to'lov</div></div>
-  <div class="stat"><div class="n">{{ stats.total_users }}</div><div class="l">Jami foydalanuvchilar</div></div>
+<div class="d-kpis">
+  {% for k in d.kpi %}
+  <div class="d-kpi{{ ' warm' if k.warm }}">
+    <div class="d-kpi-top">
+      <span class="d-kpi-l">{{ k.label }}</span>
+      {% if k.delta is not none %}<span class="d-delta {{ 'up' if k.delta >= 0 else 'down' }}">{{ "▲" if k.delta >= 0 else "▼" }} {{ k.delta|abs }}%</span>{% endif %}
+    </div>
+    <div class="d-kpi-v num">{{ k.value }}{% if k.unit %} <small>{{ k.unit }}</small>{% endif %}</div>
+    <div class="d-kpi-s">{{ k.sub }}</div>
+    <div class="d-spark"><canvas id="spark{{ loop.index0 }}"></canvas></div>
+  </div>
+  {% endfor %}
 </div>
 
-<div class="card">
-  <h2>Tushum — so'nggi 30 kun</h2>
-  <canvas id="revenueChart" height="90"></canvas>
+<div class="d-row d-row-2">
+  <div class="card">
+    <div class="d-card-h"><h2>30 kunlik faollik</h2><span class="muted">tekshiruvlar, faol va yangi foydalanuvchilar</span></div>
+    <div style="height:290px"><canvas id="activityChart"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="d-card-h"><h2>Voronka</h2><span class="muted">ro'yxatdan → pul</span></div>
+    {% set top_n = d.funnel[0].n or 1 %}
+    <div class="d-funnel">
+      {% for f in d.funnel %}
+      <div class="d-fun">
+        <div class="d-fun-l"><span>{{ f.label }}</span><b class="num">{{ f.n }}</b></div>
+        <div class="d-fun-bar"><i style="width: {{ (f.n / top_n * 100)|round(1) }}%"></i></div>
+        <div class="d-fun-p">{{ (f.n / top_n * 100)|round|int }}%{% if not loop.first %} · oldingidan {{ ((f.n / (d.funnel[loop.index0 - 1].n or 1)) * 100)|round|int }}%{% endif %}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
 </div>
 
-<div class="card">
-  <h2>Tekshiruvlar — so'nggi 30 kun</h2>
-  <canvas id="checksChart" height="90"></canvas>
+<div class="d-row d-row-3">
+  <div class="card">
+    <div class="d-card-h"><h2>Tushum va AI xarajat</h2><span class="muted">so'm, kunlik</span></div>
+    <div style="height:250px"><canvas id="moneyChart"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="d-card-h"><h2>Band taqsimoti</h2><span class="muted">barcha tekshiruvlar</span></div>
+    <div style="height:250px"><canvas id="bandChart"></canvas></div>
+  </div>
 </div>
 
-<div class="card">
-  <h2>Yangi foydalanuvchilar — so'nggi 30 kun</h2>
-  <canvas id="usersChart" height="90"></canvas>
+<div class="d-row d-row-2b">
+  <div class="card">
+    <div class="d-card-h"><h2>So'nggi voqealar</h2><a href="/checks" class="muted">barcha tekshiruvlar →</a></div>
+    <ul class="d-feed">
+      {% for f in d.feed %}
+      <li>
+        <span class="d-feed-ic">{{ f.icon }}</span>
+        <div class="d-feed-b">
+          {% if f.user %}<a href="/users/{{ f.user.id }}" class="strong">{{ f.user.full_name }}</a>{% else %}<span class="muted">noma'lum</span>{% endif %}
+          {% if f.link %}<a href="{{ f.link }}" class="d-feed-t" {% if f.link.endswith('.pdf') %}target="_blank"{% endif %}>{{ f.text }}</a>{% else %}<span class="d-feed-t">{{ f.text }}</span>{% endif %}
+        </div>
+        <time>{{ f.ago }}</time>
+      </li>
+      {% else %}<li class="muted">Hali voqea yo'q.</li>
+      {% endfor %}
+    </ul>
+  </div>
+  <div class="d-side">
+    <div class="card">
+      <div class="d-card-h"><h2>Tasdiq kutayotgan to'lovlar</h2><a href="/payments?status=pending" class="muted">hammasi →</a></div>
+      {% if d.pending %}
+      <ul class="d-list">
+        {% for x in d.pending %}
+        <li><a href="/users/{{ x.p.user_id }}" class="strong">{{ x.user.full_name if x.user else x.p.user_id }}</a>
+          <span>{% if x.p.kind.value == "gift" %}🎁 {% endif %}{{ x.p.coins }} coin · {{ x.amount }} so'm</span><time>{{ x.ago }}</time></li>
+        {% endfor %}
+      </ul>
+      {% else %}<p class="muted" style="margin:0">Hammasi ko'rib chiqilgan ✅</p>{% endif %}
+    </div>
+    <div class="card">
+      <div class="d-card-h"><h2>Eng faol · 30 kun</h2></div>
+      {% if d.top %}
+      <ol class="d-top">
+        {% for t in d.top %}
+        <li><span class="d-rank">{{ loop.index }}</span>
+          {% if t.user %}<a href="/users/{{ t.user.id }}" class="strong">{{ t.user.full_name }}</a>{% else %}—{% endif %}
+          <b class="num">{{ t.n }}</b></li>
+        {% endfor %}
+      </ol>
+      {% else %}<p class="muted" style="margin:0">Hali tekshiruv yo'q.</p>{% endif %}
+    </div>
+    <div class="card d-two">
+      <div><h2>Modullar</h2><div style="height:210px"><canvas id="mixChart"></canvas></div></div>
+      <div><h2>Tillar</h2><div style="height:210px"><canvas id="langChart"></canvas></div></div>
+    </div>
+  </div>
 </div>
+
+<style>
+  .d-hero { position: relative; overflow: hidden; display: flex; align-items: flex-end; justify-content: space-between; gap: 20px;
+    min-height: 230px; padding: 26px 30px; margin-bottom: 18px; border-radius: 24px; color: #fff;
+    background: radial-gradient(120% 140% at 100% 0%, rgba(91,242,166,0.22), transparent 55%),
+                var(--ink) url(https://bandzilla.uz/assets/skin-ink.svg) 0 0 / 64px repeat; }
+  .d-hero-txt { position: relative; z-index: 1; min-width: 0; }
+  .d-kick { margin: 0; font: 800 11.5px/1 var(--font); letter-spacing: 0.16em; text-transform: uppercase; color: var(--lime); }
+  .d-title { margin: 8px 0 16px; color: #fff; font-size: 30px; }
+  .d-today { display: flex; flex-wrap: wrap; gap: 14px 34px; }
+  .d-today b { display: block; font: 800 34px/1 var(--font-head); color: var(--lime); letter-spacing: -0.02em; }
+  .d-today span { font-size: 13px; color: rgba(255,255,255,0.75); }
+  .d-alerts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+  .d-chip { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 100px; font-size: 13px; font-weight: 700; }
+  .d-chip-live { background: rgba(255,255,255,0.1); color: #fff; }
+  .d-chip-warn { background: var(--yellow); color: var(--ink); }
+  .d-chip-warn:hover { text-decoration: none; box-shadow: 0 0 0 3px rgba(255,224,102,0.35); }
+  .d-chip-test { background: rgba(255,77,77,0.18); color: #fff; box-shadow: inset 0 0 0 1px rgba(255,77,77,0.6); }
+  .d-mascot { position: relative; z-index: 1; flex: none; width: 150px; height: auto; margin: -10px 0 -26px; filter: drop-shadow(0 10px 24px rgba(0,0,0,0.35)); }
+
+  .d-kpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
+  .d-kpi { position: relative; overflow: hidden; background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 14px 16px 0; }
+  .d-kpi-top { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+  .d-kpi-l { font-size: 12px; font-weight: 800; color: var(--ink-soft); }
+  .d-delta { font-size: 11px; font-weight: 800; padding: 2px 7px; border-radius: 100px; }
+  .d-delta.up { background: var(--mint); color: var(--moss); }
+  .d-delta.down { background: var(--red-tint); color: #b42318; }
+  .d-kpi-v { margin-top: 8px; font: 800 26px/1.05 var(--font-head); color: var(--ink); letter-spacing: -0.02em; white-space: nowrap; }
+  .d-kpi-v small { font-size: 12px; color: var(--ink-faint); }
+  .d-kpi-s { margin-top: 4px; font-size: 12px; color: var(--ink-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .d-spark { position: relative; height: 38px; margin: 8px -16px 0; }
+  .d-kpi.warm .d-kpi-v { color: #b45309; }
+
+  .d-row { display: grid; gap: 16px; margin-bottom: 2px; }
+  /* grid items may shrink below their content (charts, long names) instead of pushing the page wide */
+  .d-row > *, .d-side > *, .d-two > * { min-width: 0; }
+  .d-row-2 { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
+  .d-row-3 { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); }
+  .d-row-2b { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); align-items: start; }
+  .d-card-h { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 12px; }
+  .d-card-h h2 { margin: 0; }
+  .d-card-h .muted { font-size: 12px; }
+  .d-two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .d-two h2 { margin-bottom: 6px; }
+
+  .d-funnel { display: grid; gap: 16px; }
+  .d-fun-l { display: flex; justify-content: space-between; font-size: 13.5px; font-weight: 700; }
+  .d-fun-l b { font: 800 18px/1 var(--font-head); }
+  .d-fun-bar { height: 12px; margin-top: 6px; border-radius: 100px; background: var(--mint-2); overflow: hidden; }
+  .d-fun-bar i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--skin), var(--lime)); }
+  .d-fun-p { margin-top: 4px; font-size: 12px; color: var(--ink-faint); }
+
+  .d-feed { list-style: none; margin: 0; padding: 0; }
+  .d-feed li { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 9px 0;
+    border-bottom: 1px solid var(--border); }
+  .d-feed li:last-child { border-bottom: 0; }
+  .d-feed-ic { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: var(--mint-2); }
+  .d-feed-b { min-width: 0; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .d-feed-t { color: var(--ink-soft); font-weight: 600; margin-left: 4px; }
+  .d-feed time, .d-list time { font-size: 12px; color: var(--ink-faint); white-space: nowrap; }
+  .d-side { display: grid; gap: 0; }
+  .d-list, .d-top { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+  .d-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; font-size: 14px; }
+  .d-list li span { grid-column: 1; font-size: 12.5px; color: var(--ink-soft); }
+  .d-list li time { grid-row: 1 / span 2; grid-column: 2; align-self: center; }
+  .d-top li { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 10px; align-items: center; font-size: 14px; }
+  .d-rank { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--ink); color: var(--lime);
+    font: 800 12px/1 var(--font); }
+  .d-top b { font: 800 15px/1 var(--font-head); }
+
+  @media (max-width: 1180px) { .d-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  @media (max-width: 860px) { .d-row-2, .d-row-2b, .d-row-3 { grid-template-columns: 1fr; } .d-mascot { display: none; } }
+  @media (max-width: 560px) { .d-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } .d-hero { padding: 20px; }
+    .d-today b { font-size: 26px; } .d-title { font-size: 22px; } }
+</style>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script>
-  const series = {{ timeseries_json | safe }};
-  const labels = series.map(d => d.date);
-
+  const C = {{ charts_json | safe }};
+  const INK = "#062018", LIME = "#5BF2A6", MOSS = "#0A7C4A", SKIN = "#2BCB7B", YEL = "#FFE066", RED = "#FF4D4D", AMBER = "#E0A800";
   Chart.defaults.font.family = "Manrope, system-ui, -apple-system, 'Segoe UI', sans-serif";
   Chart.defaults.font.size = 12;
   Chart.defaults.color = "#3E5A4F";
+  const grid = { color: "#E3F0E9", drawTicks: false };
+  const labels = C.series.map(d => d.date);
+  const som = v => Math.round(v).toLocaleString("ru-RU").replace(/,/g, " ");
 
-  const gridStyle = { color: "#DCEBE3", drawTicks: false };
-  const commonScales = {
-    x: { grid: { display: false }, ticks: { maxTicksLimit: 10 } },
-    y: { grid: gridStyle, beginAtZero: true, ticks: { precision: 0 } },
-  };
-
-  new Chart(document.getElementById("revenueChart"), {
-    type: "line",
-    data: {
-      labels,
-      datasets: [{
-        label: "Tushum (so'm)",
-        data: series.map(d => d.revenue),
-        borderColor: "#0A7C4A",
-        backgroundColor: "rgba(91,242,166,0.28)",
-        borderWidth: 2, pointRadius: 0, fill: true, tension: 0.25,
-      }],
-    },
-    options: {
-      plugins: { legend: { display: false } },
-      scales: commonScales,
-    },
+  // the KPI sparklines
+  C.spark.forEach((data, i) => {
+    const el = document.getElementById("spark" + i);
+    if (!el) return;
+    const warm = el.closest(".warm");
+    new Chart(el, {
+      type: "line",
+      data: { labels: data.map((_, j) => j), datasets: [{ data, borderColor: warm ? AMBER : SKIN, borderWidth: 2, pointRadius: 0,
+        fill: true, backgroundColor: warm ? "rgba(255,224,102,0.25)" : "rgba(91,242,166,0.22)", tension: 0.35 }] },
+      options: { animation: false, responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { enabled: false } },
+        scales: { x: { display: false }, y: { display: false, beginAtZero: true } }, elements: { line: { capBezierPoints: true } } },
+    });
   });
 
-  new Chart(document.getElementById("checksChart"), {
-    type: "bar",
+  new Chart(document.getElementById("activityChart"), {
     data: {
       labels,
       datasets: [
-        { label: "Writing", data: series.map(d => d.writing), backgroundColor: "#0A7C4A" },
-        { label: "Speaking", data: series.map(d => d.speaking), backgroundColor: "#062018" },
+        { type: "bar", label: "Writing", data: C.series.map(d => d.w), backgroundColor: MOSS, borderRadius: 4, stack: "c", yAxisID: "y" },
+        { type: "bar", label: "Speaking", data: C.series.map(d => d.s), backgroundColor: YEL, borderRadius: 4, stack: "c", yAxisID: "y" },
+        { type: "line", label: "Faol foydalanuvchi", data: C.series.map(d => d.dau), borderColor: INK, backgroundColor: INK,
+          borderWidth: 2, pointRadius: 0, tension: 0.35, yAxisID: "y1" },
+        { type: "line", label: "Yangi foydalanuvchi", data: C.series.map(d => d.users), borderColor: SKIN, backgroundColor: SKIN,
+          borderDash: [5, 4], borderWidth: 2, pointRadius: 0, tension: 0.35, yAxisID: "y1" },
       ],
     },
     options: {
-      plugins: { legend: { position: "top", align: "end", labels: { boxWidth: 10, boxHeight: 10 } } },
-      scales: { x: { ...commonScales.x, stacked: true }, y: { ...commonScales.y, stacked: true } },
+      maintainAspectRatio: false, interaction: { mode: "index", intersect: false },
+      plugins: { legend: { position: "top", align: "end", labels: { boxWidth: 10, boxHeight: 10, usePointStyle: true } } },
+      scales: {
+        x: { grid: { display: false }, ticks: { maxTicksLimit: 10 } },
+        y: { stacked: true, beginAtZero: true, grid, ticks: { precision: 0 }, title: { display: true, text: "tekshiruv" } },
+        y1: { position: "right", beginAtZero: true, grid: { display: false }, ticks: { precision: 0 }, title: { display: true, text: "odam" } },
+      },
     },
   });
 
-  new Chart(document.getElementById("usersChart"), {
-    type: "line",
+  new Chart(document.getElementById("moneyChart"), {
     data: {
       labels,
-      datasets: [{
-        label: "Yangi foydalanuvchilar",
-        data: series.map(d => d.new_users),
-        borderColor: "#062018",
-        backgroundColor: "rgba(255,224,102,0.35)",
-        borderWidth: 2, pointRadius: 0, fill: true, tension: 0.25,
-      }],
+      datasets: [
+        { type: "bar", label: "Tushum", data: C.series.map(d => d.revenue), backgroundColor: LIME, borderRadius: 4 },
+        { type: "line", label: "AI xarajat", data: C.series.map(d => d.cost), borderColor: RED, backgroundColor: RED,
+          borderWidth: 2, pointRadius: 0, tension: 0.35 },
+      ],
     },
     options: {
-      plugins: { legend: { display: false } },
-      scales: commonScales,
+      maintainAspectRatio: false, interaction: { mode: "index", intersect: false },
+      plugins: { legend: { position: "top", align: "end", labels: { boxWidth: 10, boxHeight: 10, usePointStyle: true } },
+        tooltip: { callbacks: { label: (c) => c.dataset.label + ": " + som(c.raw) + " so'm" } } },
+      scales: { x: { grid: { display: false }, ticks: { maxTicksLimit: 8 } },
+        y: { beginAtZero: true, grid, ticks: { callback: (v) => v >= 1000 ? (v / 1000) + "k" : v } } },
     },
   });
+
+  new Chart(document.getElementById("bandChart"), {
+    type: "bar",
+    data: { labels: C.bands.labels, datasets: [
+      { label: "Writing", data: C.bands.w, backgroundColor: MOSS, borderRadius: 4 },
+      { label: "Speaking", data: C.bands.s, backgroundColor: YEL, borderRadius: 4 },
+    ] },
+    options: { maintainAspectRatio: false,
+      plugins: { legend: { position: "top", align: "end", labels: { boxWidth: 10, boxHeight: 10, usePointStyle: true } } },
+      scales: { x: { grid: { display: false } }, y: { beginAtZero: true, grid, ticks: { precision: 0 } } } },
+  });
+
+  const doughnut = (id, d, colors) => new Chart(document.getElementById(id), {
+    type: "doughnut",
+    data: { labels: d.labels, datasets: [{ data: d.values, backgroundColor: colors, borderColor: "#fff", borderWidth: 2 }] },
+    options: { maintainAspectRatio: false, cutout: "62%",
+      plugins: { legend: { position: "bottom", labels: { boxWidth: 8, boxHeight: 8, usePointStyle: true, padding: 8, font: { size: 11 } } } } },
+  });
+  doughnut("mixChart", C.mix, [MOSS, SKIN, YEL, AMBER, "#F59E0B", INK]);
+  doughnut("langChart", C.langs, [LIME, INK, YEL]);
 </script>
 {% endblock %}

@@ -12,6 +12,7 @@ from aiogram import BaseMiddleware
 from aiogram.types import CallbackQuery, Message, TelegramObject
 
 from bot.config import settings
+from bot.utils import activity
 from db import crud
 from db.database import get_session
 from db.models import UserStatus
@@ -47,6 +48,7 @@ class AccessControlMiddleware(BaseMiddleware):
             data["lang"] = "uz"
             return await handler(event, data)
 
+        await activity.seen(tg_user.id)  # last seen / daily active, for the admin panel
         is_start = isinstance(event, Message) and (event.text or "").startswith("/start")
 
         async with get_session() as session:

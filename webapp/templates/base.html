@@ -69,6 +69,24 @@
   .topbar .logout:hover { color: var(--lime); }
 
   .wrap { max-width: 1120px; margin: 0 auto; padding: 36px 24px 60px; }
+  .wrap.wide { max-width: 1320px; }
+
+  /* shared bits of the user pages and the dashboard */
+  .ava { display: inline-grid; place-items: center; flex: none; width: 34px; height: 34px; border-radius: 50%;
+    background: var(--mint); color: var(--moss); font: 800 13px/1 var(--font); text-transform: uppercase; }
+  .ava.lg { width: 64px; height: 64px; font-size: 22px; background: var(--lime); color: var(--ink); }
+  .who { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .who .nm { font-weight: 800; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .who .sub { font-size: 12px; color: var(--ink-faint); white-space: nowrap; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--skin);
+    box-shadow: 0 0 0 3px rgba(43,203,123,0.25); vertical-align: 1px; }
+  .muted { color: var(--ink-faint); }
+  .num { font-variant-numeric: tabular-nums; }
+  .band-chip { display: inline-block; min-width: 38px; text-align: center; padding: 2px 8px; border-radius: 8px;
+    font: 800 12.5px/1.5 var(--font); background: var(--mint); color: var(--ink); }
+  .band-chip.hi { background: var(--lime); }
+  .band-chip.lo { background: var(--yellow); }
+  tr.row-link { cursor: pointer; }
 
   h1 { font-family: var(--font-head); font-weight: 800; font-size: 24px; line-height: 1.1;
     letter-spacing: -0.02em; margin: 0 0 22px; color: var(--ink); }
@@ -172,6 +190,7 @@
     <nav>
       <a href="/" class="{{ 'active' if active == 'dashboard' else '' }}">Dashboard</a>
       <a href="/users" class="{{ 'active' if active == 'users' else '' }}">Foydalanuvchilar</a>
+      <a href="/checks" class="{{ 'active' if active == 'checks' else '' }}">Tekshiruvlar</a>
       <a href="/payments" class="{{ 'active' if active == 'payments' else '' }}">To'lovlar</a>
       <a href="/groups" class="{{ 'active' if active == 'groups' else '' }}">Guruhlar</a>
       <a href="/teachers" class="{{ 'active' if active == 'teachers' else '' }}">O'qituvchilar</a>
@@ -179,7 +198,7 @@
     </nav>
     <a href="/logout" class="logout">Chiqish</a>
   </div>
-  <div class="wrap">
+  <div class="wrap {% block wrapclass %}{% endblock %}">
     {% block content %}{% endblock %}
   </div>
 </body>

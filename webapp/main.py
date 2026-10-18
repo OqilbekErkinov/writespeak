@@ -17,7 +17,6 @@ import html
 import json
 import logging
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 
 from aiogram import Bot
@@ -33,7 +32,7 @@ from bot.i18n import t
 from bot.utils import crm_events
 from db import crud
 from db.database import get_session
-from db.models import PaymentRequest, PaymentStatus, PracticeModule, UserRole
+from db.models import PaymentRequest, PaymentStatus, PracticeModule, SpeakingSubmission, UserRole, WritingSubmission
 from services.storage.file_storage import delete_file, save_practice_image
 
 logger = logging.getLogger(__name__)
@@ -47,7 +46,7 @@ app.add_middleware(
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
 # Teachers' web cabinet (/cabinet, its own sign-in from the bot) - see webapp/cabinet.py.
-from webapp import cabinet  # noqa: E402
+from webapp import cabinet, insights  # noqa: E402
 
 cabinet.templates = templates
 app.include_router(cabinet.router)
@@ -118,39 +117,94 @@ async def dashboard(request: Request):
     if (redirect := _require_login(request)) is not None:
         return redirect
     async with get_session() as session:
-        stats = await crud.get_admin_stats(session)
-        timeseries = await crud.get_dashboard_timeseries(session, days=30)
-        active_subs = await crud.count_active_subscriptions(session)
-    return templates.TemplateResponse(
-        request,
-        "dashboard.html",
-        {
-            "active": "dashboard",
-            "stats": stats,
-            "active_subs": active_subs,
-            # Pre-serialized in Python (not the `tojson` filter) so this doesn't
-            # depend on whether Starlette's Jinja2Templates registers it.
-            "timeseries_json": json.dumps(timeseries),
-        },
-    )
+        data = await insights.dashboard(session)
+    charts = {k: data[k] for k in ("series", "bands", "mix", "langs")}
+    charts["spark"] = [k["spark"] for k in data["kpi"]]
+    return templates.TemplateResponse(request, "dashboard.html", {
+        "active": "dashboard", "d": data,
+        # Pre-serialized in Python (not the `tojson` filter) so this doesn't
+        # depend on whether Starlette's Jinja2Templates registers it.
+        "charts_json": json.dumps(charts),
+    })
 
 
 @app.get("/users", response_class=HTMLResponse)
-async def users_page(request: Request, q: str | None = None):
+async def users_page(request: Request, q: str | None = None, s: str = "all"):
     if (redirect := _require_login(request)) is not None:
         return redirect
     async with get_session() as session:
-        users = await crud.list_users(session, search=q)
-    return templates.TemplateResponse(
-        request,
-        "users.html",
-        {
-            "active": "users",
-            "users": users,
-            "q": q or "",
-            "now": datetime.now(timezone.utc),
-        },
-    )
+        data = await insights.users_overview(session, q, s)
+    return templates.TemplateResponse(request, "users.html", {
+        "active": "users", "q": q or "", "segments": insights.SEGMENTS, **data,
+    })
+
+
+@app.get("/users/{user_id}", response_class=HTMLResponse)
+async def user_detail(request: Request, user_id: int, sent: str | None = None):
+    if (redirect := _require_login(request)) is not None:
+        return redirect
+    async with get_session() as session:
+        profile = await insights.user_profile(session, user_id)
+    if profile is None:
+        return RedirectResponse("/users", status_code=303)
+    flash = {"1": "Xabar yuborildi.", "0": "Xabar yuborilmadi: foydalanuvchi botni bloklagan bo'lishi mumkin.",
+             "empty": "Xabar bo'sh."}.get(sent or "")
+    return templates.TemplateResponse(request, "user_detail.html", {
+        "active": "users", **profile, "flash": flash, "flash_bad": sent in ("0", "empty"),
+        "series_json": json.dumps(profile["series"]), "fmt": insights.fmt, "som": insights.som,
+    })
+
+
+@app.post("/users/{user_id}/message")
+async def user_message(request: Request, user_id: int, text: str = Form("")):
+    """A message to the user in the bot, as the admins' support answer (they
+    can reply with its button); a copy goes to the admins' group."""
+    if (redirect := _require_login(request)) is not None:
+        return redirect
+    text = text.strip()[:3500]
+    if not text:
+        return RedirectResponse(f"/users/{user_id}?sent=empty", status_code=303)
+    from bot.keyboards.support_kb import support_reply_kb
+    from bot.utils import crm
+
+    async with get_session() as session:
+        user = await crud.get_user(session, user_id)
+    lang = user.language if user is not None else None
+    body = f"{t('support.answer', lang)}\n\n{html.escape(text, quote=False)}"
+    sent = await _with_bot(lambda bot: bot.send_message(user_id, body, reply_markup=support_reply_kb(lang)))
+    who = html.escape(user.full_name, quote=False) if user is not None else str(user_id)
+    status = "yetkazildi" if sent else "yetkazilmadi"
+    await crm.post("support", f"✉️ <b>Web paneldan javob</b> → {who} (<code>{user_id}</code>) · {status}\n\n"
+                              f"{html.escape(text, quote=False)}")
+    return RedirectResponse(f"/users/{user_id}?sent={int(sent)}#message", status_code=303)
+
+
+@app.get("/reports/{kind}/{submission_id}.pdf")
+async def report_pdf_admin(request: Request, kind: str, submission_id: int):
+    """Any check's PDF report, for the admins."""
+    if (redirect := _require_login(request)) is not None:
+        return redirect
+    model = {"w": WritingSubmission, "s": SpeakingSubmission}.get(kind)
+    if model is None:
+        return Response(status_code=404)
+    async with get_session() as session:
+        sub = await session.get(model, submission_id)
+    if sub is None or not sub.feedback_pdf_path or not Path(sub.feedback_pdf_path).exists():
+        return Response(status_code=404)
+    name = f"Bandzilla_{'W' if kind == 'w' else 'S'}{submission_id}_{sub.user_id}.pdf"
+    return FileResponse(sub.feedback_pdf_path, media_type="application/pdf", filename=name,
+                        content_disposition_type="inline")
+
+
+@app.get("/checks", response_class=HTMLResponse)
+async def checks_page(request: Request, kind: str = "all", period: str = "all"):
+    if (redirect := _require_login(request)) is not None:
+        return redirect
+    kind = kind if kind in ("all", "w", "s") else "all"
+    period = period if period in ("all", "today", "7d", "30d") else "all"
+    async with get_session() as session:
+        data = await insights.all_checks(session, kind, period)
+    return templates.TemplateResponse(request, "checks.html", {"active": "checks", **data})
 
 
 @app.get("/payments", response_class=HTMLResponse)
