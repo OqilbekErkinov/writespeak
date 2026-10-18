@@ -379,7 +379,6 @@ def _pct(cur: float, prev: float, floor: float = 5) -> int | None:
 async def dashboard(session) -> dict:
     t_now = now()
     today = day_start_utc()
-    since30 = day_start_utc(29)
     users = (await session.execute(select(User))).scalars().all()
     real = [u for u in users if u.id not in settings.admin_ids]
     writings = (await session.execute(select(WritingSubmission).options(_light(WritingSubmission)))).scalars().all()
