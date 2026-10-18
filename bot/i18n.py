@@ -81,12 +81,25 @@ _T: dict[str, dict[str, str]] = {
         "uz": "🟡 Bu tekshiruv — <b>{price} coin</b>. Hisobot tayyor bo'lganda yechiladi, balansingizda <b>{left} coin</b> qoladi.",
         "ru": "🟡 Эта проверка — <b>{price} coin</b>. Спишется, когда отчёт будет готов; на балансе останется <b>{left} coin</b>.",
     },
-    # Shown during a test window (settings.checks_only_for) to everyone else.
+    # Shown during a test window (settings.checks_only_for) to everyone else;
+    # they get quota.back when it ends (bot/utils/checks_back.py).
     "quota.paused": {
-        "uz": "🛠 Tekshiruvlar vaqtincha to'xtatilgan — bot yangilanmoqda. Tez orada qayta "
-        "yoqiladi. Coinlaringiz va obunangiz saqlanib qoladi.",
-        "ru": "🛠 Проверки временно приостановлены — бот обновляется. Скоро всё снова "
-        "заработает. Ваши coin и подписка сохранятся.",
+        "uz": "🛠 <b>Bandzilla yangilanmoqda</b>\n\nHozir hisobotlarni yanada aniq va foydali qilish ustida "
+        "ishlayapmiz, shuning uchun tekshiruvlar qisqa vaqtga to'xtatildi. Tez orada hammasi yana ishga "
+        "tushadi.\n\n✅ Coinlaringiz joyida — hech narsa yechilmaydi va yo'qolmaydi.\n🔔 Tekshiruvlar qayta "
+        "ochilishi bilan sizga shu yerda xabar beramiz.\n\nBu orada <b>📝 Practice</b> bo'limidan savol "
+        "tanlab, javobingizni tayyorlab qo'ying — qaytishimiz bilan tekshirasiz.\n\nSabringiz uchun rahmat! 🦖",
+        "ru": "🛠 <b>Bandzilla обновляется</b>\n\nМы делаем отчёты ещё точнее и полезнее, поэтому проверки "
+        "ненадолго приостановлены. Совсем скоро всё снова заработает.\n\n✅ Ваши coin на месте — ничего не "
+        "списывается и не пропадает.\n🔔 Как только проверки откроются, мы сразу напишем вам здесь.\n\n"
+        "А пока выберите вопрос в разделе <b>📝 Practice</b> и подготовьте ответ — проверите его, как "
+        "только мы вернёмся.\n\nСпасибо за терпение! 🦖",
+    },
+    "quota.back": {
+        "uz": "🎉 <b>Bandzilla yana ishlayapti!</b>\n\nTekshiruvlar qayta ochildi — Writing yoki Speaking "
+        "javobingizni yuboring, hisobot 2–4 daqiqada keladi.\n\nKutganingiz uchun rahmat! 🦖",
+        "ru": "🎉 <b>Bandzilla снова работает!</b>\n\nПроверки снова открыты — отправьте ответ по Writing или "
+        "Speaking, отчёт придёт через 2–4 минуты.\n\nСпасибо, что дождались! 🦖",
     },
     # --- Payments (bot/handlers/payments.py, bot/keyboards/payment_kb.py) ---
     "pay.pack_button": {

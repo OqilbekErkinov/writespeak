@@ -89,6 +89,7 @@ async def main() -> None:
     dp = build_dispatcher()
 
     from bot.utils import crm
+    from bot.utils.checks_back import notify_back
     from bot.utils.group_scheduler import run_group_jobs
     from bot.utils.vocab_reminders import run_vocab_reminders
 
@@ -99,6 +100,7 @@ async def main() -> None:
         asyncio.create_task(run_vocab_reminders(bot)),
         asyncio.create_task(run_group_jobs(bot)),
         asyncio.create_task(crm.run_sender(bot)),
+        asyncio.create_task(notify_back(bot)),  # after a test window: "checks are back"
     ]
     try:
         await dp.start_polling(bot)

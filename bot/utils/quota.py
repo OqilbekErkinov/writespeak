@@ -103,6 +103,10 @@ def free_check_note(quota: Quota, lang: str) -> str:
 async def send_paywall(message: Message, lang: str = "uz", quota: Quota | None = None) -> None:
     if checks_paused_for(message.chat.id):
         await message.answer(t("quota.paused", lang))
+        # It promises a message when checks are back: bot/utils/checks_back.py.
+        from bot.utils.checks_back import remember
+
+        await remember(message.chat.id)
         return
     if quota is not None and quota.balance is not None:
         text = t("quota.paywall", lang, price=quota.price, balance=quota.balance)
