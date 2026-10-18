@@ -31,9 +31,11 @@
       <td>{% if a.active %}<span class="pill pill-good">faol</span>{% else %}<span class="pill pill-bad">o'chirilgan</span>{% endif %}</td>
       <td class="num">{{ a.last }}</td>
       <td style="white-space:nowrap;text-align:right">
-        <form method="post" action="/admins/{{ a.id }}/reset" class="inline" onsubmit='return confirm({{ (a.name ~ " uchun yangi parol berilsinmi? Eskisi ishlamay qoladi.") | tojson }});'>
+        <form method="post" action="/admins/{{ a.id }}/reset" class="inline" data-confirm="Yangi parol berilsinmi?"
+              data-confirm-text="{{ a.name }}ning eski paroli ishlamay qoladi va ochiq sessiyasi yopiladi." data-confirm-ok="Yangi parol" data-tone="warn">
           <button type="submit" class="btn btn-sm">Yangi parol</button></form>
-        <form method="post" action="/admins/{{ a.id }}/toggle" class="inline">
+        <form method="post" action="/admins/{{ a.id }}/toggle" class="inline"{% if a.active %} data-confirm="{{ a.name }} o'chirilsinmi?"
+              data-confirm-text="U panelga kira olmaydi, ochiq sessiyasi darhol yopiladi. Keyin yana yoqish mumkin." data-confirm-ok="O'chirish" data-tone="danger"{% endif %}>
           <button type="submit" class="btn btn-sm {{ 'btn-bad' if a.active else 'btn-good' }}">{{ "O'chirish" if a.active else "Yoqish" }}</button></form>
       </td>
     </tr>

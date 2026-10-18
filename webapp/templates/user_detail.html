@@ -31,8 +31,14 @@
     <a class="btn btn-ghost" href="/support/{{ user.id }}">💬 Yozishma</a>
     <a class="btn btn-ghost" href="tg://user?id={{ user.id }}">Telegram'da ochish</a>
     {% if not is_admin %}
-    <form method="post" action="/users/{{ user.id }}/block" class="inline"
-          onsubmit='return confirm({{ (user.full_name ~ " blokdan chiqarilsinmi?") | tojson if blocked else (user.full_name ~ " bloklansinmi? Bot unga boshqa javob bermaydi: tekshiruv, menyu va murojaat yopiladi.") | tojson }});'>
+    {% if blocked %}
+    <form method="post" action="/users/{{ user.id }}/block" class="inline" data-confirm="Blokdan chiqarilsinmi?"
+          data-confirm-text="{{ user.full_name }} botdan yana odatdagidek foydalana oladi." data-confirm-ok="Blokdan chiqarish" data-tone="good">
+    {% else %}
+    <form method="post" action="/users/{{ user.id }}/block" class="inline" data-confirm="{{ user.full_name }} bloklansinmi?"
+          data-confirm-text="Bot unga boshqa javob bermaydi: tekshiruv, menyu va murojaat yopiladi. Keyin blokdan chiqarish mumkin."
+          data-confirm-ok="Bloklash" data-tone="danger">
+    {% endif %}
       <input type="hidden" name="action" value="{{ 'unblock' if blocked else 'block' }}">
       <button type="submit" class="btn {{ 'btn-ghost' if blocked else 'btn-ghost btn-block' }}">{{ "✅ Blokdan chiqarish" if blocked else "⛔ Bloklash" }}</button>
     </form>
@@ -93,7 +99,8 @@
   <aside class="p-side">
     <div class="card" id="message">
       <h2>✉️ Botda xabar yozish</h2>
-      <form method="post" action="/users/{{ user.id }}/message" onsubmit='return confirm({{ (user.full_name ~ " ga xabar yuborilsinmi?")|tojson }});'>
+      <form method="post" action="/users/{{ user.id }}/message" data-confirm="Xabar yuborilsinmi?"
+            data-confirm-text="{{ user.full_name }} uni botda «Admin javobi» sifatida oladi." data-confirm-ok="Yuborish">
         <textarea name="text" rows="5" maxlength="3500" placeholder="Masalan: Salom! To'lovingiz tekshirildi…" required></textarea>
         <p class="hint">«💬 Admin javobi» sifatida boradi, foydalanuvchi «Javob yozish» tugmasi bilan javob qaytara oladi. Nusxasi admin guruhidagi «Murojaatlar»ga tushadi.</p>
         <button type="submit" class="btn btn-good" style="margin-top:10px">Yuborish</button>

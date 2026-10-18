@@ -3,7 +3,7 @@
 {% block content %}
 <p class="hint" style="margin-bottom:10px"><a href="/users">← Foydalanuvchilar</a></p>
 <h1>🟡 Coin: {{ u.full_name }}</h1>
-{% if flash %}<div class="flash"{% if error %} style="background:var(--red-tint);border-left-color:var(--red)"{% endif %}>{{ flash }}</div>{% endif %}
+{% if flash %}<div class="{{ 'error' if error else 'flash' }}">{{ flash }}</div>{% endif %}
 
 <div class="card coin-card">
   <div class="coin-who">
@@ -14,7 +14,7 @@
     <div class="coin-balance"><b>{{ u.coin_balance }}</b><span>coin balansda</span></div>
   </div>
 
-  <form method="post" action="/users/{{ u.id }}/coins" class="coin-form" onsubmit="return confirmChange(this);">
+  <form method="post" action="/users/{{ u.id }}/coins" class="coin-form" id="coinForm">
     <label for="delta">Qancha coin? <span class="hint">Qo'shish: <b>6</b> · ayirish: <b>-2</b></span></label>
     <div class="coin-row">
       <input type="text" id="delta" name="delta" inputmode="numeric" autocomplete="off" required placeholder="masalan 6 yoki -2" style="width:180px">
@@ -61,12 +61,16 @@
   .quick { display: inline-flex; flex-wrap: wrap; gap: 6px; }
 </style>
 <script>
-  // Says what will happen before it does: "+6 coin" / "-2 coin" for this user.
-  function confirmChange(form) {
+  // Says what will happen before it does: "+6 coin" / "-2 coin" for this user (base.html's bz.confirm).
+  document.getElementById("coinForm").bzConfirm = function (form) {
     var n = parseInt(String(form.delta.value).replace(/[\s+]/g, ""), 10);
-    if (!n) { alert("0 bo'lmagan butun son kiriting: masalan 6 yoki -2."); return false; }
-    var what = n > 0 ? "+" + n + " coin qo'shiladi" : n + " coin ayiriladi";
-    return confirm({{ u.full_name|tojson }} + ": " + what + ". Davom etamizmi?");
-  }
+    if (!n) { bz.toast("0 bo'lmagan butun son kiriting: masalan 6 yoki -2.", "bad"); return null; }
+    var balance = {{ u.coin_balance }};
+    return {
+      title: n > 0 ? "+" + n + " coin qo'shilsinmi?" : n + " coin ayirilsinmi?",
+      text: {{ u.full_name|tojson }} + "\nBalans: " + balance + " → " + (balance + n) + " coin",
+      ok: n > 0 ? "Qo'shish" : "Ayirish", tone: n > 0 ? "good" : "warn",
+    };
+  };
 </script>
 {% endblock %}

@@ -31,7 +31,8 @@
       katta yuborishdan oldin shu bilan sinab ko'ring.</p>
   </div>
 
-  <form class="card" method="post" action="/broadcast/send" id="sendForm">
+  <form class="card" method="post" action="/broadcast/send" id="sendForm" data-confirm="{{ count }} kishiga yuborilsinmi?"
+        data-confirm-text="Yuborilgandan keyin bekor qilib bo'lmaydi." data-confirm-ok="Yuborish" data-tone="warn">
     <h2>2. Matn</h2>
     <input type="hidden" name="audience" value="{{ audience }}">
     <input type="hidden" name="lang" value="{{ lang }}">
@@ -85,6 +86,7 @@
   .b-more { margin-top: 12px; }
   .b-more summary { cursor: pointer; font-size: 13.5px; font-weight: 800; color: var(--moss); }
   .b-send { margin-top: 14px; font-size: 15px; padding: 11px 20px; }
+  .b-send:disabled { background: var(--moss); border-color: var(--moss); color: #fff; opacity: 0.6; }
   .bar { height: 8px; border-radius: 100px; background: var(--mint-2); overflow: hidden; border: 1px solid var(--border); }
   .bar span { display: block; height: 100%; background: var(--skin); transition: width .4s; }
   .b-st { margin-top: 6px; font-size: 12.5px; color: var(--ink-soft); }
@@ -92,9 +94,8 @@
   @media (max-width: 1060px) { .b-grid { grid-template-columns: 1fr; } }
 </style>
 <script>
-  document.getElementById("sendForm").addEventListener("submit", function (e) {
-    if (!confirm({{ (count ~ " kishiga xabar yuborilsinmi? Yuborilgandan keyin bekor qilib bo'lmaydi.") | tojson }})) e.preventDefault();
-    else this.querySelector(".b-send").disabled = true;
+  document.getElementById("sendForm").addEventListener("submit", function () {
+    this.querySelector(".b-send").disabled = true;  // after the confirmation: once only
   });
   const STATES = { running: "⏳ yuborilmoqda", done: "✅ tugadi", stopped: "⛔ to'xtadi" };
   function poll() {

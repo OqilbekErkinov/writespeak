@@ -45,41 +45,43 @@
 
   /* Top bar: Ink with a row of spikes along its bottom edge */
   .topbar {
-    position: relative; background: var(--ink); color: #fff; display: flex; align-items: center;
-    gap: 24px; padding: 0 24px; min-height: 64px;
+    position: relative; z-index: 95; background: var(--ink); color: #fff; display: flex; align-items: center;
+    gap: 14px; padding: 0 20px; min-height: 58px;
   }
   .topbar::after {
     content: ""; position: absolute; left: 0; right: 0; top: 100%; height: 7px; pointer-events: none;
     background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='7' viewBox='0 0 14 7'%3E%3Cpath d='M0 0h14L7 7z' fill='%23062018'/%3E%3C/svg%3E") repeat-x left top / 14px 7px;
   }
-  .topbar .brand { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
-  .topbar .brand img { display: block; height: 32px; width: auto; color: var(--lime);
-    font: 800 18px/32px var(--font-head); }
-  .topbar .brand .tag { font-size: 10.5px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase;
-    color: var(--ink); background: var(--lime); padding: 3px 8px; border-radius: 100px; line-height: 1.4; }
-  .topbar nav { display: flex; gap: 4px; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+  .topbar .brand { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .topbar .brand:hover { text-decoration: none; }
+  .topbar .brand img { display: block; height: 26px; width: auto; color: var(--lime);
+    font: 800 16px/26px var(--font-head); }
+  .topbar .brand .tag { font-size: 9.5px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--ink); background: var(--lime); padding: 2px 7px; border-radius: 100px; line-height: 1.4; }
+  .topbar nav { display: flex; gap: 2px; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
   .topbar nav::-webkit-scrollbar { display: none; }
   .topbar nav a {
-    color: rgba(255,255,255,0.78); padding: 8px 12px; border-radius: 100px; font-size: 14px;
+    color: rgba(255,255,255,0.78); padding: 7px 11px; border-radius: 100px; font-size: 13.5px;
     font-weight: 700; white-space: nowrap;
   }
   .topbar nav a:hover { color: #fff; text-decoration: none; background: rgba(91,242,166,0.12); }
   .topbar nav a.active { color: var(--ink); background: var(--lime); }
-  .topbar .logout { color: rgba(255,255,255,0.7); font-size: 13px; font-weight: 700; white-space: nowrap; }
-  .topbar .logout:hover { color: var(--lime); }
-  .topbar .logout .me { color: rgba(255,255,255,0.5); font-weight: 600; }
   .topbar .nb { display: inline-block; min-width: 18px; margin-left: 4px; padding: 0 5px; border-radius: 100px;
     background: var(--red); color: var(--ink); font-size: 11px; font-weight: 800; line-height: 18px; text-align: center; }
-  .tb-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
-  .tw-chip { padding: 5px 11px; border-radius: 100px; background: var(--yellow); color: var(--ink) !important; font-size: 12.5px;
+  .tb-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .tw-chip { padding: 5px 10px; border-radius: 100px; background: var(--yellow); color: var(--ink) !important; font-size: 12.5px;
     font-weight: 800; white-space: nowrap; }
   .tw-chip:hover { text-decoration: none; box-shadow: 0 0 0 3px rgba(255,224,102,0.35); }
   .more { position: relative; }
-  .more summary { list-style: none; cursor: pointer; color: rgba(255,255,255,0.78); padding: 8px 12px; border-radius: 100px;
-    font-size: 14px; font-weight: 700; white-space: nowrap; user-select: none; }
+  .more summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 7px; padding: 4px 10px 4px 4px;
+    border-radius: 100px; color: #fff; background: rgba(255,255,255,0.08); font-size: 13.5px; font-weight: 700; white-space: nowrap;
+    user-select: none; }
+  .more summary .me { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--lime);
+    color: var(--ink); font: 800 12px/1 var(--font); text-transform: uppercase; }
+  .more summary .car { opacity: 0.7; font-size: 11px; }
   .more summary::-webkit-details-marker { display: none; }
-  .more summary:hover, .more[open] summary { color: #fff; background: rgba(91,242,166,0.12); }
-  .more.active summary { color: var(--ink); background: var(--lime); }
+  .more summary:hover, .more[open] summary { background: rgba(91,242,166,0.18); }
+  .more.active summary { box-shadow: inset 0 0 0 2px var(--lime); }
   .more .menu { position: absolute; right: 0; top: calc(100% + 12px); z-index: 50; min-width: 230px; padding: 6px;
     background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 14px 36px rgba(6,32,24,0.2); }
   .more .menu a { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 10px; color: var(--ink);
@@ -88,6 +90,8 @@
   .more .menu a.on { background: var(--mint); }
   .more .menu .sep { height: 1px; margin: 5px 8px; background: var(--border); }
   .more .menu .nb { margin-left: auto; }
+  .more .menu .who-me { padding: 8px 12px 4px; font-size: 12px; color: var(--ink-faint); }
+  .more .menu .who-me b { color: var(--ink); }
 
   .wrap { max-width: 1120px; margin: 0 auto; padding: 36px 24px 60px; }
   .wrap.wide { max-width: 1320px; }
@@ -188,21 +192,90 @@
   .filters a.active { background: var(--lime); color: var(--ink); border-color: var(--skin); }
 
   .empty { color: var(--ink-faint); font-size: 14px; padding: 20px 0; text-align: center; }
+  .btn-warn { color: var(--ink); background: var(--yellow); border-color: var(--yellow); }
+  .btn-warn:hover { background: #f5d23f; border-color: #f5d23f; color: var(--ink); }
 
-  /* Laptops and narrower: logo + menu + logout on top, the nav on its own row under them
-     (scrolling sideways on phones) */
-  @media (max-width: 1560px) {
-    .topbar { flex-wrap: wrap; gap: 8px 16px; padding: 12px 24px 10px; }
+  /* Confirmations (instead of the browser's "admin.bandzilla.uz says") */
+  body.modal-open { overflow: hidden; }
+  .modal { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 16px;
+    background: rgba(6,32,24,0.55); backdrop-filter: blur(3px); opacity: 0; transition: opacity .18s; }
+  .modal.in { opacity: 1; }
+  .modal[hidden] { display: none; }
+  .modal-card { width: min(440px, 100%); padding: 26px 26px 22px; border-radius: 22px; background: var(--surface);
+    box-shadow: 0 30px 80px rgba(6,32,24,0.35); text-align: center; transform: translateY(10px) scale(.96); transition: transform .18s; }
+  .modal.in .modal-card { transform: none; }
+  .modal-ic { display: grid; place-items: center; width: 58px; height: 58px; margin: 0 auto 14px; border-radius: 50%;
+    font: 800 26px/1 var(--font-head); background: var(--mint); color: var(--moss); }
+  .modal.warn .modal-ic { background: #FFF3BF; color: #8A6D00; }
+  .modal.danger .modal-ic { background: var(--red-tint); color: #C0392B; }
+  .modal-card h3 { margin: 0 0 8px; font: 800 18px/1.3 var(--font-head); letter-spacing: -0.01em; color: var(--ink); }
+  .modal-card p { margin: 0; font-size: 14.5px; color: var(--ink-soft); white-space: pre-line; }
+  .modal-btns { display: flex; gap: 10px; margin-top: 22px; }
+  .modal-btns .btn { flex: 1; padding: 11px 16px; font-size: 14px; }
+
+  /* Toasts: the result of an action, top right, gone by themselves */
+  .toasts { position: fixed; top: 72px; right: 20px; z-index: 90; display: grid; gap: 10px; width: min(380px, calc(100vw - 32px)); }
+  .toast { position: relative; overflow: hidden; display: flex; align-items: flex-start; gap: 12px; padding: 14px 14px 16px;
+    border-radius: 16px; background: var(--ink); color: #fff; box-shadow: 0 18px 44px rgba(6,32,24,0.3);
+    font-size: 14px; font-weight: 600; line-height: 1.45; transform: translateX(24px); opacity: 0; transition: transform .25s, opacity .25s; }
+  .toast.in { transform: none; opacity: 1; }
+  .toast.out { transform: translateX(24px); opacity: 0; }
+  .toast-ic { flex: none; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%;
+    background: var(--lime); color: var(--ink); font: 800 14px/1 var(--font); }
+  .toast.bad .toast-ic { background: var(--red); }
+  .toast-tx { flex: 1; padding-top: 2px; }
+  .toast-x { flex: none; border: 0; background: none; color: rgba(255,255,255,0.6); font-size: 20px; line-height: 1; cursor: pointer; padding: 2px 4px; }
+  .toast-x:hover { color: #fff; }
+  .toast-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--lime); transform-origin: left;
+    animation: toastbar linear forwards; }
+  .toast.bad .toast-bar { background: var(--red); }
+  .toast.paused .toast-bar { animation-play-state: paused; }
+  @keyframes toastbar { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+
+  /* Dropdowns (instead of the browser's select lists) */
+  .dd { position: relative; display: inline-block; min-width: 200px; max-width: 100%; vertical-align: middle; }
+  label > .dd, .field > .dd, .dd.block { display: block; width: 100%; }
+  .dd-native { position: absolute; left: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+  .dd-btn { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; padding: 9px 12px 9px 14px;
+    border: 1px solid var(--border-strong); border-radius: 12px; background: var(--surface); color: var(--ink); cursor: pointer;
+    font: 600 14px/1.4 var(--font); text-align: left; text-transform: none; letter-spacing: normal; }
+  .dd-btn:hover { border-color: var(--moss); }
+  .dd-btn:focus-visible, .dd.open .dd-btn { outline: none; border-color: var(--moss); box-shadow: 0 0 0 3px rgba(91,242,166,0.45); }
+  .dd-val { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dd-car { flex: none; color: var(--moss); transition: transform .15s; }
+  .dd.open .dd-car { transform: rotate(180deg); }
+  .dd-menu { position: absolute; left: 0; top: calc(100% + 6px); z-index: 60; min-width: 100%; max-width: calc(100vw - 32px);
+    max-height: 320px; overflow-y: auto; padding: 6px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface);
+    box-shadow: 0 16px 40px rgba(6,32,24,0.18); text-transform: none; letter-spacing: normal; }
+  .dd.up .dd-menu { top: auto; bottom: calc(100% + 6px); }
+  .dd-opt { display: flex; align-items: center; justify-content: space-between; gap: 14px; width: 100%; padding: 9px 12px;
+    border: 0; border-radius: 10px; background: none; color: var(--ink); cursor: pointer; font: 600 14px/1.4 var(--font);
+    text-align: left; white-space: nowrap; }
+  .dd-opt:hover, .dd-opt:focus { outline: none; background: var(--mint-2); }
+  .dd-opt[aria-selected=true] { background: var(--mint); font-weight: 800; }
+  .dd-opt svg { flex: none; color: var(--moss); visibility: hidden; }
+  .dd-opt[aria-selected=true] svg { visibility: visible; }
+  .dd-opt:disabled { opacity: 0.4; cursor: default; }
+
+  /* The top bar stays one row down to laptop widths (1280px at 100% zoom): it tightens first */
+  @media (max-width: 1440px) { .topbar .brand .tag { display: none; } }
+  @media (max-width: 1340px) {
+    .topbar { gap: 10px; padding: 0 14px; }
+    .topbar nav a { padding: 7px 8px; font-size: 13px; }
+  }
+  @media (max-width: 1260px) { .tw-chip .t { display: none; } }
+  /* Narrower: logo + menu on top, the nav on its own row under them (scrolling sideways on phones) */
+  @media (max-width: 1180px) {
+    .topbar { flex-wrap: wrap; gap: 8px 16px; padding: 10px 16px 8px; }
     .tb-right { margin-left: auto; }
-    .topbar nav { order: 3; flex: 1 0 100%; margin: 0 -24px; padding: 0 24px; }
+    .topbar nav { order: 3; flex: 1 0 100%; margin: 0 -16px; padding: 0 16px; }
   }
   @media (max-width: 1060px) {
-    .topbar { padding: 12px 16px 10px; }
-    .topbar nav { margin: 0 -16px; padding: 0 16px; }
     .wrap { padding: 30px 16px 48px; }
   }
   @media (max-width: 560px) {
-    .tw-chip .t, .topbar .logout .me { display: none; }
+    .more summary .lbl { display: none; }
+    .toasts { top: auto; bottom: 16px; right: 16px; left: 16px; width: auto; }
     h1 { font-size: 20px; }
     .card { padding: 16px; border-radius: 14px; }
     .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
@@ -213,7 +286,7 @@
 </head>
 <body>
   <div class="topbar">
-    <div class="brand"><img src="https://bandzilla.uz/assets/logo-on-dark.webp" alt="Bandzilla" width="720" height="126"><span class="tag">Admin</span></div>
+    <a class="brand" href="/"><img src="https://bandzilla.uz/assets/logo-on-dark.webp" alt="Bandzilla" width="720" height="126"><span class="tag">Admin</span></a>
     {% set nav = request.state.nav if request.state.nav is defined else {} %}
     <nav>
       <a href="/" class="{{ 'active' if active == 'dashboard' else '' }}">Dashboard</a>
@@ -228,7 +301,7 @@
     <div class="tb-right">
       {% if nav.window %}{% if nav.owner %}<a class="tw-chip" href="/settings" title="Faqat sinovchilar va adminlar tekshira oladi">🧪<span class="t"> Test rejimi</span></a>{% else %}<span class="tw-chip" title="Faqat sinovchilar va adminlar tekshira oladi">🧪<span class="t"> Test rejimi</span></span>{% endif %}{% endif %}
       <details class="more {{ 'active' if active in ('broadcast', 'errors', 'settings', 'admins', 'audit') else '' }}">
-        <summary>Boshqaruv ▾{% if nav.errors %}<span class="nb" title="bugungi xatolar">{{ nav.errors }}</span>{% endif %}</summary>
+        <summary title="Boshqaruv"><span class="me">{{ (nav.admin or "a")[:1] }}</span><span class="lbl">Boshqaruv</span>{% if nav.errors %}<span class="nb" title="bugungi xatolar">{{ nav.errors }}</span>{% endif %}<span class="car">▾</span></summary>
         <div class="menu">
           <a href="/broadcast" class="{{ 'on' if active == 'broadcast' }}">📣 Ommaviy xabar</a>
           <a href="/errors" class="{{ 'on' if active == 'errors' }}">⚠️ Xatolar{% if nav.errors %}<span class="nb">{{ nav.errors }}</span>{% endif %}</a>
@@ -238,9 +311,11 @@
           <a href="/admins" class="{{ 'on' if active == 'admins' }}">👥 Adminlar</a>
           <a href="/audit" class="{{ 'on' if active == 'audit' }}">📜 Kim nima qildi</a>
           {% endif %}
+          <div class="sep"></div>
+          <div class="who-me">Siz: <b>{{ nav.admin or "admin" }}</b>{{ " · egasi" if nav.owner }}</div>
+          <a href="/logout">↩️ Chiqish</a>
         </div>
       </details>
-      <a href="/logout" class="logout">{% if nav.admin %}<span class="me">{{ nav.admin }} · </span>{% endif %}Chiqish</a>
     </div>
   </div>
   <script>
@@ -251,5 +326,210 @@
   <div class="wrap {% block wrapclass %}{% endblock %}">
     {% block content %}{% endblock %}
   </div>
+
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+  <div class="modal" id="bzModal" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="bzMTitle" aria-describedby="bzMText">
+      <div class="modal-ic" id="bzMIc" aria-hidden="true"></div>
+      <h3 id="bzMTitle"></h3>
+      <p id="bzMText"></p>
+      <div class="modal-btns"><button type="button" class="btn" id="bzMNo">Bekor qilish</button><button type="button" class="btn btn-good" id="bzMYes">Ha</button></div>
+    </div>
+  </div>
+  <script>
+  /* bz.toast(text, "good"|"bad") and bz.confirm({title, text, ok, tone: "good"|"warn"|"danger"}) -> Promise<bool>.
+     A form asks before it is sent with data-confirm="title" (+ data-confirm-text, data-confirm-ok, data-tone),
+     or with form.bzConfirm = function (form) { return options | null (stop) | undefined (just send) }.
+     Every select in the page becomes a dropdown; the select itself stays in the form. */
+  (function () {
+    var box = document.getElementById("toasts");
+    function toast(text, tone, ms) {
+      tone = tone || "good";
+      ms = ms || (tone === "bad" ? 9000 : 5000);
+      var t = document.createElement("div");
+      t.className = "toast " + tone;
+      t.setAttribute("role", tone === "bad" ? "alert" : "status");
+      t.innerHTML = '<span class="toast-ic"></span><div class="toast-tx"></div><button type="button" class="toast-x" aria-label="Yopish">×</button><span class="toast-bar"></span>';
+      t.querySelector(".toast-ic").textContent = tone === "bad" ? "!" : "✓";
+      t.querySelector(".toast-tx").textContent = text;
+      t.querySelector(".toast-bar").style.animationDuration = ms + "ms";
+      box.appendChild(t);
+      requestAnimationFrame(function () { requestAnimationFrame(function () { t.classList.add("in"); }); });
+      var timer, left = ms, started;
+      function close() { clearTimeout(timer); t.classList.add("out"); setTimeout(function () { t.remove(); }, 260); }
+      function run() { started = Date.now(); timer = setTimeout(close, left); }
+      t.addEventListener("mouseenter", function () { clearTimeout(timer); left -= Date.now() - started; t.classList.add("paused"); });
+      t.addEventListener("mouseleave", function () { t.classList.remove("paused"); run(); });
+      t.querySelector(".toast-x").addEventListener("click", close);
+      run();
+    }
+    document.querySelectorAll(".wrap > .flash, .wrap > .error").forEach(function (el) {
+      toast(el.textContent.trim(), el.classList.contains("error") ? "bad" : "good");
+      el.remove();
+    });
+
+    var modal = document.getElementById("bzModal"), ic = document.getElementById("bzMIc"),
+        title = document.getElementById("bzMTitle"), text = document.getElementById("bzMText"),
+        yes = document.getElementById("bzMYes"), no = document.getElementById("bzMNo"), resolver = null, back = null;
+    function confirmBox(o) {
+      if (resolver) resolver(false);
+      return new Promise(function (resolve) {
+        resolver = resolve;
+        back = document.activeElement;
+        var tone = o.tone || "good";
+        modal.className = "modal " + tone;
+        ic.textContent = tone === "good" ? "✓" : "!";
+        title.textContent = o.title || "Ishonchingiz komilmi?";
+        text.textContent = o.text || "";
+        text.hidden = !o.text;
+        yes.textContent = o.ok || "Ha";
+        no.textContent = o.cancel || "Bekor qilish";
+        yes.className = "btn " + (tone === "danger" ? "btn-bad" : tone === "warn" ? "btn-warn" : "btn-good");
+        modal.hidden = false;
+        document.body.classList.add("modal-open");
+        requestAnimationFrame(function () { requestAnimationFrame(function () { modal.classList.add("in"); }); });
+        yes.focus();
+      });
+    }
+    function done(answer) {
+      if (!resolver) return;
+      var r = resolver;
+      resolver = null;
+      modal.classList.remove("in");
+      document.body.classList.remove("modal-open");
+      setTimeout(function () { if (!resolver) modal.hidden = true; }, 180);
+      if (back && back.focus) back.focus();
+      r(answer);
+    }
+    yes.addEventListener("click", function () { done(true); });
+    no.addEventListener("click", function () { done(false); });
+    modal.addEventListener("click", function (e) { if (e.target === modal) done(false); });
+    document.addEventListener("keydown", function (e) {
+      if (!resolver) return;
+      if (e.key === "Escape") { e.preventDefault(); done(false); }
+      else if (e.key === "Tab") { e.preventDefault(); (document.activeElement === yes ? no : yes).focus(); }
+    });
+
+    document.addEventListener("submit", function (e) {
+      var f = e.target;
+      if (f.dataset.bzOk) { delete f.dataset.bzOk; return; }
+      var o = typeof f.bzConfirm === "function" ? f.bzConfirm(f)
+        : f.dataset.confirm ? { title: f.dataset.confirm, text: f.dataset.confirmText, ok: f.dataset.confirmOk, tone: f.dataset.tone }
+        : undefined;
+      if (o === undefined) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (!o) return;
+      var by = e.submitter && e.submitter.form === f ? e.submitter : null;
+      confirmBox(o).then(function (ok) {
+        if (!ok) return;
+        f.dataset.bzOk = "1";
+        if (f.requestSubmit) { by ? f.requestSubmit(by) : f.requestSubmit(); } else { f.submit(); }
+      });
+    }, true);
+
+    var CAR = '<svg class="dd-car" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    var TICK = '<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M3 7.5 5.8 10 11 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    function closeAll(except) {
+      document.querySelectorAll(".dd.open").forEach(function (d) { if (d !== except) d.bzClose(); });
+    }
+    function dropdown(sel) {
+      if (sel.multiple || sel.hasAttribute("data-native") || sel.closest(".dd")) return;
+      var dd = document.createElement("div");
+      dd.className = "dd";
+      sel.parentNode.insertBefore(dd, sel);
+      dd.appendChild(sel);
+      sel.classList.add("dd-native");
+      sel.tabIndex = -1;
+      sel.setAttribute("aria-hidden", "true");
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "dd-btn";
+      btn.setAttribute("aria-haspopup", "listbox");
+      btn.setAttribute("aria-expanded", "false");
+      if (sel.getAttribute("aria-label")) btn.setAttribute("aria-label", sel.getAttribute("aria-label"));
+      if (sel.id) {
+        btn.id = sel.id + "-dd";
+        document.querySelectorAll('label[for="' + sel.id + '"]').forEach(function (l) { l.htmlFor = btn.id; });
+      }
+      btn.innerHTML = '<span class="dd-val"></span>' + CAR;
+      var menu = document.createElement("div");
+      menu.className = "dd-menu";
+      menu.setAttribute("role", "listbox");
+      menu.hidden = true;
+      Array.prototype.forEach.call(sel.options, function (op, i) {
+        var b = document.createElement("button");
+        b.type = "button";
+        b.className = "dd-opt";
+        b.setAttribute("role", "option");
+        b.dataset.i = i;
+        b.disabled = op.disabled;
+        b.innerHTML = "<span></span>" + TICK;
+        b.firstChild.textContent = op.textContent.trim();
+        menu.appendChild(b);
+      });
+      dd.appendChild(btn);
+      dd.appendChild(menu);
+      var opts = Array.prototype.slice.call(menu.children);
+      function sync() {
+        var op = sel.options[sel.selectedIndex];
+        btn.firstChild.textContent = op ? op.textContent.trim() : "";
+        opts.forEach(function (b, i) { b.setAttribute("aria-selected", i === sel.selectedIndex ? "true" : "false"); });
+      }
+      function open() {
+        closeAll(dd);
+        menu.hidden = false;
+        dd.classList.add("open");
+        btn.setAttribute("aria-expanded", "true");
+        dd.classList.remove("up");
+        var r = menu.getBoundingClientRect();
+        if (r.bottom > window.innerHeight - 8 && dd.getBoundingClientRect().top > r.height + 16) dd.classList.add("up");
+        (opts[sel.selectedIndex] || opts[0]).focus();
+      }
+      function close(focus) {
+        menu.hidden = true;
+        dd.classList.remove("open", "up");
+        btn.setAttribute("aria-expanded", "false");
+        if (focus) btn.focus();
+      }
+      dd.bzClose = close;
+      function choose(i) {
+        var changed = sel.selectedIndex !== i;
+        sel.selectedIndex = i;
+        sync();
+        close(true);
+        if (changed) sel.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+      btn.addEventListener("click", function () { if (menu.hidden) open(); else close(); });
+      btn.addEventListener("keydown", function (e) {
+        if (["ArrowDown", "ArrowUp", "Enter", " "].indexOf(e.key) >= 0) { e.preventDefault(); open(); }
+      });
+      menu.addEventListener("click", function (e) {
+        var b = e.target.closest(".dd-opt");
+        if (b && !b.disabled) choose(+b.dataset.i);
+      });
+      menu.addEventListener("keydown", function (e) {
+        var live = opts.filter(function (b) { return !b.disabled; }), k = live.indexOf(document.activeElement);
+        if (e.key === "ArrowDown") { e.preventDefault(); (live[k + 1] || live[0]).focus(); }
+        else if (e.key === "ArrowUp") { e.preventDefault(); (live[k - 1] || live[live.length - 1]).focus(); }
+        else if (e.key === "Home") { e.preventDefault(); live[0].focus(); }
+        else if (e.key === "End") { e.preventDefault(); live[live.length - 1].focus(); }
+        else if (e.key === "Escape") { e.preventDefault(); close(true); }
+        else if (e.key === "Tab") { close(); }
+        else if (e.key.length === 1 && e.key !== " ") {
+          var key = e.key.toLowerCase(), after = live.slice(k + 1).concat(live.slice(0, k + 1));
+          var hit = after.filter(function (b) { return b.textContent.trim().toLowerCase().indexOf(key) === 0; })[0];
+          if (hit) hit.focus();
+        }
+      });
+      sel.addEventListener("change", sync);
+      sync();
+    }
+    document.querySelectorAll(".wrap select").forEach(dropdown);
+    document.addEventListener("click", function (e) { if (!e.target.closest(".dd")) closeAll(); });
+
+    window.bz = { toast: toast, confirm: confirmBox };
+  })();
+  </script>
 </body>
 </html>

@@ -84,7 +84,7 @@
       <td class="q-actions">
         <a class="btn btn-sm" href="/questions/{{ q.id }}/edit">Tahrirlash</a>
         <form method="post" action="/questions/{{ q.id }}/delete"
-              onsubmit="return confirm('Q{{ loop.index }} o\'chirilsinmi? Buni qaytarib bo\'lmaydi.');">
+              data-confirm="Q{{ loop.index }} o'chirilsinmi?" data-confirm-text="Buni qaytarib bo'lmaydi." data-confirm-ok="O'chirish" data-tone="danger">
           <button type="submit" class="btn btn-sm btn-bad">O'chirish</button>
         </form>
       </td>

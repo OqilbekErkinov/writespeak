@@ -5,7 +5,8 @@
 <div class="e-head">
   <h1>Xatolar <span class="muted num">{{ entries|length }}</span></h1>
   {% if owner and entries %}
-  <form method="post" action="/errors/clear" onsubmit="return confirm('Barcha xatolar ro\'yxatdan o\'chirilsinmi?');">
+  <form method="post" action="/errors/clear" data-confirm="Xatolar ro'yxati tozalansinmi?" data-confirm-text="Barcha yozuvlar o'chadi."
+        data-confirm-ok="Tozalash" data-tone="danger">
     <button type="submit" class="btn btn-sm">Ro'yxatni tozalash</button>
   </form>
   {% endif %}

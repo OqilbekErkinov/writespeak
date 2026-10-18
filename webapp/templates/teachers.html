@@ -16,7 +16,7 @@
       <td>{{ c.teachers }}</td><td>{{ c.groups }}</td><td>{{ c.students }}</td>
       <td>{{ c.balance }}</td><td>{{ c.sponsored_30d }}</td>
       <td>
-        <form class="inline" method="post" action="/centers/{{ c.center.id }}/delete" onsubmit="return confirm('Markazni o\'chirasizmi? Guruhlar o\'qituvchilarida qoladi.');">
+        <form class="inline" method="post" action="/centers/{{ c.center.id }}/delete" data-confirm="Markaz o'chirilsinmi?" data-confirm-text="Guruhlar o'qituvchilarida qoladi." data-confirm-ok="O'chirish" data-tone="danger">
           <button class="btn btn-sm">O'chirish</button>
         </form>
       </td>
@@ -49,7 +49,7 @@
         </form>
         {% endif %}
         {% if t.user.role.value == "teacher" %}
-        <form class="inline" method="post" action="/teachers/{{ t.user.id }}/revoke" onsubmit="return confirm('O\'qituvchilik huquqini olasizmi? Mavjud guruhlari qoladi, yangisini ocha olmaydi.');">
+        <form class="inline" method="post" action="/teachers/{{ t.user.id }}/revoke" data-confirm="O'qituvchilik huquqi olinsinmi?" data-confirm-text="Mavjud guruhlari qoladi, yangisini ocha olmaydi." data-confirm-ok="Huquqni olish" data-tone="danger">
           <button class="btn btn-sm">O'qituvchilikdan olish</button>
         </form>
         {% endif %}
