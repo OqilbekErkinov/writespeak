@@ -18,7 +18,7 @@
     "nav.teachers": "Преподавателям",
 
     "hero.cap": "IELTS Writing и Speaking · Telegram-бот",
-    "hero.title": "Съедает ошибки.<br><span class=\"t-lime\">Растит балл.</span>",
+    "hero.title": "Увидьте свои ошибки.<br><span class=\"t-lime\">Поднимите свой балл.</span>",
     "hero.lead": "Отправьте эссе или голосовой ответ. За 2–4 минуты Bandzilla найдёт каждую ошибку, исправит её и объяснит, почему это ошибка. Балл — по 4 критериям, которыми пользуются экзаменаторы IELTS.",
     "hero.cta": "Проверить бесплатно",
     "hero.cta2": "Посмотреть пример отчёта",
@@ -44,7 +44,7 @@
     "pain.2d": "Говорите перед зеркалом. Но кто оценит беглость, произношение и грамматику?",
     "pain.3t": "Балл есть, причины нет",
     "pain.3d": "Цифра «6.0» не говорит, что исправлять. Пока не знаете, какие предложения и слова снижают балл, он стоит на месте.",
-    "pain.bridge": "<b>Bandzilla — IELTS-тренер у вас в кармане.</b> 24/7, прямо в Telegram, ответ за 2–4 минуты. Смеётся над ошибкой — не над вами.",
+    "pain.bridge": "<b>Не нужно ждать преподавателя.</b> Bandzilla проверит ваш ответ за 2–4 минуты — днём и ночью, прямо в Telegram.",
     "pain.cta": "Попробовать сейчас",
 
     "rep.cap": "Пример отчёта",
@@ -222,7 +222,7 @@
     "nav.teachers": "For teachers",
 
     "hero.cap": "IELTS Writing and Speaking · Telegram bot",
-    "hero.title": "Eats your mistakes.<br><span class=\"t-lime\">Grows your band.</span>",
+    "hero.title": "See your mistakes.<br><span class=\"t-lime\">Raise your band.</span>",
     "hero.lead": "Send your essay or a voice answer. In 2–4 minutes Bandzilla finds every mistake, fixes it and explains why it’s wrong. Your band is scored on the 4 criteria IELTS examiners use.",
     "hero.cta": "Try it free",
     "hero.cta2": "See a sample report",
@@ -248,7 +248,7 @@
     "pain.2d": "You talk to the mirror. But who will judge your fluency, pronunciation and grammar?",
     "pain.3t": "A band, but no reason",
     "pain.3d": "A “6.0” doesn’t tell you what to fix. Until you know which sentences and words pull your band down, it won’t move.",
-    "pain.bridge": "<b>Bandzilla is an IELTS coach in your pocket.</b> 24/7, right in Telegram, with an answer in 2–4 minutes. It laughs at the mistake — never at you.",
+    "pain.bridge": "<b>No more waiting for a teacher.</b> Bandzilla checks your answer in 2–4 minutes — day or night, right in Telegram.",
     "pain.cta": "Try it now",
 
     "rep.cap": "Sample report",
