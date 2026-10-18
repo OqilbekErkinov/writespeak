@@ -159,7 +159,8 @@ async def choose_full_test(callback: CallbackQuery, state: FSMContext, lang: str
 
 @router.message(SpeakingStates.awaiting_question, ~F.text.in_(MENU_BUTTON_TEXTS))
 async def receive_question(message: Message, state: FSMContext, lang: str) -> None:
-    extracted = await read_text_input(message, lang)
+    # a screenshot's buttons, counters and headers are not questions
+    extracted = await read_text_input(message, lang, ocr_mode="speaking_questions")
     if extracted is None:
         return
     if extracted.cost:

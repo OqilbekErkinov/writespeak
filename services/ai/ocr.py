@@ -20,18 +20,46 @@ OCR_SYSTEM_PROMPT = (
     "no commentary, no markdown formatting."
 )
 
+# A Speaking question set is often a screenshot of an app or a channel post:
+# only the examiner's questions are wanted, not the page around them (the
+# user's report, 2026-10-18: "Answers here" buttons, a "2 questions" counter
+# and a "Skills (Predicted & Reported: ...)" header were asked as questions).
+SPEAKING_QUESTIONS_PROMPT = (
+    "You read IELTS Speaking questions from a photo or screenshot (an app, a website, a book page, a "
+    "Telegram post). Output ONLY the questions the examiner asks, word for word as printed, one "
+    "question per line, in their order.\n"
+    "Leave out everything else: app and website elements (buttons such as \"Answers here\" or \"Show "
+    "answer\", badges such as \"NEW\" or \"Topic\", counters such as \"2 questions\", menus, likes, "
+    "timestamps), topic, section and page headers (\"Skills (Predicted & Reported: September 2026 - "
+    "April 2027)\", \"Part 1 - Hometown\"), dates, question numbers, sample answers, tips and "
+    "watermarks.\n"
+    "Keep an examiner's lead-in that belongs to the questions (\"Let's talk about your hometown.\") "
+    "on its own line before them. A Part 2 cue card stays whole, line by line: the topic "
+    "(\"Describe ...\"), \"You should say:\", each point, and the final \"and explain ...\" line.\n"
+    "Change nothing inside a question. If the image holds no IELTS question, write out its text as "
+    "it is. Output ONLY that text - no preamble, no commentary, no markdown."
+)
 
-async def extract_text_from_image(image_bytes: bytes, mime_type: str = "image/jpeg") -> str:
-    """OCR a single image (photo of handwriting, or a rasterized PDF page)."""
+_MODES = {
+    "verbatim": (OCR_SYSTEM_PROMPT, "Transcribe this image."),
+    "speaking_questions": (SPEAKING_QUESTIONS_PROMPT, "Write out the IELTS Speaking question(s) in this image."),
+}
+
+
+async def extract_text_from_image(image_bytes: bytes, mime_type: str = "image/jpeg", mode: str = "verbatim") -> str:
+    """OCR a single image (photo of handwriting, or a rasterized PDF page).
+    `mode`: "verbatim" (everything, as written - answers, Writing questions)
+    or "speaking_questions" (only the questions, no page around them)."""
+    system, ask = _MODES[mode]
     b64 = base64.b64encode(image_bytes).decode("utf-8")
     response = await client.chat.completions.create(
         model=settings.openai_model_vision,
         messages=[
-            {"role": "system", "content": OCR_SYSTEM_PROMPT},
+            {"role": "system", "content": system},
             {
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": "Transcribe this image."},
+                    {"type": "text", "text": ask},
                     {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{b64}"}},
                 ],
             },

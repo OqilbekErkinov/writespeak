@@ -7,6 +7,11 @@ it's a practice question from the admin panel (one question per line) or
 whatever the student pasted/photographed - is split on lines and on "?",
 with any non-question lead-in ("Let's talk about your hometown.", a
 "Part 1 - Hometown" header) folded into the question that follows it.
+Screenshot leftovers that are never part of a question - "Answers here"
+buttons, "NEW Topic" badges, "2 questions" counters, "(Predicted &
+Reported: ...)" headers, bare numbers and dates - are dropped (2026-10-18;
+a photo's are mostly gone already: services/ai/ocr.py reads Speaking
+question photos in "speaking_questions" mode).
 
 Repeated questions ("Do you think you are an ambitious person?" right after
 "Are you an ambitious person?" - the channel's own topic post had both) are
@@ -24,6 +29,14 @@ MAX_QUESTIONS = 15
 
 _NUMBERING = re.compile(r"^\s*(?:(?:Q|Question\s*)?\d{1,2}\s*[.):-]|[-•*–])\s*", re.IGNORECASE)
 _AFTER_QUESTION_MARK = re.compile(r"(?<=\?)\s+")
+_DATE = r"(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{4}"
+# A line that is not a question and never belongs to one (checked only on
+# lines without "?", so "Have you ever reported a problem?" stays).
+_NOISE = re.compile(
+    r"^(?:(?:show|see|view|sample|model)\s+)?answers?(?:\s+here)?$|^new(?:\s+topic)?$|^topic$|"
+    rf"^\d+\s+questions?$|^\d+$|\b(?:predicted|reported)\b|^\(?{_DATE}(?:\s*(?:-|–|—|to)\s*{_DATE})?\)?$",
+    re.IGNORECASE,
+)
 
 _FRAMES = (
     r"do you think( that)?", r"would you say( that)?", r"in your opinion,?", r"do you believe( that)?",
@@ -95,7 +108,7 @@ def split_questions(text: str, part: str) -> list[str]:
     for line in text.splitlines():
         for piece in _AFTER_QUESTION_MARK.split(line):
             piece = _NUMBERING.sub("", piece).strip()
-            if not piece:
+            if not piece or (not piece.endswith("?") and _NOISE.search(piece)):
                 continue
             if piece.endswith("?"):
                 questions.append("\n".join([*lead_in, piece]))

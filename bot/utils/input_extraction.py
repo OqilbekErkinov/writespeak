@@ -60,10 +60,12 @@ async def _download(bot: Bot, file_id: str) -> bytes:
     return buf.read()
 
 
-async def read_text_input(message: Message, lang: str) -> ExtractedInput | None:
+async def read_text_input(message: Message, lang: str, ocr_mode: str = "verbatim") -> ExtractedInput | None:
     """Returns the extracted input, or None when there's nothing to act on -
     either the user has already been told why, or `message` is a non-first
-    item of an album whose first item's call handles the whole album."""
+    item of an album whose first item's call handles the whole album.
+    `ocr_mode` (services/ai/ocr.py): how photos are read - "speaking_questions"
+    keeps only the questions of a screenshot."""
     messages = await collect_album(message)
     if messages is None:
         return None
@@ -74,7 +76,7 @@ async def read_text_input(message: Message, lang: str) -> ExtractedInput | None:
     error: str | None = None
     try:
         with usage.track(f"input user={message.from_user.id}") as calls:
-            result = await _extract_text(messages, message.bot, message.from_user.id, lang)
+            result = await _extract_text(messages, message.bot, message.from_user.id, lang, ocr_mode)
         if calls:
             result.cost = usage.summary(calls)
     except UnsupportedInputError as e:
@@ -134,12 +136,12 @@ async def read_images(message: Message, lang: str) -> list[str] | None:
 
 
 async def _extract_text(
-    messages: list[Message], bot: Bot, user_id: int, lang: str
+    messages: list[Message], bot: Bot, user_id: int, lang: str, ocr_mode: str = "verbatim"
 ) -> ExtractedInput:
     texts: list[str] = []
     result = ExtractedInput(text="", source=SourceType.text)
     for message in messages:
-        text, source, saved_path, is_image = await _extract_one(message, bot, user_id, lang)
+        text, source, saved_path, is_image = await _extract_one(message, bot, user_id, lang, ocr_mode)
         if text:
             texts.append(text)
         if source != SourceType.text and result.source == SourceType.text:
@@ -153,7 +155,7 @@ async def _extract_text(
 
 
 async def _extract_one(
-    message: Message, bot: Bot, user_id: int, lang: str
+    message: Message, bot: Bot, user_id: int, lang: str, ocr_mode: str = "verbatim"
 ) -> tuple[str, SourceType, str | None, bool]:
     """Returns (text, source_type, saved_original_path_or_None, is_image)."""
     if message.text:
@@ -164,7 +166,7 @@ async def _extract_one(
     if message.photo:
         content = await _download(bot, message.photo[-1].file_id)  # highest resolution
         saved_path = save_upload(user_id, content, ".jpg")
-        text = await extract_text_from_image(content, mime_type="image/jpeg")
+        text = await extract_text_from_image(content, mime_type="image/jpeg", mode=ocr_mode)
         return _join(caption, text), SourceType.photo, saved_path, True
 
     audio_file_id, audio_name = _audio_like(message)
@@ -198,7 +200,7 @@ async def _extract_one(
             # A photo sent "as a file" (uncompressed) - common from desktop.
             image_bytes, image_mime, image_ext = _normalize_image(content, mime, lang)
             saved_path = save_upload(user_id, image_bytes, image_ext)
-            text = await extract_text_from_image(image_bytes, mime_type=image_mime)
+            text = await extract_text_from_image(image_bytes, mime_type=image_mime, mode=ocr_mode)
             return _join(caption, text), SourceType.photo, saved_path, True
 
         raise UnsupportedInputError(t("input.unsupported_file", lang))
