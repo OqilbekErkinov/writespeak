@@ -14,6 +14,7 @@ import asyncio
 import logging
 
 from aiogram import Bot
+from aiogram.exceptions import TelegramRetryAfter
 
 from bot.config import settings
 from bot.i18n import t
@@ -48,8 +49,13 @@ async def notify_back(bot: Bot) -> None:
         for user_id in waiting:
             async with get_session() as session:
                 user = await crud.get_user(session, user_id)
+            text = t("quota.back", user.language if user else None)
             try:
-                await bot.send_message(user_id, t("quota.back", user.language if user else None))
+                try:
+                    await bot.send_message(user_id, text)
+                except TelegramRetryAfter as e:  # flood control: wait as Telegram says, then once more
+                    await asyncio.sleep(e.retry_after)
+                    await bot.send_message(user_id, text)
                 sent += 1
             except Exception as e:  # noqa: BLE001 - blocked the bot, deleted account, ...
                 logger.info("Checks-back message to %s not sent: %r", user_id, e)
