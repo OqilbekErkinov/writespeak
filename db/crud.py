@@ -1310,6 +1310,14 @@ class PaymentDecision:
     gift: CoinGift | None = None  # an approved gift payment's link (PaymentKind.gift)
 
 
+async def _locked_user(session: AsyncSession, user_id: int) -> User | None:
+    """The user row, locked (FOR UPDATE) and freshly read, before changing
+    coin_balance: the ORM writes the new value, not `balance + n`."""
+    return (await session.execute(
+        select(User).where(User.id == user_id).with_for_update().execution_options(populate_existing=True)
+    )).scalar_one_or_none()
+
+
 async def decide_payment_request(
     session: AsyncSession, request_id: int, *, approve: bool, admin_id: int, referral_coins: int = 0
 ) -> PaymentDecision:
@@ -1320,8 +1328,14 @@ async def decide_payment_request(
     The buyer's first approved coin purchase also pays `referral_coins` to
     them and to whoever invited them (once - User.referral_rewarded). A gift
     purchase counts as that purchase too (it is their money), but its coins
-    go to a one-time gift link, not to the buyer."""
-    request = await session.get(PaymentRequest, request_id)
+    go to a one-time gift link, not to the buyer.
+
+    Row locks (request, buyer, inviter): approval exists both in the bot and
+    in the admin panel, and the ORM writes balances as absolute values - two
+    admins at once must not both credit, nor overwrite a check's charge."""
+    request = (await session.execute(
+        select(PaymentRequest).where(PaymentRequest.id == request_id).with_for_update()
+    )).scalar_one_or_none()
     if request is None:
         return PaymentDecision(None, False)
     if request.status != PaymentStatus.pending:
@@ -1333,7 +1347,7 @@ async def decide_payment_request(
     request.reviewed_at = datetime.now(timezone.utc)
     request.reviewed_by = admin_id
     if approve:
-        user = await session.get(User, request.user_id)
+        user = await _locked_user(session, request.user_id)
         if user is not None:
             if request.kind == PaymentKind.subscription:
                 now = datetime.now(timezone.utc)
@@ -1351,7 +1365,7 @@ async def decide_payment_request(
                 else:
                     user.coin_balance += request.coins
                 if referral_coins and user.referred_by and not user.referral_rewarded:
-                    referrer = await session.get(User, user.referred_by)
+                    referrer = await _locked_user(session, user.referred_by)
                     if referrer is not None:
                         referrer.coin_balance += referral_coins
                         user.coin_balance += referral_coins
@@ -1392,7 +1406,7 @@ async def claim_gift(session: AsyncSession, code: str, user_id: int) -> GiftClai
         return GiftClaim("own", gift, buyer)
     if gift.claimed_by is not None:
         return GiftClaim("taken", gift, buyer)
-    user = await session.get(User, user_id)
+    user = await _locked_user(session, user_id)  # a check's charge may be committing right now
     if user is None:
         return GiftClaim("missing")
     user.coin_balance += gift.coins
