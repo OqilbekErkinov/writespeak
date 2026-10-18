@@ -13,7 +13,7 @@ from bot.config import settings
 from bot.i18n import LANGS, t
 from bot.keyboards.lang_kb import CB_LANG_CHANGE_PREFIX, CB_LANG_ONBOARD_PREFIX
 from bot.keyboards.main_menu_kb import main_menu_kb
-from bot.utils import stickers
+from bot.utils import gifts, stickers
 from bot.utils.group_invite import joined_notice
 from bot.utils.sample_report import build_sample_report_pdf
 from db import crud
@@ -52,6 +52,10 @@ async def onboard_set_language(callback: CallbackQuery) -> None:
     # The welcome coins, then - on its own, with the Tip sticker - to spend
     # them on real IELTS tasks, not on a try-out sentence.
     await callback.message.answer(t("start.welcome_coins", lang, coins=settings.welcome_coins))
+    # Came through a friend's gift link (bot/handlers/start.py kept the code): claimed now.
+    gift_code = await gifts.pop_onboarding_code(callback.from_user.id)
+    if gift_code:
+        await gifts.claim(callback.message, callback.bot, gift_code, lang)
     await stickers.send(callback.bot, callback.from_user.id, "maslahat")
     await callback.message.answer(t("start.real_task", lang))
     # Joined a group through an invite link before picking the language

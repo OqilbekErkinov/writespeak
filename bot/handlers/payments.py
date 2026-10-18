@@ -27,18 +27,22 @@ from aiogram.types import CallbackQuery, Message
 from bot.config import settings
 from bot.i18n import t
 from bot.keyboards.main_menu_kb import MENU_BUTTON_TEXTS
+from bot.keyboards.account_kb import gift_packs_kb
 from bot.keyboards.payment_kb import (
     CB_BUY_PREFIX,
     CB_BUY_SUB_PREFIX,
+    CB_GIFT_BUY_PREFIX,
     CB_PAY_APPROVE_PREFIX,
     CB_PAY_NOOP,
     CB_PAY_REJECT_PREFIX,
     buy_coins_kb,
+    gift_share_kb,
     payment_review_kb,
 )
 from bot.states.payment_states import PaymentStates
 from bot.utils import crm_events, stickers
-from bot.utils.coins import CENTER_PACKS, pack_price
+from bot.utils.coins import CENTER_PACKS, COIN_PACKS, pack_price
+from bot.utils.gifts import gift_link
 from bot.utils.quota import format_som
 from db import crud
 from db.database import get_session
@@ -79,6 +83,24 @@ async def choose_pack(callback: CallbackQuery, state: FSMContext, lang: str) -> 
             )
             return
         request = await crud.create_payment_request(session, user_id=callback.from_user.id, coins=coins, amount=price)
+    await _start_receipt_flow(callback.message, state, request, lang)
+
+
+@router.callback_query(F.data.startswith(CB_GIFT_BUY_PREFIX))
+async def choose_gift_pack(callback: CallbackQuery, state: FSMContext, lang: str) -> None:
+    """A students' pack bought as a gift (Hisobim -> "🎁 Sovg'a qilish"): paid
+    like any pack; its approval makes a gift link (bot/utils/gifts.py) instead
+    of adding the coins to the buyer."""
+    await callback.answer()
+    coins = int(callback.data.removeprefix(CB_GIFT_BUY_PREFIX))
+    price = dict(COIN_PACKS).get(coins)
+    if price is None:
+        await callback.message.answer(t("gift.intro", lang), reply_markup=gift_packs_kb(lang))
+        return
+    async with get_session() as session:
+        request = await crud.create_payment_request(
+            session, user_id=callback.from_user.id, coins=coins, amount=price, kind=PaymentKind.gift
+        )
     await _start_receipt_flow(callback.message, state, request, lang)
 
 
@@ -130,11 +152,12 @@ async def receive_receipt(message: Message, state: FSMContext, lang: str) -> Non
     await message.answer(t("pay.receipt_accepted", lang))
 
     username_part = f" (@{message.from_user.username})" if message.from_user.username else ""
-    item_line = (
-        f"{request.subscription_months} oylik cheksiz obuna"
-        if request.kind == PaymentKind.subscription
-        else f"{request.coins} coin"
-    )
+    if request.kind == PaymentKind.subscription:
+        item_line = f"{request.subscription_months} oylik cheksiz obuna"
+    elif request.kind == PaymentKind.gift:
+        item_line = f"🎁 {request.coins} coin — sovg'a (tasdiqlansa, xaridorga sovg'a havolasi boradi)"
+    else:
+        item_line = f"{request.coins} coin"
     caption = (
         "💳 <b>Yangi to'lov so'rovi</b>\n\n"
         f"Foydalanuvchi: {message.from_user.full_name}{username_part}\n"
@@ -208,19 +231,25 @@ async def notify_decision(bot, decision: crud.PaymentDecision) -> None:
         buyer = await crud.get_user(session, request.user_id)
         referrer = await crud.get_user(session, decision.referrer_id) if decision.referrer_id else None
     buyer_lang = buyer.language if buyer is not None else "uz"
+    markup = None
     try:
         if request.status == PaymentStatus.approved:
             if request.kind == PaymentKind.subscription:
                 text = t("pay.approved_subscription", buyer_lang, months=request.subscription_months)
+            elif request.kind == PaymentKind.gift and decision.gift is not None:
+                # the coins wait behind a one-time link for the buyer to send on
+                link = gift_link(decision.gift.code)
+                text = t("gift.ready", buyer_lang, coins=decision.gift.coins, link=link)
+                markup = gift_share_kb(link, decision.gift.coins, buyer_lang)
             else:
                 text = t("pay.approved_coins", buyer_lang, coins=request.coins, balance=buyer.coin_balance if buyer else 0)
-                if referrer is not None:
-                    text += "\n\n" + t("pay.referral_bonus_buyer", buyer_lang, coins=settings.referral_coins)
+            if referrer is not None and request.kind != PaymentKind.subscription:
+                text += "\n\n" + t("pay.referral_bonus_buyer", buyer_lang, coins=settings.referral_coins)
         else:
             text = t("pay.rejected", buyer_lang)
-        await bot.send_message(request.user_id, text)
-    except Exception:
-        pass
+        await bot.send_message(request.user_id, text, reply_markup=markup)
+    except Exception as e:  # noqa: BLE001 - blocked the bot, ...
+        logger.info("Payment decision message to %s not sent: %r", request.user_id, e)
     if request.status == PaymentStatus.approved:
         await stickers.send(bot, request.user_id, "rahmat")  # thanks (Love), Brand Guidelines p. 26
     if referrer is not None:

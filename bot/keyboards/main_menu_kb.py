@@ -57,7 +57,7 @@ def main_menu_kb(lang: str = "uz") -> ReplyKeyboardMarkup:
         keyboard=[
             [KeyboardButton(text=BTN_WRITING), KeyboardButton(text=BTN_SPEAKING)],
             [KeyboardButton(text=BTN_PRACTICE), KeyboardButton(text=vocab_label)],
-            [KeyboardButton(text=account_label), KeyboardButton(text=group_label)],
+            [KeyboardButton(text=group_label), KeyboardButton(text=account_label)],  # swapped 2026-10-18 (the user)
         ],
         resize_keyboard=True,
         # Collapses after each tap so the section's own (inline) buttons get

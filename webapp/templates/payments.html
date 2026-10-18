@@ -26,10 +26,13 @@
         {% elif r.user %}
           {{ r.user.full_name }}<br><span class="hint">username yo'q · {{ r.user_id }}</span>
         {% else %}{{ r.user_id }}{% endif %}
+        <br><a class="hint" href="/users/{{ r.user_id }}/coins?note={{ ("To'lov #" ~ r.id ~ " farqi")|urlencode }}" title="To'lov paketdan farq qilsa: coin qo'shish yoki ayirish">± coin</a>
       </td>
       <td>
         {% if r.kind.value == "subscription" %}
           Obuna ({{ r.subscription_months }} oy)
+        {% elif r.kind.value == "gift" %}
+          🎁 {{ r.coins }} coin<br><span class="hint">sovg'a</span>
         {% else %}
           {{ r.coins }} coin
         {% endif %}

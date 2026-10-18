@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Coin: {{ u.full_name }} — Bandzilla Admin{% endblock %}
+{% block content %}
+<p class="hint" style="margin-bottom:10px"><a href="/users">← Foydalanuvchilar</a></p>
+<h1>🟡 Coin: {{ u.full_name }}</h1>
+{% if flash %}<div class="flash"{% if error %} style="background:var(--red-tint);border-left-color:var(--red)"{% endif %}>{{ flash }}</div>{% endif %}
+
+<div class="card coin-card">
+  <div class="coin-who">
+    <div>
+      <div class="strong">{% if u.username %}<a href="https://t.me/{{ u.username }}" target="_blank" rel="noopener">@{{ u.username }}</a>{% else %}username yo'q{% endif %}</div>
+      <p class="hint">ID {{ u.id }} · {{ {"ru": "🇷🇺 RU", "en": "🇬🇧 EN"}.get(u.language, "🇺🇿 UZ") }}</p>
+    </div>
+    <div class="coin-balance"><b>{{ u.coin_balance }}</b><span>coin balansda</span></div>
+  </div>
+
+  <form method="post" action="/users/{{ u.id }}/coins" class="coin-form" onsubmit="return confirmChange(this);">
+    <label for="delta">Qancha coin? <span class="hint">Qo'shish: <b>6</b> · ayirish: <b>-2</b></span></label>
+    <div class="coin-row">
+      <input type="text" id="delta" name="delta" inputmode="numeric" autocomplete="off" required placeholder="masalan 6 yoki -2" style="width:180px">
+      <span class="quick">
+        {% for q in [5, 10, 20, -1, -2, -5] %}<button type="button" class="btn btn-sm" onclick="document.getElementById('delta').value='{{ q }}'">{{ "+" if q > 0 }}{{ q }}</button>{% endfor %}
+      </span>
+    </div>
+    <label for="note">Izoh <span class="hint">— foydalanuvchiga ham ko'rinadi, masalan: «To'lov farqi: 16 000 so'm o'tkazdingiz»</span></label>
+    <input type="text" id="note" name="note" maxlength="500" value="{{ note }}" style="width:100%">
+    <label class="check"><input type="checkbox" name="notify" value="1" checked> Foydalanuvchiga botda xabar yuborish</label>
+    <div><button type="submit" class="btn btn-primary">Saqlash</button></div>
+  </form>
+</div>
+
+<div class="card">
+  <h2 style="font-size:16px;margin:0 0 10px">Qo'lda o'zgartirishlar tarixi</h2>
+  {% if history %}
+  <div class="table-scroll"><table>
+    <tr><th>Sana</th><th>O'zgarish</th><th>Balans</th><th>Izoh</th></tr>
+    {% for a in history %}
+    <tr>
+      <td>{{ a.created_at.strftime("%d.%m.%Y %H:%M") if a.created_at else "—" }}</td>
+      <td class="strong" style="color:{{ 'var(--moss)' if a.delta > 0 else '#c0392b' }}">{{ "+" if a.delta > 0 }}{{ a.delta }} coin</td>
+      <td>{{ a.balance_after }} coin</td>
+      <td>{{ a.note or "—" }}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  {% else %}
+  <div class="empty">Hali qo'lda o'zgartirish bo'lmagan.</div>
+  {% endif %}
+</div>
+
+<style>
+  .coin-who { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px;
+    padding-bottom: 14px; margin-bottom: 14px; border-bottom: 1px solid var(--border); }
+  .coin-balance { text-align: right; }
+  .coin-balance b { display: block; font-family: var(--font-head); font-size: 30px; line-height: 1; color: var(--ink); }
+  .coin-balance span { font-size: 12px; color: var(--ink-soft); }
+  .coin-form { display: grid; gap: 8px; }
+  .coin-form label { font-weight: 700; font-size: 14px; margin-top: 6px; }
+  .coin-form label.check { font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .coin-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .quick { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+</style>
+<script>
+  // Says what will happen before it does: "+6 coin" / "-2 coin" for this user.
+  function confirmChange(form) {
+    var n = parseInt(String(form.delta.value).replace(/[\s+]/g, ""), 10);
+    if (!n) { alert("0 bo'lmagan butun son kiriting: masalan 6 yoki -2."); return false; }
+    var what = n > 0 ? "+" + n + " coin qo'shiladi" : n + " coin ayiriladi";
+    return confirm({{ u.full_name|tojson }} + ": " + what + ". Davom etamizmi?");
+  }
+</script>
+{% endblock %}

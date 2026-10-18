@@ -535,6 +535,71 @@ _T: dict[str, dict[str, str]] = {
         "uz": "📊 <b>Statistika</b>\nSo'nggi ball: <b>{last}</b> · {trend}",
         "ru": "📊 <b>Статистика</b>\nПоследний балл: <b>{last}</b> · {trend}",
     },
+    # --- Coin gifts (bot/handlers/account.py, payments.py, start.py, language.py) ---
+    "acc.btn_gift": {"uz": "🎁 Sovg'a qilish", "ru": "🎁 Подарить"},
+    "gift.intro": {
+        "uz": "🎁 <b>Coin sovg'a qiling</b>\n\nDo'stingiz yoki yaqiningizga IELTS tayyorgarligi uchun coin sovg'a "
+        "qiling — u Writing va Speaking javoblarini tekshirtirib, batafsil hisobot oladi.\n\n<b>Qanday ishlaydi:</b>\n"
+        "1️⃣ Quyida paketni tanlang va to'lov qiling — xuddi o'zingizga olgandek.\n2️⃣ Admin tasdiqlagach, sizga "
+        "maxsus sovg'a havolasi keladi.\n3️⃣ Havolani do'stingizga yuboring — u bosishi bilan coinlar uning "
+        "hisobiga tushadi.\n\nPaketni tanlang 👇",
+        "ru": "🎁 <b>Подарите coin</b>\n\nПодарите другу или близкому coin для подготовки к IELTS — он сможет "
+        "проверять ответы по Writing и Speaking и получать подробные отчёты.\n\n<b>Как это работает:</b>\n"
+        "1️⃣ Выберите пакет ниже и оплатите — как для себя.\n2️⃣ После подтверждения админом вы получите особую "
+        "подарочную ссылку.\n3️⃣ Отправьте её другу — как только он её откроет, coin поступят на его баланс.\n\n"
+        "Выберите пакет 👇",
+    },
+    "gift.pending_head": {
+        "uz": "🎁 <b>Hali olinmagan sovg'alaringiz</b> — havolani do'stingizga yuboring:",
+        "ru": "🎁 <b>Ещё не полученные подарки</b> — отправьте ссылку другу:",
+    },
+    "gift.pending_line": {"uz": "• {coins} coin — {link}", "ru": "• {coins} coin — {link}"},
+    "gift.ready": {
+        "uz": "🎁 <b>Sovg'angiz tayyor!</b>\n\nTo'lov tasdiqlandi — <b>{coins} coin</b> do'stingizni kutmoqda. "
+        "Quyidagi havolani unga yuboring: bosishi bilan coinlar uning hisobiga tushadi.\n\n{link}\n\nHavola bir "
+        "marta ishlaydi. Uni «👤 Hisobim» → «🎁 Sovg'a qilish» bo'limida ham topasiz.",
+        "ru": "🎁 <b>Ваш подарок готов!</b>\n\nОплата подтверждена — <b>{coins} coin</b> ждут вашего друга. "
+        "Отправьте ему ссылку ниже: как только он её откроет, coin поступят на его баланс.\n\n{link}\n\nСсылка "
+        "срабатывает один раз. Её можно найти и в «👤 Профиль» → «🎁 Подарить».",
+    },
+    "gift.btn_share": {"uz": "📤 Do'stga yuborish", "ru": "📤 Отправить другу"},
+    "gift.share_text": {
+        "uz": "🎁 Sizga Bandzilla'dan {coins} coin sovg'a! IELTS Writing va Speaking javoblaringizni tekshirtirib, "
+        "batafsil hisobot oling.",
+        "ru": "🎁 Вам подарок от Bandzilla — {coins} coin! Проверьте свои ответы по IELTS Writing и Speaking и "
+        "получите подробный отчёт.",
+    },
+    "gift.received": {
+        "uz": "🎁 <b>Sizga {coins} coin sovg'a qilindi!</b>\n\n{name} sizga IELTS tayyorgarligingiz uchun sovg'a "
+        "yubordi. Coinlar hisobingizga tushdi — balans: <b>{balance} coin</b>.\n\nWriting yoki Speaking "
+        "javobingizni yuboring va batafsil hisobot oling 🦖",
+        "ru": "🎁 <b>Вам подарили {coins} coin!</b>\n\n{name} отправил(а) вам подарок для подготовки к IELTS. "
+        "Coin уже на вашем балансе — <b>{balance} coin</b>.\n\nОтправьте ответ по Writing или Speaking и получите "
+        "подробный отчёт 🦖",
+    },
+    "gift.claimed_buyer": {
+        "uz": "🎉 {name} sovg'angizni oldi — <b>{coins} coin</b> uning hisobiga tushdi. Rahmat!",
+        "ru": "🎉 {name} получил(а) ваш подарок — <b>{coins} coin</b> на его балансе. Спасибо!",
+    },
+    "gift.own": {
+        "uz": "🎁 Bu sizning sovg'angiz havolasi. Uni do'stingizga yuboring — coinlar unga tushadi.",
+        "ru": "🎁 Это ссылка на ваш подарок. Отправьте её другу — coin получит он.",
+    },
+    "gift.taken": {"uz": "🎁 Bu sovg'a allaqachon olingan.", "ru": "🎁 Этот подарок уже получен."},
+    "gift.missing": {
+        "uz": "🎁 Sovg'a topilmadi — havola noto'g'ri ko'chirilgan bo'lishi mumkin.",
+        "ru": "🎁 Подарок не найден — возможно, ссылка скопирована не полностью.",
+    },
+    # --- Coins changed by hand in the admin panel (webapp/main.py) ---
+    "coins.added": {
+        "uz": "🟡 Hisobingizga <b>{coins} coin</b> qo'shildi. Balans: <b>{balance} coin</b>.",
+        "ru": "🟡 На ваш баланс добавлено <b>{coins} coin</b>. Баланс: <b>{balance} coin</b>.",
+    },
+    "coins.removed": {
+        "uz": "🟡 Hisobingizdan <b>{coins} coin</b> ayirildi. Balans: <b>{balance} coin</b>.",
+        "ru": "🟡 С вашего баланса списано <b>{coins} coin</b>. Баланс: <b>{balance} coin</b>.",
+    },
+    "coins.note": {"uz": "💬 {note}", "ru": "💬 {note}"},
     # --- Groups / B2B (bot/handlers/group.py, bot/handlers/start.py) ---
     "group.no_group": {
         "uz": "🏫 <b>Guruh</b>\n\nSiz hali hech qanday guruhda emassiz.\n\n"

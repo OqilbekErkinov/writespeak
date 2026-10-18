@@ -7,6 +7,7 @@ already-open AsyncSession so callers control the transaction boundary via
 from __future__ import annotations
 
 import random
+import secrets
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 
@@ -20,6 +21,8 @@ from db.models import (
     AssignmentPart,
     Center,
     CenterTeacher,
+    CoinAdjustment,
+    CoinGift,
     Group,
     GroupMembership,
     MockTestPart,
@@ -1304,6 +1307,7 @@ class PaymentDecision:
     request: PaymentRequest | None
     applied: bool  # False when it had already been decided (or doesn't exist)
     referrer_id: int | None = None  # paid the referral bonus with this approval
+    gift: CoinGift | None = None  # an approved gift payment's link (PaymentKind.gift)
 
 
 async def decide_payment_request(
@@ -1314,13 +1318,16 @@ async def decide_payment_request(
     already decided (e.g. two admins tapping their own copy of the same
     notification), mirroring the old registration approve/deny race guard.
     The buyer's first approved coin purchase also pays `referral_coins` to
-    them and to whoever invited them (once - User.referral_rewarded)."""
+    them and to whoever invited them (once - User.referral_rewarded). A gift
+    purchase counts as that purchase too (it is their money), but its coins
+    go to a one-time gift link, not to the buyer."""
     request = await session.get(PaymentRequest, request_id)
     if request is None:
         return PaymentDecision(None, False)
     if request.status != PaymentStatus.pending:
         return PaymentDecision(request, False)
     referrer_id = None
+    gift = None
 
     request.status = PaymentStatus.approved if approve else PaymentStatus.rejected
     request.reviewed_at = datetime.now(timezone.utc)
@@ -1337,7 +1344,12 @@ async def decide_payment_request(
                     days=30 * (request.subscription_months or 1)
                 )
             else:
-                user.coin_balance += request.coins
+                if request.kind == PaymentKind.gift:
+                    gift = CoinGift(code=secrets.token_urlsafe(9), coins=request.coins, buyer_id=user.id,
+                                    payment_request_id=request.id)
+                    session.add(gift)
+                else:
+                    user.coin_balance += request.coins
                 if referral_coins and user.referred_by and not user.referral_rewarded:
                     referrer = await session.get(User, user.referred_by)
                     if referrer is not None:
@@ -1347,7 +1359,76 @@ async def decide_payment_request(
                     user.referral_rewarded = True
     await session.commit()
     await session.refresh(request)
-    return PaymentDecision(request, True, referrer_id)
+    if gift is not None:
+        await session.refresh(gift)
+    return PaymentDecision(request, True, referrer_id, gift)
+
+
+# --- Coin gifts (bot/handlers/payments.py buys, bot/handlers/start.py claims) ---
+
+
+async def get_gift(session: AsyncSession, code: str) -> CoinGift | None:
+    return (await session.execute(select(CoinGift).where(CoinGift.code == code))).scalar_one_or_none()
+
+
+@dataclass
+class GiftClaim:
+    status: str  # "claimed", "own" (the buyer's own link), "taken" (claimed before), "missing"
+    gift: CoinGift | None = None
+    buyer: User | None = None
+    balance: int = 0  # the claimer's balance after a claim
+
+
+async def claim_gift(session: AsyncSession, code: str, user_id: int) -> GiftClaim:
+    """Gives a gift's coins to `user_id`, once: the row is locked, so two
+    people opening the same link at the same moment can't both get them."""
+    gift = (await session.execute(
+        select(CoinGift).where(CoinGift.code == code).with_for_update()
+    )).scalar_one_or_none()
+    if gift is None:
+        return GiftClaim("missing")
+    buyer = await session.get(User, gift.buyer_id)
+    if gift.buyer_id == user_id:
+        return GiftClaim("own", gift, buyer)
+    if gift.claimed_by is not None:
+        return GiftClaim("taken", gift, buyer)
+    user = await session.get(User, user_id)
+    if user is None:
+        return GiftClaim("missing")
+    user.coin_balance += gift.coins
+    gift.claimed_by = user_id
+    gift.claimed_at = datetime.now(timezone.utc)
+    await session.commit()
+    return GiftClaim("claimed", gift, buyer, user.coin_balance)
+
+
+async def unclaimed_gifts(session: AsyncSession, buyer_id: int, limit: int = 5) -> list[CoinGift]:
+    stmt = (select(CoinGift).where(CoinGift.buyer_id == buyer_id, CoinGift.claimed_by.is_(None))
+            .order_by(CoinGift.created_at.desc()).limit(limit))
+    return list((await session.execute(stmt)).scalars().all())
+
+
+# --- Coins changed by hand in the admin panel (webapp/main.py) -----------------
+
+
+async def adjust_coins(session: AsyncSession, user_id: int, delta: int, note: str | None) -> CoinAdjustment | None:
+    """Adds `delta` coins (negative: takes them away) to a user's balance and
+    records it. None when there's no such user or the balance would go below 0."""
+    user = await session.get(User, user_id, with_for_update=True)
+    if user is None or delta == 0 or user.coin_balance + delta < 0:
+        return None
+    user.coin_balance += delta
+    adjustment = CoinAdjustment(user_id=user_id, delta=delta, balance_after=user.coin_balance, note=note or None)
+    session.add(adjustment)
+    await session.commit()
+    await session.refresh(adjustment)
+    return adjustment
+
+
+async def list_coin_adjustments(session: AsyncSession, user_id: int, limit: int = 20) -> list[CoinAdjustment]:
+    stmt = (select(CoinAdjustment).where(CoinAdjustment.user_id == user_id)
+            .order_by(CoinAdjustment.created_at.desc()).limit(limit))
+    return list((await session.execute(stmt)).scalars().all())
 
 
 # --- Admin stats (/stats) ------------------------------------------------------

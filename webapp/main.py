@@ -13,24 +13,30 @@ X-Forwarded-For for the small brute-force guard below.
 """
 from __future__ import annotations
 
+import html
 import json
+import logging
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 
 from aiogram import Bot
+from aiogram.client.default import DefaultBotProperties
+from aiogram.enums import ParseMode
 from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
 from bot.config import settings
+from bot.i18n import t
 from bot.utils import crm_events
 from db import crud
 from db.database import get_session
 from db.models import PaymentRequest, PaymentStatus, PracticeModule, UserRole
 from services.storage.file_storage import delete_file, save_practice_image
 
+logger = logging.getLogger(__name__)
 app = FastAPI(title="Bandzilla Admin")
 app.add_middleware(
     SessionMiddleware,
@@ -213,7 +219,87 @@ async def decide_payment_web(request: Request, request_id: int, action: str):
             )
         if decision.applied:
             await crm_events.payment_decided(request_id)
+            # The buyer is told as in the bot (a gift's link included).
+            from bot.handlers.payments import notify_decision
+
+            await _with_bot(lambda bot: notify_decision(bot, decision))
     return RedirectResponse("/payments", status_code=303)
+
+
+async def _with_bot(send) -> bool:
+    """Runs `send(bot)` with a short-lived Bot on the bot's token - the panel
+    has no running bot, but tells users about payment decisions and coin
+    changes. False when it failed."""
+    bot = Bot(settings.telegram_bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    try:
+        await send(bot)
+        return True
+    except Exception as e:  # noqa: BLE001 - the user blocked the bot, ...
+        logger.info("Panel message not sent: %r", e)
+        return False
+    finally:
+        await bot.session.close()
+
+
+# --- Coins by hand: a payment that differed from its pack, a present, a correction ---
+
+MAX_COIN_CHANGE = 100_000
+_COIN_FLASH = {
+    "added": "Coin qo'shildi.", "removed": "Coin ayirildi.",
+    "number": "Butun son kiriting: masalan 6 yoki -2.", "range": f"0 bo'lmagan, ±{MAX_COIN_CHANGE:,} gacha son kiriting.",
+    "balance": "Balans manfiy bo'lib qoladi - buncha coin ayirib bo'lmaydi.",
+}
+
+
+@app.get("/users/{user_id}/coins", response_class=HTMLResponse)
+async def user_coins_page(request: Request, user_id: int, note: str = "", done: str | None = None,
+                          sent: str | None = None):
+    if (redirect := _require_login(request)) is not None:
+        return redirect
+    async with get_session() as session:
+        user = await crud.get_user(session, user_id)
+        history = await crud.list_coin_adjustments(session, user_id) if user is not None else []
+    if user is None:
+        return RedirectResponse("/users", status_code=303)
+    flash = _COIN_FLASH.get(done or "")
+    if flash and done in ("added", "removed"):
+        flash += " Foydalanuvchiga xabar yuborildi." if sent == "1" else (
+            " Xabar yuborilmadi (botni bloklagan bo'lishi mumkin)." if sent == "0" else "")
+    return templates.TemplateResponse(request, "user_coins.html", {
+        "active": "users", "u": user, "history": history, "note": note, "flash": flash,
+        "error": done in ("number", "range", "balance"),
+    })
+
+
+@app.post("/users/{user_id}/coins")
+async def user_coins_submit(request: Request, user_id: int, delta: str = Form(...), note: str = Form(""),
+                            notify: str | None = Form(None)):
+    if (redirect := _require_login(request)) is not None:
+        return redirect
+    back = f"/users/{user_id}/coins"
+    try:
+        amount = int(delta.replace(" ", "").replace("+", ""))
+    except ValueError:
+        return RedirectResponse(f"{back}?done=number", status_code=303)
+    if amount == 0 or abs(amount) > MAX_COIN_CHANGE:
+        return RedirectResponse(f"{back}?done=range", status_code=303)
+    note = note.strip()[:500]
+    async with get_session() as session:
+        adjustment = await crud.adjust_coins(session, user_id, amount, note)
+        user = await crud.get_user(session, user_id)
+    if adjustment is None:
+        return RedirectResponse(f"{back}?done=balance", status_code=303)
+    await crm_events.coins_adjusted(user_id, amount, adjustment.balance_after, note)
+    done = "added" if amount > 0 else "removed"
+    if not notify:
+        return RedirectResponse(f"{back}?done={done}", status_code=303)
+    lang = user.language if user is not None else None
+    text = t("coins.added" if amount > 0 else "coins.removed", lang, coins=abs(amount),
+             balance=adjustment.balance_after)
+    if note:
+        text += "\n\n" + t("coins.note", lang, note=html.escape(note, quote=False))
+    sent = await _with_bot(lambda bot: bot.send_message(user_id, text))
+    return RedirectResponse(f"{back}?done={done}&sent={int(sent)}", status_code=303)
 
 
 @app.get("/groups", response_class=HTMLResponse)

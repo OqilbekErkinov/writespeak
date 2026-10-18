@@ -8,7 +8,10 @@ reward comes later, on the referred user's first check) and a group invite
 (bot/utils/group_invite.py's signed `g<id>_<sig>`; works for new AND existing
 users, since a current student's teacher may share one after they've
 already been using the bot on their own). Old unsigned `group_<id>` links
-are refused with a "ask your teacher for a new link" note.
+are refused with a "ask your teacher for a new link" note. A coin gift's
+`gift_<code>` (bot/utils/gifts.py) is claimed at once by a user already in
+the bot, and after the language pick by a new one, whose referrer becomes
+the gift's buyer.
 
 (A user can still be manually blocked by setting their row's status to
 UserStatus.denied - see bot/middlewares/access_control.py - but nothing in
@@ -28,7 +31,7 @@ from bot.config import settings
 from bot.i18n import DEFAULT_LANG, LANGS, t
 from bot.keyboards.lang_kb import CB_LANG_ONBOARD_PREFIX, lang_picker_kb
 from bot.keyboards.main_menu_kb import main_menu_kb
-from bot.utils import crm_events
+from bot.utils import crm_events, gifts
 from bot.utils.group_invite import (
     is_center_payload,
     is_invite_payload,
@@ -45,12 +48,15 @@ router = Router(name="start")
 @router.message(CommandStart())
 async def cmd_start(message: Message, command: CommandObject, lang: str) -> None:
     tg = message.from_user
+    gift_code = gifts.gift_code(command.args)
 
     if tg.id in settings.admin_ids:
         # AccessControlMiddleware already upserted the admin row.
         await message.answer(
             t("start.admin_welcome", lang, name=tg.full_name), reply_markup=main_menu_kb(lang)
         )
+        if gift_code:
+            await gifts.claim(message, message.bot, gift_code, lang)
         return
 
     referrer_id = None
@@ -59,6 +65,11 @@ async def cmd_start(message: Message, command: CommandObject, lang: str) -> None
         is_new = user is None
         if is_new:
             referrer_id = await _parse_referrer(session, command.args, new_user_id=tg.id)
+            if referrer_id is None and gift_code:
+                # Joined through a friend's gift: the friend invited them.
+                gift = await crud.get_gift(session, gift_code)
+                if gift is not None and gift.claimed_by is None and gift.buyer_id != tg.id:
+                    referrer_id = gift.buyer_id
             await crud.create_user(
                 session, tg.id, tg.username, tg.full_name, referred_by=referrer_id, coins=settings.welcome_coins
             )
@@ -85,6 +96,8 @@ async def cmd_start(message: Message, command: CommandObject, lang: str) -> None
             )
         if center_join is not None:
             await message.answer("\n\n".join(_center_notice(center_join, code) for code in LANGS))
+        if gift_code:
+            await gifts.remember_for_onboarding(tg.id, gift_code)  # claimed after the language pick
         await message.answer(
             t("account.language_button", DEFAULT_LANG),
             reply_markup=lang_picker_kb(CB_LANG_ONBOARD_PREFIX),
@@ -92,6 +105,8 @@ async def cmd_start(message: Message, command: CommandObject, lang: str) -> None
         return
 
     await message.answer(t("start.welcome", lang, name=tg.full_name), reply_markup=main_menu_kb(lang))
+    if gift_code:
+        await gifts.claim(message, message.bot, gift_code, lang)
     if join is not None:
         if join.status == "joined":
             await message.answer(joined_notice(join.group_name, join.teacher_name, lang))

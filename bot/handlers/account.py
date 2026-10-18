@@ -22,6 +22,7 @@ from bot.config import settings
 from bot.handlers.payments import sees_center_packs
 from bot.i18n import t
 from bot.keyboards.account_kb import (
+    CB_GIFT,
     CB_HISTORY_PREFIX,
     CB_HOME,
     CB_LANG,
@@ -33,6 +34,7 @@ from bot.keyboards.account_kb import (
     HISTORY_PAGE,
     account_kb,
     back_to_account_kb,
+    gift_packs_kb,
     history_kb,
     lang_kb,
     packs_kb,
@@ -40,6 +42,7 @@ from bot.keyboards.account_kb import (
     topup_kb,
 )
 from bot.keyboards.main_menu_kb import BTN_ACCOUNT_EN, BTN_ACCOUNT_RU, BTN_ACCOUNT_UZ, BTN_MY_WORKS
+from bot.utils.gifts import gift_link
 from bot.utils.messages import remove_message, show_screen
 from bot.utils.quota import price_list
 from db import crud
@@ -128,6 +131,23 @@ async def topup_centers(callback: CallbackQuery, lang: str) -> None:
         await show_screen(callback, t("acc.packs_centers", lang), packs_kb(lang, center=True))
     else:
         await show_screen(callback, t("acc.centers_only", lang), teacher_needed_kb(lang))
+
+
+# --- gift coins (bot/utils/gifts.py) ----------------------------------------------------------------
+
+
+@router.callback_query(F.data == CB_GIFT)
+async def gift(callback: CallbackQuery, lang: str) -> None:
+    """How a gift works and the packs; the buyer's links nobody has opened
+    yet are listed too, so a lost link can be sent again."""
+    await callback.answer()
+    async with get_session() as session:
+        pending = await crud.unclaimed_gifts(session, callback.from_user.id)
+    text = t("gift.intro", lang)
+    if pending:
+        lines = [t("gift.pending_line", lang, coins=g.coins, link=gift_link(g.code)) for g in pending]
+        text += "\n\n" + t("gift.pending_head", lang) + "\n" + "\n".join(lines)
+    await show_screen(callback, text, gift_packs_kb(lang))
 
 
 # --- history, five to a page --------------------------------------------------------------------

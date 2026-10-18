@@ -22,6 +22,7 @@ from db.database import get_session
 from db.models import (
     FULL_TEST_CHECKS,
     SPEAKING_LABELS,
+    CoinGift,
     PaymentKind,
     PaymentRequest,
     PaymentStatus,
@@ -200,10 +201,12 @@ _PAY_STATUS = {
 
 async def _payment_card(session, request: PaymentRequest) -> str:
     user = await crud.get_user(session, request.user_id)
-    item = (
-        f"{request.subscription_months} oylik cheksiz obuna" if request.kind == PaymentKind.subscription
-        else f"{request.coins} coin"
-    )
+    if request.kind == PaymentKind.subscription:
+        item = f"{request.subscription_months} oylik cheksiz obuna"
+    elif request.kind == PaymentKind.gift:
+        item = f"🎁 {request.coins} coin — sovg'a"
+    else:
+        item = f"{request.coins} coin"
     lines = [
         f"💳 <b>To'lov #{request.id}</b> · {_PAY_STATUS[request.status]}",
         f"👤 {_user(user, request.user_id)}",
@@ -245,6 +248,39 @@ async def payment_decided(request_id: int) -> None:
         request = await session.get(PaymentRequest, request_id)
         text = await _payment_card(session, request)
     await crm.edit(f"pay:{request_id}", "payments", text)
+
+
+@_safe
+async def gift_claimed(gift_id: int) -> None:
+    """Someone opened a gift link (bot/utils/gifts.py) and got its coins."""
+    async with get_session() as session:
+        gift = await session.get(CoinGift, gift_id)
+        buyer = await crud.get_user(session, gift.buyer_id)
+        claimer = await crud.get_user(session, gift.claimed_by)
+    payment = f" · to'lov #{gift.payment_request_id}" if gift.payment_request_id else ""
+    text = (
+        f"🎁 <b>Sovg'a olindi</b> · {gift.coins} coin{payment}\n"
+        f"🛍 Sotib olgan: {_user(buyer, gift.buyer_id)}\n"
+        f"👤 Oldi: {_user(claimer, gift.claimed_by)} · balans {claimer.coin_balance if claimer else '?'} coin\n"
+        f"🕒 {_when(gift.claimed_at)}"
+    )
+    await crm.post("payments", text)
+
+
+@_safe
+async def coins_adjusted(user_id: int, delta: int, balance: int, note: str | None) -> None:
+    """An admin added or took away coins in the web panel (/users/<id>/coins)."""
+    async with get_session() as session:
+        user = await crud.get_user(session, user_id)
+    sign = "+" if delta > 0 else "−"
+    lines = [
+        f"🟡 <b>Coin qo'lda o'zgartirildi</b> · {sign}{abs(delta)} coin (web panel)",
+        f"👤 {_user(user, user_id)} · balans {balance} coin",
+    ]
+    if note:
+        lines.append(f"💬 {_esc(note)}")
+    lines.append(f"🕒 {_now()}")
+    await crm.post("payments", "\n".join(lines))
 
 
 # --- ✍️ Writing / 🎙 Speaking / 💰 Xarajatlar ------------------------------------------------------

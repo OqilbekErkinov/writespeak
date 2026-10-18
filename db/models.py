@@ -100,6 +100,7 @@ class PaymentStatus(str, enum.Enum):
 class PaymentKind(str, enum.Enum):
     credits = "credits"  # a coin pack (bot/utils/coins.py) - the name predates coins
     subscription = "subscription"  # no longer sold since 2026-10-17
+    gift = "gift"  # a coin pack bought for someone else: approved as a CoinGift link
 
 
 class MockTestStatus(str, enum.Enum):
@@ -341,6 +342,41 @@ class PaymentRequest(Base):
     reviewed_by: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
 
     user: Mapped["User"] = relationship()
+
+
+class CoinGift(Base):
+    """Coins one user bought for someone else (since 2026-10-18): once the
+    gift payment (PaymentKind.gift) is approved, the buyer gets a one-time
+    link t.me/<bot>?start=gift_<code>, and whoever opens it first - not the
+    buyer - gets the coins (bot/handlers/start.py)."""
+
+    __tablename__ = "coin_gifts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    code: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    coins: Mapped[int] = mapped_column(Integer)
+    buyer_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    payment_request_id: Mapped[int | None] = mapped_column(
+        ForeignKey("payment_requests.id"), nullable=True, unique=True
+    )
+    claimed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class CoinAdjustment(Base):
+    """A coin change an admin made by hand in the web panel (/users/<id>/coins):
+    a payment that differed from its pack, a present, a correction. `delta`
+    is signed; `note` is shown to the user when they are told."""
+
+    __tablename__ = "coin_adjustments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    delta: Mapped[int] = mapped_column(Integer)
+    balance_after: Mapped[int] = mapped_column(Integer)
+    note: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class VocabularyEntry(Base):
