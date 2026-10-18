@@ -673,12 +673,18 @@ async def _write(
     references: list[LibrarySample],
     note: str = "",
     needs: Needs | None = None,
+    sheet: str = "",
 ) -> tuple[list[str], list[str], list[dict]]:
     """(paragraphs, problems left, "what this shows" notes) - the best of up
-    to GENERATION_ATTEMPTS."""
+    to GENERATION_ATTEMPTS. `sheet`: a Task 1 chart's data sheet - the figures
+    the report used, so the answer never contradicts its feedback."""
+    from services.ai.visual_reading import ANSWER_RULES
+
     lo, hi = WORD_RANGE[task_type]
     system = _system(task_type, band, profile, references) + (f"\n\n{note}" if note else "")
     text = f"QUESTION:\n{question}"
+    if sheet:
+        text += f"\n\n{sheet}\n\n{ANSWER_RULES}"
     if needs is not None:
         text += "\n\n" + _needs_text(needs, task_type)
         if needs.essay.strip():
@@ -737,7 +743,7 @@ class _QualityCheck(BaseModel):
 
 async def quality_problem(
     task_type: str, question: str, paragraphs: list[str], subtype: str,
-    prompt_images: list[tuple[bytes, str]] | None = None,
+    prompt_images: list[tuple[bytes, str]] | None = None, sheet: str = "",
 ) -> str | None:
     """The report's quality check of a model answer (one call): None if it
     passes, else what is wrong. Report #15's "Band 8.5" answer argued that the
@@ -756,13 +762,15 @@ async def quality_problem(
         "4. It doesn't open with a stock phrase (\"With the advent of\", \"In this day and age\", "
         "\"Nowadays, ...\").\n"
         "5. It presents no invented statistics or real-world facts as true."
-        + ("\n6. Every figure matches the visual." if lib_task == "task1_academic" else "")
+        + (("\n6. Every figure matches the DATA SHEET (an estimated value: about the sheet's estimate, inside "
+            "its range; nothing the sheet can't read; no ranking of values it says look equal)." if sheet else
+            "\n6. Every figure matches the visual.") if lib_task == "task1_academic" else "")
     )
     messages = [
         {"role": "system", "content": "You check an IELTS Writing model answer before students see it. "
          f"ok=false if ANY check fails, with the problem in one line:\n{checks}"},
         {"role": "user", "content": _with_images(
-            f"QUESTION:\n{question}\n\nMODEL ANSWER:\n" + "\n\n".join(paragraphs), prompt_images)},
+            f"QUESTION:\n{question}\n\nMODEL ANSWER:\n" + "\n\n".join(paragraphs), prompt_images, sheet=sheet)},
     ]
     response = await _parse("answer_check", 6000, messages, _QualityCheck)
     parsed = response.choices[0].message.parsed
@@ -777,11 +785,13 @@ async def build_model_answer(
     prompt_images: list[tuple[bytes, str]] | None = None,
     seed: int = 0,
     needs: Needs | None = None,
+    sheet: str = "",
 ) -> ModelAnswer:
     """`task_type`: the bot's "task1" / "task2". `seed` (e.g. the student's id
     plus essay count) takes turns between writers level on every count.
     With `needs` (the report's findings) the answer is aimed at needs.aim and
-    teaches its priorities."""
+    teaches its priorities. `sheet`: a Task 1 chart's data sheet, so the
+    answer uses the same figures as the feedback."""
     # Imported here: writing_grader is the heavier module and only this step needs it.
     from services.ai.writing_grader import score_writing
 
@@ -815,10 +825,10 @@ async def build_model_answer(
     if needs is not None:
         log["priorities"] = [p["title"] for p in needs.priorities]
     paragraphs, problems, shows = await _write(question, lib_task, prompt_images, band, profile, references,
-                                               needs=needs)
+                                               needs=needs, sheet=sheet)
     log["problems"] = problems
     try:
-        score = await score_writing(task_type, question, "\n\n".join(paragraphs), prompt_images)
+        score = await score_writing(task_type, question, "\n\n".join(paragraphs), prompt_images, sheet)
         log["self_check"] = [score]
         if score < band - SELF_CHECK_MARGIN:
             note = (
@@ -827,8 +837,8 @@ async def build_model_answer(
                 "accurate, varied grammar."
             )
             second, second_problems, second_shows = await _write(
-                question, lib_task, prompt_images, band, profile, references, note, needs)
-            second_score = await score_writing(task_type, question, "\n\n".join(second), prompt_images)
+                question, lib_task, prompt_images, band, profile, references, note, needs, sheet)
+            second_score = await score_writing(task_type, question, "\n\n".join(second), prompt_images, sheet)
             log["self_check"].append(second_score)
             if second_score >= score:
                 paragraphs, log["problems"], shows = second, second_problems, second_shows
@@ -836,13 +846,13 @@ async def build_model_answer(
         logger.exception("Model answer self-check failed - keeping the answer as written")
     try:
         subtype = log.get("subtype") or regex_subtype(question, lib_task)
-        problem = await quality_problem(task_type, question, paragraphs, subtype, prompt_images)
+        problem = await quality_problem(task_type, question, paragraphs, subtype, prompt_images, sheet)
         log["quality"] = problem or "ok"
         if problem:
             note = f"A reviewer rejected a previous version: {problem}. Write it again and fix exactly that."
             again, again_problems, again_shows = await _write(
-                question, lib_task, prompt_images, band, profile, references, note, needs)
-            again_problem = await quality_problem(task_type, question, again, subtype, prompt_images)
+                question, lib_task, prompt_images, band, profile, references, note, needs, sheet)
+            again_problem = await quality_problem(task_type, question, again, subtype, prompt_images, sheet)
             log["quality_retry"] = again_problem or "ok"
             if again_problem is None:
                 paragraphs, log["problems"], shows = again, again_problems, again_shows

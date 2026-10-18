@@ -8,6 +8,11 @@ back at the main menu). Also entered directly from Practice
 practice_question_id (+ the Task 1 chart, if any) and jumps straight to
 `awaiting_answer`. Every step has a "⬅️ Orqaga" button.
 
+A Task 1 chart is read once into a data sheet before grading (services/ai/
+visual_reading.py) and every call uses its figures. A chart the vision model
+can't open or read at all gets the student asked for it again - their
+answer kept, nothing charged - instead of a failed check.
+
 `lang` (bot/i18n.py) is only auto-injected by AccessControlMiddleware into
 top-level handlers (choose_task/receive_prompt/receive_answer/confirm_or_edit)
 - the internal helpers below (_receive_input/_advance/_run_grading) take it
@@ -20,7 +25,6 @@ import asyncio
 import difflib
 import html
 import logging
-import mimetypes
 import time
 from pathlib import Path
 
@@ -57,11 +61,13 @@ from db.database import get_session
 from db.models import SourceType
 from services.ai import usage
 from services.ai.essay_marking import canon
+from services.ai.openai_client import is_image_error
 from services.ai.sample_bank import build_model_answer, needs_from_feedback
 from services.ai.schemas import VocabularyItem
+from services.ai.visual_reading import ChartImageRejected, read_visual, sheet_text
 from services.ai.writing_grader import grade_writing
 from services.pdf.report_builder import build_progress, build_writing_report_pdf
-from services.storage.file_storage import read_file, save_report
+from services.storage.file_storage import image_mime, read_file, save_report
 
 logger = logging.getLogger(__name__)
 router = Router(name="writing")
@@ -239,14 +245,31 @@ async def receive_chart(message: Message, state: FSMContext, lang: str) -> None:
     if paths is None:
         return
     await state.update_data(prompt_image_paths=paths[:MAX_PROMPT_IMAGES])
-    await _ask_for_answer(message, state, data, lang)
+    await _after_chart(message, state, data, lang)
 
 
 @router.callback_query(WritingStates.awaiting_chart, F.data == CB_NO_CHART)
 async def skip_chart(callback: CallbackQuery, state: FSMContext, lang: str) -> None:
     await callback.answer()
     await strip_buttons(callback.message)
-    await _ask_for_answer(callback.message, state, await state.get_data(), lang)
+    data = await state.get_data()
+    if data.get("rechart"):
+        await state.update_data(prompt_image_paths=[])
+    await _after_chart(callback.message, state, data, lang)
+
+
+async def _after_chart(message: Message, state: FSMContext, data: dict, lang: str) -> None:
+    if data.get("rechart"):
+        # The chart asked for again after the answer: check it now.
+        await state.update_data(rechart=False)
+        await state.set_state(WritingStates.processing)
+        await _run_grading(message, state, lang)
+        return
+    await _ask_for_answer(message, state, data, lang)
+
+
+class ChartUnreadable(Exception):
+    """The chart reading found no usable visual in the picture."""
 
 
 def _load_prompt_images(paths: list[str]) -> list[tuple[bytes, str]]:
@@ -255,10 +278,20 @@ def _load_prompt_images(paths: list[str]) -> list[tuple[bytes, str]]:
         try:
             content = read_file(path)
         except FileNotFoundError:
-            logger.warning("Prompt image missing on disk: %s", path)
+            logger.error("Task 1 chart missing on disk - graded without it: %s", path)
             continue
-        images.append((content, mimetypes.guess_type(path)[0] or "image/jpeg"))
+        images.append((content, image_mime(content, path)))  # by its bytes, whatever the name says
     return images
+
+
+async def _ask_chart_again(processing_msg: Message, state: FSMContext, data: dict, lang: str, calls) -> None:
+    """The chart couldn't be used: the student sends it again (or goes on
+    without it) and the check starts right away - the answer is kept and
+    nothing was charged; what the reading cost joins the check's cost."""
+    cost = usage.merge(data.get("input_cost"), usage.summary(calls)) if calls else data.get("input_cost")
+    await state.update_data(rechart=True, prompt_image_paths=[], input_cost=cost)
+    await state.set_state(WritingStates.awaiting_chart)
+    await processing_msg.edit_text(t("writing.chart_resend", lang), reply_markup=chart_kb(lang, _back_target(data, "answer")))
 
 
 def _same_text(a: str, b: str) -> float:
@@ -302,27 +335,37 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
 
     started = time.monotonic()
     processing_msg = await message.answer(t("writing.grading_in_progress", lang))
+    calls: list = []
+    visual = None
+    prompt_images = None
 
     try:
         async with get_session() as session:
             earlier_essays, previous = await crud.get_writing_history(session, user_id, data["task_type"])
-        prompt_images = None
         if data["task_type"] == "task1":
             prompt_images = _load_prompt_images(data.get("prompt_image_paths") or [])
         seed = user_id + earlier_essays
         answer_task: asyncio.Task | None = None
         needs = None
+        sheet = ""
 
         def start_answer(bands, overall, feedback) -> None:
             # The model answer is written for this student's results, while the
             # grading's last two passes run.
             nonlocal answer_task, needs
             needs = needs_from_feedback(bands, overall, feedback, data["answer_text"])
-            answer_task = asyncio.create_task(
-                build_model_answer(data["task_type"], data["prompt_text"], prompt_images, seed=seed, needs=needs)
-            )
+            answer_task = asyncio.create_task(build_model_answer(
+                data["task_type"], data["prompt_text"], prompt_images, seed=seed, needs=needs, sheet=sheet))
 
         with usage.track(f"writing {data['task_type']} user={user_id}") as calls:
+            if prompt_images:
+                # One careful reading of the chart, whose figures every call uses -
+                # and the first sign of a picture OpenAI can't open, before the
+                # scoring runs spend anything on it.
+                visual = await read_visual(data["prompt_text"], prompt_images)
+                if visual is not None and visual.readability == "unreadable":
+                    raise ChartUnreadable(visual.readability_note)
+                sheet = sheet_text(visual)
             try:
                 report = await grade_writing(
                     task_type=data["task_type"],
@@ -330,6 +373,7 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
                     answer_text=data["answer_text"],
                     prompt_images=prompt_images,
                     on_feedback=start_answer,
+                    sheet=sheet,
                 )
             except BaseException:
                 if answer_task is not None:
@@ -344,7 +388,7 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
                 logger.error("Model answer failed for user %s - trying once more", user_id, exc_info=e)
                 try:
                     answer = await build_model_answer(
-                        data["task_type"], data["prompt_text"], prompt_images, seed=seed, needs=needs
+                        data["task_type"], data["prompt_text"], prompt_images, seed=seed, needs=needs, sheet=sheet
                     )
                 except Exception:
                     logger.exception("Model answer failed again for user %s - report goes out without it", user_id)
@@ -367,7 +411,16 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
             earlier_essays + 1,
             prompt_images,
         )
-    except Exception:
+    except (ChartImageRejected, ChartUnreadable) as e:
+        logger.warning("Task 1 chart of user %s can't be used (%s: %s) - asking for it again",
+                       user_id, type(e).__name__, str(e)[:300])
+        await _ask_chart_again(processing_msg, state, data, lang, calls)
+        return
+    except Exception as e:
+        if prompt_images and is_image_error(e):
+            logger.warning("OpenAI turned the Task 1 chart of user %s down - asking for it again: %s", user_id, e)
+            await _ask_chart_again(processing_msg, state, data, lang, calls)
+            return
         logger.exception("Writing grading failed for user %s", user_id)
         await processing_msg.edit_text(t("writing.grading_failed", lang))
         await stickers.send(message.bot, user_id, "oops")
@@ -397,6 +450,8 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
             original_file_paths={
                 "prompt": data.get("prompt_file_path"),
                 "answer": data.get("answer_file_path"),
+                # the Task 1 chart(s) the check used - also when sent apart from the question
+                "chart": data.get("prompt_image_paths") or None,
             },
             overall_band=report.overall_band,
             criteria_scores=report.criteria_scores(),
@@ -417,6 +472,8 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
                     "reference_ids": answer.log.get("reference_ids", []),
                 },
                 "resubmission_of": similar.id if similar is not None else None,
+                # a Task 1 chart's data sheet: the figures every part of the report used
+                "visual": visual.model_dump() if visual is not None else None,
                 # this check's OpenAI cost (estimated from tokens), reading the
                 # prompt/answer photo or file included ("input: ..."), how long the
                 # student waited, and how it was paid
@@ -440,6 +497,8 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
                else t("writing.done_caption_clean", lang, band=report.overall_band))
     if new_words:
         caption += "\n" + t("vocab.added_after_check", lang, count=new_words)
+    if visual is not None and visual.readability == "partly_unclear":
+        caption += "\n\n" + t("writing.chart_partly_unclear", lang)
     await processing_msg.delete()
     await stickers.send(message.bot, user_id, stickers.for_result(report.overall_band, found))  # the Gotcha moment
     await message.answer_document(

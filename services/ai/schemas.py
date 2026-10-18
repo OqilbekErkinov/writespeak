@@ -210,6 +210,31 @@ class Task1Label(BaseModel):
     topic: str = Field(description="One or two lowercase words, e.g. population, energy, transport.")
 
 
+class VisualFact(BaseModel):
+    label: str = Field(description="The category and its series, year or stage, e.g. 'Shopping - Girls', "
+                                   "'1980 - PhD Science', 'Stage 3', 'North of the river - 1995'.")
+    value: str = Field(description="printed: exactly as written on the visual. estimated: your best estimate and "
+                                   "the range a careful reader could defend from the scale, e.g. 'about 27% "
+                                   "(25-29%)'. unclear: what can't be read - never a guessed number.")
+    status: Literal["printed", "estimated", "unclear"]
+
+
+class VisualReading(BaseModel):
+    """A Task 1 visual read once (services/ai/visual_reading.py), so every
+    part of the report uses the same figures."""
+
+    visual_type: str = Field(description="e.g. 'bar chart', 'two pie charts', 'line graph', 'table', "
+                                         "'process diagram', 'two maps'.")
+    subject: str = Field(description="What it shows: what is measured, of whom or what, where and when.")
+    units: str = Field(description="e.g. '%', 'millions of tonnes'; 'none' for maps and processes.")
+    facts: list[VisualFact]
+    main_features: list[str] = Field(description="3-6 overview-level features the visual clearly shows.")
+    cautions: list[str] = Field(description="What is easy to misread: values that look equal or too close to rank, "
+                                            "3D bars, stacked parts, two different scales. Empty if none.")
+    readability: Literal["clear", "partly_unclear", "unreadable"]
+    readability_note: str = Field(description="Empty when clear; otherwise, in one line, what can't be read.")
+
+
 class SampleShow(BaseModel):
     priority: str = Field(description='The priority number it demonstrates, "01".."03".')
     phrase: str = Field(description="3-14 words copied exactly from your answer, where it shows it.")

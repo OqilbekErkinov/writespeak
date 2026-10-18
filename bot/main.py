@@ -16,6 +16,11 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)-8s %(name)s: %(message)s",
 )
+# WeasyPrint lowers the fontTools logger to DEBUG while it subsets a report's
+# fonts (weasyprint.logger.capture_logs), and those records reached this
+# handler: hundreds of lines per report PDF, burying the lines that matter.
+for _handler in logging.getLogger().handlers:
+    _handler.setLevel(logging.INFO)
 logger = logging.getLogger(__name__)
 
 

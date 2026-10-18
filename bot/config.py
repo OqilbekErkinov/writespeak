@@ -48,6 +48,10 @@ class Settings(BaseSettings):
     # report's 25 mistakes: "low" found 24/25 with the same bands as the
     # default, at about half the cost and time.
     openai_grading_reasoning_effort: str = "low"
+    # Reasoning effort for reading a Task 1 chart into its data sheet - once per
+    # check, and every other call uses its figures (services/ai/visual_reading.py).
+    # "low" misread 3D bars by 2-5 points and ranked equal bars (report #62).
+    openai_chart_reasoning_effort: str = "medium"
     # The grading calls (gpt-5: scores, feedback, missed-errors pass, checks) run
     # on OpenAI's Flex tier - half the token price, sometimes slower - and fall
     # back to the default tier when Flex is busy or takes longer than

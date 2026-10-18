@@ -21,6 +21,12 @@ the Speaking report prompt, 2026-10-16):
      the same way; anything that isn't is dropped;
   5. essay_marking.build_report validates everything and assembles the report.
 
+A Task 1 chart is read once into a data sheet first (services/ai/
+visual_reading.py, by the caller), and every call above judges the
+student's figures by that sheet - with the image still attached for its
+layout - so the whole report uses the same figures, and the verification
+pass checks the data mistakes against it too.
+
 `score_writing` is the same examiner returning scores only - the model
 answer's self-check (services/ai/sample_bank.py).
 
@@ -33,6 +39,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import logging
+import re
 
 import openai
 
@@ -49,6 +56,7 @@ from services.ai.essay_marking import (
 from services.ai.openai_client import parse_flex
 from services.ai.schemas import CriterionScores, Mistake, MissedMistake, MissedMistakes, Verdicts, WritingFeedback
 from services.ai.scoring import LENIENCY_NOTE, median_of_runs, overall_band, target_band, whole_band
+from services.ai.visual_reading import JUDGE_RULES
 
 logger = logging.getLogger(__name__)
 
@@ -320,6 +328,12 @@ keep=true for every real error an examiner would penalise, including collocation
 overstated or wrong-meaning words, verb-pattern errors, unclear meaning, linking phrases that \
 don't fit the logic, and logic errors (a conclusion that contradicts the body).
 
+A DATA item (a figure, ranking or trend in a Task 1 report) is judged ONLY by the DATA SHEET given \
+with the text: keep=false when the student's version agrees with the sheet - the printed value \
+(rounding with "about" is fine), any figure inside an estimated value's range, a value the sheet \
+can't read, a ranking or trend the sheet shows - or when the "correction" itself disagrees with the \
+sheet; keep=true when the sheet clearly contradicts the student.
+
 Judge each item on its own; give a short reason. Return a verdict for every id."""
 
 
@@ -345,20 +359,32 @@ NO_VISUAL_NOTE = (
 )
 
 
-def _with_images(text: str, prompt_images: list[tuple[bytes, str]] | None, task1: bool = False):
+def _judged(sheet: str) -> str:
+    """The data sheet with the rules for judging a student's figures by it."""
+    return f"{sheet}\n\n{JUDGE_RULES}" if sheet else ""
+
+
+def _with_images(text: str, prompt_images: list[tuple[bytes, str]] | None, task1: bool = False, sheet: str = ""):
     """The user message: the text, plus the Task 1 visual in full detail (the
-    figures on a chart are small) - or, for a Task 1 without one, a note."""
+    figures on a chart are small) - or, for a Task 1 without one, a note.
+    `sheet`: the visual's data sheet (and rules), when it was read."""
+    if sheet:
+        text = f"{text}\n\n{sheet}"
     if not prompt_images:
         return text + NO_VISUAL_NOTE if task1 else text
+    if sheet:
+        look = ("The attached image(s) are the visual this task is based on. Its DATA SHEET above was read "
+                "from them once: take every figure from the sheet; the image shows the layout and context. "
+                "Check the answer against it: every figure, unit, date, trend and comparison, whether the "
+                "overview matches what the visual mainly shows, and which key features are missing.")
+    else:
+        look = ("The attached image(s) are the visual this task is based on - the source of truth for its "
+                "data. Read it first: its type, units, period and categories, the main trends, differences or "
+                "stages, and the key figures. Then check the answer against it: every figure, unit, date, "
+                "trend and comparison, whether the overview matches what the visual mainly shows, and which "
+                "key features are missing.")
     return [
-        {
-            "type": "text",
-            "text": text + "\n\nThe attached image(s) are the visual this task is based on - the source "
-            "of truth for its data. Read it first: its type, units, period and categories, the main "
-            "trends, differences or stages, and the key figures. Then check the answer against it: every "
-            "figure, unit, date, trend and comparison, whether the overview matches what the visual "
-            "mainly shows, and which key features are missing.",
-        },
+        {"type": "text", "text": f"{text}\n\n{look}"},
         *(
             {
                 "type": "image_url",
@@ -405,13 +431,14 @@ async def _parse(purpose: str, max_tokens: int, messages: list[dict], response_f
     return response
 
 
-async def _feedback_call(task_type, prompt_text, answer_text, prompt_images, copied, bands) -> WritingFeedback | None:
+async def _feedback_call(task_type, prompt_text, answer_text, prompt_images, copied, bands,
+                         sheet: str = "") -> WritingFeedback | None:
     """None when the answer ran past FEEDBACK_MAX_TOKENS."""
     overall = overall_band(list(bands.values()))
     text = f"QUESTION PROMPT:\n{prompt_text}\n\nSTUDENT'S ANSWER:\n{answer_text}{_copied_note(copied)}"
     messages = [
         {"role": "system", "content": _system_prompt(task_type, bands, overall, target_band(overall))},
-        {"role": "user", "content": _with_images(text, prompt_images, task_type == "task1")},
+        {"role": "user", "content": _with_images(text, prompt_images, task_type == "task1", _judged(sheet))},
     ]
     try:
         response = await _parse("feedback", FEEDBACK_MAX_TOKENS, messages, WritingFeedback)
@@ -425,7 +452,7 @@ async def _feedback_call(task_type, prompt_text, answer_text, prompt_images, cop
 
 
 async def _missed_errors_call(
-    task_type, prompt_text, answer_text, prompt_images, found: list[Mistake]
+    task_type, prompt_text, answer_text, prompt_images, found: list[Mistake], sheet: str = ""
 ) -> list[MissedMistake]:
     listed = "\n".join(f"{m.id}. {m.wrong} -> {m.correct}" for m in found) or "(none)"
     text = (
@@ -434,7 +461,7 @@ async def _missed_errors_call(
     )
     messages = [
         {"role": "system", "content": _missed_prompt(task_type)},
-        {"role": "user", "content": _with_images(text, prompt_images, task_type == "task1")},
+        {"role": "user", "content": _with_images(text, prompt_images, task_type == "task1", _judged(sheet))},
     ]
     response = await _parse("missed_errors", MISSED_MAX_TOKENS, messages, MissedMistakes)
     parsed = response.choices[0].message.parsed
@@ -451,21 +478,24 @@ async def grade_writing(
     answer_text: str,
     prompt_images: list[tuple[bytes, str]] | None = None,
     on_feedback=None,
+    sheet: str = "",
 ) -> WritingReport:
     """`prompt_images` - (bytes, mime) pairs of the Task 1 chart/diagram, so
     the grader can check the student's figures and overview against the
-    actual visual instead of just its text description. `on_feedback(bands,
-    overall, feedback)` is called as soon as the feedback is final.
+    actual visual instead of just its text description; `sheet` - its data
+    sheet (services/ai/visual_reading.py), by which every call judges the
+    figures. `on_feedback(bands, overall, feedback)` is called as soon as the
+    feedback is final.
 
     The report always shows the student's original text; the model's marks
     are located in it (services/ai/essay_marking.py), never an altered copy."""
-    bands = await score_writing_runs(task_type, prompt_text, answer_text, prompt_images)
+    bands = await score_writing_runs(task_type, prompt_text, answer_text, prompt_images, sheet)
     copied = [answer_text[s:e] for s, e in find_copied_spans(answer_text, prompt_text)]
-    feedback = await _feedback_call(task_type, prompt_text, answer_text, prompt_images, copied, bands)
+    feedback = await _feedback_call(task_type, prompt_text, answer_text, prompt_images, copied, bands, sheet)
     problems = assess(feedback, answer_text) if feedback else ["the answer ran past its token limit"]
     if problems:
         logger.warning("Feedback needs another try: %s", "; ".join(problems))
-        retry = await _feedback_call(task_type, prompt_text, answer_text, prompt_images, copied, bands)
+        retry = await _feedback_call(task_type, prompt_text, answer_text, prompt_images, copied, bands, sheet)
         if retry is not None:
             retry_problems = assess(retry, answer_text)
             if feedback is None or _rank(retry, retry_problems, answer_text) < _rank(feedback, problems, answer_text):
@@ -482,12 +512,18 @@ async def grade_writing(
 
     # "Is this definitely wrong?" - the first pass's mistakes are checked while
     # the missed-errors pass runs; its finds are checked after it. Text copied
-    # from the question and unclear meaning are not corrections to check.
+    # from the question and unclear meaning are not corrections to check. With
+    # a chart's data sheet, the data mistakes (TR, with a figure) are checked
+    # against it too: report #62's "corrections" of figures the student had
+    # read right were never checked.
     copied_norm = [c.lower() for c in copied]
     source = f"QUESTION PROMPT:\n{prompt_text}\n\nSTUDENT'S {_piece(task_type).upper()}:\n{answer_text}"
+    if sheet:
+        source += f"\n\n{sheet}"
 
     def checkable(m) -> bool:
-        return not m.unclear and m.criterion in ("GRA", "LR", "CC") and not any(
+        data_item = bool(sheet) and m.criterion == "TR" and bool(re.search(r"\d", f"{m.wrong} {m.correct}"))
+        return not m.unclear and (m.criterion in ("GRA", "LR", "CC") or data_item) and not any(
             m.wrong.strip().lower() in c for c in copied_norm)
 
     async def verify(items) -> dict[int, tuple[bool, str]]:
@@ -499,7 +535,8 @@ async def grade_writing(
 
     async def find_missed() -> list[MissedMistake]:
         try:
-            return await _missed_errors_call(task_type, prompt_text, answer_text, prompt_images, feedback.mistakes)
+            return await _missed_errors_call(task_type, prompt_text, answer_text, prompt_images, feedback.mistakes,
+                                             sheet)
         except Exception:
             logger.exception("Missed-errors pass failed - the report goes out with the first pass only")
             return []
@@ -522,11 +559,11 @@ async def grade_writing(
     return report
 
 
-async def _score_once(task_type, prompt_text, answer_text, prompt_images) -> dict[str, float]:
+async def _score_once(task_type, prompt_text, answer_text, prompt_images, sheet: str = "") -> dict[str, float]:
     text = f"QUESTION PROMPT:\n{prompt_text}\n\nANSWER:\n{answer_text}"
     messages = [
         {"role": "system", "content": _scoring_system(task_type)},
-        {"role": "user", "content": _with_images(text, prompt_images, task_type == "task1")},
+        {"role": "user", "content": _with_images(text, prompt_images, task_type == "task1", _judged(sheet))},
     ]
     response = await _parse("score", SCORE_MAX_TOKENS, messages, CriterionScores)
     scores = response.choices[0].message.parsed
@@ -540,10 +577,11 @@ async def score_writing_runs(
     prompt_text: str,
     answer_text: str,
     prompt_images: list[tuple[bytes, str]] | None = None,
+    sheet: str = "",
 ) -> dict[str, float]:
     """The report's criterion bands: the median of SCORE_RUNS scoring runs."""
     bands, _ = await median_of_runs(
-        lambda: _score_once(task_type, prompt_text, answer_text, prompt_images), SCORE_KEYS,
+        lambda: _score_once(task_type, prompt_text, answer_text, prompt_images, sheet), SCORE_KEYS,
         label=f"writing {task_type}",
     )
     return bands
@@ -554,7 +592,8 @@ async def score_writing(
     prompt_text: str,
     answer_text: str,
     prompt_images: list[tuple[bytes, str]] | None = None,
+    sheet: str = "",
 ) -> float:
     """The overall band our examiner gives `answer_text` in one run - the
     model answer's self-check."""
-    return overall_band(list((await _score_once(task_type, prompt_text, answer_text, prompt_images)).values()))
+    return overall_band(list((await _score_once(task_type, prompt_text, answer_text, prompt_images, sheet)).values()))

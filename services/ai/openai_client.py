@@ -24,6 +24,15 @@ client = AsyncOpenAI(api_key=settings.openai_api_key)
 SHORT_FLEX_TIMEOUT = 60.0
 
 
+def is_image_error(exc: BaseException) -> bool:
+    """OpenAI turned a picture down (a 400 such as invalid_image_format or
+    image_parse_error): the sender can fix it by sending the picture again,
+    unlike a failed model call - and retrying the same bytes never helps."""
+    if not isinstance(exc, openai.BadRequestError):
+        return False
+    return "image" in f"{getattr(exc, 'code', None) or ''} {exc}".lower()
+
+
 async def parse_flex(flex_timeout: float | None = None, **kwargs):
     """client.beta.chat.completions.parse(**kwargs) on the Flex tier when
     settings.openai_service_tier is "flex", on the default tier otherwise or

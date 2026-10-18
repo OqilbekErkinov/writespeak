@@ -213,6 +213,18 @@ _T: dict[str, dict[str, str]] = {
         "нажмите «➡️ Продолжить без картинки».",
     },
     "writing.btn_no_chart": {"uz": "➡️ Rasmsiz davom etish", "ru": "➡️ Продолжить без картинки"},
+    "writing.chart_resend": {
+        "uz": "📊 Grafik rasmidagi ma'lumotni o'qib bo'lmadi — rasm juda xira, kesilgan, grafik emas yoki fayli "
+        "buzilgan.\n\nJavobingiz saqlangan, coin yechilmadi. Grafikning aniqroq rasmini yuboring (skrinshot yoki "
+        "JPG/PNG fayl) — tekshiruvni darhol boshlayman.",
+        "ru": "📊 Не удалось прочитать данные на картинке графика — она слишком размытая, обрезана, это не график "
+        "или файл повреждён.\n\nВаш ответ сохранён, coin не списаны. Отправьте более чёткую картинку графика "
+        "(скриншот или файл JPG/PNG) — и я сразу начну проверку.",
+    },
+    "writing.chart_partly_unclear": {
+        "uz": "⚠️ Grafikning ayrim qiymatlari aniq o'qilmadi — ular bo'yicha raqamlaringiz xato deb hisoblanmadi.",
+        "ru": "⚠️ Некоторые значения на графике не читаются чётко — ваши цифры по ним не считались ошибкой.",
+    },
     "writing.grading_in_progress": {
         "uz": "🦷 Tahlil qilyapman… tishlarim o'tkir! Bu 2–4 daqiqa oladi.",
         "ru": "🦷 Разбираю… зубы острые! Это займёт 2–4 минуты.",
@@ -331,6 +343,17 @@ _T: dict[str, dict[str, str]] = {
         "fayl yoki rasm yuboring.",
         "ru": "Файл слишком большой (лимит Telegram для ботов — 20 МБ). Пожалуйста, отправьте "
         "файл поменьше или картинку.",
+    },
+    "input.bad_image": {
+        "uz": "🖼 Bu rasmni ochib bo'lmadi: fayl buzilgan yoki bu formatni qabul qilmayman (masalan, HEIC). "
+        "Iltimos, oddiy rasm qilib yoki JPG/PNG fayl sifatida yuboring.",
+        "ru": "🖼 Не удалось открыть эту картинку: файл повреждён или такой формат я не принимаю (например, "
+        "HEIC). Пожалуйста, отправьте её как обычное фото или файлом JPG/PNG.",
+    },
+    "input.image_too_small": {
+        "uz": "🖼 Rasm juda kichik — undagi yozuv va raqamlar o'qilmaydi. Iltimos, kattaroq va aniqroq rasm yuboring.",
+        "ru": "🖼 Картинка слишком маленькая — надписи и цифры на ней не читаются. Пожалуйста, отправьте "
+        "картинку побольше и почётче.",
     },
     "input.send_supported_format": {
         "uz": "Bu xabardan matn olib bo'lmadi. Iltimos, boshqa shaklda yuboring.",

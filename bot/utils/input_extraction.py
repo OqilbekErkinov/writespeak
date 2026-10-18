@@ -7,12 +7,17 @@ and spoken audio (voice, audio file, video, video note - transcribed). It
 shows a "reading..." notice while slow extraction (OCR/transcription) runs
 and tells the user what went wrong instead of failing silently.
 
+Every image - a photo, or a picture sent as a file - is checked by its
+bytes and prepared for the vision model before it is saved or read
+(services/storage/file_storage.py's prepare_vision_image): a corrupt file, a
+format we can't open (HEIC) or a thumbnail gets a clear message here, not a
+failed check later.
+
 `extract_audio_from_message` covers Speaking answers (voice, video note,
 audio/video file, forwarded audio).
 """
 from __future__ import annotations
 
-import io
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -20,7 +25,6 @@ from pathlib import Path
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import Message
-from PIL import Image
 
 from bot.i18n import t
 from bot.utils.album import collect_album
@@ -28,16 +32,15 @@ from db.models import SourceType
 from services.ai import usage
 from services.ai.document_parser import extract_text_from_docx, extract_text_from_pdf
 from services.ai.ocr import extract_text_from_image
+from services.ai.openai_client import is_image_error
 from services.ai.transcription import ensure_mp3, transcribe_mp3
-from services.storage.file_storage import save_upload
+from services.storage.file_storage import BadImage, prepare_vision_image, save_upload
 
 logger = logging.getLogger(__name__)
 
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-# Image types the vision model accepts as-is; anything else Pillow can open
-# is re-encoded to PNG first.
-VISION_MIMES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
-IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".tif", ".tiff"}
+# Files taken for pictures (HEIC too: it is told to come as a photo instead).
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".tif", ".tiff", ".heic", ".heif"}
 
 
 class UnsupportedInputError(Exception):
@@ -84,9 +87,13 @@ async def read_text_input(message: Message, lang: str, ocr_mode: str = "verbatim
     except TelegramBadRequest as e:
         logger.warning("Download failed for user %s: %s", message.from_user.id, e)
         error = t("input.file_too_big" if "too big" in str(e).lower() else "writing.could_not_read", lang)
-    except Exception:
-        logger.exception("Input extraction failed for user %s", message.from_user.id)
-        error = t("writing.could_not_read", lang)
+    except Exception as e:
+        if is_image_error(e):  # OpenAI couldn't open the picture: the sender can fix that
+            logger.warning("The vision model turned an image of user %s down: %s", message.from_user.id, e)
+            error = t("input.bad_image", lang)
+        else:
+            logger.exception("Input extraction failed for user %s", message.from_user.id)
+            error = t("writing.could_not_read", lang)
 
     if notice is not None:
         try:
@@ -115,13 +122,12 @@ async def read_images(message: Message, lang: str) -> list[str] | None:
         for m in messages:
             if m.photo:
                 content = await _download(m.bot, m.photo[-1].file_id)  # highest resolution
-                paths.append(save_upload(m.from_user.id, content, ".jpg"))
-            elif m.document is not None:
-                mime = (m.document.mime_type or "").lower()
-                if mime.startswith("image/") or Path((m.document.file_name or "").lower()).suffix in IMAGE_EXTENSIONS:
-                    content = await _download(m.bot, m.document.file_id)
-                    image_bytes, _, image_ext = _normalize_image(content, mime, lang)
-                    paths.append(save_upload(m.from_user.id, image_bytes, image_ext))
+            elif m.document is not None and _is_image_document(m.document):
+                content = await _download(m.bot, m.document.file_id)
+            else:
+                continue
+            image_bytes, _, image_ext = _prepare_image(content, lang)
+            paths.append(save_upload(m.from_user.id, image_bytes, image_ext))
     except UnsupportedInputError as e:
         await message.answer(str(e))
         return None
@@ -165,8 +171,9 @@ async def _extract_one(
 
     if message.photo:
         content = await _download(bot, message.photo[-1].file_id)  # highest resolution
-        saved_path = save_upload(user_id, content, ".jpg")
-        text = await extract_text_from_image(content, mime_type="image/jpeg", mode=ocr_mode)
+        image_bytes, image_mime, image_ext = _prepare_image(content, lang)
+        saved_path = save_upload(user_id, image_bytes, image_ext)
+        text = await extract_text_from_image(image_bytes, mime_type=image_mime, mode=ocr_mode)
         return _join(caption, text), SourceType.photo, saved_path, True
 
     audio_file_id, audio_name = _audio_like(message)
@@ -196,9 +203,9 @@ async def _extract_one(
             text = content.decode("utf-8", errors="replace").strip()
             return _join(caption, text), SourceType.text, saved_path, False
 
-        if mime.startswith("image/") or ext in IMAGE_EXTENSIONS:
+        if _is_image_document(doc):
             # A photo sent "as a file" (uncompressed) - common from desktop.
-            image_bytes, image_mime, image_ext = _normalize_image(content, mime, lang)
+            image_bytes, image_mime, image_ext = _prepare_image(content, lang)
             saved_path = save_upload(user_id, image_bytes, image_ext)
             text = await extract_text_from_image(image_bytes, mime_type=image_mime, mode=ocr_mode)
             return _join(caption, text), SourceType.photo, saved_path, True
@@ -237,17 +244,19 @@ def _audio_like(message: Message) -> tuple[str | None, str]:
     return None, ""
 
 
-def _normalize_image(content: bytes, mime: str, lang: str) -> tuple[bytes, str, str]:
-    """Returns (bytes, mime, extension) in a format the vision model accepts."""
-    if mime in VISION_MIMES:
-        return content, mime, "." + mime.split("/")[1].replace("jpeg", "jpg")
+def _is_image_document(doc) -> bool:
+    mime = (doc.mime_type or "").lower()
+    return mime.startswith("image/") or Path((doc.file_name or "").lower()).suffix in IMAGE_EXTENSIONS
+
+
+def _prepare_image(content: bytes, lang: str) -> tuple[bytes, str, str]:
+    """(bytes, mime, extension) the vision model accepts; a picture it can't
+    take is told to the sender in their language."""
     try:
-        image = Image.open(io.BytesIO(content))
-        buf = io.BytesIO()
-        image.convert("RGB").save(buf, format="PNG")
-    except Exception as e:
-        raise UnsupportedInputError(t("input.unsupported_file", lang)) from e
-    return buf.getvalue(), "image/png", ".png"
+        return prepare_vision_image(content)
+    except BadImage as e:
+        logger.info("Image refused (%s), %d bytes", e.reason, len(content))
+        raise UnsupportedInputError(t("input.image_too_small" if e.reason == "too_small" else "input.bad_image", lang)) from e
 
 
 async def extract_audio_from_message(
