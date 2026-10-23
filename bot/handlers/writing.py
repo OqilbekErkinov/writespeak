@@ -64,6 +64,7 @@ from services.ai.essay_marking import canon
 from services.ai.openai_client import is_image_error
 from services.ai.sample_bank import build_model_answer, needs_from_feedback
 from services.ai.schemas import VocabularyItem
+from services.ai.visual_check import data_check
 from services.ai.visual_reading import ChartImageRejected, read_visual, sheet_text
 from services.ai.writing_grader import grade_writing
 from services.pdf.report_builder import build_progress, build_writing_report_pdf
@@ -76,6 +77,11 @@ MIN_ANSWER_WORDS = {"task1": 150, "task2": 250}
 RESUBMISSION_SIMILARITY = 0.9
 
 MAX_PROMPT_IMAGES = 3
+
+# Shown in the report (English, like the rest of it).
+CHART_NOT_CHECKED = "Chart not available — figures were not checked."
+CHART_PARTLY_CHECKED = ("Some figures on the chart could not be read with certainty — your figures for them were "
+                        "not checked.")
 
 
 @router.message(F.text == BTN_WRITING)
@@ -138,7 +144,10 @@ def _back_target(data: dict, field: str) -> str:
 
 
 async def _receive_input(message: Message, state: FSMContext, field: str, lang: str) -> None:
-    extracted = await read_text_input(message, lang)
+    task1_question = field == "prompt" and (await state.get_data()).get("task_type") == "task1"
+    # A photo of a Task 1 task: only its wording is read as text - the chart's
+    # own figures come from the chart reading, never from OCR.
+    extracted = await read_text_input(message, lang, ocr_mode="writing_task1_question" if task1_question else "verbatim")
     if extracted is None:
         return
     if extracted.cost:
@@ -347,25 +356,35 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
         seed = user_id + earlier_essays
         answer_task: asyncio.Task | None = None
         needs = None
-        sheet = ""
+        sheet = judged = ""
 
         def start_answer(bands, overall, feedback) -> None:
-            # The model answer is written for this student's results, while the
-            # grading's last two passes run.
+            # The model answer is written for this student's results, as soon
+            # as the bands are decided.
             nonlocal answer_task, needs
             needs = needs_from_feedback(bands, overall, feedback, data["answer_text"])
             answer_task = asyncio.create_task(build_model_answer(
                 data["task_type"], data["prompt_text"], prompt_images, seed=seed, needs=needs, sheet=sheet))
 
+        notices = []
+        if data["task_type"] == "task1" and not prompt_images:
+            notices.append(CHART_NOT_CHECKED)
         with usage.track(f"writing {data['task_type']} user={user_id}") as calls:
             if prompt_images:
-                # One careful reading of the chart, whose figures every call uses -
-                # and the first sign of a picture OpenAI can't open, before the
-                # scoring runs spend anything on it.
+                # The chart read into a checked data sheet whose figures every call
+                # uses - and the first sign of a picture OpenAI can't open, before
+                # the scoring runs spend anything on it.
                 visual = await read_visual(data["prompt_text"], prompt_images)
                 if visual is not None and visual.readability == "unreadable":
                     raise ChartUnreadable(visual.readability_note)
                 sheet = sheet_text(visual)
+                if sheet:
+                    # the report's own figures checked against it by code: for
+                    # judging the report, not for writing the model answer
+                    check = data_check(data["answer_text"], visual.model_dump(), data["prompt_text"])
+                    judged = f"{sheet}\n\n{check}".strip()
+                if visual is not None and visual.readability == "partly_unclear":
+                    notices.append(CHART_PARTLY_CHECKED)
             try:
                 report = await grade_writing(
                     task_type=data["task_type"],
@@ -373,7 +392,8 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
                     answer_text=data["answer_text"],
                     prompt_images=prompt_images,
                     on_feedback=start_answer,
-                    sheet=sheet,
+                    sheet=judged,
+                    notices=notices,
                 )
             except BaseException:
                 if answer_task is not None:
@@ -499,6 +519,8 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
         caption += "\n" + t("vocab.added_after_check", lang, count=new_words)
     if visual is not None and visual.readability == "partly_unclear":
         caption += "\n\n" + t("writing.chart_partly_unclear", lang)
+    elif data["task_type"] == "task1" and not prompt_images:
+        caption += "\n\n" + t("writing.chart_not_checked", lang)
     await processing_msg.delete()
     await stickers.send(message.bot, user_id, stickers.for_result(report.overall_band, found))  # the Gotcha moment
     await message.answer_document(

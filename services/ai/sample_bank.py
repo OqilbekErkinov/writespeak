@@ -70,6 +70,7 @@ from services.ai.essay_marking import WORD_RE, count_words
 from services.ai.openai_client import client
 from services.ai.schemas import GeneratedSample, StyleProfile, Task1Label, Task2Label
 from services.ai.scoring import writing_aim_band
+from services.ai.writing_anchors import patterns_text
 
 logger = logging.getLogger(__name__)
 
@@ -624,7 +625,9 @@ def _system(task_type: str, band: float, profile: StyleProfile | None, reference
             "like theirs. Never write in a more academic or sophisticated way than they do; where the "
             "aimed band is below their level, keep their structure but use plainer words and simpler "
             "sentences. Do NOT copy sentences from their answers; reusing short functional phrases is "
-            f"fine. LENGTH: {lo}-{hi} words, whatever the length of their answers."
+            "fine. Their signature phrases are optional: use each one at most once, and only where its logic "
+            "fits - \"These advantages notwithstanding\" only right after a paragraph that presents advantages, "
+            f"never after one against them. LENGTH: {lo}-{hi} words, whatever the length of their answers."
         )
     facts = (
         " Use only the data in the question and the visual." if task_type == "task1_academic" else
@@ -633,10 +636,11 @@ def _system(task_type: str, band: float, profile: StyleProfile | None, reference
     )
     task1 = task_type == "task1_academic"
     teach = (
-        "Task Achievement: a clear overview of the main trends or stages, the key features selected and "
-        "compared, no detail the visual doesn't show. Coherence: information grouped logically, one focus "
-        "per paragraph. Vocabulary: accurate trend and comparison language. Grammar: comparatives, "
-        "a range of tenses, the passive for a process."
+        "Task Achievement: when a DATA SHEET is given, an overview that covers its expected overview (the main "
+        "trends, differences or stages - never single figures), at least 4 of its key comparisons with their "
+        "figures, grouped as the sheet suggests or in another logical way, and no detail the visual doesn't show. "
+        "Coherence: information grouped logically, one focus per paragraph. Vocabulary: accurate trend and "
+        "comparison language. Grammar: comparatives, a range of tenses, the passive for a process."
         if task1 else
         "Task Response: every part of the question answered, each main idea explained and supported, not "
         "just stated. Coherence: one clear topic sentence per body paragraph, ideas that follow logically, "
@@ -659,8 +663,10 @@ def _system(task_type: str, band: float, profile: StyleProfile | None, reference
         "student should notice there.\n"
         "No invented real-world facts: no statistics, studies, surveys, named programmes, "
         "laws, dates, and no claims about real countries, cities or organisations that a reader could "
-        f"take as fact.{facts} Never mention any writer, teacher or book. The paragraphs are only the "
-        "answer - no title, labels or notes." + style
+        f"take as fact.{facts} Every example supports the point of its own paragraph - never an example for "
+        "the other side inside it. Never mention any writer, teacher or book. The paragraphs are only the "
+        "answer - no title, labels or notes." + (f"\n\n{patterns_text()}" if task1 and patterns_text() else "")
+        + style
     )
 
 
@@ -722,6 +728,10 @@ async def _write(
             problems.append(f"remove the names {', '.join(names)}")
         if reused > REUSE_LIMIT:
             problems.append("it repeats too much of the student's own wording - write a separate answer in new sentences")
+        overused = overused_phrases(full, profile)
+        if overused:
+            problems.append("use each of these phrases at most once, and only where its logic fits: "
+                            + ", ".join(f'"{p}"' for p in overused))
         if best is None or len(problems) < len(best_problems):
             best, best_problems, best_shows = paragraphs, problems, _shows(parsed, full, needs)
         if not problems:
@@ -736,9 +746,45 @@ async def _write(
     return best, best_problems, best_shows
 
 
+def overused_phrases(text: str, profile: StyleProfile | None) -> list[str]:
+    """The writer's signature phrases the answer uses more than once - all
+    three of #36-#38's answers leaned on one ("These advantages
+    notwithstanding"), twice in the wrong place."""
+    if profile is None:
+        return []
+    low = re.sub(r"\s+", " ", text.lower().replace("’", "'"))
+    out = []
+    for phrase in profile.signature_phrases:
+        # a frame's fixed words: "While this can be attributed to ..." -> "while this can be attributed to"
+        core = re.sub(r"\.\.\.|…|\[[^\]]*\]|\([^)]*\)|\bX\b|\bY\b", " ", phrase)
+        core = re.sub(r"\s+", " ", core.lower().replace("’", "'")).strip(" ,.;:'\"")
+        if len(core.split()) >= 2 and low.count(core) > 1:
+            out.append(phrase.strip())
+    return out
+
+
+class _ParagraphCheck(BaseModel):
+    point: str = Field(description="The paragraph's main point, one line.")
+    examples_support_point: bool = Field(
+        description="Every example in it supports THIS paragraph's point; false if one argues for the other side.")
+    linking_fits: bool = Field(
+        description="Every linking or signature phrase fits its logic (e.g. 'These advantages notwithstanding' "
+        "only right after a paragraph of advantages).")
+    problem: str = Field(description="'' when both are true; else what is wrong, one line.")
+
+
 class _QualityCheck(BaseModel):
-    ok: bool
-    problem: str = Field(description="Empty when ok; else what to fix, one line.")
+    paragraphs: list[_ParagraphCheck]
+    question_type_followed: bool = Field(description="It does exactly what the question asks, in its type.")
+    one_position: bool = Field(description="The same position from start to finish; the conclusion restates the body.")
+    no_stock_opener: bool
+    no_invented_facts: bool
+    task1_overview_covers_expected: bool = Field(
+        description="Task 1 with a DATA SHEET: the overview covers the sheet's expected overview. True otherwise.")
+    task1_key_comparisons_used: int = Field(
+        description="Task 1 with a DATA SHEET: how many of the sheet's key comparisons it uses. 0 otherwise.")
+    task1_figures_match: bool = Field(description="Task 1: every figure matches the sheet/visual. True for Task 2.")
+    problem: str = Field(description="'' when every check passes; else the main thing to fix, one line.")
 
 
 async def quality_problem(
@@ -749,34 +795,57 @@ async def quality_problem(
     passes, else what is wrong. Report #15's "Band 8.5" answer argued that the
     harms win and concluded that the benefits win; both #14's and #15's
     turned an advantages/disadvantages question into an "outweigh" essay and
-    opened with "With the advent of"."""
+    opened with "With the advent of"; #37's put an example for the ban
+    ("if the government funds nicotine replacement...") in a paragraph about
+    the ban's problems. Each paragraph is checked on its own, and the
+    verdict is decided here from the parts, not by one ok flag."""
     from services.ai.writing_grader import _parse, _with_images  # the heavier module
 
     lib_task = TASK_TYPES[task_type]
+    task1 = lib_task == "task1_academic"
     checks = (
-        "1. It does exactly what the question asks, in the question's type"
-        + (f" (labelled: {subtype.replace('_', ' ')})" if lib_task == "task2" else "")
+        "- For EACH paragraph: its main point; does every example support THAT point (an example that argues "
+        "for the other side inside it fails); does every linking or signature phrase fit its logic (\"These "
+        "advantages notwithstanding\" only right after a paragraph of advantages).\n"
+        "- It does exactly what the question asks, in the question's type"
+        + (f" (labelled: {subtype.replace('_', ' ')})" if not task1 else "")
         + " - every part answered, nothing turned into a different question.\n"
-        "2. Its position is the same from start to finish: the conclusion restates what the body argued.\n"
-        "3. Every example fits the point it supports.\n"
-        "4. It doesn't open with a stock phrase (\"With the advent of\", \"In this day and age\", "
-        "\"Nowadays, ...\").\n"
-        "5. It presents no invented statistics or real-world facts as true."
-        + (("\n6. Every figure matches the DATA SHEET (an estimated value: about the sheet's estimate, inside "
-            "its range; nothing the sheet can't read; no ranking of values it says look equal)." if sheet else
-            "\n6. Every figure matches the visual.") if lib_task == "task1_academic" else "")
+        "- Its position is the same from start to finish: the conclusion restates what the body argued.\n"
+        "- It doesn't open with a stock phrase (\"With the advent of\", \"In this day and age\", \"Nowadays, ...\").\n"
+        "- It presents no invented statistics or real-world facts as true."
+        + (("\n- Task 1: its overview covers the DATA SHEET's expected overview; count how many of the sheet's key "
+            "comparisons it uses; every figure matches the sheet (a scale reading: about the sheet's figure, within "
+            "its ±range; nothing UNCERTAIN; no ranking of figures it shows as equal)." if sheet else
+            "\n- Task 1: every figure matches the visual.") if task1 else "")
     )
     messages = [
-        {"role": "system", "content": "You check an IELTS Writing model answer before students see it. "
-         f"ok=false if ANY check fails, with the problem in one line:\n{checks}"},
+        {"role": "system", "content": "You check an IELTS Writing model answer before students see it, "
+         f"strictly:\n{checks}"},
         {"role": "user", "content": _with_images(
             f"QUESTION:\n{question}\n\nMODEL ANSWER:\n" + "\n\n".join(paragraphs), prompt_images, sheet=sheet)},
     ]
     response = await _parse("answer_check", 6000, messages, _QualityCheck)
     parsed = response.choices[0].message.parsed
-    if parsed is None or parsed.ok:
+    if parsed is None:
         return None
-    return parsed.problem.strip() or "failed the quality check"
+    problems = [f"paragraph {i}: {p.problem or 'an example or linking phrase does not fit its point'}"
+                for i, p in enumerate(parsed.paragraphs, 1) if not (p.examples_support_point and p.linking_fits)]
+    for ok, what in ((parsed.question_type_followed, "it does not follow the question's type"),
+                     (parsed.one_position, "its position changes between the body and the conclusion"),
+                     (parsed.no_stock_opener, "it opens with a stock phrase"),
+                     (parsed.no_invented_facts, "it presents invented facts as true"),
+                     (parsed.task1_figures_match or not task1, "a figure does not match the data sheet")):
+        if not ok:
+            problems.append(what)
+    if task1 and sheet and "Key comparisons:" in sheet:
+        if not parsed.task1_overview_covers_expected:
+            problems.append("its overview does not cover the expected overview")
+        wanted = min(4, sheet.split("Key comparisons:", 1)[1].count("\n- "))
+        if parsed.task1_key_comparisons_used < wanted:
+            problems.append(f"it uses {parsed.task1_key_comparisons_used} of the key comparisons; use at least {wanted}")
+    if not problems:
+        return None
+    return "; ".join(problems) if not parsed.problem.strip() else f"{parsed.problem.strip()} ({'; '.join(problems)})"
 
 
 async def build_model_answer(

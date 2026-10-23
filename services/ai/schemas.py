@@ -145,6 +145,27 @@ class CriterionScores(BaseModel):
     GRA: int = Field(description="Grammatical Range & Accuracy, a whole band 0-9.")
 
 
+class CriterionJudgement(BaseModel):
+    """One criterion of a Writing scoring run (marking guide, 2026-10-22):
+    strengths first, then weaknesses, then the band - in that order, so the
+    band is decided after both are listed."""
+
+    strengths: list[str] = Field(
+        description="What earns credit on THIS criterion, each with a short quote from the answer.")
+    weaknesses: list[str] = Field(
+        description="Real problems of THIS criterion only, each with a short quote; never style preferences.")
+    band: int = Field(description="The whole band 0-9 that fits best.")
+    note: str = Field(
+        description="6-14 plain words for the student naming the strength or weakness that decided this band.")
+
+
+class WritingScoring(BaseModel):
+    TR_or_TA: CriterionJudgement = Field(description="Task Achievement (Task 1) or Task Response (Task 2).")
+    CC: CriterionJudgement = Field(description="Coherence & Cohesion.")
+    LR: CriterionJudgement = Field(description="Lexical Resource.")
+    GRA: CriterionJudgement = Field(description="Grammatical Range & Accuracy.")
+
+
 class CriterionNotes(BaseModel):
     TR_or_TA: str
     CC: str
@@ -210,29 +231,129 @@ class Task1Label(BaseModel):
     topic: str = Field(description="One or two lowercase words, e.g. population, energy, transport.")
 
 
-class VisualFact(BaseModel):
-    label: str = Field(description="The category and its series, year or stage, e.g. 'Shopping - Girls', "
-                                   "'1980 - PhD Science', 'Stage 3', 'North of the river - 1995'.")
-    value: str = Field(description="printed: exactly as written on the visual. estimated: your best estimate and "
-                                   "the range a careful reader could defend from the scale, e.g. 'about 27% "
-                                   "(25-29%)'. unclear: what can't be read - never a guessed number.")
-    status: Literal["printed", "estimated", "unclear"]
+# --- Task 1 visual extraction (services/ai/visual_reading.py, 2026-10-22) ---------
+# The visual described as data, read twice; code compares the two reads,
+# checks them and computes the key features (services/ai/visual_features.py).
+
+VisualKind = Literal["line", "bar", "pie", "table", "map", "process", "other"]
 
 
-class VisualReading(BaseModel):
-    """A Task 1 visual read once (services/ai/visual_reading.py), so every
-    part of the report uses the same figures."""
+class LegendEntry(BaseModel):
+    label: str
+    colour: str = Field(description="Its colour or pattern exactly as drawn, telling shades apart, e.g. 'dark blue', "
+                                    "'light blue', 'striped grey'.")
 
-    visual_type: str = Field(description="e.g. 'bar chart', 'two pie charts', 'line graph', 'table', "
-                                         "'process diagram', 'two maps'.")
-    subject: str = Field(description="What it shows: what is measured, of whom or what, where and when.")
-    units: str = Field(description="e.g. '%', 'millions of tonnes'; 'none' for maps and processes.")
-    facts: list[VisualFact]
-    main_features: list[str] = Field(description="3-6 overview-level features the visual clearly shows.")
-    cautions: list[str] = Field(description="What is easy to misread: values that look equal or too close to rank, "
-                                            "3D bars, stacked parts, two different scales. Empty if none.")
+
+class DataValue(BaseModel):
+    series: str = Field(description="The legend item it belongs to (e.g. 'Environmental', 'Boys'); without a "
+                                    "legend, the bar's, slice's or row's label.")
+    point: str = Field(description="Where it sits on the other dimension: the time point, the x-axis category, the "
+                                   "panel or the table column (e.g. '2008', 'Sports', 'Law'); '' when there is only one.")
+    value: Optional[float] = Field(description="The figure in the visual's units (27 for 27%, 40 for $40,000 on a "
+                                               "scale in thousands); null when it is not a number or can't be read.")
+    text: str = Field(description="A table cell that is words, as written (e.g. '5-star hotel'); '' for a number.")
+    printed: bool = Field(description="True when this figure is written on the visual (a data label, a table cell).")
+    precision: float = Field(description="0 for a printed figure; for one read off a scale, how far off a careful "
+                                         "reading could be, in the same units (e.g. 1, 2 or 5 - from the gridlines).")
+
+
+class MapFeatureState(BaseModel):
+    time: str = Field(description="The year or map label, e.g. '1957'.")
+    status: Literal["present", "absent", "changed"]
+    detail: str = Field(description="What it is like then, e.g. 'small, beside the entrance'; '' if nothing to add.")
+
+
+class MapFeature(BaseModel):
+    name: str
+    location: str = Field(description="Where it is, e.g. 'west side, beside the entrance'.")
+    states: list[MapFeatureState] = Field(description="One per map, in time order.")
+
+
+class ProcessStage(BaseModel):
+    name: str = Field(description="A logical stage, e.g. 'energy generation', 'storage'.")
+    steps: list[int] = Field(description="The step numbers (1, 2, ...) in this stage.")
+
+
+class ProcessInfo(BaseModel):
+    steps: list[str] = Field(description="Every step in order, one short line each.")
+    numbered: bool = Field(description="True when the diagram itself numbers its steps.")
+    stages: list[ProcessStage]
+    kind: Literal["linear", "cyclical"]
+    natural_or_manmade: Literal["natural", "man-made"]
+
+
+class VisualBlock(BaseModel):
+    visual_type: VisualKind
+    title: str = Field(description="The visual's title or what it shows; '' if none.")
+    units: str = Field(description="e.g. '%', 'thousands of dollars', 'millions of tonnes'; '' for maps and processes.")
+    time_points: list[str] = Field(description="Years or dates in order, e.g. ['2008', '2014']; [] if none.")
+    legend: list[LegendEntry]
+    data: list[DataValue] = Field(description="Every value, one per series and point, in a fixed order; [] for "
+                                              "maps and processes.")
+    map_features: list[MapFeature] = Field(description="Maps only: every feature; [] otherwise.")
+    overall: str = Field(description="The main point of this visual in one line - a map's overall direction of "
+                                     "development ('expansion and modernisation at the cost of green space'), a "
+                                     "diagram's or table's main contrast, a chart's main trend.")
+    process: Optional[ProcessInfo] = Field(description="Processes only; null otherwise.")
+
+
+class VisualExtraction(BaseModel):
+    visuals: list[VisualBlock] = Field(description="One block per visual (a table and two pie charts = 3 blocks; "
+                                                   "a chart split into panels = one block per panel).")
+    unreadable: list[str] = Field(description="Everything that can't be read; [] if all is clear.")
     readability: Literal["clear", "partly_unclear", "unreadable"]
-    readability_note: str = Field(description="Empty when clear; otherwise, in one line, what can't be read.")
+    readability_note: str = Field(description="'' when clear; otherwise, in one line, what can't be read.")
+    chart_box: list[float] = Field(description="Where the visual(s) sit in the image: [left, top, right, bottom] as "
+                                               "fractions 0-1 of its width and height.")
+    rotation: int = Field(description="Degrees (0, 90, 180 or 270) the image must be turned clockwise so its text "
+                                      "reads normally; 0 if it is upright.")
+
+
+class SheetValue(BaseModel):
+    """A figure after both reads and the code checks."""
+
+    series: str
+    point: str
+    value: Optional[float]
+    text: str
+    printed: bool
+    precision: float
+    status: Literal["verified", "uncertain"]
+    note: str = ""  # why it is uncertain
+
+
+class SheetBlock(BaseModel):
+    visual_type: VisualKind
+    title: str
+    units: str
+    time_points: list[str]
+    legend: list[LegendEntry]
+    values: list[SheetValue]
+    map_features: list[MapFeature]
+    overall: str
+    process: Optional[ProcessInfo]
+
+
+class KeyFeatures(BaseModel):
+    """What a Band 7-8 report would have to mention (services/ai/visual_features.py)."""
+
+    expected_overview: list[str]
+    key_comparisons: list[str]
+    suggested_grouping: str
+
+
+class VisualSheet(BaseModel):
+    """A Task 1 visual read twice, checked and analysed - saved in the
+    submission's report_data["visual"] and the source of every figure in
+    the report."""
+
+    blocks: list[SheetBlock]
+    readability: Literal["clear", "partly_unclear", "unreadable"]
+    readability_note: str
+    unreadable: list[str]
+    checks: list[str]  # what the code checks found
+    features: KeyFeatures
+    reads: int  # how many reads agreed on it (1 when the second failed)
 
 
 class SampleShow(BaseModel):
@@ -359,6 +480,22 @@ class Verdict(BaseModel):
 
 class Verdicts(BaseModel):
     verdicts: list[Verdict]
+
+
+class WritingVerdict(BaseModel):
+    """The Writing mistake filter (marking guide B5, 2026-10-22): would an
+    examiner count it, and under which ONE criterion?"""
+
+    id: int
+    keep: bool = Field(description="False when it is not definitely an error an examiner would penalise.")
+    criterion: MistakeCriterion = Field(
+        description="The one criterion it belongs to: LR word choice, GRA grammar/punctuation, CC linking/"
+        "paragraphing/logic, TR content, task coverage or data.")
+    reason: str = Field(description="Short: why it is or isn't an error.")
+
+
+class WritingVerdicts(BaseModel):
+    verdicts: list[WritingVerdict]
 
 
 class SampleHighlight(BaseModel):

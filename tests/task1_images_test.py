@@ -139,26 +139,26 @@ def server_error() -> openai.InternalServerError:
 
 
 def reading(kind: str = "clear"):
-    from services.ai.schemas import VisualFact, VisualReading
+    """One chart read (VisualExtraction) of the BARS chart."""
+    from services.ai.schemas import DataValue, LegendEntry, VisualBlock, VisualExtraction
 
-    facts = []
+    data = []
     for label, boys, girls in BARS:
-        facts.append(VisualFact(label=f"{label} - Boys", value=f"about {boys}% ({boys - 2}-{boys + 2}%)", status="estimated"))
-        facts.append(VisualFact(label=f"{label} - Girls", value=f"about {girls}% ({girls - 2}-{girls + 2}%)", status="estimated"))
-    note = ""
+        data.append(DataValue(series="Boys", point=label, value=boys, text="", printed=False, precision=2))
+        data.append(DataValue(series="Girls", point=label, value=girls, text="", printed=False, precision=2))
+    note, unreadable = "", []
     if kind == "partly_unclear":
-        facts[-1] = VisualFact(label="Shopping - Girls", value="the top of the bar is cropped", status="unclear")
-        note = "the girls' shopping bar is cropped"
+        data[-1] = DataValue(series="Girls", point="Shopping", value=None, text="", printed=False, precision=0)
+        note, unreadable = "the girls' shopping bar is cropped", ["Shopping - Girls: the top of the bar is cropped"]
+    blocks = [VisualBlock(visual_type="bar", title="Favourite leisure activities of teenagers in Canada", units="%",
+                          time_points=[], legend=[LegendEntry(label="Boys", colour="dark blue"),
+                                                  LegendEntry(label="Girls", colour="orange")],
+                          data=data, map_features=[], overall="Boys prefer shopping and sports; girls are more even.",
+                          process=None)]
     if kind == "unreadable":
-        facts, note = [], "the picture shows only the question text, no chart"
-    return VisualReading(
-        visual_type="bar chart", subject="favourite leisure activities of teenagers in Canada, by gender",
-        units="%", facts=facts,
-        main_features=["Shopping is the boys' top activity and the girls' least popular.",
-                       "Boys lead in sports and computer games."],
-        cautions=["Music: boys and girls look equal, about 20%."],
-        readability=kind, readability_note=note,
-    )
+        blocks, note = [], "the picture shows only the question text, no chart"
+    return VisualExtraction(visuals=blocks, unreadable=unreadable, readability=kind, readability_note=note,
+                            chart_box=[0, 0, 1, 1], rotation=0)
 
 
 async def part1_reading() -> None:
@@ -171,11 +171,27 @@ async def part1_reading() -> None:
     check("another 400 is not", not is_image_error(bad_request("context_length_exceeded", "Too long")))
     check("a server error is not", not is_image_error(server_error()))
 
-    sheet = visual_reading.sheet_text(reading("clear"))
-    check("the sheet lists estimated values with their range", "Sports - Boys: about 27% (25-29%) (estimated from the scale)"
-          in sheet and "Music: boys and girls look equal" in sheet)
-    check("an unreadable reading gives no sheet", visual_reading.sheet_text(reading("unreadable")) == "")
-    check("a partly unclear one says what can't be read", "(can't be read)" in visual_reading.sheet_text(reading("partly_unclear")))
+    combine = visual_reading.combine
+    sheet = visual_reading.sheet_text(combine(reading("clear"), reading("clear")))
+    check("the sheet lists scale readings with their precision", "- Boys: Sports about 27% (±2)" in sheet, sheet[:400])
+    check("...and the key features computed from them", "Boys is higher than Girls" in sheet
+          and "Music: Boys and Girls equal (20%)" in sheet, sheet)
+    check("an unreadable reading gives no sheet", visual_reading.sheet_text(combine(reading("unreadable"),
+                                                                                   reading("unreadable"))) == "")
+    partly = combine(reading("partly_unclear"), reading("partly_unclear"))
+    check("a partly unclear one says what can't be read", "Can't be read: Shopping - Girls" in
+          visual_reading.sheet_text(partly) and partly.readability == "partly_unclear")
+    other = reading("clear")
+    other.visuals[0].data[0].value = 33  # Sports - Boys: 27 in one read, 33 in the other
+    two = visual_reading.sheet_text(combine(reading("clear"), other))
+    check("two reads that disagree: the figure is UNCERTAIN, never used to mark", "UNCERTAIN" in two
+          and "Boys (Sports): about 30% (±5) - the reads disagree: 27 vs 33" in two, two)
+    pie = reading("clear")
+    pie.visuals[0].visual_type = "pie"
+    for v in pie.visuals[0].data:
+        v.printed, v.precision = True, 0
+    check("a pie whose slices don't add up to 100%: its figures are uncertain",
+          all(v.status == "uncertain" for v in combine(pie, pie).blocks[0].values))
 
     real = visual_reading.parse_flex
     images = [(chart("PNG"), "image/png")]
@@ -210,7 +226,7 @@ async def part1_reading() -> None:
         outcomes["next"] = openai.LengthFinishReasonError(completion=NS(usage=None, model="gpt-5"))
         check("a reading cut off at its token limit: no sheet", await visual_reading.read_visual("q", images) is None)
         empty = reading("clear")
-        empty.facts = []
+        empty.visuals[0].data = []
         outcomes["next"] = empty
         check("a 'clear' reading with no data is not trusted", await visual_reading.read_visual("q", images) is None)
     finally:
@@ -262,32 +278,37 @@ class FakeAI:
         fmt = kw["response_format"]
         name = fmt.__name__
         self.calls.append((name, kw["messages"]))
-        if name == "VisualReading":
+        if name == "VisualExtraction":
             outcome = self.readings.pop(0) if self.readings else reading("clear")
             if isinstance(outcome, BaseException):
                 raise outcome
             parsed = outcome
-        elif name == "CriterionScores":
+        elif name == "WritingScoring":
             if self.fail_scoring:
                 raise server_error()
-            parsed = schemas.CriterionScores(TR_or_TA=6, CC=6, LR=6, GRA=6)
+            judged = schemas.CriterionJudgement(strengths=["clear"], weaknesses=["some slips"], band=6,
+                                                note="Clear overview; figures match the chart.")
+            parsed = schemas.WritingScoring(TR_or_TA=judged, CC=judged, LR=judged, GRA=judged)
         elif name == "WritingFeedback":
             parsed = None if self.feedback_none else self.feedback()
         elif name == "MissedMistakes":
             parsed = schemas.MissedMistakes(mistakes=[])
-        elif name == "Verdicts":
+        elif name == "WritingVerdicts":
             text = _text_of(kw["messages"])
-            listed = re.findall(r"^(\d+)\. «(.*?)»", text, flags=re.M)
+            listed = re.findall(r"^(\d+)\. \[(\w+)\] «(.*?)»", text, flags=re.M)
             # A careful checker, as the real one is asked to be: a figure inside
             # the data sheet's range is not a mistake.
-            parsed = schemas.Verdicts(verdicts=[
-                schemas.Verdict(id=int(i), keep=not ("DATA SHEET" in text and "7%" in wrong), reason="checked")
-                for i, wrong in listed])
+            parsed = schemas.WritingVerdicts(verdicts=[
+                schemas.WritingVerdict(id=int(i), keep=not ("DATA SHEET" in text and "7%" in wrong), criterion=crit,
+                                       reason="checked")
+                for i, crit, wrong in listed])
         elif name == "GeneratedSample":
             task1 = "Academic Writing Task 1" in kw["messages"][0]["content"]
             parsed = schemas.GeneratedSample(paragraphs=sample_text(185 if task1 else 320), shows=[])
         elif name == "_QualityCheck":
-            parsed = fmt(ok=True, problem="")
+            parsed = fmt(paragraphs=[], question_type_followed=True, one_position=True, no_stock_opener=True,
+                         no_invented_facts=True, task1_overview_covers_expected=True, task1_key_comparisons_used=4,
+                         task1_figures_match=True, problem="")
         else:
             raise AssertionError(f"unexpected OpenAI call {name}")
         return NS(choices=[NS(message=NS(parsed=parsed, refusal=None, content=None))],
@@ -435,7 +456,12 @@ async def part2_bot() -> None:
     async def lang() -> str:
         from db import crud
         async with get_session() as s:
-            return (await crud.get_user(s, uid)).language
+            user = await crud.get_user(s, uid)
+            if user is None:  # a fresh test database: an admin with coins for every check
+                user = await crud.get_or_create_admin(s, uid, "tester", "T")
+                user.coin_balance = 10_000
+                await s.commit()
+            return user.language
 
     def doc(file_id: str, data: bytes, name: str, mime: str) -> Document:
         files[file_id] = data
@@ -447,10 +473,11 @@ async def part2_bot() -> None:
                                     .order_by(WritingSubmission.id.desc()))).scalars().first()
 
     async def task1_until_answer(tag: str):
-        await press(CB_TASK1)
-        await send(text=f"The chart below shows the favourite leisure activities of teenagers in Canada ({tag}). "
-                        "Summarise the information by selecting and reporting the main features.")
-        check(f"[{tag}] a typed Task 1 question asks for the chart", await state.get_state() == WritingStates.awaiting_chart.state)
+        pressed = await press(CB_TASK1)
+        sent = await send(text=f"The chart below shows the favourite leisure activities of teenagers in Canada ({tag}). "
+                               "Summarise the information by selecting and reporting the main features.")
+        check(f"[{tag}] a typed Task 1 question asks for the chart", await state.get_state() == WritingStates.awaiting_chart.state,
+              texts(pressed + sent)[-3:])
 
     L = await lang()
 
@@ -463,15 +490,17 @@ async def part2_bot() -> None:
     calls = await send(text=fake.answer)
     check("[png] the report PDF is sent", len(document_sent(calls)) == 1, texts(calls)[-2:])
     names = fake.names()
-    check("[png] the chart is read exactly once", names.count("VisualReading") == 1, names)
-    check("[png] ...before anything else", names[0] == "VisualReading", names[:2])
-    for name in ("CriterionScores", "WritingFeedback", "MissedMistakes"):
+    check("[png] the chart is read twice, independently", names.count("VisualExtraction") == 2, names)
+    check("[png] ...before anything else", names[:2] == ["VisualExtraction"] * 2, names[:3])
+    reads = [_text_of(m) for n, m in fake.calls if n == "VisualExtraction"]
+    check("[png] ...with two different wordings", len(set(reads)) == 2)
+    for name in ("WritingScoring", "WritingFeedback", "MissedMistakes"):
         msgs = [m for n, m in fake.calls if n == name]
         check(f"[png] every {name} call judges by the same DATA SHEET and rules",
               msgs and all("DATA SHEET" in _text_of(m) and JUDGE_RULES[:40] in _text_of(m) for m in msgs))
-        check(f"[png] ...with the chart attached as PNG", msgs and all(
+        check("[png] ...with the chart attached as PNG", msgs and all(
             _images_of(m) and all(u.startswith("data:image/png;base64,") for u in _images_of(m)) for m in msgs))
-    verify = [_text_of(m) for n, m in fake.calls if n == "Verdicts"]
+    verify = [_text_of(m) for n, m in fake.calls if n == "WritingVerdicts"]
     check("[png] the data mistake ('at 7%') goes to verification, with the sheet",
           any("«at 7%»" in v and "DATA SHEET" in v for v in verify), verify[:1])
     samples = [_text_of(m) for n, m in fake.calls if n in ("GeneratedSample", "_QualityCheck")]
@@ -479,7 +508,7 @@ async def part2_bot() -> None:
           samples and all("DATA SHEET" in s for s in samples) and any(ANSWER_RULES[:40] in s for s in samples))
     sub = await last_submission()
     check("[png] saved: the data sheet and the chart file", sub.answer_text == fake.answer
-          and sub.report_data.get("visual", {}).get("visual_type") == "bar chart"
+          and sub.report_data.get("visual", {}).get("blocks", [{}])[0].get("visual_type") == "bar"
           and sub.original_file_paths.get("chart") and sub.original_file_paths["chart"][0].endswith(".png"))
     marked = [m["wrong"] for m in sub.annotations]
     check("[png] the student's correct '7%' is no longer marked wrong; the real grammar slip is",
@@ -493,8 +522,11 @@ async def part2_bot() -> None:
     fake.calls.clear()
     calls = await send(photo=[PhotoSize(file_id="question_photo", file_unique_id="uq", width=1100, height=700)])
     ocr = [m for n, m in fake.calls if n == "ocr"]
-    check("[photo question] the photo is read (OCR) as a JPEG and shown to confirm",
+    from services.ai.ocr import TASK1_QUESTION_PROMPT
+
+    check("[photo question] the photo is read for its question wording only (OCR), as a JPEG, shown to confirm",
           ocr and _images_of(ocr[0])[0].startswith("data:image/jpeg;base64,")
+          and ocr[0][0]["content"] == TASK1_QUESTION_PROMPT
           and await state.get_state() == WritingStates.confirming_prompt.state)
     calls = await press(CB_CONFIRM)
     check("[photo question] confirmed: no separate chart asked - the photo is the chart",
@@ -504,7 +536,7 @@ async def part2_bot() -> None:
     fake.answer = ANSWER + f" (photo question {RUN})"
     calls = await send(text=fake.answer)
     check("[photo question] analysed with the chart's data sheet", len(document_sent(calls)) == 1
-          and fake.names().count("VisualReading") == 1)
+          and fake.names().count("VisualExtraction") == 2)
 
     # 2. A JPEG chart as a Telegram photo; 3. a WebP file.
     for tag, message_kw, mime in (
@@ -517,9 +549,13 @@ async def part2_bot() -> None:
         fake.calls.clear()
         fake.answer = ANSWER + f" ({tag} {RUN})"
         calls = await send(text=fake.answer)
-        urls = [u for _, m in fake.calls for u in _images_of(m)]
+        reads = [m for n, m in fake.calls if n == "VisualExtraction"]
+        # the second read gets a copy prepared for reading (a PNG); every other call the picture as sent
+        urls = [u for n, m in fake.calls if n != "VisualExtraction" for u in _images_of(m)] + _images_of(reads[0])
         check(f"[{tag}] analysed: report sent, the chart sent as {mime}", len(document_sent(calls)) == 1
               and urls and all(u.startswith(f"data:{mime};base64,") for u in urls))
+        check(f"[{tag}] ...and the second read gets the prepared PNG copy",
+              len(reads) == 2 and all(u.startswith("data:image/png;base64,") for u in _images_of(reads[1])))
 
     # 4. Pictures that can't be used, at the chart step.
     await task1_until_answer("bad")
@@ -538,7 +574,7 @@ async def part2_bot() -> None:
     # 5. A picture with no usable chart: asked again, the answer kept, then checked.
     await task1_until_answer("unreadable")
     await send(document=doc("text_only", chart("PNG"), "question.png", "image/png"))
-    fake.readings = [reading("unreadable"), reading("clear")]
+    fake.readings = [reading("unreadable"), reading("unreadable"), reading("clear"), reading("clear")]
     fake.answer = ANSWER + f" (unreadable {RUN})"
     calls = await send(text=fake.answer)
     data = await state.get_data()
@@ -553,22 +589,25 @@ async def part2_bot() -> None:
     # 6. OpenAI can't open the picture: asked again; going on without it works.
     await task1_until_answer("rejected")
     await send(document=doc("chart_png3", chart("PNG"), "chart.png", "image/png"))
-    fake.readings = [bad_request("invalid_image_format", "You uploaded an unsupported image.")]
+    fake.readings = [bad_request("invalid_image_format", "You uploaded an unsupported image.")] * 2
     fake.calls.clear()
     fake.answer = ANSWER + f" (rejected {RUN})"
     calls = await send(text=fake.answer)
     check("[rejected] OpenAI's 'unsupported image' asks for the chart again, before any scoring",
-          t("writing.chart_resend", L) in texts(calls) and "CriterionScores" not in fake.names())
+          t("writing.chart_resend", L) in texts(calls) and "WritingScoring" not in fake.names())
     fake.calls.clear()
     calls = await press(CB_NO_CHART)
     feedback = [_text_of(m) for n, m in fake.calls if n == "WritingFeedback"]
-    check("[rejected] 'continue without the chart' checks it as text only", len(document_sent(calls)) == 1
-          and "VisualReading" not in fake.names() and feedback and "NO VISUAL WAS PROVIDED" in feedback[0])
+    sent = document_sent(calls)
+    check("[rejected] 'continue without the chart' checks it as text only", len(sent) == 1
+          and "VisualExtraction" not in fake.names() and feedback and "NO VISUAL WAS PROVIDED" in feedback[0])
+    check("[rejected] ...and the caption says the figures were not checked",
+          sent and t("writing.chart_not_checked", L) in (sent[0].caption or ""))
 
     # 7. Partly unclear chart: checked, and the student is told.
     await task1_until_answer("partly")
     await send(document=doc("chart_png4", chart("PNG"), "chart.png", "image/png"))
-    fake.readings = [reading("partly_unclear")]
+    fake.readings = [reading("partly_unclear")] * 2
     fake.answer = ANSWER + f" (partly {RUN})"
     calls = await send(text=fake.answer)
     sent = document_sent(calls)
@@ -595,7 +634,7 @@ async def part2_bot() -> None:
     fake.answer = ("Advertising is everywhere today. " * 20).strip() + "\n\n" + ("It informs and persuades buyers. " * 20).strip() + f" {RUN}"
     calls = await send(text=fake.answer)
     check("[task2 text] report sent, no chart reading, no pictures", len(document_sent(calls)) == 1
-          and "VisualReading" not in fake.names() and not any(_images_of(m) for _, m in fake.calls))
+          and "VisualExtraction" not in fake.names() and not any(_images_of(m) for _, m in fake.calls))
 
     # 10. Task 2 question as a PDF, answer as a DOCX: still read and checked.
     from docx import Document as Docx

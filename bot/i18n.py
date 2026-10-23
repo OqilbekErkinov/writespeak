@@ -225,6 +225,11 @@ _T: dict[str, dict[str, str]] = {
         "uz": "⚠️ Grafikning ayrim qiymatlari aniq o'qilmadi — ular bo'yicha raqamlaringiz xato deb hisoblanmadi.",
         "ru": "⚠️ Некоторые значения на графике не читаются чётко — ваши цифры по ним не считались ошибкой.",
     },
+    "writing.chart_not_checked": {
+        "uz": "⚠️ Grafik rasmi yuborilmadi — raqamlaringiz tekshirilmadi va Task Achievement ular uchun "
+        "pasaytirilmadi.",
+        "ru": "⚠️ Картинка графика не отправлена — ваши цифры не проверялись, и Task Achievement за них не снижался.",
+    },
     "writing.grading_in_progress": {
         "uz": "🦷 Tahlil qilyapman… tishlarim o'tkir! Bu 2–4 daqiqa oladi.",
         "ru": "🦷 Разбираю… зубы острые! Это займёт 2–4 минуты.",

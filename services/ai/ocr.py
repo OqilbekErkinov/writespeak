@@ -16,8 +16,26 @@ OCR_SYSTEM_PROMPT = (
     "IELTS answers. Transcribe the text in the image EXACTLY as written, including the "
     "student's own spelling, grammar, and punctuation mistakes — do NOT correct, paraphrase, "
     "summarize, or omit anything, since this text will be graded as-is. If a word is truly "
-    "illegible, write [illegible] in its place. Output ONLY the transcribed text — no preamble, "
+    "illegible, write [illegible] in its place. Keep the writer's paragraphs: one blank line between "
+    "paragraphs, and the lines of one paragraph joined with spaces (a line that only wraps is not a new "
+    "paragraph) - the paragraphing is graded too. Output ONLY the transcribed text — no preamble, "
     "no commentary, no markdown formatting."
+)
+
+# A Task 1 question is often a photo of the whole task, chart included: only
+# its wording is wanted - report #35's question box printed the chart's labels
+# and figures read as text ("2008 21% 18% 15% ...") above the chart itself.
+# The figures come from the chart (services/ai/visual_reading.py), never OCR.
+TASK1_QUESTION_PROMPT = (
+    "You read the question of an IELTS Academic Writing Task 1 from a photo or screenshot. Output ONLY the "
+    "task's wording, word for word: the sentence(s) saying what the visual shows and the instructions printed "
+    "with them (\"Summarise the information by selecting and reporting the main features...\", \"Write at least "
+    "150 words.\").\n"
+    "Leave out the visual itself and everything in it - its title, axis labels, legend, category names, years, "
+    "numbers, percentages and data labels - and any app or page elements around it.\n"
+    "If the image has no question wording at all (only the visual), write one plain sentence naming what it "
+    "shows, e.g. \"The bar chart shows the average salaries of graduates in three universities.\"\n"
+    "Output ONLY that text - no preamble, no commentary, no markdown."
 )
 
 # A Speaking question set is often a screenshot of an app or a channel post:
@@ -43,13 +61,15 @@ SPEAKING_QUESTIONS_PROMPT = (
 _MODES = {
     "verbatim": (OCR_SYSTEM_PROMPT, "Transcribe this image."),
     "speaking_questions": (SPEAKING_QUESTIONS_PROMPT, "Write out the IELTS Speaking question(s) in this image."),
+    "writing_task1_question": (TASK1_QUESTION_PROMPT, "Write out the Task 1 question in this image."),
 }
 
 
 async def extract_text_from_image(image_bytes: bytes, mime_type: str = "image/jpeg", mode: str = "verbatim") -> str:
     """OCR a single image (photo of handwriting, or a rasterized PDF page).
-    `mode`: "verbatim" (everything, as written - answers, Writing questions)
-    or "speaking_questions" (only the questions, no page around them)."""
+    `mode`: "verbatim" (everything, as written - answers, Task 2 questions),
+    "speaking_questions" (only the questions, no page around them) or
+    "writing_task1_question" (only the task's wording, never the chart's own text)."""
     system, ask = _MODES[mode]
     b64 = base64.b64encode(image_bytes).decode("utf-8")
     response = await client.chat.completions.create(

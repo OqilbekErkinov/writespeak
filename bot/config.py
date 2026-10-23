@@ -160,5 +160,12 @@ class Settings(BaseSettings):
         p.mkdir(parents=True, exist_ok=True)
         return p
 
+    @property
+    def calibration_dir(self) -> Path:
+        """The Writing scorer's anchors and Task 1 overview patterns
+        (services/ai/writing_anchors.py) and the calibration data behind
+        them - book text, so on the data volume, never in the repo."""
+        return Path(self.books_path).parent / "calibration"
+
 
 settings = Settings()

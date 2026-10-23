@@ -8,6 +8,7 @@ data/books/*.pdf
 data/books/_review/
 data/books/style_profiles/
 data/sample_library/
+data/calibration/
 *.egg-info/
 .pytest_cache/
 

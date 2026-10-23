@@ -54,6 +54,7 @@ EN: dict[str, str] = {
     "writing.btn_no_chart": "➡️ Continue without the image",
     "writing.chart_resend": "📊 I couldn't read the data in the chart picture — it is too blurred, cropped, not a chart, or the file is damaged.\n\nYour answer is saved and no coins were charged. Send a clearer picture of the chart (a screenshot or a JPG/PNG file) and I'll start the check right away.",
     "writing.chart_partly_unclear": "⚠️ Some values on the chart can't be read clearly — your figures for them were not counted as mistakes.",
+    "writing.chart_not_checked": "⚠️ No chart picture was sent — your figures were not checked, and Task Achievement was not lowered for them.",
     "writing.grading_in_progress": "🦷 Chewing it over… my teeth are sharp! This takes 2–4 minutes.",
     "writing.grading_failed": "Oops, something went wrong — the check didn't finish and no coins were charged. Please try again a little later.",
     "writing.done_caption": "Gotcha! I found {mistakes} mistakes 🦖\nYour result: <b>Band {band}</b>",

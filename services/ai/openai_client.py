@@ -45,7 +45,7 @@ async def parse_flex(flex_timeout: float | None = None, **kwargs):
         try:
             return await client.with_options(timeout=timeout, max_retries=0).beta.chat.completions.parse(**flex_kwargs)
         except openai.RateLimitError as e:
-            if getattr(e, "code", None) == "insufficient_quota":
+            if getattr(e, "code", None) in ("insufficient_quota", "credit_balance_exhausted"):
                 raise  # out of credit - the default tier would fail the same way
             logger.warning("Flex unavailable (%s) - using the default tier", getattr(e, "code", None) or "429")
         except openai.APITimeoutError:

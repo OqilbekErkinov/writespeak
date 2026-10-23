@@ -24,7 +24,9 @@ Enforced here, not left to the prompt:
     vocabulary items, 5-6 checklist lines;
   * every phrase quoted in "What you did well" is one of the green strong
     phrases, and the cover's strong-phrase count is the number of them;
-  * mistakes the verification pass rejected are dropped;
+  * mistakes the verification pass rejected are dropped, and those it put
+    under another criterion are moved there (one problem, one criterion -
+    "were quite passive" is Lexical, not Task);
   * the overall band (IELTS rounding) from the scoring runs' whole bands,
     the target, criterion chips and stats.
 `assess` lists the problems worth one more model call.
@@ -67,6 +69,8 @@ COPY_WHY = (
 
 _CANON = str.maketrans({"’": "'", "‘": "'", "`": "'", "“": '"', "”": '"', "–": "-", "—": "-", " ": " "})
 WORD_RE = re.compile(r"[A-Za-z0-9]+(?:['’-][A-Za-z0-9]+)*")
+# Counting words the way an examiner does: "$40,000", "3.5" and "15-20" are one word each.
+COUNT_RE = re.compile(r"[A-Za-z0-9]+(?:['’-][A-Za-z0-9]+|[.,]\d+)*")
 _QUOTES = "\"“”‘’'"
 
 
@@ -76,7 +80,11 @@ def canon(text: str) -> str:
 
 
 def count_words(text: str) -> int:
-    return len(WORD_RE.findall(text))
+    return len(COUNT_RE.findall(text))
+
+
+def paragraph_count(text: str) -> int:
+    return len(_paragraph_ranges(text))
 
 
 # --- Copied from the question --------------------------------------------------------------
@@ -490,6 +498,7 @@ class WritingReport:
     checklist: list[dict]  # html, ref
     word_count: int
     notes: list[str] = field(default_factory=list)  # what validation repaired (logged)
+    notices: list[str] = field(default_factory=list)  # shown to the student (e.g. the chart wasn't checked)
 
     def criteria_scores(self) -> dict[str, float]:
         return {DB_KEYS[c["key"]]: c["band"] for c in self.criteria}
@@ -507,12 +516,12 @@ class WritingReport:
         return counts
 
 
-def _from_model(m) -> _Mistake:
+def _from_model(m, criterion: str | None = None) -> _Mistake:
     return _Mistake(
         wrong=m.wrong.strip(),
         correct=m.correct.strip(),
         why=m.why.strip(),
-        criterion=m.criterion,
+        criterion=criterion or m.criterion,
         unclear=bool(m.unclear and m.if_you_meant),
         if_you_meant=m.if_you_meant.strip() if m.unclear and m.if_you_meant else None,
         model_id=getattr(m, "id", None),
@@ -565,10 +574,18 @@ def build_report(
     *,
     bands: dict[str, float],
     dropped: set[int] = frozenset(),
+    retag: dict[int, str] | None = None,
+    criterion_notes: dict[str, str] | None = None,
+    notices: list[str] | None = None,
 ) -> WritingReport:
     """`bands`: the scoring runs' whole criterion bands; `dropped`: ids of
-    mistakes the verification pass rejected."""
+    mistakes the verification pass rejected; `retag`: {id: criterion} for
+    mistakes it moved to the criterion they belong to (one problem, one
+    criterion); `criterion_notes`: what decided each band (the scoring runs),
+    used on the cover instead of the feedback's own notes; `notices`: lines
+    shown to the student."""
     notes: list[str] = []
+    retag = retag or {}
 
     mistakes: list[_Mistake] = []
     seen_ids = set()
@@ -580,7 +597,9 @@ def build_report(
             notes.append(f"dropped mistake {m.id} (no change or repeated id)")
             continue
         seen_ids.add(m.id)
-        mistakes.append(_from_model(m))
+        if retag.get(m.id, m.criterion) != m.criterion:
+            notes.append(f"mistake {m.id} moved from {m.criterion} to {retag[m.id]}: {m.wrong!r}")
+        mistakes.append(_from_model(m, retag.get(m.id)))
 
     # Text copied from the question: grey, with its own Task mistake.
     marks: list[_Mark] = []
@@ -727,10 +746,8 @@ def build_report(
         else:
             chip, cls = "Focus", "focus"
         name = CRITERION_NAMES[key][task_type] if isinstance(CRITERION_NAMES[key], dict) else CRITERION_NAMES[key]
-        criteria.append(
-            {"key": key, "name": name, "band": band, "note": getattr(fb.criterion_notes, key).strip(),
-             "chip": chip, "cls": cls}
-        )
+        note = (criterion_notes or {}).get(key) or getattr(fb.criterion_notes, key).strip()
+        criteria.append({"key": key, "name": name, "band": band, "note": note, "chip": chip, "cls": cls})
 
     goods = [original[k.start:k.end] for k in marks if k.kind == "good"]
     phrases = phrases_in_goods(fb.strength.quoted_phrases, goods)
@@ -769,4 +786,5 @@ def build_report(
         checklist=checklist,
         word_count=count_words(original),
         notes=notes,
+        notices=list(dict.fromkeys(notices or [])),
     )

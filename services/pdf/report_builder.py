@@ -141,6 +141,19 @@ def _generated_text(report: WritingReport, answer: ModelAnswer | None) -> str:
     return "\n".join(parts)
 
 
+_DATA_LINE = re.compile(r"^[\s\d.,%$£€()+\-–]*$")
+
+
+def question_text(question: str, has_chart: bool) -> str:
+    """The question as the report shows it. With the chart beside it, lines
+    that are only figures (a chart's labels read as text - report #35
+    printed "2008 21% 18% 15% ...") are left out: the chart shows them."""
+    if not has_chart:
+        return question
+    lines = [line for line in question.splitlines() if not (line.strip() and _DATA_LINE.match(line))]
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
+
+
 def build_writing_report_pdf(
     report: WritingReport,
     answer: ModelAnswer | None,
@@ -168,6 +181,7 @@ def build_writing_report_pdf(
         chart_images=[
             f"data:{mime};base64,{base64.b64encode(data).decode()}" for data, mime in chart_images or []
         ],
+        question=question_text(report.question, bool(chart_images)),
         progress=progress,
     )
     template = _env.get_template("writing_report.html")

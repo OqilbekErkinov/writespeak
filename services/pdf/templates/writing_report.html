@@ -93,7 +93,8 @@
 <div class="kick">01 · Your {{ piece }}</div>
 <h2 id="s-essay">Your {{ piece }}, marked</h2>
 <div class="sub">Short fixes are shown in the text. Every mistake is explained in the next section.</div>
-{% if report.essay_marked %}
+{% for n in report.notices %}<div class="copy-tip notice">{{ n }}</div>
+{% endfor %}{% if report.essay_marked %}
 <div class="legend">
   <span><i class="sw" style="background:var(--green-bg)"></i>Strong phrase — keep it</span>
   <span><i class="sw" style="border-bottom:2px solid var(--line-y); height:2.5mm"></i>Mistake</span>
@@ -153,7 +154,7 @@
   <div class="sub" style="margin:0">An answer to your exact question, built around your three priorities. Compare it with your own {{ piece }}.</div></div>
   <div class="bandbadge"><span>Aimed at</span><b>{{ "%.1f"|format(answer.band) }}</b></div>
 </div>
-<div class="qbox"><div class="ql">Question</div><div class="qt">{{ report.question }}</div>{% for img in chart_images %}<img class="qimg" src="{{ img }}">{% endfor %}</div>
+<div class="qbox"><div class="ql">Question</div><div class="qt">{{ question }}</div>{% for img in chart_images %}<img class="qimg" src="{{ img }}">{% endfor %}</div>
 <div class="sample">{% for p in answer_paragraphs %}<p>{{ p|safe }}</p>{% endfor %}</div>
 {% if answer.shows %}<div class="shows">{% for s in answer.shows %}<div><span class="k">{{ loop.index }}</span> <b>Priority {{ s.n }} · {{ s.title }}</b> — {{ s.note }}</div>{% endfor %}</div>{% endif %}
 <div class="sample-meta">{{ answer.word_count }} words · {{ "Published reference" if answer.source == "published_reference" else "AI example" }}</div>
