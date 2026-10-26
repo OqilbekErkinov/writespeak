@@ -44,15 +44,43 @@ from calibration_common import (
 
 sys.stdout.reconfigure(encoding="utf-8")
 
-# The owner's fixed anchors (services/ai/writing_anchors.py) - never in the
-# test set. Listed here too so this script runs against older code.
-ANCHORS = {"v2-p072", "v2-p068", "v2-p084", "v2-p026", "v2-p034", "v2-p078"}
+# The anchors of 2026-10-22, for older code without config/writing_marking.json
+# (the "before" run); the current anchors and test-set overrides come from it.
+OLD_ANCHORS = {"v2-p072", "v2-p068", "v2-p084", "v2-p026", "v2-p034", "v2-p078"}
 KEYS = ("TR_or_TA", "CC", "LR", "GRA")
 NAMES = {"TR_or_TA": "TA/TR", "CC": "CC", "LR": "LR", "GRA": "GRA"}
 
 
-def test_set(samples: list[dict]) -> list[dict]:
-    return [s for s in samples if s["band_low"] is not None and s["id"] not in ANCHORS]
+def anchors_and_overrides() -> tuple[set[str], dict]:
+    try:
+        from services.ai import marking_config
+    except ImportError:
+        return set(OLD_ANCHORS), {}
+    return marking_config.anchor_ids(), marking_config.calibration().get("overrides", {})
+
+
+def test_set(samples: list[dict], ids: list[str] | None = None) -> list[dict]:
+    """The B4 test set: book samples with a printed band, never an anchor,
+    with the academic lead's overrides (remove / expect another band).
+    Fails when an asked-for sample is an anchor: a sample the scorer sees in
+    its own prompt would only measure memory."""
+    anchors, overrides = anchors_and_overrides()
+    if ids:
+        overlap = sorted(set(ids) & anchors)
+        if overlap:
+            raise SystemExit(f"B4 samples overlap the anchors: {', '.join(overlap)} - pick other samples")
+    out = []
+    for s in samples:
+        if s["band_low"] is None or s["id"] in anchors or (ids and s["id"] not in ids):
+            continue
+        rule = overrides.get(s["id"]) or {}
+        if rule.get("action") == "remove":
+            continue
+        if rule.get("action") == "expect":
+            low, high = rule["band"] if isinstance(rule["band"], list) else (rule["band"], rule["band"])
+            s = {**s, "band_low": float(low), "band_high": float(high), "band_label": f"{low}-{high} (override)"}
+        out.append(s)
+    return out
 
 
 def culprit(bands: dict[str, float], low: float, high: float, diff: float) -> str:
@@ -88,12 +116,15 @@ async def main(args) -> None:
     from services.ai.scoring import overall_band
 
     setup_logging()
-    samples = test_set(load_samples())
+    samples = test_set(load_samples(), args.ids.split(",") if args.ids else None)
     if args.only:
         samples = [s for s in samples if s["task"] == args.only.upper()]
-    if args.ids:
-        samples = [s for s in samples if s["id"] in args.ids.split(",")]
     detailed = hasattr(writing_grader, "decide_scores")
+    if args.scorer_effort:  # the low-vs-medium experiment (the last prompt's A2)
+        from bot.config import settings
+
+        settings.openai_scoring_reasoning_effort = args.scorer_effort
+        print(f"Scoring runs at reasoning effort {args.scorer_effort}")
     budget = Budget(args.budget)
     semaphore = asyncio.Semaphore(args.concurrency)
     rows: list[dict] = []
@@ -110,7 +141,7 @@ async def main(args) -> None:
             started = time.monotonic()
             with usage.track(f"calibration b4 {s['id']}") as calls:
                 try:
-                    sheet = ""
+                    sheet, reading = "", None
                     if images:
                         reading, sheet, _ = await visual_for(s, cache_dir=args.visuals)
                         if sheet and detailed:  # as the bot judges a report: the sheet and its data check
@@ -120,7 +151,7 @@ async def main(args) -> None:
                     if args.full:
                         # the whole check as the bot runs it (mistakes first), without the model answer
                         report = await writing_grader.grade_writing(task, question_of(s), s["text"], images or None,
-                                                                    sheet=sheet)
+                                                                    sheet=sheet, visual=reading if sheet else None)
                         bands = {c["key"]: c["band"] for c in report.criteria}
                         notes = {c["key"]: c["note"] for c in report.criteria}
                         capped, runs = [], []
@@ -187,6 +218,8 @@ if __name__ == "__main__":
     ap.add_argument("--full", action="store_true",
                     help="the whole check (feedback, mistake filter, scores from the checked mistakes) - as the bot "
                          "grades since 2026-10-23; about $0.10 a sample instead of $0.02")
+    ap.add_argument("--scorer-effort", choices=["low", "medium", "high"],
+                    help="the scoring runs' reasoning effort for this run (default: the setting)")
     ap.add_argument("--budget", type=float, default=20.0, help="stop after this many dollars")
     ap.add_argument("--concurrency", type=int, default=4)
     asyncio.run(main(ap.parse_args()))

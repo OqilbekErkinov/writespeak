@@ -308,20 +308,22 @@ async def writing_essay_number(session: AsyncSession, user_id: int, submission_i
 
 
 async def get_writing_history(
-    session: AsyncSession, user_id: int, task_type: str
+    session: AsyncSession, user_id: int, task_type: str, min_words: int = 0
 ) -> tuple[int, dict | None]:
     """(number of the student's earlier Writing submissions, their latest
-    graded one of the same task type as {"band", "criteria_scores",
-    "mistake_counts", "words"}) for the report's essay number and progress
-    page. mistake_counts is None for reports made before the 2026-10
-    redesign, whose annotations carry no criterion; words comes from the
-    stored answer text."""
+    graded one of the same task type with at least `min_words` words as
+    {"band", "criteria_scores", "mistake_counts", "words"}) for the report's
+    essay number and progress page - a 46-word test answer is no "previous
+    essay" (#48 was compared with #47's Band 3.5); {"too_short": True} when
+    every earlier one is that short. mistake_counts is None for
+    reports made before the 2026-10 redesign, whose annotations carry no
+    criterion; words comes from the stored answer text."""
     count = (
         await session.execute(
             select(func.count()).select_from(WritingSubmission).where(WritingSubmission.user_id == user_id)
         )
     ).scalar() or 0
-    latest = (
+    recent = (
         await session.execute(
             select(WritingSubmission)
             .where(
@@ -330,11 +332,13 @@ async def get_writing_history(
                 WritingSubmission.overall_band.is_not(None),
             )
             .order_by(WritingSubmission.created_at.desc())
-            .limit(1)
+            .limit(20)
         )
-    ).scalar_one_or_none()
+    ).scalars().all()
+    latest = next((s for s in recent if count_words(s.answer_text or "") >= min_words), None)
     if latest is None:
-        return count, None
+        # {"too_short": True}: there were earlier ones, all too short to compare with
+        return count, ({"too_short": True} if recent else None)
     items = latest.annotations or []
     mistake_counts = None
     # Old-format rows always annotate every sentence, so an empty list can

@@ -123,12 +123,16 @@ class MissedMistakes(BaseModel):
 
 
 class Priority(BaseModel):
+    type: Literal["fix", "tip"] = Field(
+        description='"fix": a pattern of this answer\'s own mistakes; "tip": what separates it from the next '
+                    "band, when there are too few real mistakes for a fix.")
     title: str = Field(description="2-6 words naming ONE specific pattern, e.g. 'Say it with one word'.")
     rule: str = Field(description="One line.")
-    example_wrong: str = Field(description="A short piece copied exactly from the student's text.")
-    example_right: str = Field(description="The same piece, corrected.")
+    example_wrong: str = Field(
+        description="fix: a short piece copied exactly from the student's text; tip: an empty string.")
+    example_right: str = Field(description="fix: the same piece, corrected; tip: a short example of doing it well.")
     criteria: list[MistakeCriterion]
-    mistake_ids: list[int] = Field(description="2-5 ids from `mistakes` that show this pattern.")
+    mistake_ids: list[int] = Field(description="fix: 2-5 ids from `mistakes` that show this pattern; tip: [].")
 
 
 class Strength(BaseModel):
@@ -181,7 +185,8 @@ class VocabEntry(BaseModel):
 
 class ChecklistItem(BaseModel):
     text: str
-    ref: str = Field(description='"Priority 01".."Priority 03", or "Mistake <id>" with an id from `mistakes`.')
+    ref: str = Field(description='"Priority 01".."Priority 03" (only priorities you gave), or "Mistake <id>" with '
+                                 "an id from `mistakes`.")
 
 
 class WritingFeedback(BaseModel):
@@ -286,7 +291,11 @@ class VisualBlock(BaseModel):
     visual_type: VisualKind
     title: str = Field(description="The visual's title or what it shows; '' if none.")
     units: str = Field(description="e.g. '%', 'thousands of dollars', 'millions of tonnes'; '' for maps and processes.")
-    time_points: list[str] = Field(description="Years or dates in order, e.g. ['2008', '2014']; [] if none.")
+    time_points: list[str] = Field(description="Years or dates in order, exactly as printed, e.g. ['2008', '2014']; "
+                                               "[] if none.")
+    axis_labels: list[str] = Field(description="The axis tick labels exactly as printed, in order (e.g. ['1984', "
+                                               "'1988', '1992'] or ['0', '20', '40']); [] for pies, tables, maps, "
+                                               "processes.")
     legend: list[LegendEntry]
     data: list[DataValue] = Field(description="Every value, one per series and point, in a fixed order; [] for "
                                               "maps and processes.")
@@ -327,6 +336,7 @@ class SheetBlock(BaseModel):
     title: str
     units: str
     time_points: list[str]
+    axis_labels: list[str] = []  # as printed (2026-10-26: #45's axis was read as 1987, 1990, 1993...)
     legend: list[LegendEntry]
     values: list[SheetValue]
     map_features: list[MapFeature]
@@ -492,6 +502,11 @@ class WritingVerdict(BaseModel):
         description="The one criterion it belongs to: LR word choice, GRA grammar/punctuation, CC linking/"
         "paragraphing/logic, TR content, task coverage or data.")
     reason: str = Field(description="Short: why it is or isn't an error.")
+    severity: Literal["slip", "error"] = Field(
+        description="slip = a typo, a missing full stop, a single article or plural slip; error = everything else.")
+    fixed_correct: Optional[str] = Field(
+        description="Only for a kept data (TR) item whose correction disagrees with the DATA SHEET: the correction "
+        "rewritten with the sheet's figures. null otherwise.")
 
 
 class WritingVerdicts(BaseModel):

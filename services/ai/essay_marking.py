@@ -294,8 +294,6 @@ def assess(fb: WritingFeedback, original: str) -> list[str]:
         share = align_segments(original, fb.essay).share
         if share < MIN_ANCHORED_SHARE:
             problems.append(f"only {share:.0%} of the marks can be placed on the essay")
-    if len(fb.priorities) < PRIORITY_COUNT:
-        problems.append(f"{len(fb.priorities)} priorities instead of {PRIORITY_COUNT}")
     if len(fb.vocabulary) < VOCAB_RANGE[0]:
         problems.append(f"{len(fb.vocabulary)} vocabulary items")
     if len(fb.checklist) < CHECKLIST_RANGE[0]:
@@ -318,14 +316,33 @@ def inline_format(text: str) -> str:
     return re.sub(r"(?<![\w*])\*(?!\s)(.+?)(?<!\s)\*(?![\w*])", r"<i>\1</i>", s)
 
 
+def _inside(phrase: str, text: str) -> bool:
+    """Whether a (canon, lower-case) phrase is in a text as whole words - a
+    one-word phrase like "art" is not inside "start"."""
+    return bool(phrase) and re.search(rf"(?<!\w){re.escape(phrase)}(?!\w)", text) is not None
+
+
 def phrases_in_goods(quoted: list[str], goods: list[str]) -> list[str]:
-    """The strength's quoted phrases that are green highlights (or inside one)."""
+    """The strength's quoted phrases (single words too) that are green
+    highlights or inside one."""
     out = []
     for phrase in quoted:
         core = canon(phrase).strip(_QUOTES + " .,").lower()
-        if len(core.split()) >= 2 and any(core in canon(g).lower() for g in goods):
+        if any(_inside(core, canon(g).lower()) for g in goods):
             out.append(phrase.strip().strip(_QUOTES + " .,"))
     return out
+
+
+def _flexible(phrase: str) -> str:
+    """A regex for an (HTML-escaped) phrase that matches it with any kind of
+    apostrophe or dash and any run of spaces - #41-#43's second quoted phrase
+    ("others' views") was never bolded."""
+    def char(ch: str) -> str:
+        if ch in "'’‘":
+            return "['’‘]"
+        return "[-–—]" if ch in "-–—" else re.escape(ch)
+
+    return r"\s+".join("".join(char(ch) for ch in word) for word in phrase.split())
 
 
 def strength_html(text: str, phrases: list[str], goods: list[str]) -> str:
@@ -337,7 +354,7 @@ def strength_html(text: str, phrases: list[str], goods: list[str]) -> str:
     shown = 0
     for phrase in phrases:
         # a full stop or comma the model put inside the closing quote goes after it
-        pattern = re.compile(f"[{_QUOTES}]?({re.escape(_esc(phrase))})([.,;:!?]?)[{_QUOTES}]?", re.IGNORECASE)
+        pattern = re.compile(f"[{_QUOTES}]?({_flexible(_esc(phrase))})([.,;:!?]?)[{_QUOTES}]?", re.IGNORECASE)
         s, hits = pattern.subn(lambda m: f"<b>“{m.group(1)}”</b>{m.group(2)}", s, count=1)
         shown += hits
     green = [canon(g).lower() for g in goods]
@@ -346,7 +363,7 @@ def strength_html(text: str, phrases: list[str], goods: list[str]) -> str:
         # a quotation that is part of a green phrase stays a quotation
         nonlocal shown
         inner = m.group(1)
-        if len(inner.split()) >= 2 and any(canon(html.unescape(inner)).lower() in g for g in green):
+        if inner.strip() and any(_inside(canon(html.unescape(inner)).lower(), g) for g in green):
             shown += 1
             return f"<b>“{inner}”</b>"
         return inner
@@ -555,14 +572,59 @@ def _repair_doubles(original: str, m: _Mistake, near: int, notes: list[str]) -> 
     m.wrong = original[start:end]
 
 
-def _ref(ref: str, by_model_id: dict[int, _Mistake], priorities: int) -> str:
+def _ref(ref: str, by_model_id: dict[int, _Mistake], priorities: int, gone: set[int]) -> str | None:
+    """A checklist line's reference after the renumbering (mistakes in essay
+    order); None when it points to a mistake that was dropped - the line goes
+    then (#41's checklist repeated a dropped "mistake": "renewed interest
+    takes no article"). A reference to nothing at all is just left off."""
     p = re.search(r"priority\D*(\d+)", ref, re.IGNORECASE)
     if p and 1 <= int(p.group(1)) <= priorities:
         return f"Priority {int(p.group(1)):02d}"
     m = re.search(r"mistake\D*(\d+)", ref, re.IGNORECASE)
     if m and int(m.group(1)) in by_model_id:
         return f"Mistake {by_model_id[int(m.group(1))].n}"
+    if m and int(m.group(1)) in gone:
+        return None
     return ""
+
+
+def _usable(p, gone: set[int], kept: list[str]) -> bool:
+    if p.type == "tip" or not p.mistake_ids:
+        return True
+    if all(x in gone for x in p.mistake_ids):
+        return False
+    example = canon(p.example_wrong.strip(" .…" + _QUOTES)).lower()
+    return not example or any(example in w or w in example for w in kept)
+
+
+def drop_priorities(fb: WritingFeedback, gone: set[int], kept_wrongs: list[str]) -> tuple[WritingFeedback, list[str]]:
+    """The feedback with only the priorities still true after the mistake
+    filter (the last prompt's B2-B3): a priority built on mistakes goes when
+    all of them were dropped, or when its example is not inside a mistake that
+    was kept (#41's Priority 01 was "a renewed interest" - correct English). A
+    next-band tip, or a priority with no mistakes of its own, stays. The rest
+    are numbered 01, 02...; checklist lines follow their priority's new number,
+    and a line about a dropped priority goes. `gone`: ids of mistakes not kept."""
+    kept = [canon(w).lower() for w in kept_wrongs if w.strip()]
+    priorities, numbers, notes = [], {}, []
+    for i, p in enumerate(fb.priorities[:PRIORITY_COUNT], 1):
+        if _usable(p, gone, kept):
+            numbers[i] = len(priorities) + 1
+            priorities.append(p)
+        else:
+            notes.append(f"priority {i} dropped - its mistakes were not kept: {p.title!r}")
+    if len(priorities) == len(fb.priorities):
+        return fb, notes
+    checklist = []
+    for item in fb.checklist:
+        ref = re.search(r"priority\D*(\d+)", item.ref, re.IGNORECASE)
+        if ref and int(ref.group(1)) in numbers:
+            item = item.model_copy(update={"ref": f"Priority {numbers[int(ref.group(1))]:02d}"})
+        elif ref and int(ref.group(1)) <= len(fb.priorities):
+            notes.append(f"checklist line dropped with its priority: {item.text!r}")
+            continue
+        checklist.append(item)
+    return fb.model_copy(update={"priorities": priorities, "checklist": checklist}), notes
 
 
 def build_report(
@@ -656,29 +718,30 @@ def build_report(
             marks.append(_Mark(*loc, "error", fix=m.correct, mistake=m))
         notes.append(f"second pass added {x.wrong!r} -> {x.correct!r}")
 
-    # Strong phrases: never on a mistake or copied text, at most 5.
+    # Strong phrases: never on a mistake or copied text. Rule 8 first: every
+    # phrase quoted in "What you did well" that is in the essay and free of
+    # mistakes is green (#41-#43's second quoted phrase was not); then the
+    # model's other strong phrases, up to MAX_GOOD_HIGHLIGHTS in all.
     if marked:
         wrongs = [canon(m.wrong).lower() for m in mistakes]
         good = []
+        for phrase in fb.strength.quoted_phrases:
+            core = phrase.strip().strip(_QUOTES + " .,")
+            if not core:
+                continue
+            loc = locate(original, core)
+            if loc is None:
+                notes.append(f"quoted strength {core!r} is not in the essay")
+                continue
+            if _overlaps(*loc, marks + good) or any(w and w in canon(core).lower() for w in wrongs):
+                continue
+            good.append(_Mark(*loc, "good"))
         for span in (s for s in alignment.spans if s.type == "good"):
             text = canon(original[span.start : span.end]).lower()
             if _overlaps(span.start, span.end, marks + good) or any(w and w in text for w in wrongs):
                 continue
             if len(good) < MAX_GOOD_HIGHLIGHTS:
                 good.append(_Mark(span.start, span.end, "good"))
-        # Rule 8: a phrase quoted as a strength is a green highlight - added
-        # when it is free of mistakes and copied text, else not quoted.
-        for phrase in fb.strength.quoted_phrases:
-            core = phrase.strip().strip(_QUOTES + " .,")
-            texts = [canon(original[k.start:k.end]).lower() for k in good]
-            if len(core.split()) < 2 or any(canon(core).lower() in t for t in texts):
-                continue
-            loc = locate(original, core)
-            if loc is None or len(good) >= MAX_GOOD_HIGHLIGHTS or _overlaps(*loc, marks + good) \
-                    or any(w and w in canon(core).lower() for w in wrongs):
-                continue
-            good.append(_Mark(*loc, "good"))
-            notes.append(f"quoted strength {core!r} added as a strong phrase")
         marks += good
     marks.sort(key=lambda k: k.start)
 
@@ -704,34 +767,45 @@ def build_report(
             _repair_doubles(original, m, 0 if m.pos == math.inf else int(m.pos), notes)
     by_model_id = {m.model_id: m for m in mistakes if m.model_id is not None}
 
+    # Priorities on mistakes that were not kept go (grade_writing already took
+    # out those the filter dropped; this catches the unmarkable ones).
+    gone = {m.id for m in fb.mistakes} - set(by_model_id)
+    fb, dropped_notes = drop_priorities(fb, gone, [m.wrong for m in mistakes])
+    notes += dropped_notes
     priorities = []
     for i, p in enumerate(fb.priorities[:PRIORITY_COUNT], 1):
         tags = [c for c in dict.fromkeys(p.criteria) if c in TAGS]
+        tip = p.type == "tip"
         chosen = {x: by_model_id[x] for x in p.mistake_ids if x in by_model_id and by_model_id[x].criterion in tags}
-        ids = sorted(chosen.values(), key=lambda m: m.n)[: PRIORITY_IDS[1]]
+        ids = [] if tip else sorted(chosen.values(), key=lambda m: m.n)[: PRIORITY_IDS[1]]
         used = [c for c in tags if any(m.criterion == c for m in ids)] or tags
-        if len(ids) < PRIORITY_IDS[0]:
+        if p.mistake_ids and not tip and len(ids) < PRIORITY_IDS[0]:
             notes.append(f"priority {i} has {len(ids)} matching mistakes")
         if len(used) == 1 and len(ids) >= 3 and len(ids) == sum(m.criterion == used[0] for m in mistakes):
             notes.append(f"priority {i} lists every {used[0]} mistake")
-        if p.example_wrong.strip() and locate(original, p.example_wrong.strip(" .…")) is None:
+        if not tip and p.example_wrong.strip() and locate(original, p.example_wrong.strip(" .…")) is None:
             notes.append(f"priority {i} example is not from the essay: {p.example_wrong!r}")
         priorities.append(
             {
                 "n": f"{i:02d}",
                 "title": p.title.strip(),
                 "rule_html": inline_format(p.rule.strip()),
-                "ex_wrong": p.example_wrong.strip(),
+                # a next-band tip shows its rule and a good example only
+                "ex_wrong": "" if tip else p.example_wrong.strip(),
                 "ex_right": p.example_right.strip(),
                 "tags": [TAGS[c] for c in used],
                 "ids": [m.n for m in ids],
+                "tip": tip,
             }
         )
 
-    checklist = [
-        {"html": inline_format(item.text.strip()), "ref": _ref(item.ref, by_model_id, len(priorities))}
-        for item in fb.checklist[: CHECKLIST_RANGE[1]]
-    ]
+    checklist = []
+    for item in fb.checklist[: CHECKLIST_RANGE[1]]:
+        ref = _ref(item.ref, by_model_id, len(priorities), gone | set(dropped))
+        if ref is None:
+            notes.append(f"checklist line dropped with its mistake ({item.ref}): {item.text!r}")
+            continue
+        checklist.append({"html": inline_format(item.text.strip()), "ref": ref})
 
     bands = {key: whole_band(bands[key]) for key in SCORE_KEYS}
     overall = overall_band(list(bands.values()))

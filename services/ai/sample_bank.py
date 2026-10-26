@@ -113,6 +113,7 @@ class ModelAnswer:
     paragraphs: list[str]
     band: float  # the band it was aimed at (approximate)
     shows: list[dict] = field(default_factory=list)  # {"n", "title", "phrase", "note"}
+    score: float | None = None  # our examiner's band for the answer as kept (the report's badge)
     source: str = "ai_generated"  # ai_generated | published_reference | human_reviewed
     log: dict = field(default_factory=dict)  # writer, sample ids, checks - internal only
 
@@ -680,6 +681,7 @@ async def _write(
     note: str = "",
     needs: Needs | None = None,
     sheet: str = "",
+    visual: dict | None = None,
 ) -> tuple[list[str], list[str], list[dict]]:
     """(paragraphs, problems left, "what this shows" notes) - the best of up
     to GENERATION_ATTEMPTS. `sheet`: a Task 1 chart's data sheet - the figures
@@ -728,6 +730,8 @@ async def _write(
             problems.append(f"remove the names {', '.join(names)}")
         if reused > REUSE_LIMIT:
             problems.append("it repeats too much of the student's own wording - write a separate answer in new sentences")
+        problems += data_problems(full, question, visual) if task_type == "task1_academic" else []
+        problems += [f'"{c}" contradicts itself - say clearly which side wins' for c in self_contradictions(full)]
         overused = overused_phrases(full, profile)
         if overused:
             problems.append("use each of these phrases at most once, and only where its logic fits: "
@@ -744,6 +748,67 @@ async def _write(
     if best is None:
         raise RuntimeError("Model answer generation returned nothing usable")
     return best, best_problems, best_shows
+
+
+_GROUP_WORDS = re.compile(
+    r"\b(?:the\s+(?:other|remaining|rest)|all\s+(?:the\s+)?(?:other|remaining)|the\s+rest|each\s+of\s+the|"
+    r"every\s+(?:other\s+)?(?:country|category|group|sector|type|age\s+group|region)|all\s+(?:three|four|five|six|"
+    r"seven|eight|nine|ten)|both)\b", re.IGNORECASE)
+_NOT_NAMES = {"the", "and", "other", "others", "total", "average", "all", "per", "for", "of"}
+
+
+def data_problems(text: str, question: str, visual: dict | None) -> list[str]:
+    """A Task 1 model answer checked by code against the data sheet (the last
+    prompt's A3): every figure must be on the sheet, and every category must
+    be named or covered by a group ("the other countries")."""
+    if not visual:
+        return []
+    from services.ai.visual_check import figures, match_figure
+
+    out = []
+    misses = [f["text"] for f in figures(text) if match_figure(f, visual, question) == "miss"]
+    if misses:
+        out.append("these figures are not on the DATA SHEET - use only its figures: " + ", ".join(misses[:6]))
+    low = " " + re.sub(r"[^a-z0-9]+", " ", text.lower()) + " "
+    names: list[str] = []
+    for block in visual.get("blocks", []):
+        values = [v for v in block.get("values", []) if v.get("value") is not None and v.get("status") == "verified"]
+        for label in dict.fromkeys([v["series"] for v in values] + [v["point"] for v in values]):
+            if label and not re.fullmatch(r"\W*\d{2,4}s?\W*", label):  # years are not categories
+                names.append(label)
+    missing = []
+    for label in dict.fromkeys(names):
+        words = [w for w in re.findall(r"[a-z]+", label.lower()) if len(w) > 2 and w not in _NOT_NAMES]
+        stem = words[0][:-1] if words and words[0].endswith("s") and len(words[0]) > 4 else (words[0] if words else "")
+        if stem and f" {stem}" not in low:
+            missing.append(label)
+    if missing and not _GROUP_WORDS.search(text):
+        out.append("name every category on the DATA SHEET, or cover the rest as a group (\"the other countries\"): "
+                   + ", ".join(missing[:8]))
+    return out
+
+
+_GOOD_SIDE = r"(?:benefits?|advantages?|merits?|pros|positives?|upsides?|gains?)"
+_BAD_SIDE = r"(?:drawbacks?|disadvantages?|downsides?|demerits?|cons|negatives?|harms?|costs|risks?|problems?)"
+# "X outweigh(s) Y" / "X are outweighed by Y" - the second side not narrowed
+# by "for/to/of" ("the benefits for employers outweigh the benefits for
+# workers" compares two groups and is fine).
+_OUTWEIGH = re.compile(
+    rf"\b({_GOOD_SIDE}|{_BAD_SIDE})\b[^.;:!?]{{0,60}}?\boutweigh(?:s|ed)?\b(?:\s+by)?[^.;:!?]{{0,30}}?"
+    rf"\b({_GOOD_SIDE}|{_BAD_SIDE})\b(?!\s+(?:for|to|of|from)\b)", re.IGNORECASE)
+
+
+def self_contradictions(text: str) -> list[str]:
+    """Sentences that weigh a side against itself - the last prompt's B6: a
+    model answer's thesis read "the benefits are far outweighed by the
+    advantages"."""
+    out = []
+    for m in _OUTWEIGH.finditer(text):
+        first_good = re.fullmatch(_GOOD_SIDE, m.group(1), re.IGNORECASE) is not None
+        second_good = re.fullmatch(_GOOD_SIDE, m.group(2), re.IGNORECASE) is not None
+        if first_good == second_good:
+            out.append(m.group(0))
+    return out
 
 
 def overused_phrases(text: str, profile: StyleProfile | None) -> list[str]:
@@ -775,6 +840,11 @@ class _ParagraphCheck(BaseModel):
 
 class _QualityCheck(BaseModel):
     paragraphs: list[_ParagraphCheck]
+    thesis: str = Field(
+        description="Task 2: the sentence that states its position, copied exactly. Task 1: the overview sentence.")
+    thesis_consistent: bool = Field(
+        description="The thesis says what it means (false for a self-contradiction like 'the benefits are far "
+        "outweighed by the advantages') and the conclusion states the same thing.")
     question_type_followed: bool = Field(description="It does exactly what the question asks, in its type.")
     one_position: bool = Field(description="The same position from start to finish; the conclusion restates the body.")
     no_stock_opener: bool
@@ -810,6 +880,9 @@ async def quality_problem(
         "- It does exactly what the question asks, in the question's type"
         + (f" (labelled: {subtype.replace('_', ' ')})" if not task1 else "")
         + " - every part answered, nothing turned into a different question.\n"
+        "- Its thesis (the sentence that states the position; Task 1: the overview) says what it means - no "
+        "self-contradiction like \"the benefits are far outweighed by the advantages\" - and the conclusion "
+        "states the same thing.\n"
         "- Its position is the same from start to finish: the conclusion restates what the body argued.\n"
         "- It doesn't open with a stock phrase (\"With the advent of\", \"In this day and age\", \"Nowadays, ...\").\n"
         "- It presents no invented statistics or real-world facts as true."
@@ -830,7 +903,8 @@ async def quality_problem(
         return None
     problems = [f"paragraph {i}: {p.problem or 'an example or linking phrase does not fit its point'}"
                 for i, p in enumerate(parsed.paragraphs, 1) if not (p.examples_support_point and p.linking_fits)]
-    for ok, what in ((parsed.question_type_followed, "it does not follow the question's type"),
+    for ok, what in ((parsed.thesis_consistent, f'its thesis contradicts itself or the conclusion: "{parsed.thesis}"'),
+                     (parsed.question_type_followed, "it does not follow the question's type"),
                      (parsed.one_position, "its position changes between the body and the conclusion"),
                      (parsed.no_stock_opener, "it opens with a stock phrase"),
                      (parsed.no_invented_facts, "it presents invented facts as true"),
@@ -855,12 +929,14 @@ async def build_model_answer(
     seed: int = 0,
     needs: Needs | None = None,
     sheet: str = "",
+    visual: dict | None = None,
 ) -> ModelAnswer:
     """`task_type`: the bot's "task1" / "task2". `seed` (e.g. the student's id
     plus essay count) takes turns between writers level on every count.
     With `needs` (the report's findings) the answer is aimed at needs.aim and
     teaches its priorities. `sheet`: a Task 1 chart's data sheet, so the
-    answer uses the same figures as the feedback."""
+    answer uses the same figures as the feedback; `visual`: that sheet as
+    data, by which code checks every figure and category of the answer."""
     # Imported here: writing_grader is the heavier module and only this step needs it.
     from services.ai.writing_grader import score_writing
 
@@ -894,10 +970,12 @@ async def build_model_answer(
     if needs is not None:
         log["priorities"] = [p["title"] for p in needs.priorities]
     paragraphs, problems, shows = await _write(question, lib_task, prompt_images, band, profile, references,
-                                               needs=needs, sheet=sheet)
+                                               needs=needs, sheet=sheet, visual=visual)
     log["problems"] = problems
+    kept_score = None
     try:
         score = await score_writing(task_type, question, "\n\n".join(paragraphs), prompt_images, sheet)
+        kept_score = score
         log["self_check"] = [score]
         if score < band - SELF_CHECK_MARGIN:
             note = (
@@ -906,11 +984,12 @@ async def build_model_answer(
                 "accurate, varied grammar."
             )
             second, second_problems, second_shows = await _write(
-                question, lib_task, prompt_images, band, profile, references, note, needs, sheet)
+                question, lib_task, prompt_images, band, profile, references, note, needs, sheet, visual)
             second_score = await score_writing(task_type, question, "\n\n".join(second), prompt_images, sheet)
             log["self_check"].append(second_score)
             if second_score >= score:
                 paragraphs, log["problems"], shows = second, second_problems, second_shows
+                kept_score = second_score
     except Exception:
         logger.exception("Model answer self-check failed - keeping the answer as written")
     try:
@@ -920,11 +999,17 @@ async def build_model_answer(
         if problem:
             note = f"A reviewer rejected a previous version: {problem}. Write it again and fix exactly that."
             again, again_problems, again_shows = await _write(
-                question, lib_task, prompt_images, band, profile, references, note, needs, sheet)
+                question, lib_task, prompt_images, band, profile, references, note, needs, sheet, visual)
             again_problem = await quality_problem(task_type, question, again, subtype, prompt_images, sheet)
             log["quality_retry"] = again_problem or "ok"
             if again_problem is None:
                 paragraphs, log["problems"], shows = again, again_problems, again_shows
+                try:  # the badge shows the kept answer's own score
+                    kept_score = await score_writing(task_type, question, "\n\n".join(again), prompt_images, sheet)
+                    log["self_check"] = [*log.get("self_check", []), kept_score]
+                except Exception:
+                    logger.exception("Scoring the rewritten model answer failed")
+                    kept_score = None
     except Exception:
         logger.exception("Model answer quality check failed - keeping the answer as written")
     log["words"] = sum(count_words(p) for p in paragraphs)
@@ -932,5 +1017,6 @@ async def build_model_answer(
     if needs is not None:
         log["reuse"] = round(reuse_share("\n\n".join(paragraphs), needs.essay, question), 2)
     log["source"] = "ai_generated"
+    log["score"] = kept_score
     logger.info("Model answer: %s", json.dumps(log, ensure_ascii=False))
-    return ModelAnswer(question=question, paragraphs=paragraphs, band=band, shows=shows, log=log)
+    return ModelAnswer(question=question, paragraphs=paragraphs, band=band, shows=shows, log=log, score=kept_score)

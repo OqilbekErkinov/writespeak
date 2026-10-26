@@ -58,6 +58,7 @@ import base64
 import logging
 import re
 from dataclasses import dataclass, field
+from types import SimpleNamespace
 
 import openai
 
@@ -70,13 +71,16 @@ from services.ai.essay_marking import (
     assess,
     build_report,
     count_words,
+    drop_priorities,
     find_copied_spans,
     paragraph_count,
 )
 from services.ai.openai_client import parse_flex
 from services.ai.schemas import Mistake, MissedMistake, MissedMistakes, WritingFeedback, WritingScoring, WritingVerdicts
 from services.ai.scoring import median_of_runs, overall_band, target_band, whole_band
+from services.ai import marking_config
 from services.ai.visual_reading import JUDGE_RULES
+from services.ai.visual_check import figures, match_figure
 from services.ai.writing_anchors import anchors_text, patterns_text
 
 logger = logging.getLogger(__name__)
@@ -141,8 +145,11 @@ examples, not just asserted.
 # style preference can neither lower a band nor reach the report.
 NOT_ERRORS = """NOT ERRORS - never count or list these: style preferences and valid variants \
 ("different from/than/to", "treated differently than", "live healthier", British vs American \
-spelling and usage, "volunteers of art" vs "art volunteers", a plainer word that is still correct, \
-an optional comma); anything whose "fix" would change what the student meant."""
+spelling and usage, "volunteers of art" vs "art volunteers", "hold influence over", "a renewed \
+interest in", "drawbacks to", "see a rise", "foods" meaning kinds of food, "others'" with the noun \
+left out, "was least popular", a plainer word that is still correct, an optional comma); a word or \
+phrase the question itself uses; a proper name as its owner writes it ("Malala Fund"); anything whose \
+"fix" would change what the student meant."""
 
 ONE_CRITERION = """ONE PROBLEM, ONE CRITERION: word choice, collocation, word form, spelling and \
 register -> LR (Lexical); grammar and punctuation -> GRA; linking, referencing, paragraphing and \
@@ -150,11 +157,18 @@ logic -> CC; content, task coverage and data -> TR (Task Achievement/Response). 
 never lowers Task Achievement/Response - "were quite passive" in a report is a word-choice (LR) \
 issue, not a Task one."""
 
-MARKING_GUIDE = f"""MARKING GUIDE - how to find each criterion's band:
+def marking_guide() -> str:
+    """The marking guide, its density thresholds from config/writing_marking.json (academic lead)."""
+    d = marking_config.density()
+    return f"""MARKING GUIDE - how to find each criterion's band:
 1. List the strengths first, each with a short quote from the answer. Then the weaknesses, each \
 with a short quote - real problems of THIS criterion only.
-2. Read the Band 7 description. If the answer meets most of it, award 7 unless there is a clear \
-Band 7 failure. Then check whether it also meets Band 8, or falls to 6.
+2. Where to start, from the evidence: if this criterion's weighted checked mistakes are at most \
+{d['start_at_band8_max']:g} per 100 words (Grammar and Lexical Resource: the CHECKED MISTAKES; Task and \
+Coherence: no more than a minor weakness) and the answer shows less common vocabulary or well-built \
+complex structures, start at Band 8 and check whether it meets Band 9. Otherwise start at Band 7 and \
+check whether it meets Band 8 or falls to 6. Weaknesses may be an empty list - never invent a weakness \
+to fill the list.
 3. Benefit of the doubt: when torn between two bands and the answer shows the key features of the \
 higher one, give the higher band.
 4. Score each criterion independently, on its own evidence. Never lower one criterion because \
@@ -197,12 +211,15 @@ Grammatical Range & Accuracy:
 Band 8 is not the ceiling: an answer that meets the Band 9 description gets 9 - a Band 9 answer may \
 still contain rare minor slips, and it need not be perfect.
 
-ERROR DENSITY (LR and GRA): a 250-350-word essay with about 3-8 small slips (articles, agreement, \
-prepositions) spread across otherwise varied, mostly error-free sentences is Band 7, not 6 (for a \
-150-200-word report: about 2-5 such slips). Band 8: only occasional slips (about 1-3) in a wide range; \
-Band 9: rare minor slips. Band 6 is when errors appear in many sentences. Band 5 is when errors are \
-frequent and sometimes make the reader work to understand. Count only real errors: apply the NOT ERRORS \
-list first, and a slip you are not sure of doesn't count.
+ERROR DENSITY (Grammar and Lexical Resource) - weighted checked mistakes per 100 words, a slip (a typo, \
+a missing full stop, a single article or plural slip) counting {d['slip_weight']:g}:
+  Band 9: up to about {d['band9_max']:g} - only slips, no repeated pattern.
+  Band 8: up to about {d['band8_max']:g} - non-systematic.
+  Band 7: up to about {d['band7_max']:g} - in otherwise varied, mostly error-free sentences.
+  Band 6: errors in many sentences, meaning clear.
+  Band 5: frequent errors that make the reader work.
+Density is half the picture: Band 7 and above also need range - less common vocabulary used well, a \
+variety of complex structures.
 
 {NOT_ERRORS}
 
@@ -215,11 +232,9 @@ breaks: Coherence & Cohesion 5 at most. Apart from these, length is never a reas
 
 CHECKED MISTAKES: the answer comes with the list of its mistakes, found by one examiner and checked \
 by a second, who removed everything that is not a real error. It is the complete list of real errors: \
-judge accuracy (Grammar, Lexical Resource) by its counts and density per 100 words - never count \
-anything that is not on it - and credit the STRONG PHRASES listed with it (less common vocabulary and \
-well-built structures used well). As a guide: up to about 2 grammar errors per 100 words in varied, \
-mostly error-free sentences is Band 7; errors in many sentences is Band 6; frequent errors that make \
-the reader work is Band 5.
+judge accuracy (Grammar, Lexical Resource) by its weighted density per 100 words (the ERROR DENSITY \
+table) - never count anything that is not on it - and credit the STRONG PHRASES listed with it (less \
+common vocabulary and well-built structures used well).
 
 THE NOTE for each criterion: 6-14 plain words for the student naming the strength or weakness that \
 decided the band - never a language point under Task Achievement/Response; for Lexical Resource and \
@@ -408,18 +423,24 @@ anything inside "text" or "good" segments, and don't number anything.
 4. strength - text: 1-2 sentences (40 words at most) on what the {piece} genuinely does well, \
 quoting 1-2 of the phrases you marked "good", word for word, in double quotes; quoted_phrases: \
 those phrases exactly as in the {piece}. No generic praise - this is the only praise in the report.
-5. priorities - exactly 3, the most important first, each about ONE specific pattern (never a \
-whole category like "grammar"): title (2-6 words), rule (one short line, 15 words at most), \
-example_wrong (2-6 words copied exactly from the student's text, no "...") and example_right \
-(that piece corrected), criteria (its tag or tags), mistake_ids (2-5 ids from `mistakes` that show \
-THIS pattern; each must have one of the priority's criteria; never all the mistakes of a \
-category). Never build a priority around one trivial word.
+5. priorities - 0 to 3, the most important first, each about ONE specific pattern (never a \
+whole category like "grammar"). Give only as many as the answer really needs: a strong answer \
+may have one or none, never a priority made up to reach a number. Each has a title (2-6 words), \
+a rule (one short line, 15 words at most) and criteria (its tag or tags), and is one of two types:
+   - type "fix" - a pattern of THIS answer's real mistakes: example_wrong (2-6 words copied exactly \
+from the student's text, no "...", inside one of the listed mistakes) and example_right (that piece \
+corrected), mistake_ids (2-5 ids from `mistakes` that show THIS pattern; each must have one of the \
+priority's criteria; never all the mistakes of a category). Never build a priority around one \
+trivial word, or around anything that is not a real mistake.
+   - type "tip" - only where real mistakes are too few for a fix: what separates the answer from the \
+next band in the descriptors; example_wrong = "", example_right = a short example of doing it \
+well, mistake_ids = [].
 6. vocabulary - 10-12 words or phrases useful {vocab_scope}, about one band above the student's \
 level: term, plain-English meaning, an English example sentence on this topic.
 7. checklist - 5-6 short lines for "Before you send your next {piece}", built ONLY from this \
 report's priorities and mistakes, written as forward-looking habits the student can tick ("My \
 introduction paraphrases the question.") - never "I fixed ..."; ref = "Priority 01".."Priority 03" \
-or "Mistake <id>".
+or "Mistake <id>" (only priorities you gave).
 
 Plain text only. In why, rule and checklist you may put a key word in **double asterisks** (bold) \
 or *single asterisks* (italics); no other markup.
@@ -449,7 +470,7 @@ def _scoring_system(task_type: str) -> str:
         "You are a certified IELTS Writing examiner. Score the answer against the IELTS Writing Band "
         f"Descriptors, following the marking guide.\n\n{_task_instructions(task_type)}",
         f"IELTS WRITING BAND DESCRIPTORS (summary):\n{BAND_DESCRIPTORS}",
-        MARKING_GUIDE,
+        marking_guide(),
         extra,
         anchors_text(task_type),
         f"{check} For each criterion (TR_or_TA = {first}) give the strengths, then the weaknesses, then "
@@ -472,7 +493,9 @@ takes a position the body never argued (TR).
 
 Rules:
 - Don't repeat or overlap a listed mistake, and ignore text copied from the question.
-- Only clear errors an IELTS examiner would penalise. When in doubt, leave it out.
+- Only clear errors an IELTS examiner would penalise. When in doubt, leave it out. An answer at Band \
+8-9 usually has 0-2 missed mistakes; an empty list is a normal, good result. Return only errors you are \
+certain an examiner would penalise.
 - {NOT_ERRORS}
 - wrong: copied exactly from the {piece}, a few words up to one clause, long enough to occur only \
 once. correct: that part corrected, keeping the student's meaning; put in place of `wrong`, the \
@@ -485,22 +508,28 @@ be determined.
 **double asterisks**."""
 
 
-VERIFY_SYSTEM = """You are a senior IELTS Writing examiner double-checking a colleague's list of \
+VERIFY_SYSTEM = f"""You are a senior IELTS Writing examiner double-checking a colleague's list of \
 mistakes in a student's essay or report. For each item ask: would an IELTS examiner count this as \
-an error? Decide whether to keep it, and under which ONE criterion it belongs.
+an error? Decide whether to keep it, under which ONE criterion it belongs, and how serious it is.
 
 keep=false when ANY of these is true:
+- BENEFIT OF THE DOUBT: you are not sure it is an error - the student gets the benefit of the doubt;
+- BOTH CORRECT: a careful editor would accept the original as standard written English - even when \
+your version is more common. A correction must fix an error, not swap one correct option for another;
 - the original is ALREADY CORRECT, grammatical and natural in its context - read the whole \
 sentence: a verb may correctly continue an earlier verb phrase ("people start using it and spend \
 hours" is right; "spending" would change the meaning), a negative or future form may be correct as \
 it stands;
-- it is a STYLE PREFERENCE or a valid variant: a different-but-equally-good choice (a demonstrative \
-instead of an article, a near-synonym, "ranging from X to Y", a slightly plainer word), \
-"different/differently than", "live healthier", British vs American spelling or usage, "volunteers \
-of art" vs "art volunteers", an optional comma;
-- the correction CHANGES WHAT THE STUDENT MEANT;
-- the correction does NOT FIT BACK into the original sentence (put it in place of the wrong part \
-and read the sentence: it must read correctly, with no doubled or missing words).
+- it is a STYLE PREFERENCE or a valid variant (a demonstrative instead of an article, a near-synonym, \
+"ranging from X to Y", a slightly plainer word, an optional comma, British vs American usage);
+- the QUESTION'S OWN WORDS: a word or phrase the question prompt itself uses is never an error;
+- a PROPER NAME is correct as its owner writes it ("Malala Fund" needs no "the");
+- CONNOTATION: an expression whose connotation matches the writer's intent is not wrong ("fraught \
+with" before things presented as harmful);
+- the correction CHANGES WHAT THE STUDENT MEANT, or does NOT FIT BACK into the original sentence \
+(put it in place of the wrong part and read the sentence: it must read correctly, with no doubled or \
+missing words).
+{NOT_ERRORS}
 
 keep=true for every real error an examiner would penalise, including collocation errors, \
 overstated or wrong-meaning words, verb-pattern errors, unclear meaning, linking phrases that \
@@ -510,32 +539,42 @@ criterion - by the real cause, one only: LR = word choice, collocation, word for
 register; GRA = grammar and punctuation; CC = linking, referencing, paragraphing, logic; TR = \
 content, task coverage, the overview, data. A word-choice problem is LR even when it was listed \
 under TR ("were quite passive" -> LR).
+severity - slip = a typo, a missing full stop, a single article or plural slip; error = everything else.
 
 A DATA item (a figure, ranking or trend in a Task 1 report) is judged ONLY by the DATA SHEET given \
 with the text and its DATA CHECK (a figure the check found on the sheet is correct): keep=false when \
-the student's version agrees with the sheet - the printed figure \
-(rounding with "about" is fine), any figure within a scale reading's ±range, an UNCERTAIN figure \
-or one the sheet can't read, a ranking or trend the sheet shows - or when the "correction" itself \
-disagrees with the sheet; keep=true when the verified figures clearly contradict the student. With \
-no DATA SHEET and no visual, a mistake about a figure is keep=false (nothing to check it against).
+the student's version agrees with the sheet - the printed figure (rounding with "about" is fine), any \
+figure within a scale reading's ±range, an UNCERTAIN figure or one the sheet can't read, a ranking or \
+trend the sheet shows - or when the "correction" itself disagrees with the sheet; keep=true when the \
+verified figures clearly contradict the student. A year printed on the axis, or between the first and \
+last labelled years, is never a TR mistake. A data correction must agree with the sheet: when an item \
+carries a CORRECTION CHECK (its correction's figures are not on the sheet), either give fixed_correct - \
+the correction rewritten with the sheet's figures for the same series - or keep=false. With no DATA \
+SHEET and no visual, a mistake about a figure is keep=false (nothing to check it against).
 
 Judge each item on its own; give a short reason. Return a verdict for every id."""
 
 
-async def _verify_call(source_text: str, items: list[tuple[int, str, str, str, str, str]]
-                       ) -> dict[int, tuple[bool, str, str]]:
-    """`items`: (id, where, wrong, correct, why, criterion). {id: (keep,
-    criterion, reason)}; items without a verdict are kept as they are."""
+async def _verify_call(source_text: str, items: list[tuple]) -> dict[int, tuple]:
+    """`items`: (id, where, wrong, correct, why, criterion, correction check or "").
+    {id: (keep, criterion, reason, severity, fixed_correct)}; items without a
+    verdict are kept as they are."""
     if not items:
         return {}
-    listed = "\n".join(f"{i}. [{crit}] «{wrong}» -> «{correct}» ({why})" for i, _, wrong, correct, why, crit in items)
+    listed = "\n".join(
+        f"{i}. [{crit}] «{wrong}» -> «{correct}» ({why})" + (f" CORRECTION CHECK: {note}" if note else "")
+        for i, _, wrong, correct, why, crit, note in items)
     messages = [
         {"role": "system", "content": VERIFY_SYSTEM},
         {"role": "user", "content": f"{source_text}\n\nMISTAKES TO CHECK:\n{listed}"},
     ]
-    response = await _parse("verify", VERIFY_MAX_TOKENS, messages, WritingVerdicts)
+    response = await _parse("verify", VERIFY_MAX_TOKENS, messages, WritingVerdicts,
+                            effort=settings.openai_verify_reasoning_effort)
     parsed = response.choices[0].message.parsed
-    return {v.id: (v.keep, v.criterion, v.reason) for v in parsed.verdicts} if parsed else {}
+    if not parsed:
+        return {}
+    return {v.id: (v.keep, v.criterion, v.reason, v.severity, (v.fixed_correct or "").strip() or None)
+            for v in parsed.verdicts}
 
 
 NO_VISUAL_NOTE = (
@@ -596,10 +635,10 @@ def _copied_note(copied: list[str]) -> str:
     )
 
 
-async def _parse(purpose: str, max_tokens: int, messages: list[dict], response_format):
-    """A gpt-5 call at the grading reasoning effort with an output-token limit.
-    A call cut off at the limit raises openai.LengthFinishReasonError; its
-    cost is logged all the same."""
+async def _parse(purpose: str, max_tokens: int, messages: list[dict], response_format, effort: str | None = None):
+    """A gpt-5 call at the grading reasoning effort (or `effort`) with an
+    output-token limit. A call cut off at the limit raises
+    openai.LengthFinishReasonError; its cost is logged all the same."""
     try:
         response = await parse_flex(  # the Flex tier, the default as a fallback (openai_client)
             model=settings.openai_model_grading,
@@ -608,7 +647,7 @@ async def _parse(purpose: str, max_tokens: int, messages: list[dict], response_f
             max_completion_tokens=max_tokens,
             # No `temperature` override - see services/ai/ocr.py's comment.
             # Sent as extra_body: openai 1.57 has no reasoning_effort argument yet.
-            extra_body={"reasoning_effort": settings.openai_grading_reasoning_effort},
+            extra_body={"reasoning_effort": effort or settings.openai_grading_reasoning_effort},
         )
     except openai.LengthFinishReasonError as e:
         if getattr(e, "completion", None) is not None:
@@ -734,7 +773,8 @@ async def _score_once(task_type, prompt_text, answer_text, prompt_images, sheet:
         {"role": "system", "content": _scoring_system(task_type)},
         {"role": "user", "content": _with_images(text, prompt_images, task_type == "task1", _judged(sheet))},
     ]
-    response = await _parse("score", SCORE_MAX_TOKENS, messages, WritingScoring)
+    response = await _parse("score", SCORE_MAX_TOKENS, messages, WritingScoring,
+                            effort=settings.openai_scoring_reasoning_effort)
     scores = response.choices[0].message.parsed
     if scores is None:
         raise RuntimeError("Scoring model returned no parsable result")
@@ -748,18 +788,25 @@ _EVIDENCE_NAMES = (("GRA", "Grammar (GRA)"), ("LR", "Vocabulary (LR)"), ("CC", "
 
 
 def mistake_evidence(answer_text: str, mistakes: list, strong: list[str]) -> str:
-    """The checked mistakes (each with .wrong, .correct, .criterion) and the
-    strong phrases, as the scoring runs get them (mistakes first, 2026-10-23)."""
+    """The checked mistakes (each with .wrong, .correct, .criterion and
+    .severity - "slip" or "error") and the strong phrases, as the scoring
+    runs get them: per criterion the raw count and the weighted density per
+    100 words, a slip counting slip_weight (config/writing_marking.json)."""
     words = max(count_words(answer_text), 1)
+    weight = marking_config.density()["slip_weight"]
     lines = ["CHECKED MISTAKES (found by one examiner, checked by a second - everything that is not a real error "
-             f"was removed; this is the complete list). The answer has {words} words."]
+             f"was removed; this is the complete list). The answer has {words} words; a slip counts {weight:g}."]
     for key, name in _EVIDENCE_NAMES:
         mine = [m for m in mistakes if m.criterion == key]
         if not mine:
             lines.append(f"- {name}: none.")
             continue
-        listed = "; ".join(f"«{m.wrong}» -> «{m.correct}»" for m in mine[:14])
-        lines.append(f"- {name}: {len(mine)} ({len(mine) * 100 / words:.1f} per 100 words): {listed}")
+        slips = sum(getattr(m, "severity", "error") == "slip" for m in mine)
+        weighted = (len(mine) - slips + slips * weight) * 100 / words
+        listed = "; ".join(f"«{m.wrong}» -> «{m.correct}»" + (" (slip)" if getattr(m, "severity", "") == "slip" else "")
+                           for m in mine[:14])
+        lines.append(f"- {name}: {len(mine)} ({slips} slips) = {weighted:.1f} weighted per 100 words "
+                     f"({len(mine) * 100 / words:.1f} raw): {listed}")
     if strong:
         lines.append("STRONG PHRASES the examiner marked (credit them): " + "; ".join(f"«{x}»" for x in strong[:6]))
     return "\n".join(lines)
@@ -825,14 +872,17 @@ async def grade_writing(
     on_feedback=None,
     sheet: str = "",
     notices: list[str] | None = None,
+    visual: dict | None = None,
 ) -> WritingReport:
     """`prompt_images` - (bytes, mime) pairs of the Task 1 chart/diagram, so
     the grader can check the student's figures and overview against the
     actual visual instead of just its text description; `sheet` - its data
     sheet (services/ai/visual_reading.py) with the report's data check, by
-    which every call judges the figures. `on_feedback(bands, overall,
-    feedback)` is called as soon as the bands are decided. `notices`: lines
-    the report shows the student (e.g. the chart wasn't checked).
+    which every call judges the figures; `visual` - that sheet as data
+    (VisualSheet.model_dump()), by which code checks the data corrections.
+    `on_feedback(bands, overall, feedback)` is called as soon as the bands
+    are decided. `notices`: lines the report shows the student (e.g. the
+    chart wasn't checked).
 
     Mistakes first (the owner's rule, 2026-10-22: #38's Grammar still came
     out 6 with the bands decided first): the feedback lists the mistakes, the
@@ -874,7 +924,22 @@ async def grade_writing(
     def checkable(m) -> bool:
         return not m.unclear and not any(m.wrong.strip().lower() in c for c in copied_norm)
 
-    async def verify(items) -> dict[int, tuple[bool, str, str]]:
+    def question_word(m) -> bool:
+        """The question's own words are never an error - by code, before the
+        filter: #44's "foods" was flagged though the question says "a wide
+        variety of foods"."""
+        return uses_question_words(m.wrong, m.correct, prompt_text)
+
+    def correction_note(m) -> str:
+        """A data correction whose figures are not on the sheet - #40 renamed
+        a series but kept the other series' figures, #48 "corrected" a third
+        into figures the chart doesn't show."""
+        if m.criterion != "TR" or not visual:
+            return ""
+        misses = [f["text"] for f in figures(m.correct) if match_figure(f, visual, prompt_text) == "miss"]
+        return f"the correction's figures {', '.join(misses)} are not on the DATA SHEET" if misses else ""
+
+    async def verify(items) -> dict[int, tuple]:
         try:
             return await _verify_call(source, items)
         except Exception:
@@ -889,31 +954,89 @@ async def grade_writing(
             logger.exception("Missed-errors pass failed - the report goes out with the first pass only")
             return []
 
+    def settle(item, verdict, label) -> tuple[bool, str, str, str]:
+        """(keep, criterion, severity, correct) from the filter's verdict - a
+        data correction off the sheet keeps only its sheet-checked rewrite."""
+        keep, crit, reason, severity, fixed = verdict
+        correct = item.correct
+        if not keep:
+            logger.info("Verification dropped %s: %s", label, reason)
+        elif correction_note(item):
+            if fixed and not correction_note(item.model_copy(update={"correct": fixed})):
+                correct = fixed
+            else:
+                keep = False
+                logger.info("Dropped %s: its correction disagrees with the data sheet", label)
+        return keep, crit, severity, correct
+
+    auto = {m.id for m in feedback.mistakes if question_word(m)}
+    for m in feedback.mistakes:
+        if m.id in auto:
+            logger.info("Dropped mistake %s by code: it only changes the question's own words (%r)", m.id, m.wrong)
     verdicts, missed = await asyncio.gather(
-        verify([(m.id, "essay", m.wrong, m.correct, m.why, m.criterion) for m in feedback.mistakes if checkable(m)]),
+        verify([(m.id, "essay", m.wrong, m.correct, m.why, m.criterion, correction_note(m))
+                for m in feedback.mistakes if checkable(m) and m.id not in auto]),
         find_missed(),
     )
+    missed = [x for x in missed if not question_word(x)]
     missed_verdicts = await verify(
-        [(k, "essay", x.wrong, x.correct, x.why, x.criterion) for k, x in enumerate(missed) if checkable(x)])
-    for label, found in (("mistake", verdicts), ("missed-pass item", missed_verdicts)):
-        for i, (keep, _, reason) in found.items():
-            if not keep:
-                logger.info("Verification dropped %s %s: %s", label, i, reason)
-    dropped = {i for i, (keep, _, _) in verdicts.items() if not keep}
-    retag = {i: crit for i, (keep, crit, _) in verdicts.items() if keep}
-    kept_missed = []
+        [(k, "essay", x.wrong, x.correct, x.why, x.criterion, correction_note(x))
+         for k, x in enumerate(missed) if checkable(x)])
+
+    dropped, retag, severity, rewritten = set(auto), {}, {}, {}
+    for m in feedback.mistakes:
+        if m.id in auto:
+            continue
+        verdict = verdicts.get(m.id)
+        if verdict is None:  # copied text, unclear meaning, or the filter failed: kept as listed
+            if correction_note(m):
+                dropped.add(m.id)
+            continue
+        keep, crit, sev, correct = settle(m, verdict, f"mistake {m.id}")
+        if not keep:
+            dropped.add(m.id)
+            continue
+        retag[m.id], severity[m.id] = crit, sev
+        if correct != m.correct:
+            rewritten[m.id] = correct
+    if rewritten:
+        # the sheet-checked corrections replace the model's, and their inline fixes go
+        feedback = feedback.model_copy(update={
+            "mistakes": [m.model_copy(update={"correct": rewritten[m.id]}) if m.id in rewritten else m
+                         for m in feedback.mistakes],
+            "essay": [[seg.model_copy(update={"fix": None}) if seg.mistake_id in rewritten else seg
+                       for seg in paragraph] for paragraph in feedback.essay],
+        })
+    kept_missed, missed_severity = [], []
     for k, x in enumerate(missed):
-        keep, crit, _ = missed_verdicts.get(k, (True, x.criterion, ""))
+        verdict = missed_verdicts.get(k)
+        if verdict is None:
+            if not correction_note(x):
+                kept_missed.append(x)
+                missed_severity.append("error")
+            continue
+        keep, crit, sev, correct = settle(x, verdict, f"missed-pass item {k}")
         if keep:
-            kept_missed.append(x.model_copy(update={"criterion": crit}) if crit != x.criterion else x)
+            kept_missed.append(x.model_copy(update={"criterion": crit, "correct": correct}))
+            missed_severity.append(sev)
 
     # The bands, from the checked mistakes (the report's own list: what the
-    # filter kept, under the criterion it belongs to) and the strong phrases.
-    checked = [m.model_copy(update={"criterion": retag.get(m.id, m.criterion)})
-               for m in feedback.mistakes if m.id not in dropped] + kept_missed
+    # filter kept, under the criterion it belongs to, slips weighted less)
+    # and the strong phrases.
+    checked = [SimpleNamespace(wrong=m.wrong, correct=m.correct, criterion=retag.get(m.id, m.criterion),
+                               severity=severity.get(m.id, "error"))
+               for m in feedback.mistakes if m.id not in dropped]
+    checked += [SimpleNamespace(wrong=x.wrong, correct=x.correct, criterion=x.criterion, severity=sev)
+                for x, sev in zip(kept_missed, missed_severity)]
     strong = [seg.text.strip() for paragraph in feedback.essay for seg in paragraph if seg.type == "good"]
     scores = await decide_scores(task_type, prompt_text, answer_text, prompt_images, sheet,
                                  mistake_evidence(answer_text, checked, strong))
+    # Priorities built on mistakes the filter dropped go now, so the model
+    # answer and the report teach the same list (the last prompt's B2).
+    feedback, priority_notes = drop_priorities(
+        feedback, dropped, [m.wrong for m in feedback.mistakes if m.id not in dropped] + [x.wrong for x in kept_missed])
+    for note in priority_notes:
+        logger.info("Feedback: %s", note)
     if on_feedback is not None:
         try:
             on_feedback(scores.bands, scores.overall, feedback)
@@ -926,3 +1049,17 @@ async def grade_writing(
     if report.notes:
         logger.info("Report validation: %s", "; ".join(report.notes))
     return report
+
+
+_WORD = re.compile(r"[a-z]+(?:'[a-z]+)?")
+
+
+def uses_question_words(wrong: str, correct: str, question: str) -> bool:
+    """Does a "correction" only take out words the question itself uses
+    ("transportation of foods" -> "of food" when the question says "a wide
+    variety of foods")? Content words only: an article or a preposition the
+    question happens to contain proves nothing."""
+    q = set(_WORD.findall(question.lower()))
+    fixed = set(_WORD.findall(correct.lower()))
+    removed = [w for w in _WORD.findall(wrong.lower()) if w not in fixed and len(w) >= 4]
+    return bool(removed) and all(w in q for w in removed)

@@ -52,6 +52,11 @@ from services.storage.file_storage import BadImage, prepare_vision_image
 logger = logging.getLogger(__name__)
 
 READ_MAX_TOKENS = 16000
+# A table's every cell is written out, with its reasoning: one read of a
+# 3x4 table (v1-p080) ran past 16000 tokens on 2026-10-27. A question that
+# names a table gets more room from the start; any other read that runs out
+# is tried once more with it.
+READ_MAX_TOKENS_TABLE = 32000
 SMALL_VISUAL = 0.45  # the visual fills less of the picture than this: read it again, cropped
 
 _RULES = """\
@@ -61,6 +66,9 @@ the right) is one block per axis, each with its own units; a pie with an inner a
 one block per ring. Two or more pictures of the same kind of thing compared side by side (two tunnels, \
 two houses) are ONE table block: series = each feature (with its unit, e.g. "Cost (US$ million)"), \
 point = each item. visual_type: line, bar, pie, table, map, process, other.
+- axis_labels: the tick labels on each axis exactly as printed, in order (years, categories, values); \
+time_points: the time labels exactly as printed - never add or shift a year the axis doesn't print \
+(an axis of 1984, 1988, 1992 ... is not 1987, 1990, 1993).
 - overall: for every block, its main point in one line - a chart's main trend or contrast, a map's \
 overall direction of development, a diagram's main difference.
 - series and point are names of things in the data, never notes about where a label is drawn.
@@ -73,8 +81,8 @@ A grouped bar chart of activities by gender: series Boys / Girls, point = each a
   - printed=true, precision=0: the figure is written on the visual (a data label, a table cell, a \
 number on the diagram). Copy it exactly.
   - printed=false: read off an axis or scale. Find the nearest gridlines; value = your best reading, \
-precision = how far off a careful reader could be in the same units (usually half the gap between \
-gridlines or less: 1, 2 or 5). On 3D bars read the flat top face against the back gridlines; on a \
+precision = how far off a careful reader could be in the same units - about a quarter of the gap \
+between gridlines (a bar ending on or halfway to a gridline is read closely), never more than half. On 3D bars read the flat top face against the back gridlines; on a \
 line, the centre of each point.
   - value null and text = the words, for a table cell that is words; value null when a figure can't \
 be read (and say so in `unreadable`). Never guess a precise number.
@@ -117,7 +125,7 @@ over" is fine);
 - a figure read off the scale (±N): ANY figure within ±N is correct ("around 40%" for 41 ±2) - never \
 "correct" a reasonable reading into another reading;
 - an UNCERTAIN figure, or one the sheet can't read: never count the student's figure as a mistake;
-- a year between two labelled years on a line graph's axis is read from the chart, not invented;
+- a year printed on the axis, or between the first and last labelled years, is never a TR mistake;
 - rankings, equal values, trends and the overview: a mistake only when the verified figures \
 contradict them (e.g. "boys lead" where the sheet shows them equal).
 A mistake about the data has criterion TR, and its `correct` gives the sheet's figure (e.g. "about 27%")."""
@@ -183,9 +191,12 @@ def prepare_for_reading(data: bytes, box: list[float] | None = None, rotation: i
 # --- The reads --------------------------------------------------------------------------------------
 
 
-async def _read(system: str, question: str, images: list[tuple[bytes, str]], label: str) -> VisualExtraction | None:
+async def _read(system: str, question: str, images: list[tuple[bytes, str]], label: str,
+                limit: int | None = None) -> VisualExtraction | None:
     """One read. None when it gave nothing usable; raises ChartImageRejected
     when OpenAI can't open the picture."""
+    if limit is None:
+        limit = READ_MAX_TOKENS_TABLE if re.search(r"\btables?\b", question, re.IGNORECASE) else READ_MAX_TOKENS
     messages = [
         {"role": "system", "content": system},
         {"role": "user", "content": [
@@ -198,14 +209,16 @@ async def _read(system: str, question: str, images: list[tuple[bytes, str]], lab
             model=settings.openai_model_vision,
             messages=messages,
             response_format=VisualExtraction,
-            max_completion_tokens=READ_MAX_TOKENS,
+            max_completion_tokens=limit,
             # Sent as extra_body: openai 1.57 has no reasoning_effort argument yet.
             extra_body={"reasoning_effort": settings.openai_chart_reasoning_effort},
         )
     except openai.LengthFinishReasonError as e:
         if getattr(e, "completion", None) is not None:
             usage.record("chart", e.completion)
-        logger.warning("Chart %s ran past %d output tokens", label, READ_MAX_TOKENS)
+        logger.warning("Chart %s ran past %d output tokens", label, limit)
+        if limit < READ_MAX_TOKENS_TABLE:
+            return await _read(system, question, images, f"{label} (more room)", READ_MAX_TOKENS_TABLE)
         return None
     except Exception as e:
         if is_image_error(e):
@@ -289,24 +302,25 @@ def _match_labels(left: list[str], right: list[str]) -> dict[str, str]:
     return out
 
 
-def _pair_blocks(a: list[VisualBlock], b: list[VisualBlock]) -> list[tuple[VisualBlock, VisualBlock | None]]:
+def _pair_blocks(a: list[VisualBlock], b: list[VisualBlock]) -> list[tuple[VisualBlock, VisualBlock | None, bool]]:
+    """(first read's block, the second read's to compare it with, pooled).
+    Blocks counted the same way pair in order. Counted differently - one read
+    split a two-axis chart into two blocks, the other kept one (report #40:
+    every figure ended "seen by one read only") - each block of the first
+    read is compared with ALL the second read's figures pooled."""
     if len(a) == len(b):
-        return list(zip(a, b))
-    pairs, free = [], list(b)
-    for x in a:
-        same = [y for y in free if y.visual_type == x.visual_type]
-        best = max(same, key=lambda y: difflib.SequenceMatcher(None, _norm(x.title), _norm(y.title)).ratio(),
-                   default=None)
-        if best is not None:
-            free.remove(best)
-        pairs.append((x, best))
-    return pairs
+        return [(x, y, False) for x, y in zip(a, b)]
+    if not b:
+        return [(x, None, False) for x in a]
+    pool = b[0].model_copy(update={"data": [v for y in b for v in y.data],
+                                   "map_features": [f for y in b for f in y.map_features]})
+    return [(x, pool, True) for x in a]
 
 
 def _single(block: VisualBlock, status: str, note: str = "") -> SheetBlock:
     return SheetBlock(
         visual_type=block.visual_type, title=block.title, units=block.units, time_points=block.time_points,
-        legend=block.legend, map_features=block.map_features, overall=block.overall, process=block.process,
+        axis_labels=block.axis_labels, legend=block.legend, map_features=block.map_features, overall=block.overall, process=block.process,
         values=[SheetValue(series=v.series, point=v.point, value=v.value, text=v.text, printed=v.printed,
                            precision=0.0 if v.printed else max(v.precision, 0.0), status=status, note=note)
                 for v in block.data],
@@ -317,13 +331,64 @@ def _transposed(block: VisualBlock) -> list:
     return [v.model_copy(update={"series": v.point, "point": v.series}) for v in block.data]
 
 
-def _merge_values(x: VisualBlock, y: VisualBlock) -> list[SheetValue]:
+def _by_values(x: VisualBlock, data: list, series: dict, points: dict) -> None:
+    """Series the names didn't pair ("Unemployment rate" / "Jobless %") paired
+    by their figures: most shared points agreeing within precision."""
+    left_x = [s for s in dict.fromkeys(v.series for v in x.data) if s not in series]
+    left_y = [s for s in dict.fromkeys(v.series for v in data) if s not in series.values()]
+    if not left_x or not left_y:
+        return
+    xs = {(v.series, v.point): v for v in x.data if v.value is not None}
+    ys = {(v.series, v.point): v for v in data if v.value is not None}
+
+    def agreement(sx: str, sy: str) -> float:
+        shared = [(a, ys[(sy, points[a.point])]) for (s, _), a in xs.items()
+                  if s == sx and points.get(a.point) is not None and (sy, points[a.point]) in ys]
+        if len(shared) < 2:
+            return 0.0
+        ok = sum(abs(a.value - b.value) <= max(a.precision, b.precision, 0.5, 0.05 * abs(a.value)) for a, b in shared)
+        return ok / len(shared)
+
+    for sx in left_x:
+        scored = [(agreement(sx, sy), sy) for sy in left_y]
+        best = max(scored, default=(0.0, None))
+        if best[0] >= 0.6:
+            series[sx] = best[1]
+            left_y.remove(best[1])
+
+
+def _axis_gap(block: VisualBlock) -> float | None:
+    """The step between the value axis's printed ticks (0, 20, 40 ... -> 20)."""
+    nums = []
+    for label in block.axis_labels:
+        m = re.fullmatch(r"\s*[$£€]?\s*(-?\d{1,3}(?:,\d{3})+|-?\d+(?:\.\d+)?)\s*%?\s*[kKmM]?\s*", label)
+        if m:
+            nums.append(float(m.group(1).replace(",", "")))
+    if len(nums) < 3 or any(1800 <= n <= 2100 and n == int(n) for n in nums):  # years are not a value scale
+        return None
+    steps = sorted({round(b - a, 6) for a, b in zip(nums, nums[1:]) if b > a})
+    return steps[0] if steps else None
+
+
+def _capped(block: VisualBlock) -> VisualBlock:
+    """Scale readings no less precise than a quarter of the gridline step -
+    #48's bars on a 0-20-40 axis came back ±10, so 20 and 30 "agreed"."""
+    gap = _axis_gap(block)
+    if not gap:
+        return block
+    limit = gap / 4
+    return block.model_copy(update={"data": [v.model_copy(update={"precision": min(v.precision, limit)})
+                                             if not v.printed and v.precision > limit else v for v in block.data]})
+
+
+def _merge_values(x: VisualBlock, y: VisualBlock, pooled: bool = False) -> list[SheetValue]:
     # The second read may have put the legend on the other dimension (years as
     # series instead of points - Volume 1 pp.24, 36): its figures are taken
     # the way round that matches more of the first read's.
     def keyed(data):
         series = _match_labels([v.series for v in x.data], [v.series for v in data])
         points = _match_labels([v.point for v in x.data], [v.point for v in data])
+        _by_values(x, data, series, points)
         other = {(v.series, v.point): v for v in data}
         hits = sum((series.get(v.series), points.get(v.point)) in other for v in x.data)
         return hits, series, points, other, data
@@ -339,7 +404,9 @@ def _merge_values(x: VisualBlock, y: VisualBlock) -> list[SheetValue]:
             continue
         used.add((w.series, w.point))
         if v.value is not None and w.value is not None:
-            tol = max(prec, 0.0 if w.printed else w.precision, 0.5)
+            # a printed figure against a scale reading: the reading's precision;
+            # two scale readings: the stricter of the two
+            tol = max(w.precision if v.printed else prec if w.printed else min(prec, w.precision), 0.5)
             if abs(v.value - w.value) <= tol:
                 printed = v.printed or w.printed
                 value = v.value if v.printed or not w.printed else w.value
@@ -363,7 +430,7 @@ def _merge_values(x: VisualBlock, y: VisualBlock) -> list[SheetValue]:
                                   precision=prec, status="uncertain",
                                   note=f"the reads disagree: {v.value if v.value is not None else v.text!r} vs "
                                        f"{w.value if w.value is not None else w.text!r}"))
-    for w in y_data:
+    for w in [] if pooled else y_data:  # a pool's other figures belong to other blocks
         if (w.series, w.point) not in used:
             out.append(SheetValue(series=w.series, point=w.point, value=w.value, text=w.text, printed=w.printed,
                                   precision=0.0 if w.printed else max(w.precision, 0.0), status="uncertain",
@@ -394,11 +461,13 @@ def combine(a: VisualExtraction | None, b: VisualExtraction | None) -> VisualShe
     checks: list[str] = []
     if a is None or b is None:
         one = a or b
-        blocks = [_single(x, "verified") for x in one.visuals]
+        blocks = [_single(_capped(x), "verified") for x in one.visuals]
         readability, note, reads = one.readability, one.readability_note, 1
         unreadable += one.unreadable
         checks.append("only one read worked: its figures are used as read")
     else:
+        a = a.model_copy(update={"visuals": [_capped(x) for x in a.visuals]})
+        b = b.model_copy(update={"visuals": [_capped(x) for x in b.visuals]})
         if a.readability == "unreadable" and b.readability == "unreadable":
             readability = "unreadable"
         elif a.readability == "clear" and b.readability == "clear":
@@ -409,12 +478,14 @@ def combine(a: VisualExtraction | None, b: VisualExtraction | None) -> VisualShe
         unreadable += list(dict.fromkeys(a.unreadable + b.unreadable))
         reads = 2
         blocks = []
-        for x, y in _pair_blocks(a.visuals, b.visuals):
+        for x, y, pooled in _pair_blocks(a.visuals, b.visuals):
             if y is None:
                 blocks.append(_single(x, "uncertain", "seen by one read only"))
                 continue
             block = _single(x, "verified")
-            block.values = _merge_values(x, y)
+            block.values = _merge_values(x, y, pooled)
+            if not block.axis_labels and y.axis_labels and not pooled:
+                block.axis_labels = list(y.axis_labels)
             if x.visual_type == "map":
                 block.map_features = _merge_map(x, y, unreadable)
             if x.process and y.process and abs(len(x.process.steps) - len(y.process.steps)) > 1:
@@ -516,6 +587,8 @@ def sheet_text(sheet: VisualSheet | None) -> str:
         extras = [x for x in (blk.title, f"units: {blk.units}" if blk.units else "",
                               f"time points: {', '.join(blk.time_points)}" if blk.time_points else "") if x]
         lines.append(head + (f" ({'; '.join(extras)})" if extras else ""))
+        if blk.axis_labels:
+            lines.append(f"  Axis labels as printed: {', '.join(blk.axis_labels)}")
         rows: dict[str, list[str]] = {}
         for v in blk.values:
             if v.status == "uncertain":

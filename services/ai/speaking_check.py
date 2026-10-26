@@ -2,7 +2,8 @@
 the database (the handler, bot/handlers/speaking.py, adds those):
 
     voice analysis (services/ai/voice.py)
-      -> pronunciation assessment (Azure) or, without it, listening notes
+      -> pronunciation assessment (Azure) - without it Pronunciation is not
+         measured and takes the mean of the other three bands
       -> grading (services/ai/speaking_grader.py, speaking_marking.py)
     and, as soon as the feedback is final, the model answers written for the
     student's results (services/ai/speaking_answers.py), alongside the
@@ -17,7 +18,7 @@ from dataclasses import dataclass
 from bot.utils.speaking_questions import duplicate_of, parse_cue_card
 from services.ai import pronunciation
 from services.ai.speaking_answers import build_model_answers, needs_from_feedback, targets_for
-from services.ai.speaking_grader import LISTEN_MIN_WORDS, Evidence, SessionItem, grade_speaking, listening_notes
+from services.ai.speaking_grader import Evidence, SessionItem, grade_speaking
 from services.ai.speaking_marking import SpeakingReport
 from services.ai.voice import AnswerAudio, VoiceMetrics, analyse_answers, measure, measure_pitch, to_wav16k
 
@@ -46,17 +47,15 @@ def build_items(questions: list[dict], audios: list[AnswerAudio]) -> list[Sessio
     return items
 
 
-async def run_check(part: str, questions: list[dict], clips: list[tuple[bytes, str]], seed: int = 0) -> SpeakingCheck:
-    """`clips`: (audio bytes, filename), one per question in `questions`."""
+async def run_check(
+    part: str, questions: list[dict], clips: list[tuple[bytes, str]], seed: int = 0,
+    transcribed: list[AnswerAudio] | None = None,
+) -> SpeakingCheck:
+    """`clips`: (audio bytes, filename), one per question in `questions`;
+    `transcribed`: their transcripts when already made (one recording, split
+    by services/ai/single_recording.py)."""
     wavs = list(await asyncio.gather(*(to_wav16k(audio, name) for audio, name in clips)))
-    # Without a pronunciation service the audio model listens while Whisper transcribes.
-    notes_task = None if pronunciation.configured() else asyncio.create_task(listening_notes(wavs))
-    try:
-        audios = await analyse_answers(wavs, [q["text"] for q in questions])
-    except BaseException:
-        if notes_task:
-            notes_task.cancel()
-        raise
+    audios = await analyse_answers(wavs, [q["text"] for q in questions], transcribed)
     items = build_items(questions, audios)
     metrics = measure(audios)
     pitch = await asyncio.to_thread(measure_pitch, [w for w, a in zip(wavs, audios) if not a.no_speech])
@@ -70,17 +69,13 @@ async def run_check(part: str, questions: list[dict], clips: list[tuple[bytes, s
         answers_task = asyncio.create_task(build_model_answers(targets_for(items), needs, seed=seed))
 
     try:
-        pron, notes, practise = None, None, None
-        if notes_task is None:
+        pron, practise = None, None
+        if pronunciation.configured():
             pron = await pronunciation.assess_answers(
                 [(wav, a.tokens, a.duration) for wav, a in zip(wavs, audios) if not a.no_speech]
             )
             practise = await pronunciation.words_to_practise(pron) if pron is not None else None
-        if pron is None:
-            notes = await notes_task if notes_task else await listening_notes(wavs)
-            if sum(a.word_count for a in audios) < LISTEN_MIN_WORDS:
-                notes = None  # too little speech to judge
-        report = await grade_speaking(part, items, Evidence(metrics, pron, notes, pitch), practise,
+        report = await grade_speaking(part, items, Evidence(metrics, pron, pitch), practise,
                                       on_feedback=start_answers)
     except BaseException:
         if answers_task is not None:

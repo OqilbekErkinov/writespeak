@@ -4,9 +4,13 @@ Band Descriptors (Speaking report prompt, 2026-10-13).
   1. scores: SCORE_RUNS independent scoring calls, whole bands, median per
      criterion (services/ai/scoring.py). Fluency and Pronunciation are scored
      from what was measured in the recording (services/ai/voice.py: pace,
-     pauses, fillers; services/ai/pronunciation.py: Azure's pronunciation
-     assessment) - or, without Azure, from an audio model's listening notes,
-     and the report then calls the Pronunciation band estimated;
+     pauses; services/ai/pronunciation.py: Azure's pronunciation
+     assessment). Fillers, restarts and pauses between ideas are natural
+     speech, never a fault (the academic lead, 2026-10-27: a real Band 9.0
+     candidate was given 6.5 for them). Without a pronunciation measurement
+     the Pronunciation band is the mean of the other three, "not measured".
+     The scoring prompt carries anchor recordings with their official band
+     (data/calibration/speaking_anchors.json, config/speaking_marking.json);
   2. the feedback call returns SpeakingFeedback (JSON only), written for the
      scores already decided, so its notes and priorities match the numbers.
      If speaking_marking's `assess` finds a problem worth paying for, the
@@ -25,20 +29,19 @@ output-token limit (see writing_grader.py for why).
 from __future__ import annotations
 
 import asyncio
-import base64
-import io
+import json
 import logging
-import wave
 from dataclasses import dataclass
+from pathlib import Path
 
 import openai
 
 from bot.config import settings
 from services.ai import usage
-from services.ai.openai_client import client, parse_flex
+from services.ai.openai_client import parse_flex
 from services.ai.pronunciation import Assessment
 from services.ai.schemas import SpeakingFeedback, SpeakingMissedMistakes, SpeakingScores, Verdicts
-from services.ai.scoring import LENIENCY_NOTE, median_of_runs
+from services.ai.scoring import LENIENCY_NOTE, median_of_runs, whole_band
 from services.ai.voice import CONFIDENCE_LIMIT, AnswerAudio, Pitch, VoiceMetrics
 
 logger = logging.getLogger(__name__)
@@ -47,8 +50,12 @@ FEEDBACK_MAX_TOKENS = 24000
 MISSED_MAX_TOKENS = 8000
 VERIFY_MAX_TOKENS = 8000
 SCORE_MAX_TOKENS = 4000
-LISTEN_MIN_WORDS = 15  # too little speech for listening notes
 SCORE_KEYS = ("FC", "LR", "GRA", "P")
+CONFIG = Path(__file__).resolve().parents[2] / "config" / "speaking_marking.json"
+P_NOT_MEASURED = "Not measured this time: set to the average of your other three bands."
+# Anchors left out of the scoring prompt: the regression test of a recording
+# that is itself an anchor leaves it out (scripts/speaking_regression.py).
+EXCLUDED_ANCHORS: set[str] = set()
 
 # Condensed paraphrase of the public IELTS Speaking Band Descriptors.
 BAND_DESCRIPTORS = """\
@@ -131,8 +138,7 @@ class SessionItem:
 @dataclass
 class Evidence:
     metrics: VoiceMetrics
-    pron: Assessment | None
-    listening_notes: str | None = None
+    pron: Assessment | None  # None: Pronunciation not measured
     pitch: Pitch | None = None
 
 
@@ -154,40 +160,61 @@ def _question_block(item: SessionItem) -> str:
     return f"{head}: {item.question}"
 
 
-def answers_text(items: list[SessionItem], mark_uncertain: bool) -> str:
+def _marked(a: AnswerAudio, mark_uncertain: bool, mark_pauses: bool) -> str:
+    """The transcript with (?) after words the recogniser may have misheard
+    and [pause 1.6 s] where the student paused - so the scorer can tell a
+    pause before a new idea from a search for a word."""
+    inserts: list[tuple[int, str]] = []
+    if mark_uncertain:
+        inserts += [(t.end_char, "(?)") for t in a.tokens if t.conf < CONFIDENCE_LIMIT]
+    if mark_pauses:
+        for p in a.pauses:
+            nxt = next((t for t in a.tokens if t.start is not None and t.start >= p.end - 0.2), None)
+            if nxt is not None:
+                inserts.append((nxt.start_char, f"[pause {p.seconds:.1f} s] "))
+    out, pos = [], 0
+    for at, mark in sorted(inserts, key=lambda x: (x[0], x[1].startswith("["))):
+        out.append(a.text[pos:at] + mark)
+        pos = at
+    out.append(a.text[pos:])
+    return "".join(out)
+
+
+def answers_text(items: list[SessionItem], mark_uncertain: bool, mark_pauses: bool = False) -> str:
     """The questions and verbatim answers. With `mark_uncertain`, words the
-    recogniser may have misheard are followed by (?)."""
+    recogniser may have misheard are followed by (?); with `mark_pauses`
+    (the scoring runs), pauses over a second are marked where they happened."""
     blocks = []
     for item in items:
         a = item.audio
         if a.no_speech or not a.text:
             answer = "(no speech recorded)"
-        elif mark_uncertain:
-            out, pos = [], 0
-            for t in a.tokens:
-                if t.conf < CONFIDENCE_LIMIT:
-                    out.append(a.text[pos : t.end_char] + "(?)")
-                    pos = t.end_char
-            out.append(a.text[pos:])
-            answer = "".join(out)
         else:
-            answer = a.text
+            answer = _marked(a, mark_uncertain, mark_pauses)
         meta = f"[{_fmt_seconds(a.speaking_seconds)}, {a.word_count} words]"
         blocks.append(f"{_question_block(item)}\nANSWER {item.qid} {meta}:\n{answer}")
     return "\n\n".join(blocks)
 
 
-def evidence_text(items: list[SessionItem], ev: Evidence) -> str:
+def evidence_text(items: list[SessionItem], ev: Evidence, for_scoring: bool = False) -> str:
+    """What was measured. The scoring runs never see the filler count: it is
+    no evidence for a band (the academic lead, 2026-10-27)."""
     m = ev.metrics
     lines = [
         "MEASURED FROM THE RECORDING (software, not an opinion):",
         f"- Speaking time {_fmt_seconds(m.speaking_seconds)} over {len(items)} answer(s); pace {m.wpm} "
         "words a minute (natural speech is about 110-160).",
-        f"- Pauses over 1 second: {m.long_pauses} ({m.mid_sentence_pauses} in the middle of a sentence)"
-        + (f", the longest {m.longest_pause.seconds:.1f} s" if m.longest_pause else "") + ".",
-        f"- Fillers: {m.fillers} ({m.fillers_per_minute:.1f} a minute): "
-        + (", ".join(f"{name} x{n}" for name, n in m.filler_types) or "none") + ".",
     ]
+    if for_scoring:
+        lines.append("- Pauses over 1 second are marked in the transcript where they happened.")
+    else:
+        lines.append(f"- Pauses over 1 second: {m.long_pauses} ({m.mid_sentence_pauses} in the middle of a sentence)"
+                     + (f", the longest {m.longest_pause.seconds:.1f} s" if m.longest_pause else "")
+                     + ". A pause between sentences or before a new idea is thinking about content; only a pause "
+                     "while searching for a word or a grammatical form is a Fluency fault.")
+        lines.append(f"- Fillers: {m.fillers} ({m.fillers_per_minute:.1f} a minute): "
+                     + (", ".join(f"{name} x{n}" for name, n in m.filler_types) or "none")
+                     + ". Fillers are natural in fluent speech - never a fault on their own.")
     if ev.pitch is not None:
         lines.append(
             f"- Intonation: the voice's pitch moves over {ev.pitch.span:.1f} semitones (10th-90th "
@@ -206,21 +233,69 @@ def evidence_text(items: list[SessionItem], ev: Evidence) -> str:
             "As a rough guide only: accuracy and prosody in the 90s fit band 8-9, the 80s band 7, the 70s "
             "band 6, the 60s band 5, lower band 4 - weigh it together with the descriptors.",
         ]
-    elif ev.listening_notes:
-        lines += [
-            "LISTENING NOTES (an examiner who heard the recording; no measurement is available - the "
-            "Pronunciation band will be shown as an estimate):",
-            ev.listening_notes.strip(),
-        ]
     else:
-        lines.append(
-            "No pronunciation evidence is available: estimate Pronunciation from the transcript's "
-            "disfluencies only, and stay close to the student's other bands."
-        )
+        lines.append("PRONUNCIATION IS NOT MEASURED this time: software sets its band from the other three "
+                     "criteria. Make no claim about the student's pronunciation.")
     return "\n".join(lines)
 
 
-def _scoring_system(part: str) -> str:
+SPOKEN_FLUENCY = """HOW EXAMINERS HEAR SPEECH:
+- Fillers and discourse markers (um, uh, you know, I mean, basically, so, well, like, right, actually) \
+are part of natural, fluent speech at every band, Band 9 included. Never lower Fluency & Coherence \
+for how many there are.
+- A pause at the start of an answer, between sentences or before a new idea is thinking about \
+content - never a fault. Only hesitation in the middle of a sentence while searching for a word or a \
+grammatical form counts against Fluency.
+- Restarts, repeated words and self-corrections ("they can, they can basically", "can make them, \
+that can make them") are normal in speech: never grammar errors, and a Fluency matter only when they \
+are frequent AND come from searching for language.
+- Fluency & Coherence is how the ideas flow and develop: extended, relevant, well-linked answers \
+with precise language are Band 8-9 however many fillers they contain.
+- Slips native speakers make in spontaneous speech (an article, "more free", a sentence restarted \
+half-way) are not systematic errors: they don't hold Grammar or Lexical Resource below 8 when the \
+range is wide and the meaning precise.
+- Pauses over 1 second are marked in the transcript where they happened, e.g. [pause 1.6 s]: judge \
+each by what follows - a new idea or sentence (thinking about content, never a fault) or a search \
+for a word or a structure (a Fluency fault)."""
+
+
+def _load_json(path: Path):
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
+    except ValueError:
+        logger.warning("%s is not valid JSON - ignored", path)
+        return None
+
+
+def speaking_config() -> dict:
+    return _load_json(CONFIG) or {}
+
+
+def anchors_text() -> str:
+    """Recordings with their OFFICIAL IELTS band, as the scoring prompt shows
+    them (verbatim transcripts, fillers and restarts included - they earned
+    that band all the same); "" without any."""
+    ids = [i for i in (speaking_config().get("anchors") or {}).get("ids", []) if i not in EXCLUDED_ANCHORS]
+    found = _load_json(settings.calibration_dir / "speaking_anchors.json") or {}
+    anchors = [(i, found[i]) for i in ids if i in found]
+    if not anchors:
+        return ""
+    out = ["ANCHOR RECORDINGS - real candidates with their OFFICIAL IELTS Speaking band. Calibrate against "
+           "them: put the student next to them, criterion by criterion. Their transcripts are verbatim speech "
+           "recognition like the student's - fillers, restarts and repeats were really said, and they earned "
+           "this band all the same."]
+    for k, (_, a) in enumerate(anchors, 1):
+        out.append(f"--- Anchor {k}: {a['label']}, {a['part'].replace('part', 'Part ')} ---")
+        out += [f"Q: {x['question']}\nA: {x['transcript']}" for x in a["answers"]]
+    return "\n\n".join(out)
+
+
+def _scoring_system(part: str, has_pron: bool = True) -> str:
+    pron = ("Pronunciation from the pronunciation evidence" if has_pron else
+            "Pronunciation is not measured this time: return the same band as Lexical Resource (software sets it)")
+    anchors = anchors_text()
     return f"""You are a certified IELTS Speaking examiner. Score the student's recorded answers \
 against the IELTS Speaking Band Descriptors below.
 
@@ -229,13 +304,14 @@ against the IELTS Speaking Band Descriptors below.
 IELTS SPEAKING BAND DESCRIPTORS (summary):
 {BAND_DESCRIPTORS}
 
+{SPOKEN_FLUENCY}
+
 {LENIENCY_NOTE}
 
 The transcript is verbatim speech recognition: fillers (uh, um), repeats and false starts were \
 really said; punctuation is the recogniser's guess, not the student's. Words followed by (?) may be \
-misheard - don't count them as errors. Score Fluency & Coherence from the content AND the measured \
-pace, pauses and fillers; Pronunciation from the pronunciation evidence. Return the four bands as \
-whole numbers."""
+misheard - don't count them as errors. Score Fluency & Coherence by the rules above, with the \
+measured pace and pauses; {pron}. Return the four bands as whole numbers.""" + (f"\n\n{anchors}" if anchors else "")
 
 
 def _feedback_system(part: str, scores: dict[str, float], overall: float, target: float, has_pron: bool) -> str:
@@ -255,7 +331,8 @@ def _feedback_system(part: str, scores: dict[str, float], overall: float, target
         "intonation), with mistake_ids=[] - never from trivial slips.",
     ]
     if not has_pron:
-        notes.append("The P note (criterion_notes) is based on the listening notes.")
+        notes.append("Pronunciation is not measured: no PRON mistake, no pronunciation priority, and the P note "
+                     "only says it was not measured.")
     if part in ("part1", "full"):
         notes.append('Vocabulary: include natural spoken Part 1 phrases ("I\'d say I\'m fairly ...", "to be '
                      'honest, ...").')
@@ -279,7 +356,9 @@ on its own as a mistake (only when it is part of a wrong phrase, e.g. "lost like
 
 SPOKEN ENGLISH IS NOT WRITTEN ENGLISH. Contractions, short answers ("Not really."), informal \
 phrases ("to be honest", "kind of", "pretty much"), natural fragments and starting with "and", \
-"but" or "so" are all fine. Flag only what an IELTS examiner would penalise: grammar errors, wrong \
+"but" or "so" are all fine, and so are restarts, repeated words and self-corrections ("they can, \
+they can basically", "can make them, that can make them") - normal speech, never a mistake. Flag \
+only what an IELTS examiner would penalise: grammar errors, wrong \
 or unnatural words and collocations, word forms, meaning that is unclear, an answer that doesn't \
 answer the question or stops without developing. Never correct what is already correct: to "Are \
 you the kind of person who sticks to dreams?" the answer "I can't say I am" is correct - don't \
@@ -314,15 +393,18 @@ words or fewer (empty string to delete it), else null. Every mistake needs an er
    - "text": everything else. Joining an answer's segments must give back its transcript exactly - \
 fillers, repeats and punctuation included. Don't number anything.
 3. criterion_notes - FC, LR, GRA, P: one short line each (6-14 words) on what drives that score. \
-The FC note may mention answer length, fillers or pauses.
+The FC note is about how the ideas flow and develop (length, development, linking, hesitation while \
+searching for language) - never the number of fillers.
 4. strength - text: 1-2 sentences (40 words at most) on what the student genuinely does well, \
 quoting 1-2 of the phrases you marked "good", word for word, in double quotes; quoted_phrases: \
 those phrases exactly as in the transcript. No generic praise.
 5. priorities - exactly 3, the most important first, each about ONE specific pattern (never a \
 whole category, never one trivial word): title (2-6 words), rule (one line, 15 words at most), \
 example_wrong (2-8 words copied exactly from an answer) and example_right (improved), criteria \
-(its tags). A priority about the measured voice - fillers, pace or pauses (tag FLU), a \
-pronunciation pattern (tag PRON) - has voice_ref=true and mistake_ids=[]; any other has \
+(its tags). A priority about the measured voice - pace, or hesitation while searching for \
+language (tag FLU), a measured pronunciation pattern (tag PRON) - has voice_ref=true and \
+mistake_ids=[]. Never a priority about fillers (they are natural in fluent speech), and no \
+pronunciation priority without pronunciation evidence. Any other priority has \
 voice_ref=false and mistake_ids = 2-5 ids from \
 `mistakes` showing this pattern, each with one of the priority's criteria.
 6. vocabulary_topic (3-6 words) and vocabulary - 10-12 words or phrases useful for speaking on \
@@ -350,8 +432,9 @@ Rules:
 - The transcript is verbatim speech recognition: fillers and repeats are real; punctuation is not \
 the student's - never flag punctuation, capitals or spelling, never flag a filler on its own, and \
 never use a word marked (?) - it may be misheard.
-- Spoken English is not written English: contractions, short answers, informal phrases and natural \
-fragments are fine. Only clear errors an IELTS examiner would penalise. When in doubt, leave it out.
+- Spoken English is not written English: contractions, short answers, informal phrases, natural \
+fragments, restarts, repeated words and self-corrections are fine. Only clear errors an IELTS \
+examiner would penalise. When in doubt, leave it out.
 - question: the answer's id. wrong: copied exactly from that answer (without "(?)"), long enough \
 to occur only once. correct: that part corrected, keeping the meaning; it must fit back into the \
 sentence. why: one plain line, 25 words or fewer. criterion: GRA, LR or FLU. unclear=true with \
@@ -372,6 +455,8 @@ plainer word, "In my childhood" vs "When I was a child");
 - it is natural spoken English: contractions, short answers ("I can't say I am" is a correct answer \
 to "Are you the kind of person who...?"), informal phrases ("kind of", "to be honest"), fragments, \
 starting with "and"/"so";
+- it is a restart, a repeated word or a self-correction ("can make them, that can make them", "the \
+ticket costs and, you know, other, the hotels"): normal speech, not an error;
 - it is about punctuation, capitals or spelling (the transcript's punctuation is the speech \
 recogniser's, not the student's), or it is about a filler alone (a filler inside a wrong phrase, \
 "lost like a part of" -> "lost part of", is a real error).
@@ -413,8 +498,9 @@ async def parse_call(purpose: str, max_tokens: int, messages: list[dict], respon
 async def score_session(part: str, items: list[SessionItem], ev: Evidence) -> dict[str, float]:
     """Median of SCORE_RUNS scoring runs, whole bands: {"FC", "LR", "GRA", "P"}."""
     messages = [
-        {"role": "system", "content": _scoring_system(part)},
-        {"role": "user", "content": f"{answers_text(items, mark_uncertain=True)}\n\n{evidence_text(items, ev)}"},
+        {"role": "system", "content": _scoring_system(part, ev.pron is not None)},
+        {"role": "user", "content": f"{answers_text(items, mark_uncertain=True, mark_pauses=True)}\n\n"
+                                    f"{evidence_text(items, ev, for_scoring=True)}"},
     ]
 
     async def once() -> dict[str, float]:
@@ -425,6 +511,8 @@ async def score_session(part: str, items: list[SessionItem], ev: Evidence) -> di
         return parsed.model_dump()
 
     bands, _ = await median_of_runs(once, SCORE_KEYS, label=f"speaking {part}")
+    if ev.pron is None:  # not measured: never a band lowered without evidence
+        bands["P"] = whole_band((bands["FC"] + bands["LR"] + bands["GRA"]) / 3)
     return bands
 
 
@@ -435,7 +523,7 @@ async def score_answers_text(part: str, qa: list[tuple[str, str]]) -> float:
 
     text = "\n\n".join(f"Q{i}: {q}\nANSWER Q{i}:\n{a}" for i, (q, a) in enumerate(qa, 1))
     system = (
-        _scoring_system(part)
+        _scoring_system(part, has_pron=False)
         + "\n\nThese answers are written out, not recorded: judge them as if spoken fluently, and give "
         "Pronunciation the same band as Lexical Resource."
     )
@@ -504,52 +592,6 @@ async def verify_call(source_text: str, items: list[tuple[int, str, str, str, st
     )
     parsed = response.choices[0].message.parsed
     return {v.id: (v.keep, v.reason) for v in parsed.verdicts} if parsed else {}
-
-
-# --- Listening notes (no pronunciation service) --------------------------------------------------------
-
-LISTEN_PROMPT = """You are an IELTS examiner's ear. Listen to this recording carefully and describe, \
-in plain text, exactly what you hear about HOW the student speaks - not what they say: clarity of \
-individual sounds, word stress, sentence stress, intonation (flat or varied), rhythm and chunking, \
-sounds that are consistently mispronounced. Be specific and concrete (e.g. "final consonants often \
-dropped", "flat intonation, little rise and fall") - another examiner who cannot hear the audio will \
-score Pronunciation from your description alone. 4-8 sentences."""
-
-
-def join_wavs(wavs: list[bytes]) -> bytes:
-    """Several 16 kHz mono WAVs, one after another, as one WAV."""
-    out = io.BytesIO()
-    with wave.open(out, "wb") as dst:
-        for i, wav in enumerate(wavs):
-            with wave.open(io.BytesIO(wav)) as src:
-                if i == 0:
-                    dst.setparams(src.getparams())
-                dst.writeframes(src.readframes(src.getnframes()))
-    return out.getvalue()
-
-
-async def listening_notes(wavs: list[bytes]) -> str | None:
-    """An audio model's description of the pronunciation - the evidence
-    used when no pronunciation service is configured. None if it fails.
-    (Too little speech - under LISTEN_MIN_WORDS - is checked by the caller.)"""
-    try:
-        response = await client.chat.completions.create(
-            model=settings.openai_model_audio,
-            modalities=["text"],
-            messages=[
-                {"role": "system", "content": LISTEN_PROMPT},
-                {"role": "user", "content": [
-                    {"type": "text", "text": "The student's answers, one after another."},
-                    {"type": "input_audio", "input_audio": {
-                        "data": base64.b64encode(join_wavs(wavs)).decode(), "format": "wav"}},
-                ]},
-            ],
-        )
-        usage.record("audio_listen", response)
-        return response.choices[0].message.content or None
-    except Exception:
-        logger.exception("Listening notes failed (model=%s)", settings.openai_model_audio)
-        return None
 
 
 # --- The whole grading ------------------------------------------------------------------------------------

@@ -163,6 +163,7 @@ h2 { font-weight: 600; font-size: 17pt; letter-spacing: -.6pt; line-height: 1.15
 .prio .ex s { color: var(--red); text-decoration-color: var(--red); }
 .prio .ex b { color: var(--moss); }
 .prio .ref { margin-top: 2mm; font-size: 7.3pt; color: var(--faint); }
+.prio .n .kind { font-size: 6.8pt; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: var(--faint); margin-left: 2mm; vertical-align: middle; }
 
 .inside { margin-top: 4mm; border-top: 1px solid var(--line); padding-top: 3mm; }
 .inside .k { font-weight: 800; font-size: 7.3pt; letter-spacing: 1.8px; color: var(--faint); text-transform: uppercase; margin-bottom: 1.6mm; }
@@ -266,3 +267,6 @@ sup.k, .shows .k { display: inline-block; font-weight: 800; font-size: 6.3pt; co
 .shows b { color: var(--ink); }
 .shows div + div { margin-top: .8mm; }
 .mnote { font-size: 7.8pt; color: var(--muted); margin-top: 1mm; }
+/* the notes under the model answer never start a page alone (the last prompt's B7) */
+.sample-foot { page-break-before: avoid; break-before: avoid; page-break-inside: avoid; break-inside: avoid; }
+.sample p:last-child { page-break-inside: avoid; }

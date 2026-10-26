@@ -10,6 +10,14 @@ messages -> "check again" / "next question" buttons. Also entered directly
 from Practice and group assignments, which preset part/practice_question_id
 and call `start_question_set` with the stored question set.
 
+Or, from the Speaking menu, one recording with every answer (the last
+prompt's package D, 2026-10-26): after the questions, "🎧 Bitta audio" takes
+a recording in one or more pieces - or "the questions are in the recording"
+takes a mock test's recording with the examiner's voice - and
+services/ai/single_recording.py splits it into answers (shown to the student
+first when the split is uncertain) for the same grading. Practice, group
+assignments and mock tests stay question by question.
+
 A Full test takes a Part 1 topic, a cue card and its Part 3 questions from
 the bank and is graded as one report with a Speaking band; it costs the
 "speaking_full" coins (bot/utils/coins.py), less than the three parts apart.
@@ -31,14 +39,17 @@ import asyncio
 import difflib
 import hashlib
 import html
+import json
 import logging
 import re
 import time
+import wave
 from collections import defaultdict
 from pathlib import Path
 
 from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
+from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, CallbackQuery, Message
 
@@ -53,11 +64,22 @@ from bot.keyboards.speaking_part_kb import (
     CB_FINISH_NOW,
     CB_FULL_TEST,
     CB_LISTEN_PREFIX,
+    CB_MODE_EACH,
+    CB_MODE_ONE,
+    CB_NO_QUESTIONS,
+    CB_REC_ANYWAY,
+    CB_REC_FINISH,
     CB_SPEAKING_MENU,
+    CB_SPLIT_FIX,
+    CB_SPLIT_OK,
     PART_CALLBACKS,
     listen_kb,
+    mode_kb,
     question_kb,
+    recording_kb,
+    send_question_kb,
     speaking_part_kb,
+    split_kb,
 )
 from bot.states.speaking_states import SpeakingStates
 from bot.utils.input_extraction import (
@@ -75,12 +97,13 @@ from bot.utils.speaking_questions import split_questions
 from db import crud
 from db.database import get_session
 from db.models import SourceType
-from services.ai import tts, usage
+from services.ai import single_recording as one, tts, usage
 from services.ai.essay_marking import canon
 from services.ai.schemas import VocabularyItem
 from services.ai.speaking_check import run_check
 from services.ai.speaking_marking import PART_NAMES, build_progress
 from services.ai.transcription import concat_mp3, ensure_mp3
+from services.ai.voice import to_wav16k, wav_seconds
 from services.pdf.report_builder import build_speaking_report_pdf
 from services.storage.file_storage import read_file, save_report, save_upload
 
@@ -124,7 +147,8 @@ async def choose_part(callback: CallbackQuery, state: FSMContext, lang: str) -> 
     await state.update_data(part=PART_CALLBACKS[callback.data], spend_credit=quota.spend_credit, payer_id=quota.payer_id)
     await state.set_state(SpeakingStates.awaiting_question)
     await show_screen(
-        callback, free_check_note(quota, lang) + t("speaking.send_question", lang), back_kb(lang, CB_SPEAKING_MENU)
+        callback, free_check_note(quota, lang) + t("speaking.send_question", lang),
+        send_question_kb(lang, CB_SPEAKING_MENU),
     )
 
 
@@ -152,9 +176,8 @@ async def choose_full_test(callback: CallbackQuery, state: FSMContext, lang: str
         question_parts=["part1"] * len(p1) + ["part2"] + ["part3"] * len(p3),
         q_index=0, answers=[], intro=None,
     )
-    await state.set_state(SpeakingStates.awaiting_answer)
     await show_screen(callback, free_check_note(quota, lang) + t("speaking.full_intro", lang), None)
-    await _ask_current_question(callback.message, state, lang)
+    await _choose_mode(callback.message, state, lang)
 
 
 @router.message(SpeakingStates.awaiting_question, ~F.text.in_(MENU_BUTTON_TEXTS))
@@ -208,8 +231,38 @@ async def start_question_set(
     await state.update_data(
         questions=questions, question_parts=[data["part"]] * len(questions), q_index=0, answers=[], intro=intro
     )
+    if data.get("rec_path"):  # a recording came first and its questions couldn't be heard - here they are
+        await state.set_state(SpeakingStates.processing)
+        await _split_recording(message, state, lang)
+        return
+    if _offers_one_recording(data):
+        await _choose_mode(message, state, lang)
+        return
     await state.set_state(SpeakingStates.awaiting_answer)
     await _ask_current_question(message, state, lang)
+
+
+def _offers_one_recording(data: dict) -> bool:
+    """Only the Speaking menu's own checks: Practice, group assignments and
+    mock tests stay question by question (the last prompt's D)."""
+    return not (data.get("practice_question_id") or data.get("mock_session_id") or data.get("assignment_part_id"))
+
+
+async def _choose_mode(message: Message, state: FSMContext, lang: str) -> None:
+    data = await state.get_data()
+    await state.set_state(SpeakingStates.choosing_mode)
+    await message.answer(
+        t("speaking.mode_choose", lang, n=len(data["questions"])),
+        reply_markup=mode_kb(lang, _back_target(data), own_recording=data["part"] == "full"),
+    )
+
+
+@router.callback_query(SpeakingStates.choosing_mode, F.data == CB_MODE_EACH)
+async def answer_each(callback: CallbackQuery, state: FSMContext, lang: str) -> None:
+    await callback.answer()
+    await strip_buttons(callback.message)
+    await state.set_state(SpeakingStates.awaiting_answer)
+    await _ask_current_question(callback.message, state, lang)
 
 
 def _back_target(data: dict) -> str:
@@ -387,20 +440,45 @@ async def _send_saved_report(message: Message, state: FSMContext, data: dict, ea
 async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
     data = await state.get_data()
     answers = data["answers"]
-    questions = data["questions"][: len(answers)]
-    parts = _question_parts(data)[: len(answers)]
-    user_id = message.chat.id
-    part = data["part"]
-    coins = check_price(data, speaking_kind(part))
+    clips = [(read_file(a["path"]), a["filename"]) for a in answers]
+    await _grade(
+        message, state, lang, questions=data["questions"][: len(answers)],
+        parts=_question_parts(data)[: len(answers)], clips=clips, paths=[a["path"] for a in answers],
+        audio_hash=_fingerprint([clip for clip, _ in clips]),
+    )
 
-    clips = [read_file(a["path"]) for a in answers]
-    audio_hash = _fingerprint(clips)
+
+async def _repeated(message: Message, state: FSMContext, data: dict, audio_hash: str, lang: str):
+    """(True if the very same recordings were checked before and their saved
+    report went out again, the student's earlier sessions of this part)."""
+    user_id = message.chat.id
     async with get_session() as session:
-        sessions = await crud.get_speaking_sessions(session, user_id, part)
+        sessions = await crud.get_speaking_sessions(session, user_id, data["part"])
     earlier = _find_resubmission(sessions, audio_hash)
     if earlier is not None and await _send_saved_report(message, state, data, earlier, lang):
         logger.info("Speaking resubmission by user %s: same recordings as submission %s", user_id, earlier.id)
         await crm_events.check_repeated("s", user_id, earlier.id)
+        return True, sessions
+    return False, sessions
+
+
+async def _grade(
+    message: Message, state: FSMContext, lang: str, *, questions: list[str], parts: list[str],
+    clips: list[tuple[bytes, str]], audio_hash: str, paths: list[str] = (), transcribed=None,
+    notices: list[str] = (), recording: bytes | None = None, extra: dict | None = None,
+) -> None:
+    """Grades, saves and sends one Speaking check. `clips`: (audio, filename)
+    per question; `paths`: where the student's own clips are saved;
+    `transcribed`, `notices`, `recording` (the whole recording as mp3, kept as
+    the session's audio) and `extra` (added to report_data) come from one
+    recording split into answers."""
+    data = await state.get_data()
+    user_id = message.chat.id
+    part = data["part"]
+    coins = check_price(data, speaking_kind(part))
+
+    repeated, sessions = await _repeated(message, state, data, audio_hash, lang)
+    if repeated:
         return
 
     started = time.monotonic()
@@ -413,10 +491,12 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
             check = await run_check(
                 part,
                 [{"part": p, "text": q} for p, q in zip(parts, questions)],
-                [(clip, a["filename"]) for clip, a in zip(clips, answers)],
+                clips,
                 seed=user_id + earlier_sessions,
+                transcribed=transcribed,
             )
         report = check.report
+        report.notices = list(notices)
         transcripts = [item.audio.text for item in check.items]
         repeat = _find_resubmission(sessions, audio_hash, transcripts)
         progress = build_progress(
@@ -431,8 +511,11 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
             build_speaking_report_pdf, report, check.answers, progress, message.chat.full_name,
             listen,
         )
-        mp3s = [await ensure_mp3(clip, a["filename"]) for clip, a in zip(clips, answers)]
-        joined = mp3s[0] if len(mp3s) == 1 else await concat_mp3(mp3s)
+        if recording is not None:
+            joined = recording
+        else:
+            mp3s = [await ensure_mp3(clip, name) for clip, name in clips]
+            joined = mp3s[0] if len(mp3s) == 1 else await concat_mp3(mp3s)
     except Exception:
         logger.exception("Speaking grading failed for user %s", user_id)
         await processing_msg.edit_text(t("writing.grading_failed", lang))
@@ -443,7 +526,7 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
         return
 
     pdf_path = save_report(user_id, pdf_bytes, ".pdf")
-    audio_path = answers[0]["path"] if len(answers) == 1 else save_upload(user_id, joined, ".mp3")
+    audio_path = paths[0] if recording is None and len(paths) == 1 else save_upload(user_id, joined, ".mp3")
     question_text, transcript_text = _combine(questions, transcripts)
     vocabulary = [
         VocabularyItem(word_or_phrase=v.term, meaning=v.meaning, example_sentence=v.example)
@@ -461,7 +544,8 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
         # this check's OpenAI cost (estimated from tokens), reading the question
         # photo/file included ("input: ..."; the voices, made on demand, are
         # added later), how long the student waited, and how it was paid
-        "cost": usage.merge(usage.summary(calls), data.get("input_cost"), prefix="input: "),
+        "cost": usage.merge(usage.merge(usage.summary(calls), data.get("split_cost")), data.get("input_cost"),
+                            prefix="input: "),
         "seconds": round(time.monotonic() - started),
         "paid_with": await payment_of(user_id, coins, data.get("payer_id")),
         # what each sample is: its source, the band it was aimed at (provisional),
@@ -474,6 +558,7 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
              "text": " ".join(a["paragraphs"]), "voice_file_id": None}
             for a in check.answers
         ],
+        **(extra or {}),
     }
 
     async with get_session() as session:
@@ -535,6 +620,290 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
         await state.clear()
         await message.answer(t("nav.what_next", lang), reply_markup=_after_result_kb(data, lang))
     await crm_events.check_done("s", submission.id)
+
+
+# --- One recording with every answer (the last prompt's D) --------------------------------------
+
+
+@router.callback_query(SpeakingStates.choosing_mode, F.data == CB_MODE_ONE)
+async def answer_in_one(callback: CallbackQuery, state: FSMContext, lang: str) -> None:
+    await callback.answer()
+    await strip_buttons(callback.message)
+    await _start_recording(callback.message, state, lang)
+
+
+@router.callback_query(StateFilter(SpeakingStates.awaiting_question, SpeakingStates.choosing_mode),
+                       F.data == CB_NO_QUESTIONS)
+async def recording_with_questions(callback: CallbackQuery, state: FSMContext, lang: str) -> None:
+    """A recording whose questions are in it (the examiner's voice)."""
+    await callback.answer()
+    await strip_buttons(callback.message)
+    await state.update_data(questions=[], question_parts=[])
+    await _start_recording(callback.message, state, lang)
+
+
+def _question_list(data: dict) -> str:
+    lines, parts = [], _question_parts(data)
+    for i, (q, p) in enumerate(zip(data["questions"], parts)):
+        if data["part"] == "full" and (i == 0 or p != parts[i - 1]):
+            lines.append(t("speaking.part_start", "en", part=PART_NAMES[p]))
+        lines.append(f"<b>Q{i + 1}.</b> {html.escape(q, quote=False)}")
+    return "\n".join(lines)
+
+
+async def _start_recording(message: Message, state: FSMContext, lang: str) -> None:
+    data = await state.get_data()
+    await state.update_data(pieces=[], rec_path=None, split=None, rec_msg_id=None, split_cost=None)
+    await state.set_state(SpeakingStates.awaiting_recording)
+    text = (t("speaking.one_intro", lang, questions=_question_list(data)) if data.get("questions")
+            else t("speaking.one_intro_noq", lang))
+    await message.answer(text, reply_markup=back_kb(lang, _back_target(data)))
+
+
+def _total(pieces: list[dict]) -> float:
+    return sum(p["seconds"] for p in pieces)
+
+
+@router.message(SpeakingStates.awaiting_recording, F.voice | F.video_note | F.audio | F.video | F.document)
+async def receive_recording(message: Message, state: FSMContext, lang: str) -> None:
+    try:
+        content, filename, saved_path = await extract_audio_from_message(
+            message, message.bot, message.from_user.id, lang
+        )
+    except UnsupportedInputError as e:
+        await message.answer(str(e))
+        return
+    except TelegramBadRequest as e:
+        logger.warning("Recording download failed for user %s: %s", message.from_user.id, e)
+        await message.answer(t("speaking.one_too_big" if "too big" in str(e).lower() else "writing.could_not_read",
+                               lang))
+        return
+    try:
+        seconds = wav_seconds(await to_wav16k(content, filename))
+    except (RuntimeError, EOFError, wave.Error):  # ffmpeg can't read it, or no audio in it
+        logger.warning("Recording piece unreadable for user %s (%s)", message.from_user.id, filename)
+        await message.answer(t("writing.could_not_read", lang))
+        return
+
+    async with _user_locks[message.from_user.id]:
+        if await state.get_state() != SpeakingStates.awaiting_recording.state:
+            return
+        data = await state.get_data()
+        pieces = data.get("pieces") or []
+        total = _total(pieces) + seconds
+        most = one.limits()["max_minutes"].get(data["part"], 20)
+        if total > most * 60:
+            await message.answer(t("speaking.one_too_long", lang, part=_part_name(data["part"]), max=most,
+                                   total=one.clock(total)))
+            return
+        pieces = [*pieces, {"path": saved_path, "filename": filename, "seconds": round(seconds, 1)}]
+        if data.get("rec_msg_id"):  # only the newest acknowledgement keeps its buttons
+            try:
+                await message.bot.edit_message_reply_markup(
+                    chat_id=message.chat.id, message_id=data["rec_msg_id"], reply_markup=None)
+            except TelegramBadRequest:
+                pass
+        sent = await message.answer(
+            t("speaking.one_piece_ok", lang, n=len(pieces), length=one.clock(seconds), total=one.clock(total)),
+            reply_markup=recording_kb(lang, _back_target(data)),
+        )
+        await state.update_data(pieces=pieces, rec_msg_id=sent.message_id)
+
+
+def _part_name(part: str) -> str:
+    return "Full test" if part == "full" else PART_NAMES[part]
+
+
+@router.message(SpeakingStates.awaiting_recording, ~F.text.in_(MENU_BUTTON_TEXTS))
+async def reject_non_recording(message: Message, lang: str) -> None:
+    await message.answer(t("speaking.audio_only", lang))
+
+
+@router.callback_query(SpeakingStates.awaiting_recording, F.data.in_({CB_REC_FINISH, CB_REC_ANYWAY}))
+async def finish_recording(callback: CallbackQuery, state: FSMContext, lang: str) -> None:
+    await callback.answer()
+    async with _user_locks[callback.from_user.id]:
+        if await state.get_state() != SpeakingStates.awaiting_recording.state:
+            return
+        data = await state.get_data()
+        pieces = data.get("pieces") or []
+        if not pieces:
+            return
+        await strip_buttons(callback.message)
+        least = one.limits()["min_seconds_per_question"]
+        need = sum(least.get(p, 0) for p in _question_parts(data)) if data.get("questions") else 0
+        if callback.data == CB_REC_FINISH and _total(pieces) < need:
+            sent = await callback.message.answer(
+                t("speaking.one_too_short", lang, n=len(data["questions"]), total=one.clock(_total(pieces))),
+                reply_markup=recording_kb(lang, _back_target(data), anyway=True),
+            )
+            await state.update_data(rec_msg_id=sent.message_id)
+            return
+        await state.set_state(SpeakingStates.processing)
+    # the very same pieces again: their saved report, before anything is paid for
+    repeated, _ = await _repeated(callback.message, state, data, _fingerprint(_piece_bytes(data)), lang)
+    if not repeated:
+        await _read_recording(callback.message, state, lang)
+
+
+def _piece_bytes(data: dict) -> list[bytes]:
+    return [read_file(p["path"]) for p in data["pieces"]]
+
+
+async def _joined(data: dict) -> bytes:
+    return one.join_wavs([await to_wav16k(read_file(p["path"]), p["filename"]) for p in data["pieces"]])
+
+
+async def _back_to_recording(message: Message, state: FSMContext, data: dict, key: str, lang: str) -> None:
+    """Nothing to grade in this recording: say why (no coins were taken) and wait for another."""
+    await state.update_data(pieces=[], rec_path=None, split=None, rec_msg_id=None)
+    await state.set_state(SpeakingStates.awaiting_recording)
+    await message.answer(t(key, lang), reply_markup=back_kb(lang, _back_target(data)))
+
+
+async def _read_recording(message: Message, state: FSMContext, lang: str) -> None:
+    data = await state.get_data()
+    user_id = message.chat.id
+    waiting = await message.answer(t("speaking.one_splitting", lang))
+    try:
+        with usage.track(f"speaking recording user={user_id}") as calls:
+            rec = await one.transcribe_recording(await _joined(data))
+    except Exception:
+        logger.exception("Reading the recording failed for user %s", user_id)
+        await waiting.edit_text(t("writing.grading_failed", lang))
+        await stickers.send(message.bot, user_id, "oops")
+        await state.clear()
+        await message.answer(t("nav.what_next", lang), reply_markup=_after_result_kb(data, lang))
+        return
+    await waiting.delete()
+    cost = usage.summary(calls)
+    if not rec.has_speech or not rec.english:
+        logger.info("Recording of user %s not graded (%s, language %s); spent %s", user_id,
+                    "no speech" if not rec.has_speech else "not English", rec.language, cost)
+        await _back_to_recording(message, state, data,
+                                 "speaking.one_no_speech" if not rec.has_speech else "speaking.one_not_english", lang)
+        return
+    rec_path = save_upload(user_id, json.dumps(rec.as_json()).encode("utf-8"), ".json")
+    await state.update_data(rec_path=rec_path, split_cost=cost)
+    await _split_recording(message, state, lang)
+
+
+def _spans(split: list) -> list[list[tuple[float, float]]]:
+    return [[(float(s), float(e)) for s, e in q] for q in split]
+
+
+def _recording(data: dict) -> one.Recording:
+    return one.Recording.from_json(json.loads(read_file(data["rec_path"])))
+
+
+async def _split_recording(message: Message, state: FSMContext, lang: str) -> None:
+    """The recording's units matched to the questions - the student's, or the
+    examiner's heard in it; shown first when the split is uncertain."""
+    data = await state.get_data()
+    rec = _recording(data)
+    found = one.units(rec)
+    questions = data.get("questions") or []
+    parts = _question_parts(data) if questions else []
+    with usage.track(f"speaking split user={message.chat.id}") as calls:
+        result = await one.align(found, questions, parts, data["part"])
+    cost = usage.merge(data.get("split_cost"), usage.summary(calls))
+    if not questions:
+        asked = result.asked if result else []
+        if not asked:
+            await state.update_data(split_cost=cost)
+            if data["part"] == "full":
+                await state.clear()
+                await message.answer(t("speaking.one_no_questions_full", lang),
+                                     reply_markup=_after_result_kb(data, lang))
+                return
+            await state.set_state(SpeakingStates.awaiting_question)
+            await message.answer(t("speaking.one_need_questions", lang), reply_markup=back_kb(lang, _back_target(data)))
+            return
+        questions = [a.text.strip() for a in asked]
+        parts = [a.part if data["part"] == "full" else data["part"] for a in asked]
+    spans = one.spans_of(found, result.labels if result else [], len(questions))
+    doubts = one.problems(spans, result, rec, parts)
+    await state.update_data(questions=questions, question_parts=parts, split=spans, split_cost=cost,
+                            asked_from_recording=not data.get("questions"))
+    if doubts:
+        logger.info("Split of user %s's recording shown to them: %s", message.chat.id, "; ".join(doubts))
+        await _show_split(message, state, lang)
+        return
+    await state.set_state(SpeakingStates.processing)
+    await _grade_recording(message, state, lang)
+
+
+async def _show_split(message: Message, state: FSMContext, lang: str) -> None:
+    data = await state.get_data()
+    split = one.format_split(_spans(data["split"]), data["questions"], t("speaking.one_missing", lang))
+    await state.set_state(SpeakingStates.confirming_split)
+    await message.answer(t("speaking.one_split_check", lang, split=html.escape(split, quote=False)),
+                         reply_markup=split_kb(lang, _back_target(data)))
+
+
+@router.callback_query(SpeakingStates.confirming_split, F.data.in_({CB_SPLIT_OK, CB_SPLIT_FIX}))
+async def confirm_split(callback: CallbackQuery, state: FSMContext, lang: str) -> None:
+    await callback.answer()
+    async with _user_locks[callback.from_user.id]:
+        if await state.get_state() != SpeakingStates.confirming_split.state:
+            return
+        await strip_buttons(callback.message)
+        data = await state.get_data()
+        if callback.data == CB_SPLIT_FIX:
+            await state.set_state(SpeakingStates.awaiting_split_fix)
+            await callback.message.answer(t("speaking.one_split_fix", lang),
+                                          reply_markup=back_kb(lang, _back_target(data)))
+            return
+        await state.set_state(SpeakingStates.processing)
+    await _grade_recording(callback.message, state, lang)
+
+
+@router.message(SpeakingStates.awaiting_split_fix, F.text, ~F.text.in_(MENU_BUTTON_TEXTS))
+async def receive_split_fix(message: Message, state: FSMContext, lang: str) -> None:
+    data = await state.get_data()
+    rec = _recording(data)
+    split = one.parse_split(message.text, len(data["questions"]), rec.duration, _spans(data["split"]))
+    if split is None:
+        await message.answer(t("speaking.one_split_bad", lang))
+        return
+    await state.update_data(split=split)
+    await _show_split(message, state, lang)
+
+
+async def _grade_recording(message: Message, state: FSMContext, lang: str) -> None:
+    """Each answered question's audio cut from the recording, its transcript
+    from the recording's readings - then the same grading as answers sent one
+    by one. A question with no answer is left out and named in the report."""
+    data = await state.get_data()
+    split = _spans(data["split"])
+    answered = [i for i, s in enumerate(split) if s]
+    if not answered:
+        await _back_to_recording(message, state, data, "speaking.one_no_answers", lang)
+        return
+    rec = _recording(data)
+    joined = await _joined(data)
+    parts = _question_parts(data)
+    missing = [q for q, s in zip(data["questions"], split) if not s]
+    try:
+        recording = await one.to_mp3(joined)
+    except Exception:
+        logger.exception("Encoding the recording failed - keeping its first piece")
+        recording = await ensure_mp3(read_file(data["pieces"][0]["path"]), data["pieces"][0]["filename"])
+    await _grade(
+        message, state, lang,
+        questions=[data["questions"][i] for i in answered],
+        parts=[parts[i] for i in answered],
+        clips=[(one.cut(joined, split[i]), f"q{i + 1}.wav") for i in answered],
+        audio_hash=_fingerprint(_piece_bytes(data)),
+        transcribed=[one.answer_audio(rec, split[i]) for i in answered],
+        notices=[one.NOTICE_ONE_RECORDING] + [one.NOTICE_NO_ANSWER.format(question=q) for q in missing],
+        recording=recording,
+        extra={"one_recording": {
+            "pieces": len(data["pieces"]), "seconds": round(rec.duration, 1),
+            "split": [[[round(s, 1), round(e, 1)] for s, e in q] for q in split],
+            "missing": missing, "questions_from_recording": bool(data.get("asked_from_recording")),
+        }},
+    )
 
 
 _listen_locks: defaultdict[int, asyncio.Lock] = defaultdict(asyncio.Lock)

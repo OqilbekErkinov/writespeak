@@ -5,9 +5,13 @@ answers, 2026-10-14).
 Every answer is a separate, complete answer to the student's OWN question,
 written to teach their weaknesses - not a rewrite of what they said:
 
-  * it is aimed at about one band above the student (aim_band: overall + 1,
-    from 6.0 to 8.0), labelled as an approximate AI example, never as an
-    official band;
+  * it is aimed above the student (aim_band: Band 9 from 8.0 up, else
+    overall + 1 from 6.0 to 8.0), labelled as an approximate AI example,
+    never as an official band;
+  * a phrase is used once in the whole report (the academic lead,
+    2026-10-27: "stand on their own two feet" was in five answers): never the
+    student's own strong phrases or the report's vocabulary, and a phrase
+    one answer used is not used by another (repeated_phrases, in code);
   * it gets the report's own findings (Needs, from the feedback call - no
     second assessment): the four bands, the three priorities, answer-level
     problems (an answer that stops early or is unclear), the cue-card
@@ -91,6 +95,7 @@ class Needs:
     missed_points: dict[str, list[str]] = field(default_factory=dict)  # Part 2 qid -> uncovered points
     strengths: list[str] = field(default_factory=list)
     voice: str = ""
+    avoid: list[str] = field(default_factory=list)  # already in the report: its vocabulary
 
     @property
     def aim(self) -> float:
@@ -124,7 +129,8 @@ def needs_from_feedback(items, bands: dict[str, float], overall: float, fb, metr
         voice = (f"{metrics.wpm} words a minute, {metrics.fillers} fillers in {round(metrics.speaking_seconds)} s, "
                  f"{metrics.long_pauses} pauses over 1 s")
     return Needs(overall=overall, bands=bands, priorities=priorities, issues=issues, missed_points=missed,
-                 strengths=[q.strip() for q in fb.strength.quoted_phrases][:3], voice=voice)
+                 strengths=[q.strip() for q in fb.strength.quoted_phrases][:3], voice=voice,
+                 avoid=[v.term.strip() for v in fb.vocabulary])
 
 
 def _needs_text(needs: Needs, target: "Target") -> str:
@@ -146,8 +152,11 @@ def _needs_text(needs: Needs, target: "Target") -> str:
             lines.append("- The student's talk did not cover these cue-card points - yours must: "
                          + "; ".join(needs.missed_points[qid]))
     if needs.strengths:
-        lines.append("- What they already do well (keep this kind of language): "
-                     + ", ".join(f"«{s}»" for s in needs.strengths))
+        lines.append("- Phrases they already use well - the report quotes them, so DON'T use them again; show "
+                     "other language of that kind: " + ", ".join(f"«{s}»" for s in needs.strengths))
+    if needs.avoid:
+        lines.append("- The report's vocabulary list already teaches these - don't use them: "
+                     + ", ".join(f"«{s}»" for s in needs.avoid))
     if needs.voice:
         lines.append(f"- Measured voice: {needs.voice}.")
     return "\n".join(lines)
@@ -474,6 +483,54 @@ async def _quality_check(pairs: list[tuple[Target, str]]) -> dict[str, str]:
     return {c.label: c.problem for c in (parsed.checks if parsed else []) if not c.ok}
 
 
+_STOP = {
+    "a", "an", "the", "and", "or", "but", "so", "to", "of", "in", "on", "at", "for", "with", "by", "from", "as",
+    "is", "are", "was", "were", "be", "been", "it", "it's", "this", "that", "these", "those", "there", "they",
+    "them", "i", "i'm", "i'd", "you", "we", "he", "she", "do", "does", "can", "will", "would", "could", "should",
+    "have", "has", "had", "not", "more", "most", "very", "really", "just", "also", "other", "about", "like",
+    "what", "which", "who", "when", "how", "if", "than", "then", "their", "your", "my", "our", "his", "her",
+    "its", "one", "some", "many", "much", "lot", "lots", "way", "things", "thing", "people", "think", "because",
+}
+_PRONOUNS = {"their", "your", "my", "our", "his", "her", "its", "one's", "them", "you", "me", "us", "him"}
+
+
+def _phrases(text: str) -> dict[tuple[str, ...], str]:
+    """The answer's 3-word runs with at least two content words (pronouns
+    made alike: "stand on your own two feet" = "on their own two feet"),
+    each with the words as written."""
+    words = re.findall(r"[a-z0-9']+", text.lower())
+    norm = ["·" if w in _PRONOUNS else w for w in words]
+    out = {}
+    for i in range(len(words) - 2):
+        gram = tuple(norm[i:i + 3])
+        if sum(w not in _STOP and w != "·" for w in gram) >= 2:
+            out.setdefault(gram, " ".join(words[i:i + 3]))
+    return out
+
+
+def repeated_phrases(answers: list[tuple[str, str, str]], avoid: list[str]) -> dict[str, list[str]]:
+    """{label: phrases it should not use} for (label, question, answer) in
+    report order: a phrase an earlier answer used, or one of `avoid` (the
+    student's quoted phrases, the vocabulary list). The questions' own words
+    ("international travel", "local culture") are the topic, never a repeat."""
+    banned = {g: p for phrase in avoid for g, p in _phrases(phrase).items()}
+    topic = {w for _, q, _ in answers for w in re.findall(r"[a-z0-9']+", q.lower())}
+    seen: dict[tuple[str, ...], str] = {}
+    out: dict[str, list[str]] = {}
+    for label, _, text in answers:
+        own = _phrases(text)
+        for gram, words in own.items():
+            if all(w in topic or w in _STOP or w == "·" for w in gram):
+                continue
+            if gram in banned or gram in seen:
+                out.setdefault(label, [])
+                if words not in out[label]:
+                    out[label].append(words)
+        for gram, words in own.items():
+            seen.setdefault(gram, label)
+    return out
+
+
 def _shared_openers(pairs: list[tuple[Target, str]]) -> set[str]:
     """Answers that open with the same first three words as an earlier one."""
     seen, repeats = set(), set()
@@ -568,6 +625,29 @@ async def build_model_answers(targets: list[Target], needs: Needs | None = None,
                         texts[t.label], shows[t.label] = w
         except Exception:
             logger.exception("Model answer quality check failed - answers kept as written")
+        # A phrase once in the whole report: answers that repeat one are written once more.
+        try:
+            avoid = (needs.strengths + needs.avoid) if needs is not None else []
+            repeats = repeated_phrases([(t.label, t.question, texts[t.label]) for t in targets if t.label in texts],
+                                       avoid)
+            redo = [t for t in generated if repeats.get(t.label)]
+            if redo:
+                log["repeats"] = {t.label: repeats[t.label] for t in redo}
+                again = await asyncio.gather(*(
+                    _write_one(t, band, profile, references, needs,
+                               note="Don't use these phrases - the report already uses them elsewhere; say it in "
+                                    "your own words: " + ", ".join(f"«{p}»" for p in repeats[t.label]))
+                    for t in redo), return_exceptions=True)
+                for t, w in zip(redo, again):
+                    if isinstance(w, BaseException):
+                        continue
+                    trial = {**texts, t.label: w[0]}
+                    left = repeated_phrases([(x.label, x.question, trial[x.label]) for x in targets if x.label in trial],
+                                            avoid).get(t.label, [])
+                    if len(left) < len(repeats[t.label]):
+                        texts[t.label], shows[t.label] = w
+        except Exception:
+            logger.exception("Repeated-phrase check failed - answers kept as written")
         try:
             by_part: dict[str, list[Target]] = {}
             for t in generated:

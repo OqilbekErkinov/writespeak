@@ -63,10 +63,11 @@
     </div>
 
     {% if report.priorities %}
-    <div class="prio-h"><span class="t">Your {{ report.priorities|length }} priorities for Band {{ target }}</span><span class="s">Fix these first — they cost you the most.</span></div>
+    {% set fixes = report.priorities|rejectattr("tip")|list %}
+    <div class="prio-h"><span class="t">Your {{ "priority" if report.priorities|length == 1 else report.priorities|length ~ " priorities" }} for Band {{ target }}</span><span class="s">{{ "Fix these first — they cost you the most." if fixes else "What takes you to the next band." }}</span></div>
     <div class="prios">
       {% for p in report.priorities %}
-      <div class="prio"><div class="n">{{ p.n }}</div>
+      <div class="prio{{ ' tip' if p.tip }}"><div class="n">{{ p.n }}{% if p.tip %}<span class="kind">Next-band tip</span>{% endif %}</div>
         <div class="h">{{ p.title }}</div>
         <div class="r">{{ p.rule_html|safe }}</div>
         <div class="ex">{% if p.ex_wrong %}<s>{{ p.ex_wrong }}</s> → <b>{{ p.ex_right }}</b>{% else %}{{ p.ex_right }}{% endif %}</div>
@@ -151,14 +152,18 @@
 <div class="kick">04 · Model answer</div>
 <div class="mhead">
   <div><h2 id="s-model">Model answer</h2>
-  <div class="sub" style="margin:0">An answer to your exact question, built around your three priorities. Compare it with your own {{ piece }}.</div></div>
-  <div class="bandbadge"><span>Aimed at</span><b>{{ "%.1f"|format(answer.band) }}</b></div>
+  <div class="sub" style="margin:0">An answer to your exact question{{ ", built around your priorities" if report.priorities }}. Compare it with your own {{ piece }}.</div></div>
+  {# "Aimed at" only when our examiner's score for it reaches the aim; otherwise its own score #}
+  {% if answer.score is not none and answer.score < answer.band %}<div class="bandbadge"><span>Scored</span><b>{{ "%.1f"|format(answer.score) }}</b></div>
+  {% else %}<div class="bandbadge"><span>Aimed at</span><b>{{ "%.1f"|format(answer.band) }}</b></div>{% endif %}
 </div>
 <div class="qbox"><div class="ql">Question</div><div class="qt">{{ question }}</div>{% for img in chart_images %}<img class="qimg" src="{{ img }}">{% endfor %}</div>
 <div class="sample">{% for p in answer_paragraphs %}<p>{{ p|safe }}</p>{% endfor %}</div>
+<div class="sample-foot">
 {% if answer.shows %}<div class="shows">{% for s in answer.shows %}<div><span class="k">{{ loop.index }}</span> <b>Priority {{ s.n }} · {{ s.title }}</b> — {{ s.note }}</div>{% endfor %}</div>{% endif %}
 <div class="sample-meta">{{ answer.word_count }} words · {{ "Published reference" if answer.source == "published_reference" else "AI example" }}</div>
 <div class="mnote">One strong way to answer this question, not the only one. Put it next to your own {{ piece }} on page 2 and borrow what works.</div>
+</div>
 {% endif %}
 
 <!-- ================= PROGRESS ================= -->

@@ -52,6 +52,12 @@ class Settings(BaseSettings):
     # check, and every other call uses its figures (services/ai/visual_reading.py).
     # "low" misread 3D bars by 2-5 points and ranked equal bars (report #62).
     openai_chart_reasoning_effort: str = "medium"
+    # The Writing mistake filter (2026-10-26, the last prompt's A1): "medium" -
+    # at "low" it kept correct English ("a renewed interest", "Malala Fund").
+    openai_verify_reasoning_effort: str = "medium"
+    # The Writing scoring runs: "low" until the low-vs-medium B4 experiment is
+    # decided (academic lead + developer).
+    openai_scoring_reasoning_effort: str = "low"
     # The grading calls (gpt-5: scores, feedback, missed-errors pass, checks) run
     # on OpenAI's Flex tier - half the token price, sometimes slower - and fall
     # back to the default tier when Flex is busy or takes longer than

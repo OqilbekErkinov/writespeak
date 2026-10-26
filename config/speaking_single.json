@@ -1,0 +1,10 @@
+{
+  "_about": "Speaking single-recording mode (the last prompt's package D, 2026-10-26), read by services/ai/single_recording.py. The academic lead's values - review = true until they are confirmed.",
+  "review": true,
+  "max_minutes": {"part1": 8, "part2": 5, "part3": 10, "full": 20},
+  "_max_minutes": "The longest recording accepted per check, all pieces together; a piece that would pass it is refused.",
+  "min_seconds_per_question": {"part1": 8, "part2": 45, "part3": 12},
+  "_min_seconds_per_question": "Shorter than this times the number of questions: the student is warned (and may still go on).",
+  "min_answer_words": {"part1": 5, "part2": 30, "part3": 8},
+  "_min_answer_words": "An answer the split gives fewer words than this makes the split uncertain, so the student checks it first."
+}

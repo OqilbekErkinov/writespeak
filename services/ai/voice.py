@@ -599,10 +599,17 @@ def measure(answers: list[AnswerAudio]) -> VoiceMetrics:
     )
 
 
-async def analyse_answers(wavs: list[bytes], questions: list[str]) -> list[AnswerAudio]:
+async def analyse_answers(
+    wavs: list[bytes], questions: list[str], transcribed: list[AnswerAudio] | None = None
+) -> list[AnswerAudio]:
     """Transcribed answers with pauses and fillers, for 16 kHz WAVs
-    (to_wav16k), one per question."""
-    answers = list(await asyncio.gather(*(transcribe_answer(w) for w in wavs)))
+    (to_wav16k), one per question. `transcribed`: the answers already read
+    (services/ai/single_recording.py reads one recording as a whole and cuts
+    it per question) - then only the pauses and fillers are found here."""
+    if transcribed is not None:
+        answers = transcribed
+    else:
+        answers = list(await asyncio.gather(*(transcribe_answer(w) for w in wavs)))
     for answer, wav in zip(answers, wavs):
         answer.pauses = place_pauses(answer, find_silences(wav))
     await classify_fillers(answers, questions)

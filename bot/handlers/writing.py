@@ -59,7 +59,7 @@ from bot.utils.quota import check_price, check_quota, free_check_note, payment_o
 from db import crud
 from db.database import get_session
 from db.models import SourceType
-from services.ai import usage
+from services.ai import marking_config, usage
 from services.ai.essay_marking import canon
 from services.ai.openai_client import is_image_error
 from services.ai.sample_bank import build_model_answer, needs_from_feedback
@@ -350,13 +350,15 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
 
     try:
         async with get_session() as session:
-            earlier_essays, previous = await crud.get_writing_history(session, user_id, data["task_type"])
+            earlier_essays, previous = await crud.get_writing_history(
+                session, user_id, data["task_type"], min_words=marking_config.progress_min_words(data["task_type"]))
         if data["task_type"] == "task1":
             prompt_images = _load_prompt_images(data.get("prompt_image_paths") or [])
         seed = user_id + earlier_essays
         answer_task: asyncio.Task | None = None
         needs = None
         sheet = judged = ""
+        visual_data = None  # the sheet as data: code checks the corrections and the model answer's figures
 
         def start_answer(bands, overall, feedback) -> None:
             # The model answer is written for this student's results, as soon
@@ -364,7 +366,8 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
             nonlocal answer_task, needs
             needs = needs_from_feedback(bands, overall, feedback, data["answer_text"])
             answer_task = asyncio.create_task(build_model_answer(
-                data["task_type"], data["prompt_text"], prompt_images, seed=seed, needs=needs, sheet=sheet))
+                data["task_type"], data["prompt_text"], prompt_images, seed=seed, needs=needs, sheet=sheet,
+                visual=visual_data))
 
         notices = []
         if data["task_type"] == "task1" and not prompt_images:
@@ -383,6 +386,7 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
                     # judging the report, not for writing the model answer
                     check = data_check(data["answer_text"], visual.model_dump(), data["prompt_text"])
                     judged = f"{sheet}\n\n{check}".strip()
+                    visual_data = visual.model_dump()
                 if visual is not None and visual.readability == "partly_unclear":
                     notices.append(CHART_PARTLY_CHECKED)
             try:
@@ -394,6 +398,7 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
                     on_feedback=start_answer,
                     sheet=judged,
                     notices=notices,
+                    visual=visual_data,
                 )
             except BaseException:
                 if answer_task is not None:
@@ -408,7 +413,8 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
                 logger.error("Model answer failed for user %s - trying once more", user_id, exc_info=e)
                 try:
                     answer = await build_model_answer(
-                        data["task_type"], data["prompt_text"], prompt_images, seed=seed, needs=needs, sheet=sheet
+                        data["task_type"], data["prompt_text"], prompt_images, seed=seed, needs=needs, sheet=sheet,
+                        visual=visual_data
                     )
                 except Exception:
                     logger.exception("Model answer failed again for user %s - report goes out without it", user_id)

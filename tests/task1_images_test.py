@@ -151,7 +151,8 @@ def reading(kind: str = "clear"):
         data[-1] = DataValue(series="Girls", point="Shopping", value=None, text="", printed=False, precision=0)
         note, unreadable = "the girls' shopping bar is cropped", ["Shopping - Girls: the top of the bar is cropped"]
     blocks = [VisualBlock(visual_type="bar", title="Favourite leisure activities of teenagers in Canada", units="%",
-                          time_points=[], legend=[LegendEntry(label="Boys", colour="dark blue"),
+                          time_points=[], axis_labels=["0", "10", "20", "30", "40"],
+                          legend=[LegendEntry(label="Boys", colour="dark blue"),
                                                   LegendEntry(label="Girls", colour="orange")],
                           data=data, map_features=[], overall="Boys prefer shopping and sports; girls are more even.",
                           process=None)]
@@ -300,13 +301,14 @@ class FakeAI:
             # the data sheet's range is not a mistake.
             parsed = schemas.WritingVerdicts(verdicts=[
                 schemas.WritingVerdict(id=int(i), keep=not ("DATA SHEET" in text and "7%" in wrong), criterion=crit,
-                                       reason="checked")
+                                       reason="checked", severity="error", fixed_correct=None)
                 for i, crit, wrong in listed])
         elif name == "GeneratedSample":
             task1 = "Academic Writing Task 1" in kw["messages"][0]["content"]
             parsed = schemas.GeneratedSample(paragraphs=sample_text(185 if task1 else 320), shows=[])
         elif name == "_QualityCheck":
-            parsed = fmt(paragraphs=[], question_type_followed=True, one_position=True, no_stock_opener=True,
+            parsed = fmt(paragraphs=[], thesis="Boys preferred computer games.", thesis_consistent=True,
+                         question_type_followed=True, one_position=True, no_stock_opener=True,
                          no_invented_facts=True, task1_overview_covers_expected=True, task1_key_comparisons_used=4,
                          task1_figures_match=True, problem="")
         else:
@@ -348,7 +350,7 @@ class FakeAI:
                                                    LR="Accurate comparison vocabulary.", GRA="Mostly accurate grammar."),
             strength=schemas.Strength(text='You compare the groups well: "a striking contrast".',
                                       quoted_phrases=["a striking contrast"]),
-            priorities=[schemas.Priority(title=f"Plural verbs {i}", rule="A plural subject takes a plural verb.",
+            priorities=[schemas.Priority(type="fix", title=f"Plural verbs {i}", rule="A plural subject takes a plural verb.",
                                          example_wrong="boys is", example_right="boys are", criteria=["GRA"],
                                          mistake_ids=[2]) for i in range(1, 4)],
             vocabulary=[schemas.VocabEntry(term=f"term {i}", meaning="meaning", example="An example sentence.")
@@ -657,6 +659,14 @@ async def part2_bot() -> None:
     fake.answer = "\n\n".join(p.text for p in Docx(io.BytesIO(buf.getvalue())).paragraphs)
     calls = await press(CB_CONFIRM)
     check("[pdf+docx] report sent", len(document_sent(calls)) == 1)
+
+    # The progress page compares with a real earlier answer, never a too-short test (#47's 46 words).
+    from db import crud
+    async with get_session() as s:
+        _, latest = await crud.get_writing_history(s, uid, "task1", min_words=0)
+        _, too_short = await crud.get_writing_history(s, uid, "task1", min_words=100_000)
+    check("[progress] the latest long-enough answer is the previous one; only short ones: 'too short'",
+          latest and latest.get("band") is not None and too_short == {"too_short": True}, (latest, too_short))
 
     await redis().aclose()
 

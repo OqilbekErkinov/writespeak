@@ -54,8 +54,12 @@ SPEAKING_QUESTIONS_PROMPT = (
     "Keep an examiner's lead-in that belongs to the questions (\"Let's talk about your hometown.\") "
     "on its own line before them. A Part 2 cue card stays whole, line by line: the topic "
     "(\"Describe ...\"), \"You should say:\", each point, and the final \"and explain ...\" line.\n"
-    "Change nothing inside a question. If the image holds no IELTS question, write out its text as "
-    "it is. Output ONLY that text - no preamble, no commentary, no markdown."
+    "A question that runs over two printed lines is ONE question on one line; a short follow-up printed "
+    "with it (\"Why?\", \"Why not?\") stays on its line.\n"
+    "Change nothing inside a question: every word's spelling and every punctuation mark exactly as "
+    "printed - British spellings stay British (\"travelling\", \"colour\", \"organise\"), nothing is "
+    "corrected. If the image holds no IELTS question, write out its text as it is. Output ONLY that "
+    "text - no preamble, no commentary, no markdown."
 )
 
 _MODES = {

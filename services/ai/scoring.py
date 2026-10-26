@@ -26,14 +26,17 @@ logger = logging.getLogger(__name__)
 
 SCORE_RUNS = 3
 
+# The Speaking scorer's discipline. Its "never round up" and "be especially
+# careful at Band 7 and above" held a real Band 9.0 candidate at 6.5-7.0 (the
+# academic lead, 2026-10-27; "never round up" left the Writing guide on 2026-10-22).
 LENIENCY_NOTE = """\
 SCORING DISCIPLINE: give each criterion the WHOLE band (an integer 0-9) whose descriptor best \
-matches the evidence, reading the descriptors as a trained IELTS examiner would. The students are \
-ESL learners and the written feedback is supportive and encouraging, but that is a matter of \
-wording only: never raise a number to encourage, and never round up when an answer sits between \
-two bands - choose the band whose description fits the WHOLE answer. Be especially careful at \
-Band 7 and above: those bands need the features their descriptors name, not just an absence of \
-basic errors."""
+fits the WHOLE performance, reading the descriptors as a trained IELTS examiner would. The written \
+feedback is supportive, but that is a matter of wording only: never raise a number to encourage, \
+and never lower one for the features of natural speech. A performance that shows a band's features \
+gets that band - Band 8 and 9 included: a speaker who develops every answer fully, with precise, \
+idiomatic language and a wide range of structures, is Band 8-9 even with fillers, restarts and the \
+odd native-like slip."""
 
 
 def whole_band(value: float) -> float:
@@ -52,8 +55,11 @@ AIM_RANGE = (6.0, 8.0)
 
 
 def aim_band(overall: float) -> float:
-    """The band a Speaking model answer is aimed at: one above the student's,
-    kept between AIM_RANGE (candidate-specific samples, 2026-10-14)."""
+    """The band a Speaking model answer is aimed at: Band 9 from 8.0 up (the
+    academic lead, 2026-10-27), else one above the student's, kept between
+    AIM_RANGE (candidate-specific samples, 2026-10-14)."""
+    if overall >= 8.0:
+        return 9.0
     return min(AIM_RANGE[1], max(AIM_RANGE[0], overall + 1.0))
 
 

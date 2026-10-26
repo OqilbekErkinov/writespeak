@@ -332,6 +332,111 @@ _T: dict[str, dict[str, str]] = {
         "uz": "Model answer · {label} · aimed at Band {band} (AI example)",
         "ru": "Model answer · {label} · aimed at Band {band} (AI example)",
     },
+    # One recording with all the answers (bot/handlers/speaking.py, the last prompt's D)
+    "speaking.mode_choose": {
+        "uz": "✅ Savollar qabul qilindi: <b>{n} ta</b>.\n\nQanday javob berasiz?\n🎙 <b>Savolma-savol</b> — har bir "
+        "savolga alohida ovozli xabar.\n🎧 <b>Bitta audio</b> — barcha javoblaringiz bitta yozuvda (masalan, mock test "
+        "yoki o'zingiz yozib olgan audio).",
+        "ru": "✅ Вопросы приняты: <b>{n}</b>.\n\nКак будете отвечать?\n🎙 <b>По вопросам</b> — отдельное голосовое "
+        "на каждый вопрос.\n🎧 <b>Одно аудио</b> — все ответы в одной записи (например, mock test или ваша "
+        "собственная запись).",
+    },
+    "speaking.btn_mode_each": {"uz": "🎙 Savolma-savol", "ru": "🎙 По вопросам"},
+    "speaking.btn_mode_one": {"uz": "🎧 Bitta audio (barcha javoblar)", "ru": "🎧 Одно аудио (все ответы)"},
+    "speaking.btn_no_questions": {
+        "uz": "🎧 Savollar yozuvning o'zida (mock test)",
+        "ru": "🎧 Вопросы есть в самой записи (mock test)",
+    },
+    "speaking.one_intro": {
+        "uz": "🎧 <b>Bitta audio</b>\n\n{questions}\n\nBarcha javoblaringizni bitta yozuv qilib yuboring: ovozli "
+        "xabar, audio fayl (mp3, m4a, ogg, wav), video-xabar yoki video. Bir nechta bo'lak bo'lsa ham bo'ladi — "
+        "kelgan tartibida qo'shiladi. Hammasini yuborgach, «✅ Yakunlash va baholash»ni bosing.",
+        "ru": "🎧 <b>Одно аудио</b>\n\n{questions}\n\nОтправьте все ответы одной записью: голосовое, аудиофайл "
+        "(mp3, m4a, ogg, wav), видео-сообщение или видео. Можно несколькими частями — они соединятся в порядке "
+        "получения. Когда отправите всё, нажмите «✅ Завершить и оценить».",
+    },
+    "speaking.one_intro_noq": {
+        "uz": "🎧 <b>Savollar yozuvning o'zida</b>\n\nImtihonchining savollari ham eshitiladigan yozuvni yuboring "
+        "(masalan, mock test): ovozli xabar, audio fayl (mp3, m4a, ogg, wav), video-xabar yoki video. Savollarni "
+        "yozuvdan o'zim ajrataman, imtihonchining ovozi baholanmaydi. Bir nechta bo'lak bo'lsa ham bo'ladi. "
+        "Hammasini yuborgach, «✅ Yakunlash va baholash»ni bosing.",
+        "ru": "🎧 <b>Вопросы есть в самой записи</b>\n\nОтправьте запись, где слышны и вопросы экзаменатора "
+        "(например, mock test): голосовое, аудиофайл (mp3, m4a, ogg, wav), видео-сообщение или видео. Вопросы я "
+        "найду в записи сам, голос экзаменатора не оценивается. Можно несколькими частями. Когда отправите всё, "
+        "нажмите «✅ Завершить и оценить».",
+    },
+    "speaking.one_piece_ok": {
+        "uz": "✅ {n}-bo'lak qabul qilindi ({length}). Jami: <b>{total}</b>.\nYana bo'lak yuborishingiz yoki baholashni "
+        "boshlashingiz mumkin.",
+        "ru": "✅ Часть {n} принята ({length}). Всего: <b>{total}</b>.\nМожно отправить ещё часть или начать оценку.",
+    },
+    "speaking.one_too_long": {
+        "uz": "⚠️ Yozuv juda uzun: {part} uchun eng ko'pi bilan {max} daqiqa. Bu bo'lak qo'shilmadi (jami {total} "
+        "bo'lardi).",
+        "ru": "⚠️ Запись слишком длинная: для {part} не больше {max} минут. Эта часть не добавлена (всего было бы "
+        "{total}).",
+    },
+    "speaking.one_too_big": {
+        "uz": "⚠️ Fayl 20 MB dan katta — Telegram botlarga bundan kattasini bermaydi. Yozuvni bo'laklarga bo'lib yoki "
+        "siqib (masalan, ovozli xabar yoki mp3 qilib) yuboring.",
+        "ru": "⚠️ Файл больше 20 МБ — Telegram не отдаёт ботам файлы крупнее. Отправьте запись частями или в сжатом "
+        "виде (например, голосовым или в mp3).",
+    },
+    "speaking.one_too_short": {
+        "uz": "⚠️ Yozuv {n} ta savol uchun juda qisqa ({total}). Yana bo'lak qo'shishingiz yoki shundayligicha "
+        "baholashingiz mumkin.",
+        "ru": "⚠️ Запись слишком короткая для {n} вопросов ({total}). Можно добавить ещё часть или оценить как есть.",
+    },
+    "speaking.btn_grade_anyway": {"uz": "✅ Baribir baholash", "ru": "✅ Всё равно оценить"},
+    "speaking.one_splitting": {
+        "uz": "🎧 Yozuvni tinglab, javoblarni savollarga ajratyapman… Bu 1–2 daqiqa oladi.",
+        "ru": "🎧 Слушаю запись и разделяю ответы по вопросам… Это займёт 1–2 минуты.",
+    },
+    "speaking.one_no_speech": {
+        "uz": "🤔 Yozuvda nutq topilmadi — coin yechilmadi. Boshqa yozuv yuboring.",
+        "ru": "🤔 В записи не найдено речи — coin не списаны. Отправьте другую запись.",
+    },
+    "speaking.one_not_english": {
+        "uz": "🤔 Yozuvda inglizcha nutq topilmadi — coin yechilmadi. Speaking javoblari ingliz tilida bo'lishi kerak. "
+        "Boshqa yozuv yuboring.",
+        "ru": "🤔 В записи не найдено английской речи — coin не списаны. Ответы Speaking должны быть на английском. "
+        "Отправьте другую запись.",
+    },
+    "speaking.one_no_answers": {
+        "uz": "🤔 Yozuvdan birorta savolga javob topilmadi — coin yechilmadi. Boshqa yozuv yuboring.",
+        "ru": "🤔 В записи не найдено ответа ни на один вопрос — coin не списаны. Отправьте другую запись.",
+    },
+    "speaking.one_need_questions": {
+        "uz": "Yozuvdan savollarni ajratib bo'lmadi. Iltimos, savollarni yuboring (matn, rasm yoki fayl) — yozuvingiz "
+        "saqlanib turibdi.",
+        "ru": "Не удалось найти вопросы в записи. Пожалуйста, отправьте вопросы (текстом, фото или файлом) — ваша "
+        "запись сохранена.",
+    },
+    "speaking.one_no_questions_full": {
+        "uz": "Yozuvdan Full test savollarini ajratib bo'lmadi — coin yechilmadi. Full testni savolma-savol "
+        "topshiring yoki Part 1, 2, 3 ni alohida tekshiring.",
+        "ru": "Не удалось найти вопросы Full test в записи — coin не списаны. Пройдите Full test по вопросам или "
+        "проверьте Part 1, 2, 3 отдельно.",
+    },
+    "speaking.one_split_check": {
+        "uz": "Javoblarni shunday ajratdim — tekshirib bering:\n\n{split}\n\nTo'g'rimi?",
+        "ru": "Я разделил ответы так — проверьте, пожалуйста:\n\n{split}\n\nВсё верно?",
+    },
+    "speaking.one_missing": {"uz": "javob topilmadi", "ru": "ответ не найден"},
+    "speaking.btn_split_ok": {"uz": "✅ To'g'ri", "ru": "✅ Верно"},
+    "speaking.btn_split_fix": {"uz": "✏️ Qayta ajratish", "ru": "✏️ Разделить заново"},
+    "speaking.one_split_fix": {
+        "uz": "To'g'ri vaqtlarni shu ko'rinishda yuboring — har bir savol alohida qatorda (yuqoridagi xabarni "
+        "nusxalab, tahrirlab yuborsangiz ham bo'ladi):\n\n<code>Q1: 0:00–0:41\nQ2: 0:45–1:30, 1:35–1:50\nQ3: -</code>"
+        "\n\n«-» — bu savolga javob yo'q. Yozmagan savollaringiz o'zgarmaydi.",
+        "ru": "Отправьте верное время в таком виде — каждый вопрос отдельной строкой (можно скопировать сообщение "
+        "выше и исправить):\n\n<code>Q1: 0:00–0:41\nQ2: 0:45–1:30, 1:35–1:50\nQ3: -</code>\n\n«-» — ответа на этот "
+        "вопрос нет. Вопросы, которые вы не укажете, не изменятся.",
+    },
+    "speaking.one_split_bad": {
+        "uz": "Vaqtlarni tushunmadim. Iltimos, shu ko'rinishda yuboring: <code>Q1: 0:00–0:41</code>",
+        "ru": "Не понял время. Пожалуйста, отправьте в таком виде: <code>Q1: 0:00–0:41</code>",
+    },
     # --- Input extraction (bot/utils/input_extraction.py) ---
     "input.reading": {
         "uz": "⏳ O'qilmoqda...",

@@ -1,0 +1,13 @@
+{
+  "_about": "Academic values of the Speaking marking, read by services/ai/speaking_grader.py and scripts/speaking_regression.py. Owned by the academic lead: change a value here, not in the code.",
+  "anchors": {
+    "_about": "Recordings with their OFFICIAL IELTS Speaking band shown to every scoring run (transcripts in data/calibration/speaking_anchors.json). real9-p3-travel: a candidate with an official 9.0 (Speaking 9.0), Part 3, six travel questions - added by the academic lead on 2026-10-27.",
+    "ids": ["real9-p3-travel"],
+    "review": false
+  },
+  "regression": {
+    "_about": "Expected results of scripts/speaking_regression.py (recordings in data/calibration/speaking/<id>/). A recording that is also an anchor is tested without itself as an anchor - otherwise the test would only show the anchor back.",
+    "real9-p3-travel": {"overall_min": 8.5},
+    "review": false
+  }
+}

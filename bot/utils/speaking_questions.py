@@ -4,9 +4,12 @@ repeated questions.
 
 Part 2 is always a single cue card, shown whole. Part 1/3 text - whether
 it's a practice question from the admin panel (one question per line) or
-whatever the student pasted/photographed - is split on lines and on "?",
-with any non-question lead-in ("Let's talk about your hometown.", a
-"Part 1 - Hometown" header) folded into the question that follows it.
+whatever the student pasted/photographed - is split one question per line
+(or by the student's own numbers/bullets), never at every "?" (a trailing
+"Why?" was asked as a question of its own, 2026-10-26), with any
+non-question lead-in ("Let's talk about your hometown.", a "Part 1 -
+Hometown" header) folded into the question that follows it. Each question
+is kept exactly as written - spelling and punctuation are never changed.
 Screenshot leftovers that are never part of a question - "Answers here"
 buttons, "NEW Topic" badges, "2 questions" counters, "(Predicted &
 Reported: ...)" headers, bare numbers and dates - are dropped (2026-10-18;
@@ -27,8 +30,15 @@ import re
 
 MAX_QUESTIONS = 15
 
-_NUMBERING = re.compile(r"^\s*(?:(?:Q|Question\s*)?\d{1,2}\s*[.):-]|[-•*–])\s*", re.IGNORECASE)
-_AFTER_QUESTION_MARK = re.compile(r"(?<=\?)\s+")
+_NUMBERING = re.compile(r"^\s*(?:(?:Q|Question\s*)?\d{1,2}\s*[.):-]|[-•*–●▪◦])\s*", re.IGNORECASE)
+# a number marker after a question on the same line: "...hometown? 2. Do you..."
+_INLINE_NUMBER = re.compile(r"(?<=[?.!])\s+(?=(?:Q|Question\s*)?\d{1,2}\s*[.)]\s)", re.IGNORECASE)
+# a short follow-up that belongs to the question before it, never a question of its own
+_FOLLOW_UP = re.compile(
+    r"^(?:and\s+)?(?:why(?:\s+not)?|why\s+or\s+why\s+not|how\s+come|in\s+what\s+ways?|how|explain(?:\s+why)?|"
+    r"give\s+(?:your\s+)?reasons?|give\s+(?:an\s+)?examples?|can\s+you\s+explain(?:\s+why)?)\s*[?.!]?$",
+    re.IGNORECASE,
+)
 _DATE = r"(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{4}"
 # A line that is not a question and never belongs to one (checked only on
 # lines without "?", so "Have you ever reported a problem?" stays).
@@ -96,25 +106,48 @@ def dedupe(questions: list[str]) -> list[str]:
     return [q for q, dup in zip(questions, duplicate_of(questions)) if dup is None]
 
 
+def _noise(piece: str) -> bool:
+    return not piece.endswith("?") and bool(_NOISE.search(piece))
+
+
 def split_questions(text: str, part: str) -> list[str]:
+    """The questions of a Part 1/3 set, each exactly as the user wrote it.
+
+    One line = one question (2026-10-26): "...young people or older people?
+    Why?" is ONE question - splitting at every "?" asked 7 questions of a
+    6-question set. A short follow-up ("Why?", "Why not?", "Explain.") on
+    a line of its own joins the question before it. When the user numbers or
+    bullets the questions, the markers split them instead, and an unmarked
+    line continues the question above. A line that is not a question ("Let's
+    talk about your hometown.") still leads into the next one."""
     text = text.strip()
     if not text:
         return []
     if part == "part2":
         return [text]
 
+    lines = []
+    for line in text.splitlines():
+        # "1. Do you...? 2. What...?" typed on one line: one marked question each
+        lines += _INLINE_NUMBER.split(line)
+    numbered = any(_NUMBERING.match(line) for line in lines if line.strip())
+
     questions: list[str] = []
     lead_in: list[str] = []
-    for line in text.splitlines():
-        for piece in _AFTER_QUESTION_MARK.split(line):
-            piece = _NUMBERING.sub("", piece).strip()
-            if not piece or (not piece.endswith("?") and _NOISE.search(piece)):
-                continue
-            if piece.endswith("?"):
-                questions.append("\n".join([*lead_in, piece]))
-                lead_in = []
-            else:
-                lead_in.append(piece)
+    for raw in lines:
+        marked = bool(_NUMBERING.match(raw))
+        piece = _NUMBERING.sub("", raw).strip()
+        if not piece or _noise(piece):
+            continue
+        if numbered and not marked and not lead_in and questions:
+            questions[-1] = f"{questions[-1]} {piece}"  # the marked question goes on
+        elif questions and not lead_in and _FOLLOW_UP.match(piece):
+            questions[-1] = f"{questions[-1]} {piece}"  # "Why?" belongs to the question above
+        elif "?" in piece or (numbered and marked):
+            questions.append("\n".join([*lead_in, piece]))
+            lead_in = []
+        else:
+            lead_in.append(piece)
 
     if not questions:
         return [text]  # no "?" anywhere - treat the whole thing as one prompt

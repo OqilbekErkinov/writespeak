@@ -81,8 +81,15 @@ def build_progress(report: WritingReport, previous: dict | None) -> dict:
     """The progress page, computed here: the student's previous Writing report
     of the same task type ({"band", "mistake_counts", "words"}; mistake_counts
     is None for reports made before 2026-10, words None when unknown) against
-    this one."""
+    this one; {"too_short": True} when the earlier ones were too short to
+    compare with."""
     piece = _piece(report.task_type)
+    if previous is not None and previous.get("too_short"):
+        return {
+            "first": True,
+            "note": f"Your earlier answers were too short to compare with, so your progress starts from this "
+            f"{piece}. Your next report will show how you move on from here.",
+        }
     if previous is None:
         return {
             "first": True,

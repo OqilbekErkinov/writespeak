@@ -24,17 +24,19 @@ sys.stdout.reconfigure(encoding="utf-8")
 
 async def main() -> None:
     from services.ai.essay_marking import count_words
-    from services.ai.writing_anchors import ANCHOR_IDS
+    from services.ai import marking_config
 
     setup_logging()
     by_id = {s["id"]: s for s in load_samples()}
     out: dict[str, list[dict]] = {}
-    for task, ids in ANCHOR_IDS.items():
+    for task in ("task1", "task2"):
+        ids = marking_config.anchor_ids(task)
         out[task] = []
         for sample_id in ids:
             s = by_id[sample_id]
-            if s["band_low"] is None or not s["commentary"]:
-                raise SystemExit(f"{sample_id}: no band or no commentary - not an anchor")
+            if s["band_low"] is None or (not s["commentary"] and s["band_low"] < 9):
+                # Volume 1 prints no commentary: only its Band 9 samples anchor without one
+                raise SystemExit(f"{sample_id}: no band, or no commentary below Band 9 - not an anchor")
             sheet = ""
             if task == "task1":
                 _, sheet, cached = await visual_for(s)

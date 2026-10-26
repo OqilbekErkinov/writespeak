@@ -147,7 +147,7 @@ table.intt td.sv { width: 66mm; padding-right: 4mm; }
     </div>
 
     {% if report.priorities %}
-    <div class="prio-h"><span class="t">Your {{ report.priorities|length }} priorities for Band {{ target }}</span><span class="s">Fix these first — they cost you the most.</span></div>
+    <div class="prio-h"><span class="t">Your {{ "priority" if report.priorities|length == 1 else report.priorities|length ~ " priorities" }} for Band {{ target }}</span><span class="s">Fix these first — they cost you the most.</span></div>
     <div class="prios">
       {% for p in report.priorities %}
       <div class="prio"><div class="n">{{ p.n }}</div>
@@ -184,7 +184,8 @@ table.intt td.sv { width: 66mm; padding-right: 4mm; }
   <span><span class="filler">like</span> &nbsp;Filler word</span>
   <span><s style="color:var(--red)">word</s> <b style="color:var(--moss)">fix</b></span>
 </div>
-{% if not report.marked %}
+{% for n in report.notices %}<div class="copy-tip notice">{{ n }}</div>
+{% endfor %}{% if not report.marked %}
 <div class="unmarked">This time not every mark could be placed on your transcript, so some answers are shown without them. Every mistake is explained in the next section.</div>
 {% endif %}
 {% set ns = namespace(part=None) %}
@@ -284,7 +285,7 @@ table.intt td.sv { width: 66mm; padding-right: 4mm; }
 <div class="kick">05 · Model answers</div>
 <div class="mhead">
   <div><h2 id="s-model">Model answers</h2>
-  <div class="sub" style="margin:0">Answers to your exact questions, written for your priorities and aimed at about one band above yours.{% if voice_sent %} Read them, then listen to them in Telegram.{% endif %}</div></div>
+  <div class="sub" style="margin:0">Answers to your exact questions, written for your priorities and aimed above your current band.{% if voice_sent %} Read them, then listen to them in Telegram.{% endif %}</div></div>
   {% if answers_band %}<div class="bandbadge"><span>Aimed at</span><b>{{ "%.1f"|format(answers_band) }}</b></div>{% endif %}
 </div>
 {% for a in answers %}

@@ -1,0 +1,48 @@
+{
+  "_about": "Academic values of the Writing marking (Bandzilla last prompt, 2026-10-26). Owned by the academic lead: change a value here, not in the code. Loaded by services/ai/marking_config.py; a missing key falls back to the default in that file. Every value marked review=true was set by the developer and still needs the academic lead's approval.",
+  "density": {
+    "_about": "Weighted checked mistakes per 100 words, per criterion (Grammar, Lexical Resource). A slip (typo, missing full stop, one article or plural slip) counts as slip_weight.",
+    "slip_weight": 0.5,
+    "band9_max": 0.4,
+    "band8_max": 0.8,
+    "band7_max": 2.5,
+    "start_at_band8_max": 0.8,
+    "_changed": "2026-10-27: band9 0.5->0.4, band8 and the Band 8 start 1.2->0.8 - at 1.2 the owner's #37 (Grammar 1.4 weighted per 100 words) got Grammar 8 and #38 (Lexical 1.3) Lexical 8, overall 7.5 and 8.0 against the expected 6.5-7.0 and 7.0-7.5; 0.8 is the deployed guide's 'Band 8: about 1-3 slips in a 250-350-word essay'. Proposal for the academic lead.",
+    "review": true
+  },
+  "anchors": {
+    "_about": "Fixed anchors in every scoring run (ids from data/calibration/book_samples.json). Band 9 anchors from Volume 1: v1-p028 (Task 1) and v1-p026 (Task 2), outside the 12-sample B4 set - confirmed by the academic lead on 2026-10-27 (option A).",
+    "task1": ["v2-p072", "v2-p068", "v2-p084", "v1-p028"],
+    "task2": ["v2-p026", "v2-p034", "v2-p078", "v1-p026"],
+    "review": false
+  },
+  "calibration": {
+    "_about": "B4 test-set changes. remove = left out of the test set; expect = the band the test set expects instead of the book's.",
+    "overrides": {
+      "v1-p008": {"action": "remove", "why": "The Ireland report swaps the two series; the book's 8.0 would teach the grader to ignore data errors.", "confirmed": "2026-10-27, the academic lead"}
+    },
+    "low_band_max": 6.0,
+    "low_band_max_rise": 0.5,
+    "max_cost_per_check": 0.15,
+    "review": true
+  },
+  "progress": {
+    "_about": "A submission shorter than this is not used as 'your previous report' on the progress page (report #48 compared itself with #47, a 46-word test).",
+    "min_words": {"task1": 100, "task2": 150},
+    "review": true
+  },
+  "regression": {
+    "_about": "Expected results of scripts/writing_regression.py for the owner's reports (essay numbers).",
+    "35": {"overall": [6.0, 6.0]},
+    "36": {"overall": [5.5, 6.0], "CC_max": 5, "GRA_min": 6},
+    "37": {"overall": [6.5, 7.0], "LR_min": 7},
+    "38": {"overall": [7.0, 7.5], "GRA_min": 7, "not_flagged": ["differently than", "living healthier"]},
+    "40": {"overall": [6.0, 7.0], "TA_max": 6},
+    "41": {"overall_min": 8.5, "not_flagged": ["a renewed interest"]},
+    "42": {"not_flagged": ["Malala Fund", "holding an ever-greater influence", "fraught with partying"]},
+    "44": {"overall_min": 8.5, "LR_min": 8, "not_flagged": ["foods", "drawbacks to"]},
+    "45": {"not_flagged": ["in 1992", "seeing rises"]},
+    "48": {"not_flagged": ["one-third", "others'"]},
+    "review": true
+  }
+}

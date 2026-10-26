@@ -2,11 +2,14 @@
 (marking guide B3 and A8, 2026-10-22).
 
   data/calibration/anchors.json        the fixed anchors, the same in every
-      scoring run (the owner's choice, 2026-10-22 - all from Volume 2 of
-      Sanokulov's IELTS Writing Collection, with its commentary): Task 1
-      pp.72 (6.5), 68 (7.0-7.5), 84 (8.0); Task 2 pp.26 (6.5-7.0), 34
-      (7.0-7.5), 78 (8.0+). Built by scripts/build_writing_anchors.py from
-      book_samples.json and the anchors' verified chart sheets.
+      scoring run, chosen by the academic lead in config/writing_marking.json
+      (services/ai/marking_config.py): from Volume 2 of Sanokulov's IELTS
+      Writing Collection with its commentary (2026-10-22: Task 1 pp.72 6.5,
+      68 7.0-7.5, 84 8.0; Task 2 pp.26 6.5-7.0, 34 7.0-7.5, 78 8.0+), plus a
+      Band 9 anchor per task from Volume 1 (2026-10-26: the scorer had no
+      picture of a 9 and gave every criterion 8). Built by
+      scripts/build_writing_anchors.py from book_samples.json and the
+      anchors' verified chart sheets.
   data/calibration/task1_patterns.json 2-3 real overviews per visual type
       from the books' Band 7-9 reports, for the Task Achievement scorer
       and the model answer.
@@ -22,10 +25,9 @@ import json
 import logging
 
 from bot.config import settings
+from services.ai import marking_config
 
 logger = logging.getLogger(__name__)
-
-ANCHOR_IDS = {"task1": ["v2-p072", "v2-p068", "v2-p084"], "task2": ["v2-p026", "v2-p034", "v2-p078"]}
 
 _cache: dict[str, tuple[float, object]] = {}
 _warned: set[str] = set()
@@ -54,7 +56,8 @@ def anchors(task_type: str) -> list[dict]:
 
 
 def anchor_ids() -> set[str]:
-    return {i for ids in ANCHOR_IDS.values() for i in ids}
+    """Every anchor id (config/writing_marking.json) - never a B4 test sample."""
+    return marking_config.anchor_ids()
 
 
 def anchors_text(task_type: str) -> str:
@@ -63,11 +66,12 @@ def anchors_text(task_type: str) -> str:
     if not items:
         return ""
     piece = "report" if task_type == "task1" else "essay"
+    low = min(a["band_low"] for a in items)
+    high = max(a["band_high"] for a in items)
     out = [
         f"ANCHOR EXAMPLES - real {piece}s with the band an experienced examiner gave them, and the examiner's "
-        "reasons. Calibrate against them: put the answer you score next to them, criterion by criterion. They "
-        "cover Band 6.5 to 8; below 6.5, use the guide; an answer clearly better than the Band 8 anchor can "
-        "reach 8.5-9 by the Band 9 description."
+        "reasons where the book gives them. Calibrate against them: put the answer you score next to them, "
+        f"criterion by criterion. They cover Band {low:g} to {high:g}; below {low:g}, use the guide."
     ]
     for k, a in enumerate(items, 1):
         out.append(f"--- Anchor {k}: Band {a['band_label']} ---")
@@ -76,7 +80,11 @@ def anchors_text(task_type: str) -> str:
         if a.get("sheet"):
             out.append(a["sheet"])
         out.append(f"The {piece} ({a['words']} words):\n{a['text']}")
-        out.append(f"Examiner's commentary: {a['commentary']}")
+        if a.get("commentary"):
+            out.append(f"Examiner's commentary: {a['commentary']}")
+        else:
+            out.append(f"(No commentary: a Band {a['band_label']} {piece} from the book - what a {a['band_label']} "
+                       "looks like: few or no errors, wide and natural language, every part fully developed.)")
     return "\n\n".join(out)
 
 

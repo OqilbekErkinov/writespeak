@@ -46,7 +46,7 @@ from services.ai.essay_marking import (
 from services.ai.pronunciation import Assessment
 from services.ai.schemas import SpeakingFeedback
 from services.ai.scoring import overall_band, target_band, whole_band
-from services.ai.speaking_grader import SessionItem
+from services.ai.speaking_grader import P_NOT_MEASURED, SessionItem
 from services.ai.voice import CONFIDENCE_LIMIT, NATURAL_WPM, TOKEN_RE, Pitch, VoiceMetrics
 
 INLINE_FIX_MAX_WORDS = 6
@@ -294,25 +294,24 @@ def _curve(flatness: float) -> str:
             f"S {p[4][0]} {p[4][1]}, {p[5][0]} {p[5][1]} S {p[6][0]} {p[6][1]}, {p[7][0]} {p[7][1]}")
 
 
-def _pace_note(wpm: int, fillers_per_minute: float) -> str:
+def _pace_note(wpm: int) -> str:
     lo, hi = NATURAL_WPM
     if wpm < lo:
         return f"Slower than natural speech. Aim for {lo}–{hi} words a minute."
     if wpm > hi:
         return "Faster than natural speech. Slow down a little so every word is clear."
-    note = "Inside the natural range."
-    if fillers_per_minute >= 4:
-        note += " Speed is not your problem; fillers are."
-    return note
+    return "Inside the natural range."
 
 
-def _filler_note(m: VoiceMetrics, target: float) -> str:
+def _filler_note(m: VoiceMetrics) -> str:
+    """No "Band 7 speakers use them only occasionally" (removed by the
+    academic lead, 2026-10-27): fillers are natural at every band."""
     if not m.fillers:
         return "No fillers. Your answers flow cleanly."
     every = m.speaking_seconds / m.fillers
     first = f"About one every {max(1, round(every))} seconds." if every >= 1.5 else "More than one every two seconds."
-    band = max(6, min(9, math.floor(target)))
-    return f"{first} Band {band} speakers use them {'only occasionally' if band <= 7 else 'rarely'}."
+    return (f"{first} Fillers like “you know” or “well” are natural in fluent speech; only stopping to search "
+            "for a word or a structure lowers the band.")
 
 
 def _contour_path(contour: list[float]) -> str:
@@ -352,9 +351,9 @@ def voice_page(metrics: VoiceMetrics, items: list[SessionItem], pron: Assessment
         note = "No pauses over a second. Your speech keeps moving."
     top = max((n for _, n in m.filler_types), default=0)
     voice = {
-        "pace": {"wpm": m.wpm, "marker": round(marker, 1), "note": _pace_note(m.wpm, m.fillers_per_minute)},
+        "pace": {"wpm": m.wpm, "marker": round(marker, 1), "note": _pace_note(m.wpm)},
         "pauses": {"count": m.long_pauses, "note": note.strip()},
-        "fillers": {"count": m.fillers, "seconds": round(m.speaking_seconds), "note": _filler_note(m, target)},
+        "fillers": {"count": m.fillers, "seconds": round(m.speaking_seconds), "note": _filler_note(m)},
         "filler_bars": [
             {"name": name, "count": n, "pct": round(n / top * 100) if top else 0} for name, n in m.filler_types
         ],
@@ -456,6 +455,7 @@ class SpeakingReport:
     checklist: list[dict]
     disclaimer: str
     notes: list[str] = field(default_factory=list)
+    notices: list[str] = field(default_factory=list)  # shown to the student (answers split from one recording)
 
     def criteria_scores(self) -> dict[str, float]:
         return {DB_KEYS[c["key"]]: c["band"] for c in self.criteria}
@@ -506,6 +506,9 @@ def build_report(
     mistakes: list[_Mistake] = []
     seen = set()
     for m in fb.mistakes:
+        if m.criterion == "PRON" and pron is None:
+            notes.append(f"dropped pronunciation mistake {m.id} (pronunciation not measured): {m.wrong!r}")
+            continue
         if m.id in seen or m.id in dropped:
             notes.append(f"dropped mistake {m.id} ({'rejected by the check' if m.id in dropped else 'repeated id'}): {m.wrong!r}")
             continue
@@ -655,9 +658,17 @@ def build_report(
         m.n = n
     by_model_id = {m.model_id: m for m in mistakes if m.model_id is not None}
 
-    # Priorities.
+    # Priorities - never one about fillers (natural speech), never one about
+    # pronunciation when it was not measured (no "/th/" without evidence).
     priorities = []
-    for i, p in enumerate(fb.priorities[:PRIORITY_COUNT], 1):
+    kept_priorities = []
+    for p in fb.priorities[:PRIORITY_COUNT]:
+        about = f"{p.title} {p.rule}".lower()
+        if "filler" in about or ("PRON" in p.criteria and pron is None):
+            notes.append(f"dropped priority {p.title!r} (fillers, or pronunciation without a measurement)")
+            continue
+        kept_priorities.append(p)
+    for i, p in enumerate(kept_priorities, 1):
         tags = [c for c in dict.fromkeys(p.criteria) if c in TAGS]
         if p.voice_ref:
             ids, ref = [], VOICE_REF
@@ -696,7 +707,7 @@ def build_report(
             chip, cls = "Focus", "focus"
         note = getattr(fb.criterion_notes, key).strip()
         if key == "P" and pron is None:
-            note = note.rstrip(".") + ". (Scored from the transcript: no audio measurement this time.)"
+            note = P_NOT_MEASURED
         criteria.append({"key": key, "name": name, "band": band, "note": note, "chip": chip, "cls": cls})
 
     # Question cards.
