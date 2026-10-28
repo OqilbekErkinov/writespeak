@@ -265,7 +265,10 @@ the JUDGE RULES say.
 1. Overview - the biggest factor. Is there one? Is it accurate? Does it state the main trends or \
 differences (changes, extremes, contrasts) - not just static facts, or only the first and last steps \
 of a process? (A Band 6.5 anchor is error-free and precise, but its overview only gives a process's \
-start and end points.) Compare it with the sheet's expected overview. An overview that is limited - \
+start and end points.) Compare it with the sheet's expected overview AND its figures: the expected overview \
+is software's summary, so an overview the sheet's figures support is accurate even when it picks another main \
+feature or words it differently; it is inaccurate only when it contradicts the sheet's figures (an UNCERTAIN \
+figure never makes it inaccurate). An overview that is limited - \
 static, too general, only the start and end, or partly inaccurate - keeps Task Achievement at 6 at \
 most, however good the rest is.
 2. Key features: does the report cover the main ones? The sheet's key comparisons are a menu, not a \

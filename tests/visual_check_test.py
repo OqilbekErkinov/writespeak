@@ -112,8 +112,118 @@ def main() -> int:
     check("'the' in 'Go to the cinema' names nothing", got.get("2") == "derived", got)
 
     rulings()
+    islamov_93_95()
     print(f"\nFAILURES: {', '.join(fails) or 'none'}")
     return 1 if fails else 0
+
+
+def islamov_93_95() -> None:
+    """The three reports of 2026-10-28 (after the deploy): #94, a Band 9 line
+    graph report, got Task Achievement 6 for "missing Columbia as the biggest
+    rise" - the key features ranked only the series read for sure; #95's
+    "In 2011 ... the three countries rose to 6%" passed as Brazil's 2005 figure
+    (the year was out of reach), then as 18 - 13 and as "six years"; #93's
+    "4,300 mg among 12- 19- year-olds" was tied to 6-11, and a focused re-read
+    that agreed with the sheet and the student made the cell uncertain - the
+    model answer then wrote "the exact male value is not given"."""
+    import asyncio
+
+    from services.ai import visual_reading
+    from services.ai.sample_bank import data_problems
+    from services.ai.schemas import FocusedRead, VisualSheet
+    from services.ai.visual_check import data_check
+    from services.ai.visual_features import key_features
+
+    def sheet(kind, units, points, rows, notes=None, extra=None):
+        notes = notes or {}
+        values = [{"series": s, "point": p, "value": v, "text": "", "printed": prec == 0, "precision": prec,
+                   "status": "uncertain" if (s, p) in notes else "verified", "note": notes.get((s, p), "")}
+                  for s, cells in rows.items() for p, (v, prec) in cells.items()]
+        block = {"visual_type": kind, "title": "", "units": units, "time_points": points, "axis_labels": [],
+                 "legend": [{"label": s, "colour": ""} for s in rows], "values": values, "map_features": [],
+                 "overall": "", "process": None, "bars_drawn": []}
+        return {"blocks": [block], "readability": "clear", "readability_note": "", "unreadable": [], "checks": [],
+                "features": {"expected_overview": [], "key_comparisons": [], "suggested_grouping": ""}, "reads": 2,
+                **(extra or {})}
+
+    years = ["1940", "1970", "2000"]
+    oregon = sheet("line", "thousands of people", years, {
+        "Columbia": dict(zip(years, [(23.5, 12.5), (32, 12.5), (77.5, 12.5)])),
+        "Yamhill": dict(zip(years, [(29, 16.5), (38.5, 12.5), (85, 17.5)])),
+        "Washington": dict(zip(years, [(75, 12.5), (122.5, 12.5), (232.5, 20)]))},
+        notes={("Yamhill", "1940"): "the reads disagree: 25 vs 33", ("Yamhill", "2000"): "the reads disagree: 80 vs 90",
+               ("Washington", "2000"): "the reads disagree: 225 vs 240"})
+    feats = key_features(VisualSheet.model_validate(oregon))
+    check("#94: the biggest rise is ranked over every line, uncertain ends included (Washington, not Columbia)",
+          any("Washington" in c and "biggest rise" in c for c in feats.key_comparisons)
+          and not any("Columbia" in c and "biggest" in c for c in feats.key_comparisons), feats.key_comparisons)
+    check("...and the overview says all three rose", any("All of them rose" in o for o in feats.expected_overview),
+          feats.expected_overview)
+
+    t = ["2005", "2007", "2009", "2011", "2013", "2015"]
+    leisure = sheet("line", "%", t, {
+        "United States": dict(zip(t, [(v, 2.5) for v in (20, 22, 24, 26, 28, 30)])),
+        "Japan": dict(zip(t, [(v, 2.5) for v in (12, 14, 16, 18, 20, 22)])),
+        "Brazil": dict(zip(t, [(v, 2.5) for v in (8, 9, 11, 13, 15, 17)]))})
+    q95 = "The line graph shows the average household spending on leisure activities in three countries from 2005 to 2015."
+    got = matches("In 2011, average household spending leisure activities in each three countries United States, "
+                  "Brazil and Japan rose to 6%.", leisure, q95)
+    check("#95: 'In 2011, ... the three countries rose to 6%' is not found (2011 named at the sentence start; "
+          "a level is no difference; 6% is no count of six years)", got.get("6%") == "miss", got)
+    got = matches("In 2011, the gap between the United States and Japan reached 8%, and Brazil rose by 2 points by 2013.",
+                  leisure, q95)
+    check("...while a gap and a rise named as such are still worked out", got.get("8%") == "derived"
+          and got.get("2") == "derived", got)
+    got = matches("In 2005, Brazil spent about 8%, and the United States and Japan were higher, at about 20% and 12% "
+                  "respectively.", leisure, q95)
+    check("...and figures of the year a sentence opens with agree", set(got.values()) <= {"raw", "label"}, got)
+    houses = sheet("line", "$k", ["2006", "2014"], {"Country A": {"2006": (450, 60), "2014": (640, 60)}})
+    got = matches("This was followed by a decline in 2006, after which prices picked up again, rising to around "
+                  "$600,000 and remaining stable by 2014.", houses)
+    check("...but not when the time moves on ('a decline in 2006, after which ... by 2014', v1-p064)",
+          got.get("around $600,000") == "raw", got)
+    feats = key_features(VisualSheet.model_validate(leisure))
+    check("...and no 'biggest rise' for a tie (the US and Japan both +10)",
+          not any("biggest rise" in c for c in feats.key_comparisons), feats.key_comparisons)
+
+    groups = ["Under 6", "6-11", "12-19", "20-39", "40-60", "Over 60"]
+    salt = sheet("bar", "Milligrams", [], {
+        "Male": dict(zip(groups, [(v, 0) for v in (2200, 3600, 4300, 4500, 4000, 3700)])),
+        "Female": dict(zip(groups, [(v, 0) for v in (1300, 3000, 3000, 3100, 2900, 2500)])),
+        "Recommended salt intake (dashed red line)": {g: (2200, 0) for g in groups}},
+        notes={("Recommended salt intake (dashed red line)", g): "seen by one read only" for g in groups})
+    answer93 = ("Regarding males, salt consumption stood at 2,200 among children under 6. This figure then rose "
+                "considerably to 3,600 mg for those aged 6-11 and increased further to 4,300 mg among 12- 19- year-olds. "
+                "It reached a peak of 4,500 mg in the 20- 39 age group, before falling to 4,000 mg among 40-60- year- olds "
+                "and 3,700 mg among those over 60.")
+    q93 = "The chart shows the information about salt intake in the US in 2000."
+    got = matches(answer93, salt, q93)
+    check("#93: '4,300 mg among 12- 19- year-olds' (a range typed with spaces) agrees", got.get("4,300") == "raw", got)
+    feats = key_features(VisualSheet.model_validate(salt))
+    check("...a line only one read saw (the recommended level) is no category in the comparisons",
+          not any("Recommended" in c for c in feats.key_comparisons + feats.expected_overview)
+          and any("Male is higher than Female" in o for o in feats.expected_overview), feats)
+
+    async def agreeing(question, images, sentence, figure):
+        return FocusedRead(series="Male", point="Over 60", found=True, missing=False, value=3700, how="printed")
+    real = visual_reading.read_one
+    visual_reading.read_one = agreeing
+    try:
+        checked = asyncio.run(visual_reading.check_report_figures(answer93, salt, q93, [(b"x", "image/png")]))
+    finally:
+        visual_reading.read_one = real
+    cell = next(v for v in checked["blocks"][0]["values"] if v["series"] == "Male" and v["point"] == "Over 60")
+    check("...a focused re-read that agrees with the sheet and the student: the figure is correct and the cell "
+          "stays verified", checked["agreed_figures"] == ["3,700"] and cell["status"] == "verified"
+          and not unchecked_figures(answer93, checked, q93), (checked["agreed_figures"], cell))
+    check("...and the DATA CHECK lists no figure as not found", "Not found" not in data_check(answer93, checked, q93),
+          data_check(answer93, checked, q93))
+
+    problems = data_problems("For Over-60-year-olds females consumed 2,500 mg while the male bar exceeds this level "
+                             "(exact male value is not shown). Washington sustained its lead in the verified years.",
+                             q93, salt)
+    check("model answer: talk about the data ('is not shown', 'verified years') goes back for a rewrite",
+          any("never write about the data" in p for p in problems), problems)
 
 
 def rulings() -> None:

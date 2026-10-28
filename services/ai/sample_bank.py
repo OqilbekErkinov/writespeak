@@ -592,7 +592,9 @@ def _task_rules(task_type: str) -> str:
             "main trends, differences or stages, then select and compare the key features with "
             "accurate figures. Use ONLY the data shown in the question and the visual, reported "
             "accurately - with a DATA SHEET, only its VERIFIED figures, never an UNCERTAIN one - and give no "
-            "personal opinion. For a process or a cycle, describe the stages in natural language, as a writer "
+            "personal opinion. A category whose figure is UNCERTAIN is still described, in words and without a "
+            "number (\"well above the others\", \"slightly higher\"); the answer never says that a figure is "
+            "missing, not given, not shown, unclear or verified - it reads as a writer's report. For a process or a cycle, describe the stages in natural language, as a writer "
             "would (\"the bamboo is first planted in spring and harvested in autumn\"): never copy the diagram's "
             "labels in Title Case (\"running from Plant bamboo plants (Spring) to Finished clothing products\") "
             "and never invent names for its stages in capitals."
@@ -759,6 +761,11 @@ _GROUP_WORDS = re.compile(
     r"every\s+(?:other\s+)?(?:country|category|group|sector|type|age\s+group|region)|all\s+(?:three|four|five|six|"
     r"seven|eight|nine|ten)|both)\b", re.IGNORECASE)
 _NOT_NAMES = {"the", "and", "other", "others", "total", "average", "all", "per", "for", "of"}
+# A model answer talking about the data sheet instead of the visual.
+_META = re.compile(r"\b(?:(?:is|are|was|were) not (?:given|shown|stated|provided|labell?ed|visible|clear|known|available)|"
+                   r"exact (?:value|figure|number)s? (?:is|are|was|were) not|(?:un)?verified|data sheet|uncertain|"
+                   r"cannot be (?:read|seen|determined)|could not be (?:read|seen|determined)|unreadable|illegible)\b",
+                   re.IGNORECASE)
 
 
 def data_problems(text: str, question: str, visual: dict | None) -> list[str]:
@@ -777,6 +784,10 @@ def data_problems(text: str, question: str, visual: dict | None) -> list[str]:
     unsure = [t for t, m in matches if m == "raw-uncertain"]
     if unsure:
         out.append("these figures are UNCERTAIN on the DATA SHEET - leave them out: " + ", ".join(unsure[:6]))
+    meta = list(dict.fromkeys(m.group(0) for m in _META.finditer(text)))
+    if meta:  # #93: "the exact male value is not given here"; #94: "its lead in the verified years"
+        out.append("never write about the data itself being missing, unclear or verified - describe the visual as "
+                   "a writer would, an uncertain figure in words without a number: " + ", ".join(f'"{x}"' for x in meta[:4]))
     if any(b.get("visual_type") == "process" for b in visual.get("blocks", [])):
         labels = title_case_labels(text)
         if labels:

@@ -77,6 +77,15 @@ def _ord(n: int) -> str:
     return {1: "first", 2: "second", 3: "third", 4: "fourth", 5: "fifth"}.get(n, f"{n}th")
 
 
+INF = float("inf")
+
+
+def _bounded(v) -> bool:
+    """A figure whose error the sheet can bound: verified, or the two reads'
+    disagreement (its value and ± cover both)."""
+    return v.status == "verified" or (v.note or "").startswith(("the reads disagree", "confirmed"))
+
+
 class _Grid:
     """series x point -> (value, precision). `cell`: verified figures only;
     `loose`: every figure, the uncertain ones with a precision wide enough to
@@ -93,15 +102,26 @@ class _Grid:
         self.totals = {(s, p): (v.value, v.precision) for s, p, v in rows
                        if v.status == "verified" and (_TOTAL.search(s) or _TOTAL.search(p))}
         rows = [(s, p, v) for s, p, v in rows if not (_TOTAL.search(s) or _TOTAL.search(p))]
+        # A series only one read saw at all (#93's dashed "recommended intake" line) is no category to rank.
+        alone = {s for s, _, _ in rows} - {s for s, _, v in rows if v.note != "seen by one read only"}
+        rows = [(s, p, v) for s, p, v in rows if s not in alone]
         self.series = list(dict.fromkeys(s for s, _, _ in rows))
         self.points = _order([p for _, p, _ in rows])
         self.cell = {(s, p): (v.value, v.precision) for s, p, v in rows if v.status == "verified"}
-        self.loose = {(s, p): (v.value, v.precision) for s, p, v in rows}
+        # Every figure for rankings: one the reads disagree on with the precision
+        # that covers both; one no precision can bound (a look-alike legend, a
+        # missing bar, seen by one read) as INF - it blocks every claim it could change.
+        self.loose = {(s, p): (v.value, v.precision if _bounded(v) else INF) for s, p, v in rows}
         self.units = block.units
         self.uniform = bool(block.units) and not re.search(r"\band\b|axis|;|,|/", block.units, re.IGNORECASE)
 
     def get(self, s: str, p: str):
         return self.cell.get((s, p))
+
+    def show(self, s: str, p: str) -> str:
+        """A figure as the features print it: an uncertain one as "about"."""
+        v = self.loose[(s, p)]
+        return ("" if (s, p) in self.cell else "about ") + _v(v[0], self.units)
 
     @staticmethod
     def close(a, b) -> bool:
@@ -122,6 +142,14 @@ class _Grid:
         here.sort(key=lambda x: x[1][0], reverse=not lowest)
         first, second = here[0], here[1]
         return first[0] if not self.close(first[1], second[1]) else None
+
+
+def _clear_first(ranked: list, key, spread) -> bool:
+    """Is the first of `ranked` (sorted best first by `key`) ahead of the
+    second by more than both their precisions? An extreme is named only then:
+    the biggest of the series read for sure is no "biggest" (2026-10-28, #94:
+    "Columbia, the biggest rise" with Washington's uncertain +157 left out)."""
+    return len(ranked) == 1 or abs(key(ranked[0]) - key(ranked[1])) > spread(ranked[0]) + spread(ranked[1])
 
 
 def _time_like(block: SheetBlock, grid: _Grid) -> bool:
@@ -157,10 +185,9 @@ def _throughout(grid: _Grid, leaders: list[str | None], word: str) -> str:
 def _shape(grid: _Grid, s: str) -> str:
     """A line's turning point, when it has one clearly inside the period:
     'X fell from 17% (1988) to a low of 4% (2000), then rose to 6% (2008)'."""
-    seq = [(p, grid.get(s, p)) for p in grid.points if grid.get(s, p)]
+    seq = [(p, grid.loose[(s, p)]) for p in grid.points if (s, p) in grid.loose]
     if len(seq) < 3:
         return ""
-    u = grid.units
     (p0, a), (p1, b) = seq[0], seq[-1]
     for kind, pick in (("low", min), ("peak", max)):
         pt, v = pick(seq[1:-1], key=lambda x: x[1][0])
@@ -168,17 +195,17 @@ def _shape(grid: _Grid, s: str) -> str:
         margin = min(abs(v[0] - a[0]), abs(v[0] - b[0]))
         if dips and margin > v[1] + max(a[1], b[1]) + 0.5 and margin >= 0.1 * max(abs(a[0]), abs(b[0]), 1):
             first, then = ("fell", "rose") if kind == "low" else ("rose", "fell")
-            return (f"{s} {first} from {_v(a[0], u)} ({p0}) to a {kind} of {_v(v[0], u)} ({pt}), then {then} to "
-                    f"{_v(b[0], u)} ({p1}).")
+            return (f"{s} {first} from {grid.show(s, p0)} ({p0}) to a {kind} of {grid.show(s, pt)} ({pt}), then "
+                    f"{then} to {grid.show(s, p1)} ({p1}).")
     return ""
 
 
 def _time_features(block: SheetBlock, grid: _Grid, out: dict) -> None:
     u, p0, p1 = grid.units, grid.points[0], grid.points[-1]
-    rows = []  # (series, first, last, change) - verified ends only
+    rows = []  # (series, first, last, change) - every series, an uncertain end with its wide precision
     for s in grid.series:
-        a, b = grid.get(s, p0), grid.get(s, p1)
-        if a and b:
+        a, b = grid.loose.get((s, p0)), grid.loose.get((s, p1))
+        if a and b and INF not in (a[1], b[1]):
             rows.append((s, a, b, b[0] - a[0]))
     risers = [r for r in rows if not _stable(grid, r[1], r[2]) and r[3] > 0]
     fallers = [r for r in rows if not _stable(grid, r[1], r[2]) and r[3] < 0]
@@ -224,19 +251,40 @@ def _time_features(block: SheetBlock, grid: _Grid, out: dict) -> None:
             target += described[:3]
 
     cmp = out["comparisons"]
-    if risers:
-        r = max(risers, key=lambda r: r[3])
-        cmp.append(f"{r[0]}: {_v(r[1][0], u)} → {_v(r[2][0], u)} ({_delta(r[3], u)}), the biggest rise.")
-        rel = max(risers, key=lambda r: r[2][0] / r[1][0] if r[1][0] else 0)
-        if rel[0] != r[0] and rel[1][0] and rel[2][0] / rel[1][0] >= 1.5:
-            cmp.append(f"{rel[0]} grew the most in relative terms ({_v(rel[1][0], u)} → {_v(rel[2][0], u)}, "
-                       f"×{rel[2][0] / rel[1][0]:.1f}).")
-    if fallers:
-        r = min(fallers, key=lambda r: r[3])
-        rank0 = sorted(rows, key=lambda x: -x[1][0]).index(r) + 1
-        rank1 = sorted(rows, key=lambda x: -x[2][0]).index(r) + 1
-        moved = f"; it went from {_ord(rank0)} to {_ord(rank1)} place" if rank1 > rank0 else ""
-        cmp.append(f"{r[0]}: {_v(r[1][0], u)} → {_v(r[2][0], u)} ({_delta(r[3], u)}), the biggest fall{moved}.")
+
+    def ends(r) -> str:
+        return f"{grid.show(r[0], p0)} → {grid.show(r[0], p1)}"
+
+    def spread(r) -> float:
+        return r[1][1] + r[2][1]
+
+    def ratio(r, lo: bool = False, hi: bool = False) -> float:
+        a = r[1][0] + (r[1][1] if lo else -r[1][1] if hi else 0)
+        b = r[2][0] + (-r[2][1] if lo else r[2][1] if hi else 0)
+        return b / a if a > 0 else 0
+
+    # The biggest rise or fall is named only among all the series, and only
+    # when it is clearly the biggest; with one riser it is "the only rise".
+    if risers and complete:
+        ranked = sorted(risers, key=lambda r: -r[3])
+        r = ranked[0]
+        if _clear_first(ranked, lambda x: x[3], spread):
+            what = "the only rise" if len(ranked) == 1 and len(rows) > 1 else "the biggest rise"
+            cmp.append(f"{r[0]}: {ends(r)} ({_delta(r[3], u)}), {what}.")
+        by_ratio = sorted(risers, key=lambda x: -ratio(x))
+        rel = by_ratio[0]
+        clear = len(by_ratio) == 1 or ratio(rel, lo=True) > ratio(by_ratio[1], hi=True)
+        if rel[0] != r[0] and clear and ratio(rel) >= 1.5:
+            cmp.append(f"{rel[0]} grew the most in relative terms ({ends(rel)}, ×{ratio(rel):.1f}).")
+    if fallers and complete:
+        ranked = sorted(fallers, key=lambda r: r[3])
+        r = ranked[0]
+        if _clear_first(ranked, lambda x: x[3], spread):
+            rank0 = sorted(rows, key=lambda x: -x[1][0]).index(r) + 1
+            rank1 = sorted(rows, key=lambda x: -x[2][0]).index(r) + 1
+            moved = f"; it went from {_ord(rank0)} to {_ord(rank1)} place" if rank1 > rank0 else ""
+            what = "the only fall" if len(ranked) == 1 and len(rows) > 1 else "the biggest fall"
+            cmp.append(f"{r[0]}: {ends(r)} ({_delta(r[3], u)}), {what}{moved}.")
     # Overtakes: the first point where a pair's order flips (any point on a line graph).
     flips = []
     for i, a in enumerate(grid.series):
@@ -264,11 +312,11 @@ def _time_features(block: SheetBlock, grid: _Grid, out: dict) -> None:
         by_change.setdefault(round(r[3], 1), []).append(r)
     for change, group in by_change.items():
         if len(group) > 1:
-            figures = ", ".join(f"{_v(r[1][0], u)} → {_v(r[2][0], u)}" for r in group)
+            figures = ", ".join(ends(r) for r in group)
             cmp.append(f"{_and(r[0] for r in group)} both {'rose' if change > 0 else 'fell'} by "
                        f"{_delta(abs(change), u).lstrip('+')} ({figures}).")
     for r in stable:
-        cmp.append(f"{r[0]} almost unchanged ({_v(r[1][0], u)} → {_v(r[2][0], u)}).")
+        cmp.append(f"{r[0]} almost unchanged ({ends(r)}).")
     equal = []
     for p in (p0, p1):
         here = [(s, grid.get(s, p)) for s in grid.series if grid.get(s, p)]
@@ -279,16 +327,16 @@ def _time_features(block: SheetBlock, grid: _Grid, out: dict) -> None:
     cmp += equal[:2]
     if len(grid.points) >= 3:
         for s in grid.series:
-            seq = [(p, grid.get(s, p)) for p in grid.points if grid.get(s, p)]
+            seq = [(p, grid.loose[(s, p)]) for p in grid.points if (s, p) in grid.loose]
             if len(seq) < 3:
                 continue
             peak = max(seq, key=lambda x: x[1][0])
             trough = min(seq, key=lambda x: x[1][0])
             inner = [x[0] for x in seq[1:-1]]
             if peak[0] in inner and peak[1][0] - max(seq[0][1][0], seq[-1][1][0]) > peak[1][1] * 2 + 0.5:
-                cmp.append(f"{s} peaked at {_v(peak[1][0], u)} in {peak[0]}.")
+                cmp.append(f"{s} peaked at {grid.show(s, peak[0])} in {peak[0]}.")
             elif trough[0] in inner and min(seq[0][1][0], seq[-1][1][0]) - trough[1][0] > trough[1][1] * 2 + 0.5:
-                cmp.append(f"{s} hit its lowest point, {_v(trough[1][0], u)}, in {trough[0]}.")
+                cmp.append(f"{s} hit its lowest point, {grid.show(s, trough[0])}, in {trough[0]}.")
             moves = []
             for (_, a), (_, b) in zip(seq, seq[1:]):
                 if not grid.close(a, b):
@@ -299,8 +347,10 @@ def _time_features(block: SheetBlock, grid: _Grid, out: dict) -> None:
     if len(rows) == 2:
         a, b = rows
         g0, g1 = a[1][0] - b[1][0], a[2][0] - b[2][0]
-        trend = "reversed" if g0 * g1 < 0 else "widened" if abs(g1) > abs(g0) + 0.5 else \
-            "narrowed" if abs(g1) < abs(g0) - 0.5 else "stayed about the same"
+        slack = max(0.5, spread(a) + spread(b))
+        trend = "reversed" if g0 * g1 < 0 and min(abs(g0), abs(g1)) > slack / 2 else \
+            "widened" if abs(g1) > abs(g0) + slack else \
+            "narrowed" if abs(g1) < abs(g0) - slack else "stayed about the same"
         cmp.append(f"The gap between {a[0]} and {b[0]} {trend}: {_n(abs(g0))} in {p0}, {_n(abs(g1))} in {p1}.")
     shown = [v for (s, p), v in grid.totals.items() if p in (p0, p1) or s in (p0, p1)]
     if len(shown) == 2:
@@ -334,21 +384,31 @@ def _static_features(block: SheetBlock, grid: _Grid, out: dict) -> None:
                     out["comparisons"].append(f"{s}: " + " vs ".join(f"{p} {_n(v[0])}" for p, v in ranked) + ".")
             out["grouping"].append("feature by feature, comparing the items side by side")
             return
+        # Every figure counts for who is highest or lowest (an uncertain one with
+        # its wide precision); an extreme is named only when it is clear.
+        def spread(x) -> float:
+            return x[1][1]
+
         for p in grid.points:
-            here = [(s, grid.get(s, p)) for s in grid.series if grid.get(s, p)]
+            here = sorted(((s, grid.loose[(s, p)]) for s in grid.series if (s, p) in grid.loose),
+                          key=lambda x: -x[1][0])
             if len(here) >= 2:
-                hi, lo = max(here, key=lambda x: x[1][0]), min(here, key=lambda x: x[1][0])
-                if grid.equal(hi[1], lo[1]):
+                hi, lo = here[0], here[-1]
+                both_sure = (hi[0], p) in grid.cell and (lo[0], p) in grid.cell
+                if both_sure and grid.equal(hi[1], lo[1]):
                     out["comparisons"].append(f"{p}: {_and(s for s, _ in here)} equal ({_v(hi[1][0], u)}).")
-                elif not grid.close(hi[1], lo[1]):
-                    out["comparisons"].append(f"{p}: {hi[0]} {_v(hi[1][0], u)} vs {lo[0]} {_v(lo[1][0], u)}.")
+                elif not grid.close(hi[1], lo[1]) and _clear_first(here, lambda x: x[1][0], spread) \
+                        and _clear_first(here[::-1], lambda x: x[1][0], spread):
+                    out["comparisons"].append(f"{p}: {hi[0]} {grid.show(hi[0], p)} vs {lo[0]} {grid.show(lo[0], p)}.")
         if len(grid.series) == 2:
             a, b = grid.series
-            gaps = [(p, grid.get(a, p)[0] - grid.get(b, p)[0]) for p in grid.points if grid.get(a, p) and grid.get(b, p)]
+            gaps = [(p, grid.loose[(a, p)][0] - grid.loose[(b, p)][0], grid.loose[(a, p)][1] + grid.loose[(b, p)][1])
+                    for p in grid.points if (a, p) in grid.loose and (b, p) in grid.loose]
+            gaps = [g for g in gaps if g[2] != INF]
             if gaps:
-                more = [p for p, g in gaps if g > 0.5]
-                less = [p for p, g in gaps if g < -0.5]
-                same = [p for p, g in gaps if abs(g) <= 0.5]
+                more = [p for p, g, e in gaps if g > max(0.5, e)]
+                less = [p for p, g, e in gaps if g < -max(0.5, e)]
+                same = [p for p, g, e in gaps if abs(g) <= max(0.5, e)]
                 lead, trail, rest = (a, b, less) if len(more) >= len(less) else (b, a, more)
                 line = f"{lead} is higher than {trail} in {'every case' if not rest and not same else 'most cases'}"
                 if rest or same:
@@ -357,12 +417,16 @@ def _static_features(block: SheetBlock, grid: _Grid, out: dict) -> None:
                 big = max(gaps, key=lambda x: abs(x[1]))
                 out["comparisons"].append(f"The widest gap: {big[0]} ({_n(abs(big[1]))}).")
         for s in grid.series:
-            here = [(p, grid.get(s, p)) for p in grid.points if grid.get(s, p)]
+            here = sorted(((p, grid.loose[(s, p)]) for p in grid.points if (s, p) in grid.loose),
+                          key=lambda x: -x[1][0])
             if len(here) >= 2:
-                hi, lo = max(here, key=lambda x: x[1][0]), min(here, key=lambda x: x[1][0])
-                if not grid.close(hi[1], lo[1]):
-                    out["overview"].append(f"{s}: highest in {hi[0]} ({_v(hi[1][0], u)}), lowest in {lo[0]} "
-                                           f"({_v(lo[1][0], u)}).")
+                hi, lo = here[0], here[-1]
+                top, bottom = _clear_first(here, lambda x: x[1][0], spread), \
+                    _clear_first(here[::-1], lambda x: x[1][0], spread)
+                if not grid.close(hi[1], lo[1]) and (top or bottom):
+                    parts = ([f"highest in {hi[0]} ({grid.show(s, hi[0])})"] if top else []) + \
+                            ([f"lowest in {lo[0]} ({grid.show(s, lo[0])})"] if bottom else [])
+                    out["overview"].append(f"{s}: {', '.join(parts)}.")
         if not _pct(u):
             totals = [(p, sum(grid.get(s, p)[0] for s in grid.series)) for p in grid.points
                       if all(grid.get(s, p) for s in grid.series)]
@@ -373,22 +437,37 @@ def _static_features(block: SheetBlock, grid: _Grid, out: dict) -> None:
         out["grouping"].append("by category or by series, comparing them side by side")
         return
     # One set of figures: a ranking.
-    items = [(s if len(grid.series) > 1 else p, grid.get(s, p)) for s in grid.series for p in grid.points
-             if grid.get(s, p)]
+    items = [(s if len(grid.series) > 1 else p, grid.loose[(s, p)], grid.show(s, p))
+             for s in grid.series for p in grid.points if (s, p) in grid.loose]
+    unbounded = any(x[1][1] == INF for x in items)  # a slice that may be another's: no largest or smallest
+    items = [x for x in items if x[1][1] != INF]
     if len(items) < 2:
         return
     ranked = sorted(items, key=lambda x: -x[1][0])
-    out["overview"].append(f"{ranked[0][0]} is the largest ({_v(ranked[0][1][0], u)}) and {ranked[-1][0]} the "
-                           f"smallest ({_v(ranked[-1][1][0], u)}).")
-    if block.visual_type == "pie" and len(ranked) >= 3 and ranked[0][1][0] + ranked[1][1][0] > 50:
+
+    def spread(x) -> float:
+        return x[1][1]
+
+    top, bottom = _clear_first(ranked, lambda x: x[1][0], spread) and not unbounded, \
+        _clear_first(ranked[::-1], lambda x: x[1][0], spread) and not unbounded
+    if top and bottom:
+        out["overview"].append(f"{ranked[0][0]} is the largest ({ranked[0][2]}) and {ranked[-1][0]} the "
+                               f"smallest ({ranked[-1][2]}).")
+    elif top:
+        out["overview"].append(f"{ranked[0][0]} is the largest ({ranked[0][2]}).")
+    elif bottom:
+        out["overview"].append(f"{ranked[-1][0]} is the smallest ({ranked[-1][2]}).")
+    if block.visual_type == "pie" and len(ranked) >= 3 and ranked[0][1][0] + ranked[1][1][0] > 50 \
+            and _clear_first(ranked[1:], lambda x: x[1][0], spread):
         out["overview"].append(f"{ranked[0][0]} and {ranked[1][0]} together make up over half "
                                f"({_v(ranked[0][1][0] + ranked[1][1][0], u)}).")
-    out["comparisons"].append("Ranking: " + ", ".join(f"{s} {_v(v[0], u)}" for s, v in ranked) + ".")
-    if ranked[-1][1][0] > 0 and ranked[0][1][0] / ranked[-1][1][0] >= 2:
+    out["comparisons"].append("Ranking: " + ", ".join(f"{s} {shown}" for s, _, shown in ranked) + ".")
+    if top and bottom and ranked[-1][1][0] > 0 and ranked[0][1][0] / ranked[-1][1][0] >= 2:
         out["comparisons"].append(f"{ranked[0][0]} is about {ranked[0][1][0] / ranked[-1][1][0]:.0f} times "
                                   f"{ranked[-1][0]}.")
-    equal = [f"{s1} and {s2} are equal at {_v(a[0], u)}." for i, (s1, a) in enumerate(ranked)
-             for s2, b in ranked[i + 1:] if grid.equal(a, b)]
+    sure = [(s, v) for s, v, shown in ranked if not shown.startswith("about ")]  # equal only by sure figures
+    equal = [f"{s1} and {s2} are equal at {_v(a[0], u)}." for i, (s1, a) in enumerate(sure)
+             for s2, b in sure[i + 1:] if grid.equal(a, b)]
     out["comparisons"] += equal[:2]
     out["grouping"].append("the largest items first, then the smaller ones")
 
@@ -455,7 +534,7 @@ def key_features(sheet: VisualSheet) -> KeyFeatures:
             _process_features(block, part)
         else:
             grid = _Grid(block)
-            if grid.cell:
+            if grid.loose:
                 (_time_features if _time_like(block, grid) else _static_features)(block, grid, part)
         if not part["overview"] and block.overall:
             part["overview"].append(block.overall.rstrip(".") + ".")

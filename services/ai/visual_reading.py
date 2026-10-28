@@ -352,13 +352,16 @@ async def check_report_figures(answer: str, visual: dict, question: str,
     precision; otherwise the cell becomes UNCERTAIN and the student's figure
     stands. A figure that can't be tied to one cell is set aside
     ("accepted_figures"); one that two readings contradict is listed in
-    "confirmed_wrong". Years and ratio words are not re-read."""
-    from services.ai.visual_check import figure_agrees, figures, find_cell, match_figure
+    "confirmed_wrong"; one the sheet, the re-read and the student agree on is
+    correct ("agreed_figures"). Years and ratio words are not re-read."""
+    from services.ai.visual_check import figure_agrees, figures, find_cell, is_difference, match_figure
 
     visual = copy.deepcopy(visual)
-    accepted, confirmed, reads = [], [], 0
+    accepted, confirmed, agreed, reads = [], [], [], 0
     for fig in figures(answer):
-        if fig.get("ratio") or fig["year"] or match_figure(fig, visual, question) != "miss":
+        # a change or a gap ("rose by 2 points") is no figure a reading shows: it stays
+        # "not found" for the judge to work out from the sheet, never re-read as a level
+        if fig.get("ratio") or fig["year"] or is_difference(fig) or match_figure(fig, visual, question) != "miss":
             continue
         if reads >= FOCUS_MAX or not images:
             accepted.append(fig["text"])
@@ -372,13 +375,19 @@ async def check_report_figures(answer: str, visual: dict, question: str,
         # legend patterns, a missing bar, slices off 100%) never is.
         structural = cell is not None and cell.get("status") == "uncertain" \
             and not str(cell.get("note", "")).startswith("the reads disagree")
+        sheet_agrees = value is not None and cell is not None and cell.get("value") is not None \
+            and abs(value - cell["value"]) <= max(cell.get("precision") or 0.0, 0.5)
         if value is None or cell is None or cell.get("value") is None or structural:
             accepted.append(fig["text"])  # nothing for the sheet to second: the student's figure stands
-        elif abs(value - cell["value"]) <= max(cell.get("precision") or 0.0, 0.5) \
-                and not figure_agrees(fig, value, cell.get("precision") or 0.0):
+        elif sheet_agrees and figure_agrees(fig, cell["value"], cell.get("precision") or 0.0):
+            # the sheet, the re-read and the student all agree: the matcher just
+            # couldn't tie the figure to its cell (#93: "4,300 mg among 12- 19-
+            # year-olds") - a correct figure, and the cell stays as sure as it was
+            agreed.append(fig["text"])
+        elif sheet_agrees and not figure_agrees(fig, value, cell.get("precision") or 0.0):
             cell["status"], cell["note"] = "verified", f"confirmed by a focused re-read ({value:g})"
             confirmed.append(fig["text"])
-        else:  # the re-read disagrees with the sheet, or agrees with the student
+        else:  # the re-read disagrees with the sheet
             cell["status"], cell["note"] = "uncertain", f"a focused re-read gave {value:g}"
             accepted.append(fig["text"])
             if visual.get("readability") == "clear":
@@ -387,6 +396,7 @@ async def check_report_figures(answer: str, visual: dict, question: str,
                     got.point if got else "?", value, cell.get("value") if cell else None)
     visual["accepted_figures"] = accepted
     visual["confirmed_wrong"] = confirmed
+    visual["agreed_figures"] = agreed
     return visual
 
 

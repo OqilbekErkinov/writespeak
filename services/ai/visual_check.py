@@ -57,10 +57,10 @@ def figures(text: str) -> list[dict]:
     after another 15 years" the second figure is not Luxembourg's 15-year
     salary (the 2026-10-27 A8 run on the books' Band 8-9 reports)."""
     def label_like(m: re.Match) -> bool:
-        """A year, or a number of a range ("16-24", "25-44"): it names a
+        """A year, or a number of a range ("16-24", "25-44", "65+"): it names a
         category, so the figure after it still belongs to it."""
         raw = m.group(0).strip()
-        if re.fullmatch(r"(1[89]|20)\d\d", raw):
+        if re.fullmatch(r"(1[89]|20)\d\d", raw) or re.fullmatch(r"\d{1,3}", raw) and text[m.end():m.end() + 1] == "+":
             return True
         return bool(re.match(r"\s?[-–]\d", text[m.end():m.end() + 2]) or re.search(r"\d[-–]$", text[max(0, m.start() - 2):m.start()]))
 
@@ -85,11 +85,22 @@ def figures(text: str) -> list[dict]:
         # its clause, and the few after it ("5,192 international students")
         clause = re.split(r"[.;:!?]\s|,\s(?:while|whereas|but|and)\s", text[since_last(m.start(), 90):m.start()])[-1]
         # ...and the words just after it: three at most - "after 9 years they would reach the maximum"
-        # names the years, not the maximum salary - and a year as the fourth ("by the year 2000")
-        words = re.split(r"[,.;:()]", text[m.end():m.end() + 40])[0].split()
+        # names the years, not the maximum salary - and a year as the fourth ("by the year 2000");
+        # a range typed with spaces is one word ("4,300 mg among 12- 19- year-olds", #93)
+        words = re.split(r"[,.;:()]", re.sub(r"(\d)\s*([-–])\s+(?=\d)", r"\1\2", text[m.end():m.end() + 40]))[0].split()
         after = " ".join(words[:4] if len(words) > 3 and re.fullmatch(r"(1[89]|20)\d\d", words[3]) else words[:3])
+        # the sentence back to its start, but not past the figure before: a year
+        # it opens with is the figure's ("In 2011, ... the three countries rose to 6%", #95)
+        sentence_start = max((x.end() for x in re.finditer(r"[.!?]\s+|\n", text[:m.start()])), default=0)
+        lead = text[max(sentence_start, since_last(m.start(), m.start())):m.start()]
+        rest = re.split(r"[.!?](?:\s|$)|\n", text[m.end():])[0]
+        if _YEAR_IN.search(rest) or _TIME_SHIFT.search(_YEAR_IN.split(lead)[-1]):
+            # not when another year follows ("... rising to $600,000 and remaining stable by 2014")
+            # or the time moves on after it ("a decline in 2006, after which prices rose to ...", v1-p064)
+            lead = ""
         out.append({"text": m.group(0).strip(), "value": value, "approx": bool(m.group("approx")), "year": year,
                     "pct": "%" in suffix or "cent" in suffix, "before": f"{clause} {after}",
+                    "lead": lead, "after": after, "prev": " ".join(clause.split()[-6:]), "clause": clause,
                     # a year or an age group names the figure only from right next to it: "in 1992, after
                     # which ... reaching a low of 5% by the year 2000" is 2000's figure
                     "tight": " ".join(clause.split()[-6:] + after.split()),
@@ -182,6 +193,23 @@ def _named_among(labels: set[str], near: str, tight: str | None = None) -> set[s
 
 
 _VALUE_TICK = re.compile(r"[$£€]?\s*(?!(?:1[89]|20)\d\d\b)\d{1,3}(?:,\d{3})*(?:\.\d+)?\s*%?\s*[kKmM]?")
+_YEAR = re.compile(r"(1[89]|20)\d\d")
+_YEAR_IN = re.compile(r"\b(?:1[89]|20)\d\d\b")
+_TIME_SHIFT = re.compile(r"\b(?:after|afterwards|then|later|subsequently|thereafter|following|until|till|before|since|"
+                         r"next|eventually|finally|by the end)\b", re.IGNORECASE)
+# A figure given as a level ("rose to", "stood at", "reached", "was") - unless a
+# difference is named before it ("the gap reached") or after it ("6% higher").
+_LEVEL = re.compile(r"\b(?:to|at|reach(?:ed|ing|es)?|hit(?:s|ting)?|stood|was|were|is|are|from)(?:\s+(?:about|around|"
+                    r"approximately|roughly|nearly|almost|just|over|under|some|only|exactly|precisely|merely))*\s*$",
+                    re.IGNORECASE)
+_DIFF_BEFORE = re.compile(r"\b(?:gap|difference|margin|increase|rise|growth|drop|fall|decline|decrease|jump|gain|loss|"
+                          r"change|lead|surplus|deficit)s?\b(?:\s+(?:in|between|for|among)\b[^,;.]{0,50}?)?"
+                          r"(?:\s+(?:of|was|were|is|are|stood at|reached|hit|amounted to|came to|totall?ed|widened to|"
+                          r"narrowed to))?(?:\s+(?:about|around|approximately|roughly|nearly|almost|just|over|under|some|"
+                          r"only))*\s*$", re.IGNORECASE)  # the difference the figure is: "the gap between X and Y reached"
+_DIFF_AFTER = re.compile(r"\s*(?:more|less|fewer|higher|lower|greater|smaller|bigger|larger|points?|percentage points?|"
+                         r"times|above|below|ahead|behind)\b", re.IGNORECASE)
+_SUM = re.compile(r"\b(?:together|combined|total|altogether|in all|sum)\b", re.IGNORECASE)
 
 
 def _numbers_in(text: str) -> set[float]:
@@ -248,12 +276,21 @@ def match_figure(fig: dict, reading: dict | None, question: str) -> str:
     # is not "found". With no category named nearby, any figure counts.
     near = _key(fig.get("before", fig.get("context", "")))
     tight = _key(fig.get("tight", fig.get("before", "")))
-    uncertain_hit = False
+    # A level is no difference: "rose to 6%", "stood at 6%" give a figure, not the gap
+    # between two others (#95's "6%" passed as 18 - 13); "a gap of", "rose by",
+    # "6% higher than" do - and a change is worked out from its category's own figures.
+    change = is_difference(fig)
+    level = not change and _LEVEL.search(fig.get("prev", ""))
+    uncertain_hit = unreadable = False
     pools = []  # per visual: (the figures this one may be, whether a category was named)
     for b in blocks:
         vals = _values(b)
         series_named = _named_among({v["series"] for v in vals}, near, tight)
         points_named = _named_among({v["point"] for v in vals}, near, tight)
+        if not points_named and fig.get("lead"):
+            # a year the sentence opens with, no figure in between: "In 2011, ... rose to 6%" is 2011's
+            years = {v["point"] for v in vals if _YEAR.fullmatch(v["point"].strip())}
+            points_named = _named_among(years, _key(fig["lead"]), _key(fig["lead"]))
         both = [v for v in vals if v["series"] in series_named and v["point"] in points_named]
         if both:  # "doctors in the US": that cell only (a sum of two other cells is no match)
             named = both
@@ -261,24 +298,32 @@ def match_figure(fig: dict, reading: dict | None, question: str) -> str:
             named = [v for v in vals if v["series"] in series_named]
         else:
             named = [v for v in vals if v["point"] in points_named]
-        pools.append((named or vals, bool(named)))
+        # the cell it names can't be checked at all (a missing bar, look-alike legend patterns -
+        # not just two reads apart): never a mistake (#54's "65+ started at 0%")
+        unreadable |= bool(both) and all(_structural(v) for v in both)
+        wide = [v for v in vals if v["series"] in series_named or v["point"] in points_named]
+        pools.append((wide if change and wide else named or vals, bool(named)))
         for v in named or vals:
             for s in _SCALE_TRIES:
                 if abs(f - v["value"] * s) <= tol(v["value"], v["precision"]) * s:
                     if v["status"] == "verified":
                         return "raw"
                     uncertain_hit = True
-    if uncertain_hit:
+    if uncertain_hit or unreadable:
         return "raw-uncertain"
+    summed = _SUM.search(f"{fig.get('prev', '')} {fig.get('after', '')}")
     for vals, named in pools:  # differences, sums, ratios and changes of two figures in one visual
         for i, a in enumerate(vals):
             for c in vals[i + 1:]:
                 if not (a["series"] == c["series"] or a["point"] == c["point"]):
                     continue
                 x, y, prec = a["value"], c["value"], a["precision"] + c["precision"]
-                cands = [abs(x - y), x + y]
-                if min(x, y) > 0:
-                    cands += [max(x, y) / min(x, y), abs(x - y) / min(x, y) * 100, abs(x - y) / max(x, y) * 100]
+                if level:  # a level: only a sum two figures make together ("together reached 31%")
+                    cands = [x + y] if summed else []
+                else:
+                    cands = [abs(x - y), x + y]
+                    if min(x, y) > 0:
+                        cands += [max(x, y) / min(x, y), abs(x - y) / min(x, y) * 100, abs(x - y) / max(x, y) * 100]
                 for cand in cands:
                     for s in _SCALE_TRIES:
                         if abs(f - cand * s) <= max(tol(cand, prec), 0.15 * abs(cand) if fig["approx"] else 0) * s:
@@ -290,9 +335,22 @@ def match_figure(fig: dict, reading: dict | None, question: str) -> str:
             totals[v["point"]] += v["value"]
         if any(abs(f - t * s) <= max(1.0, 0.02 * t) * s for t in totals.values() for s in _SCALE_TRIES):
             return "derived"
-    if f in counts or f in labels:
+    if not fig["pct"] and (f in counts or f in labels):  # "six age groups" - "6%" is no count (#95: six years)
         return "label"
     return "miss"
+
+
+def is_difference(fig: dict) -> bool:
+    """Does the report give this figure as a difference or a change ("a gap
+    of", "rose by", "6% higher than") rather than as a level?"""
+    return bool(_DIFF_BEFORE.search(fig.get("clause", fig.get("prev", ""))) or _DIFF_AFTER.match(fig.get("after", ""))
+                or re.search(r"\bby$", fig.get("prev", "").strip(), re.IGNORECASE))
+
+
+def _structural(v: dict) -> bool:
+    """An uncertain figure no precision can bound - a code check's (a missing
+    bar, look-alike legend patterns), not the two reads' disagreement."""
+    return v.get("status") == "uncertain" and not str(v.get("note", "")).startswith(("the reads disagree", "confirmed"))
 
 
 def _match_ratio(fig: dict, blocks: list[dict]) -> str:
@@ -366,8 +424,9 @@ def unchecked_figures(answer: str, reading: dict | None, question: str) -> list[
     if not reading:
         return []
     accepted = set(reading.get("accepted_figures") or [])
-    return [f["text"] for f in figures(answer)
-            if f["text"] in accepted or _names_unread(f, reading) or match_figure(f, reading, question) == "raw-uncertain"]
+    agreed = set(reading.get("agreed_figures") or [])
+    return [f["text"] for f in figures(answer) if f["text"] not in agreed and (
+        f["text"] in accepted or _names_unread(f, reading) or match_figure(f, reading, question) == "raw-uncertain")]
 
 
 def _names_unread(fig: dict, reading: dict) -> bool:
@@ -409,7 +468,8 @@ def protected_mistake(wrong: str, correct: str, why: str, reading: dict | None, 
     figs = figures(wrong)
     if any(f["text"] in unchecked for f in figs):
         return True
-    statuses = [match_figure(f, reading, question) for f in figs]
+    agreed = set(reading.get("agreed_figures") or [])  # the sheet, a focused re-read and the student agree
+    statuses = ["raw" if f["text"] in agreed else match_figure(f, reading, question) for f in figs]
     if figs and all(s in ("raw", "derived", "label") for s in statuses):
         if {f["value"] for f in figures(correct)} - {f["value"] for f in figs}:
             return True
@@ -479,8 +539,10 @@ def data_check(answer: str, reading: dict | None, question: str) -> str:
                 "illustrated with data.")
     accepted = set(reading.get("accepted_figures") or [])
     confirmed = set(reading.get("confirmed_wrong") or [])
+    agreed = set(reading.get("agreed_figures") or [])
     for fig in figs:
-        fig["match"] = "accepted" if fig["text"] in accepted else match_figure(fig, reading, question)
+        fig["match"] = "accepted" if fig["text"] in accepted else "raw" if fig["text"] in agreed \
+            else match_figure(fig, reading, question)
     ok = [f for f in figs if f["match"] in ("raw", "derived", "label")]
     unsure = [f for f in figs if f["match"] in ("raw-uncertain", "accepted")]
     wrong = [f for f in figs if f["match"] == "miss" and f["text"] in confirmed]
