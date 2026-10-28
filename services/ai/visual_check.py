@@ -14,6 +14,7 @@ code checks the books in scripts/task1_extraction_test.py.
 """
 from __future__ import annotations
 
+import difflib
 import re
 from collections import defaultdict
 
@@ -55,7 +56,16 @@ def figures(text: str) -> list[dict]:
     figure before it: in "Luxembourg would earn $112,000, rising to $139,000
     after another 15 years" the second figure is not Luxembourg's 15-year
     salary (the 2026-10-27 A8 run on the books' Band 8-9 reports)."""
-    ends = sorted(m.end() for r in (FIG_RE, FRACTION_RE) for m in r.finditer(text))
+    def label_like(m: re.Match) -> bool:
+        """A year, or a number of a range ("16-24", "25-44"): it names a
+        category, so the figure after it still belongs to it."""
+        raw = m.group(0).strip()
+        if re.fullmatch(r"(1[89]|20)\d\d", raw):
+            return True
+        return bool(re.match(r"\s?[-–]\d", text[m.end():m.end() + 2]) or re.search(r"\d[-–]$", text[max(0, m.start() - 2):m.start()]))
+
+    ends = sorted(m.end() for r in (FIG_RE, FRACTION_RE) for m in r.finditer(text)
+                  if r is FRACTION_RE or not label_like(m))
 
     def since_last(start: int, reach: int) -> int:
         before = [e for e in ends if e <= start]
@@ -75,18 +85,31 @@ def figures(text: str) -> list[dict]:
         # its clause, and the few after it ("5,192 international students")
         clause = re.split(r"[.;:!?]\s|,\s(?:while|whereas|but|and)\s", text[since_last(m.start(), 90):m.start()])[-1]
         # ...and the words just after it: three at most - "after 9 years they would reach the maximum"
-        # names the years, not the maximum salary
-        after = " ".join(re.split(r"[,.;:()]|\d", text[m.end():m.end() + 35])[0].split()[:3])
+        # names the years, not the maximum salary - and a year as the fourth ("by the year 2000")
+        words = re.split(r"[,.;:()]", text[m.end():m.end() + 40])[0].split()
+        after = " ".join(words[:4] if len(words) > 3 and re.fullmatch(r"(1[89]|20)\d\d", words[3]) else words[:3])
         out.append({"text": m.group(0).strip(), "value": value, "approx": bool(m.group("approx")), "year": year,
                     "pct": "%" in suffix or "cent" in suffix, "before": f"{clause} {after}",
-                    "context": text[max(0, m.start() - 40):m.end() + 25].replace("\n", " ")})
+                    # a year or an age group names the figure only from right next to it: "in 1992, after
+                    # which ... reaching a low of 5% by the year 2000" is 2000's figure
+                    "tight": " ".join(clause.split()[-6:] + after.split()),
+                    "context": text[max(0, m.start() - 40):m.end() + 25].replace("\n", " "),
+                    "sentence": _sentence(text, m.start())})
     for m in FRACTION_RE.finditer(text):
         clause = re.split(r"[.;:!?]\s", text[since_last(m.start(), 120):m.start()])[-1]
         after = re.split(r"[.;:()]", text[m.end():m.end() + 60])[0]
         out.append({"text": m.group(0).strip(), "value": _ratio(m.group("word")), "approx": bool(m.group("approx")),
                     "year": False, "pct": False, "ratio": True, "before": f"{clause} {after}",
-                    "context": text[max(0, m.start() - 40):m.end() + 25].replace("\n", " ")})
+                    "context": text[max(0, m.start() - 40):m.end() + 25].replace("\n", " "),
+                    "sentence": _sentence(text, m.start())})
     return out
+
+
+def _sentence(text: str, at: int) -> str:
+    """The sentence around position `at`."""
+    start = max((m.end() for m in re.finditer(r"[.!?]\s+|\n", text[:at])), default=0)
+    end = re.search(r"[.!?](?=\s|$)|\n", text[at:])
+    return text[start:at + (end.end() if end else len(text) - at)].strip()
 
 
 def _key(text: str) -> str:
@@ -118,13 +141,15 @@ def _said(stem: str, near: str) -> bool:
                for t in (_stem(w) for w in near.split()))
 
 
-def _named(label: str, near: str) -> bool:
+def _named(label: str, near: str, tight: str | None = None) -> bool:
     """Is the category `label` named in `near` (already _key'ed)? Its first
     word is enough ("Health Care" in "health care volunteers"; "Environmental"
     in "environmental organisations") - its first word that is not a
     stopword or a measure ("the" named "Go to the cinema" in every sentence;
     "years" named "Years taken to reach the top salary"); a label of measures
     only needs them all."""
+    if not _words(label) and re.search(r"\d", label):  # a year or an age group: "2004", "16-24"
+        return all(f" {n} " in (tight or near) for n in re.findall(r"\d+", label))
     key = _key_word(label)
     if key is not None:
         return _said(_stem(key), near)
@@ -145,7 +170,7 @@ def _key_word(label: str) -> str | None:
     return next((w for w in _words(label) if w not in _GENERIC), None)
 
 
-def _named_among(labels: set[str], near: str) -> set[str]:
+def _named_among(labels: set[str], near: str, tight: str | None = None) -> set[str]:
     """The labels named in `near`. Labels that share their naming word
     ("Country A", "Country B") are named only in full ("country c")."""
     keys = {label: _key_word(label) for label in labels}
@@ -153,7 +178,10 @@ def _named_among(labels: set[str], near: str) -> set[str]:
     for k in keys.values():
         counts[k] += 1
     return {label for label, k in keys.items()
-            if (_key(label) in near if k is not None and counts[k] > 1 else _named(label, near))}
+            if (_key(label) in near if k is not None and counts[k] > 1 else _named(label, near, tight))}
+
+
+_VALUE_TICK = re.compile(r"[$£€]?\s*(?!(?:1[89]|20)\d\d\b)\d{1,3}(?:,\d{3})*(?:\.\d+)?\s*%?\s*[kKmM]?")
 
 
 def _numbers_in(text: str) -> set[float]:
@@ -185,7 +213,9 @@ def match_figure(fig: dict, reading: dict | None, question: str) -> str:
     a VisualSheet as a dict (model_dump)."""
     blocks = reading.get("blocks", []) if reading else []
     label_text = " ".join([question] + [
-        " ".join([b.get("title", ""), " ".join(b.get("time_points", [])), " ".join(b.get("axis_labels", [])),
+        # an axis's value ticks (0, 20 ... 100) are no labels: "reached 100% in 2004" is a figure to check
+        " ".join([b.get("title", ""), " ".join(b.get("time_points", [])),
+                  " ".join(x for x in b.get("axis_labels", []) if not _VALUE_TICK.fullmatch(x.strip())),
                   " ".join(e["label"] for e in b.get("legend", []))]
                  + [f"{v['series']} {v['point']} {v.get('text', '')}" for v in b.get("values", [])]
                  + [f"{f['name']} {f['location']} " + " ".join(s["time"] + " " + s["detail"] for s in f["states"])
@@ -217,12 +247,13 @@ def match_figure(fig: dict, reading: dict | None, question: str) -> str:
     # from 15% to 25%"): a wrong figure that happens to be another category's
     # is not "found". With no category named nearby, any figure counts.
     near = _key(fig.get("before", fig.get("context", "")))
+    tight = _key(fig.get("tight", fig.get("before", "")))
     uncertain_hit = False
     pools = []  # per visual: (the figures this one may be, whether a category was named)
     for b in blocks:
         vals = _values(b)
-        series_named = _named_among({v["series"] for v in vals}, near)
-        points_named = _named_among({v["point"] for v in vals}, near)
+        series_named = _named_among({v["series"] for v in vals}, near, tight)
+        points_named = _named_among({v["point"] for v in vals}, near, tight)
         both = [v for v in vals if v["series"] in series_named and v["point"] in points_named]
         if both:  # "doctors in the US": that cell only (a sum of two other cells is no match)
             named = both
@@ -292,6 +323,151 @@ def _match_ratio(fig: dict, blocks: list[dict]) -> str:
     return "miss"
 
 
+def find_cell(reading: dict | None, series: str, point: str) -> dict | None:
+    """The sheet's figure for a series and point named the way the visual
+    labels them (a letter or two misread allowed); None when the sheet has
+    no such figure."""
+    def same(a: str, b: str) -> bool:
+        x, y = re.sub(r"[^a-z0-9]+", "", (a or "").lower()), re.sub(r"[^a-z0-9]+", "", (b or "").lower())
+        return x == y or (bool(x) and bool(y) and difflib.SequenceMatcher(None, x, y).ratio() >= 0.8)
+
+    for b in (reading or {}).get("blocks", []):
+        for v in b.get("values", []):
+            if same(v.get("series"), series) and same(v.get("point"), point):
+                return v
+            if same(v.get("series"), point) and same(v.get("point"), series):  # named the other way round
+                return v
+    return None
+
+
+def figure_agrees(fig: dict, value: float, precision: float) -> bool:
+    """Is the student's figure this value, within its precision (and the
+    leeway "about" gives)?"""
+    base = max(precision, 0.5, 0.01 * abs(value))
+    tol = max(base, 0.1 * abs(value), 1.0) if fig["approx"] else base
+    return any(abs(fig["value"] - value * s) <= tol * s for s in _SCALE_TRIES)
+
+
+def uncertain_labels(reading: dict | None) -> set[str]:
+    """The categories (series and points) with a figure the sheet can't
+    confirm - a Task mistake about them is never kept."""
+    out = set()
+    for b in (reading or {}).get("blocks", []):
+        for v in b.get("values", []):
+            if v.get("status") == "uncertain":
+                out |= {x for x in (v.get("series"), v.get("point")) if x}
+    return out
+
+
+def unchecked_figures(answer: str, reading: dict | None, question: str) -> list[str]:
+    """The report's figures the sheet can't check: near an UNCERTAIN figure,
+    or set aside by the focused re-reads (reading["accepted_figures"]) -
+    each of them is never a mistake, and the report says so."""
+    if not reading:
+        return []
+    accepted = set(reading.get("accepted_figures") or [])
+    return [f["text"] for f in figures(answer)
+            if f["text"] in accepted or _names_unread(f, reading) or match_figure(f, reading, question) == "raw-uncertain"]
+
+
+def _names_unread(fig: dict, reading: dict) -> bool:
+    """Does the figure name a series and point the sheet couldn't read (a
+    cropped bar, a cell with no value)? Its figure is then not checked, even
+    when it happens to equal some difference of other figures."""
+    near, tight = _key(fig.get("before", "")), _key(fig.get("tight", fig.get("before", "")))
+    for b in reading.get("blocks", []):
+        vals = b.get("values", [])
+        series = _named_among({v["series"] for v in vals}, near, tight)
+        points = _named_among({v["point"] for v in vals}, near, tight)
+        if any(v.get("value") is None and not v.get("text") and v["series"] in series and v["point"] in points
+               for v in vals):
+            return True
+    return False
+
+
+def _loosely(label: str, text: str) -> bool:
+    """A category mentioned in any of its own words - a paraphrase counts
+    ("proximity to home" for "Close to parental home")."""
+    if not label:
+        return True
+    if not _words(label) and re.search(r"\d", label):
+        return all(f" {n} " in text for n in re.findall(r"\d+", label))
+    words = [w for w in _words(label) if w not in _GENERIC and len(w) >= 4]
+    return any(_said(_stem(w), text) for w in words) if words else _named(label, text)
+
+
+def protected_mistake(wrong: str, correct: str, why: str, reading: dict | None, question: str,
+                      unchecked: set[str]) -> bool:
+    """A Task (data) mistake code never keeps (the academic lead, 2026-10-27):
+    it is about a figure the sheet can't check (`unchecked`: near an
+    UNCERTAIN figure or set aside by a focused re-read); it "corrects" figures
+    the sheet confirms; or it is about a category with an UNCERTAIN figure
+    (#56: two look-alike legend patterns). A figure two readings agree is
+    wrong ("confirmed_wrong") is never protected."""
+    if not reading:
+        return False
+    figs = figures(wrong)
+    if any(f["text"] in unchecked for f in figs):
+        return True
+    statuses = [match_figure(f, reading, question) for f in figs]
+    if figs and all(s in ("raw", "derived", "label") for s in statuses):
+        if {f["value"] for f in figures(correct)} - {f["value"] for f in figs}:
+            return True
+    text = _key(f"{wrong} {correct} {why}")
+    for b in reading.get("blocks", []):
+        for v in b.get("values", []):
+            if v.get("status") == "uncertain" and _loosely(v.get("series", ""), text) \
+                    and _loosely(v.get("point", ""), text):
+                return True
+    return False
+
+
+_NOT_DATA = re.compile(r"\b(process|life cycle|cycle of|how .{0,40} (?:is|are) (?:made|produced|manufactured|built|"
+                       r"recycled|formed|generated|created)|stages?|flow ?chart|maps?|plans?|layout)\b", re.IGNORECASE)
+_DATA = re.compile(r"\b(chart|graph|table|percentage|proportion|figures?|number of|amount of)\b", re.IGNORECASE)
+
+
+def visual_kind(question: str, reading: dict | None = None) -> str | None:
+    """line, bar, table, pie, process, cycle, map or mixed - from the sheet,
+    else from the question's wording; None when it can't be told. Picks the
+    Band 9 anchor of the same kind (services/ai/writing_anchors.py)."""
+    blocks = (reading or {}).get("blocks", [])
+    kinds = {b.get("visual_type") for b in blocks} - {"other", None}
+    if len(kinds) > 1:
+        return "mixed"
+    if kinds:
+        kind = kinds.pop()
+        if kind == "process":
+            cyclical = any((b.get("process") or {}).get("kind") == "cyclical" for b in blocks)
+            return "cycle" if cyclical or re.search(r"\bcycle\b", question, re.IGNORECASE) else "process"
+        return kind
+    q = question.lower()
+    if re.search(r"\bcycle\b", q):
+        return "cycle"
+    if re.search(r"\b(process|flow ?chart|is made|are made|produced|manufactured)\b", q):
+        return "process"
+    if re.search(r"\b(maps?|plans?)\b", q):
+        return "map"
+    if "table" in q and re.search(r"\b(chart|graph)\b", q):
+        return "mixed"
+    for word, kind in (("pie", "pie"), ("table", "table"), ("line graph", "line"), ("bar", "bar")):
+        if word in q:
+            return kind
+    return None
+
+
+def data_visual(question: str, reading: dict | None = None) -> bool:
+    """Is it a visual of figures (line, bar, pie, table, mixed) - which
+    needs comparisons - rather than a process, cycle or map? From the sheet
+    when there is one, else from the question's wording."""
+    kinds = {b.get("visual_type") for b in (reading or {}).get("blocks", [])}
+    if kinds:
+        return bool(kinds & {"line", "bar", "pie", "table"})
+    if _NOT_DATA.search(question) and not _DATA.search(question.split("Summari")[0]):
+        return False
+    return True
+
+
 def data_check(answer: str, reading: dict | None, question: str) -> str:
     """The DATA CHECK section added to the data sheet for judging a report:
     which of its figures agree with the sheet ("" when it gives none)."""
@@ -301,18 +477,26 @@ def data_check(answer: str, reading: dict | None, question: str) -> str:
     if not figs:
         return ("DATA CHECK (by software): the report gives no figures - judge whether its key features are "
                 "illustrated with data.")
+    accepted = set(reading.get("accepted_figures") or [])
+    confirmed = set(reading.get("confirmed_wrong") or [])
     for fig in figs:
-        fig["match"] = match_figure(fig, reading, question)
+        fig["match"] = "accepted" if fig["text"] in accepted else match_figure(fig, reading, question)
     ok = [f for f in figs if f["match"] in ("raw", "derived", "label")]
-    unsure = [f for f in figs if f["match"] == "raw-uncertain"]
-    wrong = [f for f in figs if f["match"] == "miss"]
+    unsure = [f for f in figs if f["match"] in ("raw-uncertain", "accepted")]
+    wrong = [f for f in figs if f["match"] == "miss" and f["text"] in confirmed]
+    other = [f for f in figs if f["match"] == "miss" and f["text"] not in confirmed]
     lines = [f"DATA CHECK (by software, against the sheet within its precision): {len(ok)} of {len(figs)} figures in "
              "the report agree with the visual."]
     if wrong:
+        lines.append("WRONG - the sheet and a second, focused reading of the visual agree, and the student's figure "
+                     "differs by more than the reading precision (a TR mistake):")
+        lines += [f"- «{f['text']}» in \"…{f['context'].strip()}…\"" for f in wrong[:12]]
+    if other:
         lines.append("Not found on the sheet - check each against the sheet before calling it a mistake (it may "
                      "be a fair approximation or a figure the sheet doesn't list):")
-        lines += [f"- «{f['text']}» in \"…{f['context'].strip()}…\"" for f in wrong[:12]]
+        lines += [f"- «{f['text']}» in \"…{f['context'].strip()}…\"" for f in other[:12]]
     if unsure:
-        lines.append("Near an UNCERTAIN figure - never a mistake: " + ", ".join(f"«{f['text']}»" for f in unsure[:8]))
+        lines.append("NOT CHECKED - near an UNCERTAIN figure, or a second reading disagreed: never a mistake, and "
+                     "Task Achievement is never lowered for them: " + ", ".join(f"«{f['text']}»" for f in unsure[:10]))
     lines.append("Every other figure agrees with the visual: never mark it as a mistake or as invented.")
     return "\n".join(lines)

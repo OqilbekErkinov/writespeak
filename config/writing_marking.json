@@ -16,6 +16,11 @@
     "task2": ["v2-p026", "v2-p034", "v2-p078", "v1-p026"],
     "review": false
   },
+  "type_anchors": {
+    "_about": "Task 1: the scoring runs also see the Band 9 report of the same kind of visual (line, bar, table, pie, process, cycle, mixed) from Ilhom Alijanov's IELTS Academic Writing Task 1 Masterclass, in data/calibration/type_anchors.json - never the report being scored itself. Chosen by the academic lead on 2026-10-27.",
+    "use": true,
+    "review": false
+  },
   "calibration": {
     "_about": "B4 test-set changes. remove = left out of the test set; expect = the band the test set expects instead of the book's.",
     "overrides": {
@@ -43,6 +48,17 @@
     "44": {"overall_min": 8.5, "LR_min": 8, "not_flagged": ["foods", "drawbacks to"]},
     "45": {"not_flagged": ["in 1992", "seeing rises"]},
     "48": {"not_flagged": ["one-third", "others'"]},
+    "53": {"overall_min": 8.0},
+    "54": {"overall": [7.5, 8.5], "not_flagged": ["started at 0%"]},
+    "55": {"overall_min": 8.5},
+    "56": {"overall_min": 8.0},
+    "57": {"overall_min": 8.5, "not_flagged": ["In the final stage"]},
+    "58": {"overall_min": 8.0},
+    "59": {"overall_min": 9.0},
+    "54w": {"from": "54", "_about": "#54 with one figure changed on purpose: 16-24 was about 80% in 2004, not 100%.",
+            "replace": ["Young adults aged 16-24 dominated the chart.", "Young adults aged 16-24 dominated the chart, and 16-24 reached 100% in 2004."],
+            "flagged": ["100% in 2004"]},
+    "_53_59": "The academic lead's expectations for Ilhom Alijanov's Band 9 reports pasted as #53-#59 (2026-10-27). Every Task 1 case also checks that no figure the sheet confirms is flagged.",
     "review": true
   }
 }

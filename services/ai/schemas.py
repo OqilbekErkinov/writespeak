@@ -287,6 +287,11 @@ class ProcessInfo(BaseModel):
     natural_or_manmade: Literal["natural", "man-made"]
 
 
+class GroupBars(BaseModel):
+    point: str = Field(description="The group (x-axis category), as in `data`.")
+    bars: int = Field(description="How many bars are actually DRAWN in this group (a missing bar is not drawn).")
+
+
 class VisualBlock(BaseModel):
     visual_type: VisualKind
     title: str = Field(description="The visual's title or what it shows; '' if none.")
@@ -304,6 +309,8 @@ class VisualBlock(BaseModel):
                                      "development ('expansion and modernisation at the cost of green space'), a "
                                      "diagram's or table's main contrast, a chart's main trend.")
     process: Optional[ProcessInfo] = Field(description="Processes only; null otherwise.")
+    bars_drawn: list[GroupBars] = Field(
+        description="Grouped bar charts only: every group with the number of bars drawn in it; [] otherwise.")
 
 
 class VisualExtraction(BaseModel):
@@ -342,6 +349,22 @@ class SheetBlock(BaseModel):
     map_features: list[MapFeature]
     overall: str
     process: Optional[ProcessInfo]
+    bars_drawn: list[GroupBars] = []  # grouped bars: how many each group has drawn
+
+
+class FocusedRead(BaseModel):
+    """One figure read again on its own, before a student's figure is called
+    wrong (services/ai/visual_reading.py read_one)."""
+
+    series: str = Field(description="The series the student's figure is about, as the visual labels it (legend item, "
+                                    "or the bar's, slice's or row's label).")
+    point: str = Field(description="Its point as the visual labels it (year, x-axis category, column); '' if none.")
+    found: bool = Field(description="True when you can tell which figure the student means and can see it.")
+    missing: bool = Field(description="True when its bar, point or cell is not drawn or is empty.")
+    value: Optional[float] = Field(description="The figure in the visual's units; 0 when it is missing; null when "
+                                               "you can't read it.")
+    how: str = Field(description="One line: how you read it (the legend match, the gridlines around it, the "
+                                 "printed label).")
 
 
 class KeyFeatures(BaseModel):

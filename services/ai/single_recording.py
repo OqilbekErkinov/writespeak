@@ -45,6 +45,7 @@ from bot.config import settings
 from services.ai import usage
 from services.ai.openai_client import client, parse_flex
 from services.ai.voice import (
+    british,
     FILLER_PROMPT,
     AnswerAudio,
     _attach_times,
@@ -188,14 +189,14 @@ async def _whisper(mp3: bytes, prompt: str | None):
 
 
 def _words(response) -> list[list]:
-    return [[w.word, float(w.start), float(w.end)] for w in getattr(response, "words", None) or []]
+    return [[british(w.word), float(w.start), float(w.end)] for w in getattr(response, "words", None) or []]
 
 
 async def transcribe_recording(wav: bytes) -> Recording:
     mp3 = await to_mp3(wav)
     verbatim, plain = await asyncio.gather(_whisper(mp3, FILLER_PROMPT), _whisper(mp3, None))
     return Recording(
-        text=(verbatim.text or "").strip(),
+        text=british((verbatim.text or "").strip()),
         words=_words(verbatim),
         segments=[[float(s.start), float(s.end), float(getattr(s, "avg_logprob", 0) or 0)]
                   for s in getattr(verbatim, "segments", None) or []],

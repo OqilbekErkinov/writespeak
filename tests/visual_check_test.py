@@ -17,7 +17,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from services.ai.visual_check import figures, match_figure  # noqa: E402
+from services.ai.visual_check import (  # noqa: E402
+    data_visual,
+    figures,
+    match_figure,
+    protected_mistake,
+    unchecked_figures,
+    visual_kind,
+)
 
 fails: list[str] = []
 
@@ -104,8 +111,97 @@ def main() -> int:
     got = matches("There was a small difference of only 2 percentage points between eating out and holidays.", spending)
     check("'the' in 'Go to the cinema' names nothing", got.get("2") == "derived", got)
 
+    rulings()
     print(f"\nFAILURES: {', '.join(fails) or 'none'}")
     return 1 if fails else 0
+
+
+def rulings() -> None:
+    """The academic lead's Task 1 rulings of 2026-10-27, on #53-#59."""
+    from services.ai import visual_reading
+    from services.ai.schemas import DataValue, GroupBars, LegendEntry, VisualBlock, VisualExtraction
+
+    # A missing bar is never filled from its neighbour: a group with fewer bars drawn is uncertain.
+    def bars(values, drawn):
+        data = [DataValue(series=y, point=g, value=v, text="", printed=False, precision=2) for (y, g), v in values.items()]
+        block = VisualBlock(visual_type="bar", title="Internet use", units="%", time_points=[], axis_labels=["0", "20", "40"],
+                            legend=[LegendEntry(label=y, colour=c) for y, c in (("2003", "dark grey"), ("2004", "medium grey"),
+                                                                                ("2005", "light grey"), ("2006", "white"))],
+                            data=data, map_features=[], overall="", process=None, bars_drawn=drawn)
+        return VisualExtraction(visuals=[block], unreadable=[], readability="clear", readability_note="",
+                                chart_box=[0, 0, 1, 1], rotation=0)
+    values = {(y, "65+"): v for y, v in (("2003", 15), ("2004", 15), ("2005", 15), ("2006", 20))}
+    values.update({(y, "16-24"): v for y, v in (("2003", 80), ("2004", 80), ("2005", 100), ("2006", 90))})
+    drawn = [GroupBars(point="65+", bars=3), GroupBars(point="16-24", bars=4)]
+    sheet = visual_reading.combine(bars(values, drawn), bars(values, drawn)).model_dump()
+    status = {(v["series"], v["point"]): v["status"] for v in sheet["blocks"][0]["values"]}
+    check("a group with 3 of 4 bars drawn is uncertain (#54's 65+), the full group stays verified",
+          status[("2003", "65+")] == "uncertain" and status[("2005", "16-24")] == "verified", status)
+    check("...so the student's '0%' for it is never a mistake",
+          "0%" in unchecked_figures("The oldest individuals started at 0%.", sheet, "") or
+          match_figure(figures("65+ started at 0% in 2003")[1], sheet, "") != "miss")
+
+    # Look-alike legend patterns: those slices are uncertain (#56).
+    def pie(home, sports):
+        data = [DataValue(series=s, point="", value=v, text="", printed=True, precision=0)
+                for s, v in (("Quality of resources", 21), ("Suitable degree courses", 35), ("Close to parental home", home),
+                             ("Quality teaching", 15), ("Good sports and social activities", sports))]
+        block = VisualBlock(visual_type="pie", title="1987", units="%", time_points=[], axis_labels=[],
+                            legend=[LegendEntry(label="Quality of resources", colour="light grey"),
+                                    LegendEntry(label="Suitable degree courses", colour="diagonal hatching"),
+                                    LegendEntry(label="Close to parental home", colour="chequered grey"),
+                                    LegendEntry(label="Quality teaching", colour="solid black"),
+                                    LegendEntry(label="Good sports and social activities", colour="dotted grey")],
+                            data=data, map_features=[], overall="", process=None, bars_drawn=[])
+        return VisualExtraction(visuals=[block], unreadable=[], readability="clear", readability_note="",
+                                chart_box=[0, 0, 1, 1], rotation=0)
+    pies = visual_reading.combine(pie(19, 10), pie(19, 10)).model_dump()
+    status = {v["series"]: v["status"] for v in pies["blocks"][0]["values"]}
+    check("look-alike patterns (chequered grey / dotted grey): both slices uncertain, the rest verified",
+          status["Close to parental home"] == "uncertain" and status["Good sports and social activities"] == "uncertain"
+          and status["Quality teaching"] == "verified", status)
+    check("...and a Task 'mistake' about them is never kept (a paraphrase counts: 'proximity to home')",
+          protected_mistake("Proximity to home influenced only 10% of students in 1987",
+                            "Proximity to home accounted for 19% in 1987", "The sentence swaps them.", pies, "", set()))
+    check("...while one about a verified slice can still be kept",
+          not protected_mistake("Quality teaching was 25%", "Quality teaching was 15%", "The chart shows 15%.", pies, "",
+                                set()))
+
+    # Line graphs: half a gridline step (#53: 240 vs 230, 170 vs 150 on a 50-unit grid are fair readings).
+    def line(v1980):
+        data = [DataValue(series="Wood Pulp", point=p, value=v, text="", printed=False, precision=12.5)
+                for p, v in (("1980", v1980), ("1990", 150), ("2000", 160))]
+        block = VisualBlock(visual_type="line", title="UK forest industry", units="million tonnes", time_points=[],
+                            axis_labels=["0", "50", "100", "150", "200", "250"], legend=[], data=data, map_features=[],
+                            overall="", process=None, bars_drawn=[])
+        return VisualExtraction(visuals=[block], unreadable=[], readability="clear", readability_note="",
+                                chart_box=[0, 0, 1, 1], rotation=0)
+    lines = visual_reading.combine(line(150), line(150)).model_dump()
+    got = {f["text"]: match_figure(f, lines, "") for f in figures("Wood pulp started at about 170 million tonnes in 1980.")}
+    check("a line point is ±half a gridline step: 'about 170' for a 1980 point read at 150 is fair",
+          got.get("about 170 million") in ("raw",) and lines["blocks"][0]["values"][0]["precision"] == 25, got)
+
+    # The deliberate wrong figure is caught by the matcher (then read again on its own before it is called wrong).
+    internet = {"blocks": [{"visual_type": "bar", "title": "", "units": "%", "axis_labels": ["0", "20", "40", "60", "80", "100", "120"],
+                            "values": [{"series": y, "point": "16-24", "value": v, "precision": 5.0, "status": "verified"}
+                                       for y, v in (("2003", 80), ("2004", 80), ("2005", 100), ("2006", 90))]}]}
+    got = {f["text"]: match_figure(f, internet, "") for f in figures("Young adults aged 16-24 reached 100% in 2004.")}
+    check("'16-24 reached 100% in 2004' is not found on the sheet (100% belongs to 2005; an axis tick is no label)",
+          got.get("100%") == "miss", got)
+    got = {f["text"]: match_figure(f, internet, "") for f in figures("16-24 increased to a chart-high of 100% in 2005.")}
+    check("...while the true '100% in 2005' agrees", got.get("100%") == "raw", got)
+
+    # No comparisons needed for processes, cycles and maps.
+    check("a process / cycle / map is no visual of figures; a chart is",
+          not data_visual("The diagram shows the life cycle of flowering plants.")
+          and not data_visual("The diagram shows how bamboo fabric is made.")
+          and data_visual("The chart below shows the percentage of adults who used the Internet.")
+          and not data_visual("", {"blocks": [{"visual_type": "process"}]}))
+    check("visual kinds for the Band 9 anchors",
+          visual_kind("", {"blocks": [{"visual_type": "process", "process": {"kind": "cyclical"}}]}) == "cycle"
+          and visual_kind("", {"blocks": [{"visual_type": "bar"}, {"visual_type": "table"}]}) == "mixed"
+          and visual_kind("The graph below shows the cost of water in five cities.", {"blocks": [{"visual_type": "table"}]}) == "table"
+          and visual_kind("The diagram shows how bamboo fabric is made.") == "process")
 
 
 if __name__ == "__main__":

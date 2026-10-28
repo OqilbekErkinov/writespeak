@@ -79,6 +79,46 @@ def canon(text: str) -> str:
     return re.sub(r"\s+", " ", text.translate(_CANON)).strip()
 
 
+PASTE_NOTICE = "Page headers/footers from pasted text were ignored."
+_PAGE_MARK = re.compile(r"\bpage\s+\d+\s*(?:of|/)\s*\d+\b", re.IGNORECASE)
+_SENTENCE_END = re.compile(r"[.!?…:;\"”’')\]]\s*$")
+
+
+def clean_pasted(text: str) -> tuple[str, bool]:
+    """(the text, whether page headers/footers were left out) - text pasted
+    from a PDF (the academic lead, 2026-10-27: #53-#59 came in with every
+    printed line a "paragraph" and "Ilhom Alijanov | IELTS Task 1: 9.0 | Page
+    3 of 154" in the middle of a sentence): a line that ends mid-sentence
+    joins the next one, a word hyphenated at a line end is joined up, blank
+    lines collapse, and a "Page N of M" line goes. Text typed with one
+    paragraph per line (Telegram) comes out the same."""
+    kept, removed = [], False
+    for line in text.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        if _PAGE_MARK.search(line) and len(line.split()) <= 14:
+            removed = True
+            continue
+        kept.append(line.strip())
+    paragraphs, current = [], ""
+    for line in kept:
+        if not line:
+            if current and _SENTENCE_END.search(current):
+                paragraphs.append(current)
+                current = ""
+            continue
+        if not current:
+            current = line
+        elif current.endswith("-") and line[:1].islower():
+            current += line
+        elif _SENTENCE_END.search(current):
+            paragraphs.append(current)
+            current = line
+        else:
+            current = f"{current} {line}"
+    if current:
+        paragraphs.append(current)
+    return "\n".join(paragraphs), removed
+
+
 def count_words(text: str) -> int:
     return len(COUNT_RE.findall(text))
 

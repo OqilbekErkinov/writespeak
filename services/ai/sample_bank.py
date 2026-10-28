@@ -591,7 +591,11 @@ def _task_rules(task_type: str) -> str:
             "This is Academic Writing Task 1: paraphrase the question, give a clear overview of the "
             "main trends, differences or stages, then select and compare the key features with "
             "accurate figures. Use ONLY the data shown in the question and the visual, reported "
-            "accurately, and give no personal opinion."
+            "accurately - with a DATA SHEET, only its VERIFIED figures, never an UNCERTAIN one - and give no "
+            "personal opinion. For a process or a cycle, describe the stages in natural language, as a writer "
+            "would (\"the bamboo is first planted in spring and harvested in autumn\"): never copy the diagram's "
+            "labels in Title Case (\"running from Plant bamboo plants (Spring) to Finished clothing products\") "
+            "and never invent names for its stages in capitals."
         )
     return (
         "This is Writing Task 2: answer every part of the question with a clear, consistent "
@@ -766,9 +770,18 @@ def data_problems(text: str, question: str, visual: dict | None) -> list[str]:
     from services.ai.visual_check import figures, match_figure
 
     out = []
-    misses = [f["text"] for f in figures(text) if match_figure(f, visual, question) == "miss"]
+    matches = [(f["text"], match_figure(f, visual, question)) for f in figures(text)]
+    misses = [t for t, m in matches if m == "miss"]
     if misses:
         out.append("these figures are not on the DATA SHEET - use only its figures: " + ", ".join(misses[:6]))
+    unsure = [t for t, m in matches if m == "raw-uncertain"]
+    if unsure:
+        out.append("these figures are UNCERTAIN on the DATA SHEET - leave them out: " + ", ".join(unsure[:6]))
+    if any(b.get("visual_type") == "process" for b in visual.get("blocks", [])):
+        labels = title_case_labels(text)
+        if labels:
+            out.append("describe the stages in natural language, not the diagram's labels in Title Case: "
+                       + ", ".join(f'"{x}"' for x in labels[:4]))
     low = " " + re.sub(r"[^a-z0-9]+", " ", text.lower()) + " "
     names: list[str] = []
     for block in visual.get("blocks", []):
@@ -809,6 +822,24 @@ def self_contradictions(text: str) -> list[str]:
         if first_good == second_good:
             out.append(m.group(0))
     return out
+
+
+def title_case_labels(text: str) -> list[str]:
+    """Runs of capitalised words in the middle of a sentence ("Fibre
+    preparation, Yarn production ... Plant bamboo plants (Spring)") - a
+    diagram's labels copied in, or stage names invented (the academic lead,
+    2026-10-27)."""
+    out = []
+    for m in re.finditer(r"(?<![.!?:]\s)(?<!^)(?:,\s+|\s+)((?:[A-Z][a-z]+(?:\s+[a-z]+)?)(?:\s*\([A-Z][a-z]+\))?)", text):
+        word = m.group(1)
+        start = m.start(1)
+        before = text[max(0, start - 2):start]
+        if re.search(r"[.!?]\s*$", text[:start].rstrip()[-1:] or ".") or before.strip() in ("", "\n"):
+            continue
+        if word.split()[0] in {"I", "UK", "US", "USA"}:
+            continue
+        out.append(word)
+    return out if len(out) >= 3 else []
 
 
 def overused_phrases(text: str, profile: StyleProfile | None) -> list[str]:

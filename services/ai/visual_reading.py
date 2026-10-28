@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import copy
 import difflib
 import io
 import logging
@@ -39,6 +40,7 @@ from bot.config import settings
 from services.ai import usage
 from services.ai.openai_client import is_image_error, parse_flex
 from services.ai.schemas import (
+    FocusedRead,
     KeyFeatures,
     SheetBlock,
     SheetValue,
@@ -78,12 +80,21 @@ blue" vs "light blue").
 to (without a legend: the bar's, slice's or row's label); point = where it sits on the other \
 dimension - the year, the x-axis category, the panel or the table column ('' when there is only one). \
 A grouped bar chart of activities by gender: series Boys / Girls, point = each activity.
+- Grouped bars: in each group the bars stand in the legend's order. A missing bar or an empty cell is 0 \
+(or "no data") - write it as 0, and never shift the next bar into the empty slot. bars_drawn: for every \
+group, how many bars are actually drawn.
+- Pies: match each slice to its legend entry by its pattern or colour AND by the percentage printed by \
+it. When two legend patterns look alike (two greys, two textures), say so in `unreadable`.
+- Line graphs: tell the lines apart by their legend style at two points - where each line starts and \
+where it ends - before reading any value; read each point against the two gridlines around it (how far \
+between them it is).
   - printed=true, precision=0: the figure is written on the visual (a data label, a table cell, a \
 number on the diagram). Copy it exactly.
   - printed=false: read off an axis or scale. Find the nearest gridlines; value = your best reading, \
 precision = how far off a careful reader could be in the same units - about a quarter of the gap \
-between gridlines (a bar ending on or halfway to a gridline is read closely), never more than half. On 3D bars read the flat top face against the back gridlines; on a \
-line, the centre of each point.
+between gridlines for a bar (a bar ending on or halfway to a gridline is read closely), half the gap for \
+a point on a line, never more than half. On 3D bars read the flat top face against the back gridlines; \
+on a line, the centre of each point.
   - value null and text = the words, for a table cell that is words; value null when a figure can't \
 be read (and say so in `unreadable`). Never guess a precise number.
   - value is in the visual's units: 27 for 27%, 40 for $40,000 on a scale in thousands of dollars.
@@ -127,7 +138,14 @@ over" is fine);
 - an UNCERTAIN figure, or one the sheet can't read: never count the student's figure as a mistake;
 - a year printed on the axis, or between the first and last labelled years, is never a TR mistake;
 - rankings, equal values, trends and the overview: a mistake only when the verified figures \
-contradict them (e.g. "boys lead" where the sheet shows them equal).
+contradict them (e.g. "boys lead" where the sheet shows them equal); a trend ("fell", "stayed \
+stable") is wrong only when the change between its two figures is larger than both their ±ranges \
+together and goes the other way;
+- a claim about the writer's own grouping of the steps or categories ("in the final stage" of the \
+three stages the writer defined) is never a data error - a different valid grouping is never a \
+mistake; only a wrong step order or a missing step counts;
+- a paraphrase of a chart label ("age at death" for "life expectancy", "proximity to home" for "close \
+to parental home") is good writing, never a mistake.
 A mistake about the data has criterion TR, and its `correct` gives the sheet's figure (e.g. "about 27%")."""
 
 # Added after the sheet where the model answer is written and checked.
@@ -152,7 +170,8 @@ def _image_parts(images: list[tuple[bytes, str]]) -> list[dict]:
 # --- Preparing a picture for the second read ----------------------------------------------------
 
 
-def prepare_for_reading(data: bytes, box: list[float] | None = None, rotation: int = 0) -> tuple[bytes, str]:
+def prepare_for_reading(data: bytes, box: list[float] | None = None, rotation: int = 0,
+                        zoom: bool = False) -> tuple[bytes, str]:
     """A copy of the picture prepared for reading: turned upright (camera
     EXIF, then `rotation` degrees clockwise), cropped to `box` (fractions,
     with a margin) or else trimmed of plain borders, contrast raised when the
@@ -176,8 +195,9 @@ def prepare_for_reading(data: bytes, box: list[float] | None = None, rotation: i
                                     min(w, bbox[2] + pad), min(h, bbox[3] + pad)))
         if ImageStat.Stat(image.convert("L")).stddev[0] < 45:
             image = ImageOps.autocontrast(image, cutoff=1, preserve_tone=True)
-        if max(image.size) < 1200:
-            scale = 1600 / max(image.size)
+        target = 2400 if zoom else 1600  # zoom: one figure read again, as large as the vision model takes
+        if max(image.size) < (target if zoom else 1200):
+            scale = target / max(image.size)
             image = image.resize((int(image.width * scale), int(image.height * scale)), Image.LANCZOS)
         buf = io.BytesIO()
         image.save(buf, format="PNG", optimize=True)
@@ -280,6 +300,111 @@ async def read_visual(question: str, images: list[tuple[bytes, str]]) -> VisualS
     return sheet
 
 
+# --- One figure read again, before a student's figure is called wrong ---------------------------------
+
+FOCUS_MAX = 4  # focused re-reads per report
+FOCUS = """You check ONE figure in a student's IELTS Task 1 report against the visual - nothing else. \
+First decide which figure on the visual the student means, from their sentence: its series (legend item, \
+or the bar's, slice's or row's label) and its point (year, x-axis category, column), as the visual labels \
+them - a sentence may name another category only to compare ("the same as the figure for comedy"). \
+found=false when you can't tell which figure is meant. Then read only that figure, as carefully as you can:
+- printed on the visual (a data label, a table cell): copy it exactly;
+- a bar: find its group, then its place in the legend's order; a bar that is not drawn is 0 \
+(missing=true) - never take the next bar's height;
+- a point on a line: tell the line by its legend style at two points (where it starts and where it ends), \
+then find the two gridlines around the point and how far between them it is;
+- a pie slice: match it by its pattern or colour AND by the percentage printed by it; when two legend \
+patterns look alike, found=false."""
+
+
+async def read_one(question: str, images: list[tuple[bytes, str]], sentence: str, figure: str) -> FocusedRead | None:
+    """The figure a student's sentence gives, read once more on its own, on
+    an enlarged copy - the two first reads share their model and their
+    rules, so they can share a mistake (#53: both read every 1980 point
+    about 20 too low). The model tells which figure is meant: keyword
+    matching can't ("the same as the figure for comedy - and rising
+    marginally to 16% in 2000" is another genre's figure)."""
+    what = f"«{figure}» in the student's sentence: \"{sentence}\""
+    messages = [
+        {"role": "system", "content": FOCUS},
+        {"role": "user", "content": [
+            {"type": "text", "text": f"QUESTION:\n{question}\n\nThe figure to check: {what}"},
+            *_image_parts([prepare_for_reading(d, zoom=True) for d, _ in images]),
+        ]},
+    ]
+    try:
+        response = await parse_flex(model=settings.openai_model_vision, messages=messages,
+                                    response_format=FocusedRead, max_completion_tokens=8000,
+                                    extra_body={"reasoning_effort": settings.openai_chart_reasoning_effort})
+    except Exception as e:  # the figure then stays unconfirmed: never a mistake
+        logger.warning("Focused re-read of %s failed: %r", what, e)
+        return None
+    usage.record("chart_check", response)
+    return response.choices[0].message.parsed
+
+
+async def check_report_figures(answer: str, visual: dict, question: str,
+                               images: list[tuple[bytes, str]] | None) -> dict:
+    """The sheet (as data) after every figure of the report that it doesn't
+    show has been read once more on its own (the academic lead, 2026-10-27):
+    a figure is wrong only when the sheet and the focused re-read agree with
+    each other and both differ from the student by more than the reading
+    precision; otherwise the cell becomes UNCERTAIN and the student's figure
+    stands. A figure that can't be tied to one cell is set aside
+    ("accepted_figures"); one that two readings contradict is listed in
+    "confirmed_wrong". Years and ratio words are not re-read."""
+    from services.ai.visual_check import figure_agrees, figures, find_cell, match_figure
+
+    visual = copy.deepcopy(visual)
+    accepted, confirmed, reads = [], [], 0
+    for fig in figures(answer):
+        if fig.get("ratio") or fig["year"] or match_figure(fig, visual, question) != "miss":
+            continue
+        if reads >= FOCUS_MAX or not images:
+            accepted.append(fig["text"])
+            continue
+        reads += 1
+        got = await read_one(question, images, fig["sentence"], fig["text"])
+        value = None if got is None or not got.found else (0.0 if got.missing else got.value)
+        cell = find_cell(visual, got.series, got.point) if got is not None and got.found else None
+        # A cell the two reads disagreed on (its value and ± cover both) may be
+        # settled by a third reading; one a code check made uncertain (look-alike
+        # legend patterns, a missing bar, slices off 100%) never is.
+        structural = cell is not None and cell.get("status") == "uncertain" \
+            and not str(cell.get("note", "")).startswith("the reads disagree")
+        if value is None or cell is None or cell.get("value") is None or structural:
+            accepted.append(fig["text"])  # nothing for the sheet to second: the student's figure stands
+        elif abs(value - cell["value"]) <= max(cell.get("precision") or 0.0, 0.5) \
+                and not figure_agrees(fig, value, cell.get("precision") or 0.0):
+            cell["status"], cell["note"] = "verified", f"confirmed by a focused re-read ({value:g})"
+            confirmed.append(fig["text"])
+        else:  # the re-read disagrees with the sheet, or agrees with the student
+            cell["status"], cell["note"] = "uncertain", f"a focused re-read gave {value:g}"
+            accepted.append(fig["text"])
+            if visual.get("readability") == "clear":
+                visual["readability"] = "partly_unclear"
+        logger.info("Focused re-read of %s: %s %s = %s (sheet %s)", fig["text"], got.series if got else "?",
+                    got.point if got else "?", value, cell.get("value") if cell else None)
+    visual["accepted_figures"] = accepted
+    visual["confirmed_wrong"] = confirmed
+    return visual
+
+
+async def judge_ready(answer: str, visual: dict, question: str,
+                      images: list[tuple[bytes, str]] | None) -> tuple[dict, str, str, bool]:
+    """Everything a report is judged by, as the bot and the scripts build it:
+    (the sheet as data after the focused re-reads, the sheet's text - for
+    the model answer - the sheet with the report's DATA CHECK - for judging -
+    and whether some of the report's figures can't be checked, which the
+    report then tells the student)."""
+    from services.ai.visual_check import data_check, unchecked_figures
+
+    visual = await check_report_figures(answer, visual, question, images)
+    sheet = sheet_text(VisualSheet.model_validate(visual))
+    judged = f"{sheet}\n\n{data_check(answer, visual, question)}".strip()
+    return visual, sheet, judged, bool(unchecked_figures(answer, visual, question))
+
+
 # --- Combining the two reads ---------------------------------------------------------------------------
 
 
@@ -320,7 +445,8 @@ def _pair_blocks(a: list[VisualBlock], b: list[VisualBlock]) -> list[tuple[Visua
 def _single(block: VisualBlock, status: str, note: str = "") -> SheetBlock:
     return SheetBlock(
         visual_type=block.visual_type, title=block.title, units=block.units, time_points=block.time_points,
-        axis_labels=block.axis_labels, legend=block.legend, map_features=block.map_features, overall=block.overall, process=block.process,
+        axis_labels=block.axis_labels, legend=block.legend, map_features=block.map_features, overall=block.overall,
+        process=block.process, bars_drawn=block.bars_drawn,
         values=[SheetValue(series=v.series, point=v.point, value=v.value, text=v.text, printed=v.printed,
                            precision=0.0 if v.printed else max(v.precision, 0.0), status=status, note=note)
                 for v in block.data],
@@ -371,11 +497,17 @@ def _axis_gap(block: VisualBlock) -> float | None:
 
 
 def _capped(block: VisualBlock) -> VisualBlock:
-    """Scale readings no less precise than a quarter of the gridline step -
-    #48's bars on a 0-20-40 axis came back ±10, so 20 and 30 "agreed"."""
+    """Scale readings no less precise than a quarter of the gridline step for
+    bars - #48's bars on a 0-20-40 axis came back ±10, so 20 and 30
+    "agreed". A point on a line is half a step (the academic lead,
+    2026-10-27: #53's lines on a 50-unit grid were read 20 low by both reads,
+    and "240" for a point at 230 is a fair reading)."""
     gap = _axis_gap(block)
     if not gap:
         return block
+    if block.visual_type == "line":
+        return block.model_copy(update={"data": [v if v.printed else v.model_copy(update={"precision": gap / 2})
+                                                 for v in block.data]})
     limit = gap / 4
     return block.model_copy(update={"data": [v.model_copy(update={"precision": min(v.precision, limit)})
                                              if not v.printed and v.precision > limit else v for v in block.data]})
@@ -504,6 +636,22 @@ def combine(a: VisualExtraction | None, b: VisualExtraction | None) -> VisualShe
     return sheet
 
 
+_TEXTURES = {"dotted", "dots", "stippled", "speckled", "chequered", "checkered", "checked", "hatched", "hatching",
+             "crosshatched", "striped", "stripes", "brick", "grid", "dashed", "wavy", "patterned", "textured",
+             "diagonal", "lined", "mesh"}
+_COLOURS = {"grey", "gray", "black", "white", "blue", "red", "green", "yellow", "orange", "purple", "brown", "pink"}
+
+
+def _alike(a: str, b: str) -> bool:
+    """Two legend patterns a reader can mix up: the same colour, both
+    textured ("chequered grey" / "dotted grey"). Shades of a plain colour
+    ("dark grey" / "light grey") are told apart by the reads and by order."""
+    wa, wb = set(re.findall(r"[a-z]+", a.lower())), set(re.findall(r"[a-z]+", b.lower()))
+    if _norm(a) == _norm(b) or not (wa & wb & _COLOURS):
+        return False
+    return bool(wa & _TEXTURES) and bool(wb & _TEXTURES)
+
+
 def _uncertain(values: list[SheetValue], note: str) -> None:
     for v in values:
         if v.status == "verified":
@@ -541,6 +689,26 @@ def _check(block: SheetBlock, checks: list[str]) -> None:
             if abs(s - tv.value) > tol:
                 _uncertain(parts + [tv], f"its parts add up to {s:g}, not the total {tv.value:g}")
                 checks.append(f"{name}: the parts of {key or 'the total'} add up to {s:g}, not {tv.value:g}")
+    # Grouped bars: a group with fewer bars drawn than the legend has entries
+    # - which one is missing can't be told from the heights (#54: the 65+
+    # group has no 2003 bar, and both reads shifted 2004's into its place).
+    entries = len(block.legend)
+    for group in block.bars_drawn:
+        if entries >= 2 and 0 < group.bars < entries:
+            vals = [v for v in block.values if _norm(v.point) == _norm(group.point) or _norm(v.series) == _norm(group.point)]
+            _uncertain(vals, f"only {group.bars} of {entries} bars are drawn - which one is missing is not certain")
+            checks.append(f"{name}: {group.point} has {group.bars} of {entries} bars drawn - its figures are not used "
+                          "to mark mistakes")
+    # Two legend patterns that look alike (#56: "chequered grey" and "dotted
+    # grey" - both reads may give one slice the other's label).
+    for i, a in enumerate(block.legend):
+        for other in block.legend[i + 1:]:
+            if _alike(a.colour, other.colour):
+                same = {_norm(a.label), _norm(other.label)}
+                _uncertain([v for v in block.values if _norm(v.series) in same or _norm(v.point) in same],
+                           f"look-alike legend patterns ({a.label} / {other.label})")
+                checks.append(f"{name}: {a.label} and {other.label} have look-alike legend patterns ({a.colour} / "
+                              f"{other.colour}) - their figures are not used to mark mistakes")
     # Every legend colour stands for one category.
     colours: dict[str, list[str]] = {}
     for entry in block.legend:

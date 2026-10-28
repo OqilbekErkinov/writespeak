@@ -155,7 +155,7 @@ def reading(kind: str = "clear"):
                           legend=[LegendEntry(label="Boys", colour="dark blue"),
                                                   LegendEntry(label="Girls", colour="orange")],
                           data=data, map_features=[], overall="Boys prefer shopping and sports; girls are more even.",
-                          process=None)]
+                          process=None, bars_drawn=[])]
     if kind == "unreadable":
         blocks, note = [], "the picture shows only the question text, no chart"
     return VisualExtraction(visuals=blocks, unreadable=unreadable, readability=kind, readability_note=note,
@@ -284,6 +284,10 @@ class FakeAI:
             if isinstance(outcome, BaseException):
                 raise outcome
             parsed = outcome
+        elif name == "FocusedRead":
+            # the figure a sentence gives, read again on its own: the girls' shopping bar, 7%
+            parsed = schemas.FocusedRead(series="Girls", point="Shopping", found=True, missing=False, value=7.0,
+                                         how="the bar ends just under the 10 gridline")
         elif name == "WritingScoring":
             if self.fail_scoring:
                 raise server_error()
@@ -391,6 +395,7 @@ async def part2_bot() -> None:
     from bot.utils.crm import redis
     from db.database import get_session
     from db.models import WritingSubmission
+    from services.ai.essay_marking import clean_pasted
     from services.ai.openai_client import client
     from services.ai.visual_reading import ANSWER_RULES, JUDGE_RULES
 
@@ -503,13 +508,13 @@ async def part2_bot() -> None:
         check("[png] ...with the chart attached as PNG", msgs and all(
             _images_of(m) and all(u.startswith("data:image/png;base64,") for u in _images_of(m)) for m in msgs))
     verify = [_text_of(m) for n, m in fake.calls if n == "WritingVerdicts"]
-    check("[png] the data mistake ('at 7%') goes to verification, with the sheet",
-          any("«at 7%»" in v and "DATA SHEET" in v for v in verify), verify[:1])
+    check("[png] the 'mistake' on a figure the sheet confirms ('at 7%') is dropped by code, before the filter",
+          verify and not any("«at 7%»" in v for v in verify), verify[:1])
     samples = [_text_of(m) for n, m in fake.calls if n in ("GeneratedSample", "_QualityCheck")]
     check("[png] the model answer is written and checked with the same sheet",
           samples and all("DATA SHEET" in s for s in samples) and any(ANSWER_RULES[:40] in s for s in samples))
     sub = await last_submission()
-    check("[png] saved: the data sheet and the chart file", sub.answer_text == fake.answer
+    check("[png] saved: the data sheet and the chart file", sub.answer_text == clean_pasted(fake.answer)[0]
           and sub.report_data.get("visual", {}).get("blocks", [{}])[0].get("visual_type") == "bar"
           and sub.original_file_paths.get("chart") and sub.original_file_paths["chart"][0].endswith(".png"))
     marked = [m["wrong"] for m in sub.annotations]
@@ -583,7 +588,8 @@ async def part2_bot() -> None:
     check("[unreadable] the student is asked for the chart again - nothing charged, no report",
           t("writing.chart_resend", L) in texts(calls) and not document_sent(calls)
           and await state.get_state() == WritingStates.awaiting_chart.state and data.get("rechart"))
-    check("[unreadable] ...and the answer is kept", data.get("answer_text") == fake.answer)
+    check("[unreadable] ...and the answer is kept (cleaned as pasted text)",
+          data.get("answer_text") == clean_pasted(fake.answer)[0])
     calls = await send(document=doc("chart_png2", chart("PNG"), "chart.png", "image/png"))
     check("[unreadable] the new chart starts the check at once - no second answer asked",
           len(document_sent(calls)) == 1 and t("writing.send_answer", L, min_words=150) not in texts(calls))

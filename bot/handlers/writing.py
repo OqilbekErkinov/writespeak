@@ -60,12 +60,11 @@ from db import crud
 from db.database import get_session
 from db.models import SourceType
 from services.ai import marking_config, usage
-from services.ai.essay_marking import canon
+from services.ai.essay_marking import PASTE_NOTICE, canon, clean_pasted
 from services.ai.openai_client import is_image_error
 from services.ai.sample_bank import build_model_answer, needs_from_feedback
 from services.ai.schemas import VocabularyItem
-from services.ai.visual_check import data_check
-from services.ai.visual_reading import ChartImageRejected, read_visual, sheet_text
+from services.ai.visual_reading import ChartImageRejected, judge_ready, read_visual, sheet_text
 from services.ai.writing_grader import grade_writing
 from services.pdf.report_builder import build_progress, build_writing_report_pdf
 from services.storage.file_storage import image_mime, read_file, save_report
@@ -321,6 +320,12 @@ async def _repeat_of(user_id: int, task_type: str, answer_text: str):
 async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
     data = await state.get_data()
     user_id = message.chat.id
+    # Text pasted from a PDF: lines broken mid-sentence joined, page headers
+    # and footers left out - and every count, mark and check made on that.
+    cleaned, footers = clean_pasted(data["answer_text"])
+    if cleaned != data["answer_text"]:
+        data["answer_text"] = cleaned
+        await state.update_data(answer_text=cleaned)
 
     # The very same essay again gets its saved report, not a new (differently
     # scored) check - reports #14 and #15 were one essay graded 8.0 and 8.5,
@@ -369,7 +374,7 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
                 data["task_type"], data["prompt_text"], prompt_images, seed=seed, needs=needs, sheet=sheet,
                 visual=visual_data))
 
-        notices = []
+        notices = [PASTE_NOTICE] if footers else []
         if data["task_type"] == "task1" and not prompt_images:
             notices.append(CHART_NOT_CHECKED)
         with usage.track(f"writing {data['task_type']} user={user_id}") as calls:
@@ -382,13 +387,13 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
                     raise ChartUnreadable(visual.readability_note)
                 sheet = sheet_text(visual)
                 if sheet:
-                    # the report's own figures checked against it by code: for
-                    # judging the report, not for writing the model answer
-                    check = data_check(data["answer_text"], visual.model_dump(), data["prompt_text"])
-                    judged = f"{sheet}\n\n{check}".strip()
-                    visual_data = visual.model_dump()
-                if visual is not None and visual.readability == "partly_unclear":
-                    notices.append(CHART_PARTLY_CHECKED)
+                    # the report's own figures checked against it - every figure the
+                    # sheet doesn't show read once more on its own first: for judging
+                    # the report (judged), the sheet alone for the model answer
+                    visual_data, sheet, judged, unchecked = await judge_ready(
+                        data["answer_text"], visual.model_dump(), data["prompt_text"], prompt_images)
+                    if unchecked:
+                        notices.append(CHART_PARTLY_CHECKED)
             try:
                 report = await grade_writing(
                     task_type=data["task_type"],
@@ -523,7 +528,7 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
                else t("writing.done_caption_clean", lang, band=report.overall_band))
     if new_words:
         caption += "\n" + t("vocab.added_after_check", lang, count=new_words)
-    if visual is not None and visual.readability == "partly_unclear":
+    if CHART_PARTLY_CHECKED in notices:  # some of the student's own figures could not be checked
         caption += "\n\n" + t("writing.chart_partly_unclear", lang)
     elif data["task_type"] == "task1" and not prompt_images:
         caption += "\n\n" + t("writing.chart_not_checked", lang)

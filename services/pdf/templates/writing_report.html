@@ -152,9 +152,11 @@
 <div class="kick">04 · Model answer</div>
 <div class="mhead">
   <div><h2 id="s-model">Model answer</h2>
-  <div class="sub" style="margin:0">An answer to your exact question{{ ", built around your priorities" if report.priorities }}. Compare it with your own {{ piece }}.</div></div>
-  {# "Aimed at" only when our examiner's score for it reaches the aim; otherwise its own score #}
-  {% if answer.score is not none and answer.score < answer.band %}<div class="bandbadge"><span>Scored</span><b>{{ "%.1f"|format(answer.score) }}</b></div>
+  <div class="sub" style="margin:0">{% if report.overall_band >= 9 %}Your report is already at Band 9 - here is another way to write it, for comparison.{% else %}An answer to your exact question{{ ", built around your priorities" if report.priorities }}. Compare it with your own {{ piece }}.{% endif %}</div></div>
+  {# "Aimed at" only when our examiner's score for it reaches the aim; otherwise its own score -
+     and a report already at Band 9 is told so, never shown a "better" answer #}
+  {% if report.overall_band >= 9 %}<div class="bandbadge already"><span>Your report is</span><b>Band 9</b></div>
+  {% elif answer.score is not none and answer.score < answer.band %}<div class="bandbadge"><span>Scored</span><b>{{ "%.1f"|format(answer.score) }}</b></div>
   {% else %}<div class="bandbadge"><span>Aimed at</span><b>{{ "%.1f"|format(answer.band) }}</b></div>{% endif %}
 </div>
 <div class="qbox"><div class="ql">Question</div><div class="qt">{{ question }}</div>{% for img in chart_images %}<img class="qimg" src="{{ img }}">{% endfor %}</div>

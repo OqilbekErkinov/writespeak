@@ -177,10 +177,57 @@ def main() -> int:
     check("progress: no earlier answer at all is still 'your first essay'",
           "first essay" in report_builder.build_progress(report, None)["note"])
     css = (report_builder.TEMPLATE_DIR / "report_styles.css").read_text(encoding="utf-8")
+    rulings(page)
     check("css: the footer never starts a page alone", ".sample-foot { page-break-before: avoid" in css)
 
     print(f"\nFAILURES: {', '.join(fails) or 'none'}")
     return 1 if fails else 0
+
+
+def rulings(page) -> None:
+    """The academic lead's rulings of 2026-10-27 (#53-#59, the 9.0 speaker)."""
+    from services.ai import writing_anchors, writing_grader
+    from services.ai.voice import british
+
+    pasted = ("The line graph shows the changes in the production. Overall, paper rose. Over the\n"
+              "Ilhom Alijanov | IELTS Task 1: 9.0 | Page 3 of 154\n"
+              "next decade, however, it staged a slight recovery, closing the period at around 160 million\n"
+              "tonnes.\nBy contrast, sawn-wood fell. It was one-\nfifth of the total.")
+    cleaned, footers = essay_marking.clean_pasted(pasted)
+    check("pasted text: the 'Page 3 of 154' footer goes, lines broken mid-sentence join, a hyphenated word is whole",
+          footers and "Page 3" not in cleaned and "Over the next decade" in cleaned and "160 million tonnes." in cleaned
+          and "one-fifth" in cleaned and essay_marking.paragraph_count(cleaned) == 2, cleaned)
+    typed = "First paragraph ends here.\nSecond paragraph ends here.\nThird one."
+    check("text typed one paragraph per line comes out the same", essay_marking.clean_pasted(typed) == (typed, False))
+
+    bands = {"TR_or_TA": 9.0, "CC": 9.0, "LR": 9.0, "GRA": 9.0}
+    _, _, capped, _ = writing_grader.cap_bands("task1", "The plant grows. Seeds form. They spread. " * 20, bands,
+                                              {}, figures_visual=False)
+    check("a cycle diagram is never capped for 'no comparisons' (#58)", not capped, capped)
+    _, _, capped, _ = writing_grader.cap_bands("task1", "The figure is 20 percent. It is 30 percent now. " * 15, bands, {})
+    check("...a chart with figures and no comparisons still is", capped, capped)
+
+    check("an 8 needs a quoted weakness or a named omission",
+          not writing_grader.evidenced(["Could be richer; overview not fully developed."], "Any text.")
+          and writing_grader.evidenced(["It omits the 55-64 group."], "Any text.")
+          and writing_grader.evidenced(['"bore parallels to each other" is awkward'],
+                                       "The figures bore parallels to each other."))
+
+    anchor = writing_anchors.type_anchor("bar")
+    if anchor is not None:
+        check("the Band 9 anchor of the same kind is shown - but never for its own report",
+              "Band 9.0 - a report on the same kind of visual (bar)" in writing_anchors.anchors_text("task1", "bar")
+              and writing_anchors.type_anchor("bar", exclude=anchor["text"].replace("\n", " ")) is None)
+    else:
+        print("(no data/calibration/type_anchors.json here - the anchor check runs where the data is)")
+
+    nine = essay_marking.build_report("task2", "Q. Discuss.", ESSAY, feedback([], [], [], "x"),
+                                      bands={"TR_or_TA": 9, "CC": 9, "LR": 9, "GRA": 9})
+    html = page(8.5, 9.0, nine)
+    check("a report already at Band 9 is told so - never shown a 'better' model answer", ">Band 9<" in html
+          and "Your report is already at Band 9" in html and ">Scored<" not in html)
+    check("British spelling in the Speaking transcripts",
+          british("Traveling is my favorite; I realized the color.") == "Travelling is my favourite; I realised the colour.")
 
 
 if __name__ == "__main__":

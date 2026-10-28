@@ -36,11 +36,24 @@ KEY = {"TA": "TR_or_TA", "TR": "TR_or_TA", "CC": "CC", "LR": "LR", "GRA": "GRA"}
 
 
 def load_records() -> list[dict]:
+    """The owner's reports, plus the cases made from one by changing its text
+    on purpose (config "regression": {"from", "replace"})."""
+    from services.ai import marking_config
+
     out = []
-    for name in ("islamov_35_38.json", "islamov_40_48.json"):
+    for name in ("islamov_35_38.json", "islamov_40_48.json", "islamov_53_59.json"):
         path = REG / name
         if path.exists():
             out += json.loads(path.read_text(encoding="utf-8"))
+    by_number = {str(r["essay_number"]): r for r in out}
+    for key, case in marking_config.derived_cases().items():
+        base = by_number.get(str(case["from"]))
+        old, new = case["replace"]
+        if base is None or old not in base["answer_text"].replace("\n", " ") and old not in base["answer_text"]:
+            print(f"(case {key}: its source or the text to change is missing - skipped)")
+            continue
+        text = base["answer_text"] if old in base["answer_text"] else base["answer_text"].replace("\n", " ")
+        out.append({**base, "essay_number": key, "answer_text": text.replace(old, new, 1), "chart_of": base["essay_number"]})
     return out
 
 
@@ -69,8 +82,24 @@ def expected_checks(n: int, report, cost: float, expect: dict, config: dict) -> 
     for phrase in expect.get("not_flagged", []):
         hits = [mk["wrong"] for mk in report.mistakes if phrase.lower() in mk["wrong"].lower()]
         out.append((f"'{phrase}' not flagged", not hits, f"{hits}"))
+    for phrase in expect.get("flagged", []):
+        hits = [mk["wrong"] for mk in report.mistakes if phrase.lower() in mk["wrong"].lower()]
+        out.append((f"'{phrase}' IS flagged (a figure changed on purpose)", bool(hits),
+                    f"{[(m['wrong'], m['criterion']) for m in report.mistakes]}"))
     out.append((f"cost at most ${config['max_cost_per_check']:.2f}", cost <= config["max_cost_per_check"], f"${cost:.3f}"))
     return out
+
+
+def correct_figures_check(report, visual: dict, question: str) -> tuple[str, bool, str]:
+    """No figure the sheet confirms is flagged as a Task mistake (the academic
+    lead, 2026-10-27)."""
+    from services.ai.visual_check import figures, match_figure
+
+    wrongly = [m["wrong"] for m in report.mistakes if m["criterion"] == "TR"
+               and (figs := figures(m["wrong"])) and all(match_figure(f, visual, question) in ("raw", "derived", "label")
+                                                        for f in figs)
+               and {f["value"] for f in figures(m["correct"])} - {f["value"] for f in figs}]
+    return "no correct figure flagged", not wrongly, f"{wrongly}"
 
 
 def report35_checks(report, question: str) -> list[tuple[str, bool, str]]:
@@ -91,17 +120,21 @@ def report35_checks(report, question: str) -> list[tuple[str, bool, str]]:
 
 async def run_case(rec: dict, pdf: bool) -> dict:
     from bot.handlers.writing import CHART_NOT_CHECKED, CHART_PARTLY_CHECKED
+    from services.ai.essay_marking import PASTE_NOTICE, clean_pasted
     from services.ai.ocr import extract_text_from_image
     from services.ai.sample_bank import build_model_answer, needs_from_feedback
-    from services.ai.visual_check import data_check
-    from services.ai.visual_reading import read_visual, sheet_text
+    from services.ai.visual_reading import judge_ready, read_visual, sheet_text
     from services.ai.writing_grader import grade_writing
     from services.pdf.report_builder import build_writing_report_pdf
     from services.storage.file_storage import prepare_vision_image
 
     n, task = rec["essay_number"], rec["task_type"]
     question, images, sheet, judged, visual, notices = rec["prompt_text"], [], "", "", None, []
-    photo = REG / f"islamov_{n}_chart.jpg"
+    answer, footers = clean_pasted(rec["answer_text"])  # as the bot does before anything else
+    if footers:
+        notices.append(PASTE_NOTICE)
+    visual_data = None
+    photo = REG / f"islamov_{rec.get('chart_of', n)}_chart.jpg"
     if task == "task1" and photo.exists():
         content, mime, _ = prepare_vision_image(photo.read_bytes())
         images = [(content, mime)]
@@ -109,20 +142,20 @@ async def run_case(rec: dict, pdf: bool) -> dict:
         visual = await read_visual(question, images)
         sheet = sheet_text(visual)
         if sheet:
-            judged = f"{sheet}\n\n{data_check(rec['answer_text'], visual.model_dump(), question)}".strip()
-        if visual is not None and visual.readability == "partly_unclear":
-            notices.append(CHART_PARTLY_CHECKED)
+            visual_data, sheet, judged, unchecked = await judge_ready(answer, visual.model_dump(), question, images)
+            if unchecked:
+                notices.append(CHART_PARTLY_CHECKED)
     elif task == "task1":
         notices.append(CHART_NOT_CHECKED)
-    visual_data = visual.model_dump() if visual is not None and sheet else None
     holder = {}
 
     def start_answer(bands, overall, feedback):
-        holder["needs"] = needs_from_feedback(bands, overall, feedback, rec["answer_text"])
-        holder["task"] = asyncio.create_task(build_model_answer(task, question, images or None, seed=n,
+        holder["needs"] = needs_from_feedback(bands, overall, feedback, answer)
+        seed = int(re.sub(r"\D", "", str(n)) or 0)  # "54w": a case made from #54
+        holder["task"] = asyncio.create_task(build_model_answer(task, question, images or None, seed=seed,
                                                                 needs=holder["needs"], sheet=sheet, visual=visual_data))
 
-    report = await grade_writing(task, question, rec["answer_text"], images or None, on_feedback=start_answer,
+    report = await grade_writing(task, question, answer, images or None, on_feedback=start_answer,
                                  sheet=judged, notices=notices, visual=visual_data)
     answer = await holder["task"] if "task" in holder else None
     path = None
@@ -159,6 +192,8 @@ async def main(args) -> None:
     for rec, got, cost in await asyncio.gather(*(case(rec) for rec in records)):
         n, r = rec["essay_number"], got["report"]
         checks = expected_checks(n, r, cost, expectations[str(n)], config)
+        if rec["task_type"] == "task1" and got["visual"]:
+            checks.append(correct_figures_check(r, got["visual"], got["question"]))
         if n == 35:
             checks += report35_checks(r, got["question"])
         before = rec["criteria_scores"]

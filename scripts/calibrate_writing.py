@@ -145,9 +145,9 @@ async def main(args) -> None:
                     if images:
                         reading, sheet, _ = await visual_for(s, cache_dir=args.visuals)
                         if sheet and detailed:  # as the bot judges a report: the sheet and its data check
-                            from services.ai.visual_check import data_check
+                            from services.ai.visual_reading import judge_ready
 
-                            sheet = f"{sheet}\n\n{data_check(s['text'], reading, question_of(s))}".strip()
+                            reading, _, sheet, _ = await judge_ready(s["text"], reading, question_of(s), images)
                     if args.full:
                         # the whole check as the bot runs it (mistakes first), without the model answer
                         report = await writing_grader.grade_writing(task, question_of(s), s["text"], images or None,

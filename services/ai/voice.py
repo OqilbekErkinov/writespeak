@@ -43,6 +43,7 @@ import tempfile
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import SimpleNamespace
 
 from pydantic import BaseModel
 
@@ -168,6 +169,39 @@ async def _whisper(wav: bytes, prompt: str | None, timestamps: bool):
     return response
 
 
+# British spelling in the transcripts (the academic lead, 2026-10-27: Whisper
+# wrote "traveling" for a candidate whose questions said "travelling"). A fixed
+# word list on Whisper's output - a prompt would steer what it hears.
+_BRITISH = {
+    "traveling": "travelling", "traveled": "travelled", "traveler": "traveller", "travelers": "travellers",
+    "color": "colour", "colors": "colours", "colorful": "colourful", "favorite": "favourite",
+    "favorites": "favourites", "behavior": "behaviour", "behaviors": "behaviours", "neighbor": "neighbour",
+    "neighbors": "neighbours", "neighborhood": "neighbourhood", "neighborhoods": "neighbourhoods",
+    "center": "centre", "centers": "centres", "theater": "theatre", "theaters": "theatres", "labor": "labour",
+    "honor": "honour", "humor": "humour", "flavor": "flavour", "flavors": "flavours", "harbor": "harbour",
+    "gray": "grey", "defense": "defence", "offense": "offence", "jewelry": "jewellery", "canceled": "cancelled",
+    "canceling": "cancelling", "modeling": "modelling", "fueled": "fuelled", "catalog": "catalogue",
+    "dialog": "dialogue", "mold": "mould", "pajamas": "pyjamas", "analyze": "analyse", "analyzed": "analysed",
+    "analyzing": "analysing", "paralyzed": "paralysed",
+}
+_IZE_STEMS = ("organ", "real", "recogn", "apolog", "critic", "emphas", "priorit", "social", "special", "summar",
+              "memor", "minim", "maxim", "util", "modern", "global", "categor", "character", "final", "visual",
+              "sympath", "mobil", "standard", "normal", "stabil", "optim", "custom", "personal", "familiar",
+              "harmon", "hospital", "legal", "urban", "industrial", "western", "colon", "energ", "fertil",
+              "civil", "commercial", "central", "computer", "digit", "general", "local", "national", "privat")
+_IZE = re.compile(rf"\b({'|'.join(_IZE_STEMS)})iz(e|ed|es|ing|ation|ations|er|ers)\b", re.IGNORECASE)
+_BRITISH_RE = re.compile(r"\b(" + "|".join(sorted(_BRITISH, key=len, reverse=True)) + r")\b", re.IGNORECASE)
+
+
+def british(text: str) -> str:
+    """American spellings in a transcript turned British, keeping capitals."""
+    def keep_case(new: str, old: str) -> str:
+        return new.upper() if old.isupper() and len(old) > 1 else new.capitalize() if old[:1].isupper() else new
+
+    text = _BRITISH_RE.sub(lambda m: keep_case(_BRITISH[m.group(1).lower()], m.group(1)), text)
+    return _IZE.sub(lambda m: f"{m.group(1)}is{m.group(2)}", text)
+
+
 def _tokens(text: str) -> list[Token]:
     return [Token(m.group(), m.start(), m.end()) for m in TOKEN_RE.finditer(text)]
 
@@ -249,7 +283,7 @@ async def transcribe_answer(wav: bytes) -> AnswerAudio:
         _whisper(wav, FILLER_PROMPT, timestamps=True),
         _whisper(wav, None, timestamps=False),
     )
-    text = (verbatim.text or "").strip()
+    text = british((verbatim.text or "").strip())
     tokens = _tokens(text)
     segments = getattr(verbatim, "segments", None) or []
     no_speech = not tokens or (
@@ -257,8 +291,9 @@ async def transcribe_answer(wav: bytes) -> AnswerAudio:
     )
     if no_speech:
         return AnswerAudio(text="", tokens=[], duration=duration, no_speech=True)
-    _attach_times(tokens, getattr(verbatim, "words", None) or [])
-    _set_confidence(tokens, plain.text or "", segments)
+    _attach_times(tokens, [SimpleNamespace(word=british(getattr(w, "word", "")), start=w.start, end=w.end)
+                           for w in getattr(verbatim, "words", None) or []])
+    _set_confidence(tokens, british(plain.text or ""), segments)
     return AnswerAudio(text=text, tokens=tokens, duration=duration)
 
 

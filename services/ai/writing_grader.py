@@ -65,11 +65,14 @@ import openai
 from bot.config import settings
 from services.ai import usage
 from services.ai.essay_marking import (
+    PASTE_NOTICE,
     SCORE_KEYS,
     WritingReport,
     align_segments,
     assess,
     build_report,
+    canon,
+    clean_pasted,
     count_words,
     drop_priorities,
     find_copied_spans,
@@ -80,7 +83,14 @@ from services.ai.schemas import Mistake, MissedMistake, MissedMistakes, WritingF
 from services.ai.scoring import median_of_runs, overall_band, target_band, whole_band
 from services.ai import marking_config
 from services.ai.visual_reading import JUDGE_RULES
-from services.ai.visual_check import figures, match_figure
+from services.ai.visual_check import (
+    data_visual,
+    figures,
+    match_figure,
+    protected_mistake,
+    unchecked_figures,
+    visual_kind,
+)
 from services.ai.writing_anchors import anchors_text, patterns_text
 
 logger = logging.getLogger(__name__)
@@ -147,9 +157,12 @@ NOT_ERRORS = """NOT ERRORS - never count or list these: style preferences and va
 ("different from/than/to", "treated differently than", "live healthier", British vs American \
 spelling and usage, "volunteers of art" vs "art volunteers", "hold influence over", "a renewed \
 interest in", "drawbacks to", "see a rise", "foods" meaning kinds of food, "others'" with the noun \
-left out, "was least popular", a plainer word that is still correct, an optional comma); a word or \
-phrase the question itself uses; a proper name as its owner writes it ("Malala Fund"); anything whose \
-"fix" would change what the student meant."""
+left out, "was least popular", "a chart-high / chart-low of", "bear parallels to/with", "reach \
+parity", "buck the trend", a plainer word that is still correct, an optional comma); a paraphrase of a \
+chart's label ("age at death" for "life expectancy", "proximity to home" for "close to parental \
+home"); a word or phrase the question itself uses; a proper name as its owner writes it ("Malala \
+Fund"); the writer's own grouping of steps or categories ("in the final stage" of the writer's own \
+three stages); anything whose "fix" would change what the student meant."""
 
 ONE_CRITERION = """ONE PROBLEM, ONE CRITERION: word choice, collocation, word form, spelling and \
 register -> LR (Lexical); grammar and punctuation -> GRA; linking, referencing, paragraphing and \
@@ -175,6 +188,10 @@ higher one, give the higher band.
 another is weak.
 5. Credit what works: less common vocabulary used well and complex structures used accurately count \
 for the band, not only the absence of errors. Find the band that fits best - don't count mistakes.
+6. Below 9 needs evidence: to give a criterion less than 9, its weaknesses must quote the specific \
+text, or name the specific omission (e.g. "the 55-64 group is never described"). "Could be richer", \
+"not fully developed", "needs more range" with no example are not reasons - with no such weakness, \
+give 9.
 
 PLAIN-LANGUAGE BAND GUIDE
 Task Response (Task 2):
@@ -242,6 +259,9 @@ Grammar, name what earns credit as well as what holds it back."""
 
 TA_GUIDE = """TASK ACHIEVEMENT (Task 1) - judge the report against the visual's DATA SHEET and its KEY \
 FEATURES, in this order:
+Data accuracy is judged only by the DATA CHECK: a figure listed as NOT CHECKED, or near an UNCERTAIN \
+figure, never lowers Task Achievement; a trend or a claim about the writer's own grouping is judged as \
+the JUDGE RULES say.
 1. Overview - the biggest factor. Is there one? Is it accurate? Does it state the main trends or \
 differences (changes, extremes, contrasts) - not just static facts, or only the first and last steps \
 of a process? (A Band 6.5 anchor is error-free and precise, but its overview only gives a process's \
@@ -251,9 +271,12 @@ most, however good the rest is.
 2. Key features: does the report cover the main ones? The sheet's key comparisons are a menu, not a \
 checklist: a 150-200-word report selects the most significant, and leaving some out is not a weakness \
 when its selection is sensible.
-3. Comparisons: Task 1 requires them. Count the genuine comparisons (higher/lower than, overtook, the \
-gap between, while X ..., Y ..., doubled, the same as). A report that lists figures with no comparisons \
-gets Task Achievement 5 at most.
+3. Comparisons: a visual of figures (a line graph, bar chart, pie chart, table, or a mix of them) needs \
+them. Count the genuine comparisons (higher/lower than, overtook, the gap between, while X ..., Y ..., \
+doubled, the same as); a report on such a visual that lists figures with no comparisons gets Task \
+Achievement 5 at most. A process, cycle or map needs NO comparisons (its question doesn't ask for them): \
+judge its overview, how fully it covers the stages, the order of the steps and a logical grouping - \
+never lower it for "no comparisons" or "no figures".
 4. Data accuracy: take it from the DATA CHECK, which software ran on every figure of the report \
 against the sheet, within its precision ("around 40%" for 41 ±2 is correct): a figure it found on the \
 sheet is accurate - never call it inaccurate or invented, and don't re-read the chart to doubt it; look \
@@ -434,7 +457,8 @@ priority's criteria; never all the mistakes of a category). Never build a priori
 trivial word, or around anything that is not a real mistake.
    - type "tip" - only where real mistakes are too few for a fix: what separates the answer from the \
 next band in the descriptors; example_wrong = "", example_right = a short example of doing it \
-well, mistake_ids = [].
+well, mistake_ids = []. A tip never asks the writer to stop paraphrasing the chart's labels ("age at \
+death" for "life expectancy" is good paraphrase) and never asks for what the report already does.
 6. vocabulary - 10-12 words or phrases useful {vocab_scope}, about one band above the student's \
 level: term, plain-English meaning, an English example sentence on this topic.
 7. checklist - 5-6 short lines for "Before you send your next {piece}", built ONLY from this \
@@ -448,10 +472,11 @@ or *single asterisks* (italics); no other markup.
 {scores}"""
 
 
-def _scoring_system(task_type: str) -> str:
+def _scoring_system(task_type: str, kind: str | None = None, answer: str = "") -> str:
     """The scorer's fixed instructions - the same for every answer of a task
-    type (prompt-cached): the guide, Task 1's TA guide and overview patterns,
-    the anchors."""
+    type and visual kind (prompt-cached): the guide, Task 1's TA guide and
+    overview patterns, the anchors (with a Band 9 report of the same kind of
+    visual, never the answer being scored)."""
     first = "Task Achievement" if task_type == "task1" else "Task Response"
     if task_type == "task1":
         check = (
@@ -472,7 +497,7 @@ def _scoring_system(task_type: str) -> str:
         f"IELTS WRITING BAND DESCRIPTORS (summary):\n{BAND_DESCRIPTORS}",
         marking_guide(),
         extra,
-        anchors_text(task_type),
+        anchors_text(task_type, kind, answer),
         f"{check} For each criterion (TR_or_TA = {first}) give the strengths, then the weaknesses, then "
         "the whole band and the note. The student is an ESL learner, but that never changes a band.",
     ]
@@ -547,7 +572,10 @@ the student's version agrees with the sheet - the printed figure (rounding with 
 figure within a scale reading's ±range, an UNCERTAIN figure or one the sheet can't read, a ranking or \
 trend the sheet shows - or when the "correction" itself disagrees with the sheet; keep=true when the \
 verified figures clearly contradict the student. A year printed on the axis, or between the first and \
-last labelled years, is never a TR mistake. A data correction must agree with the sheet: when an item \
+last labelled years, is never a TR mistake. A trend ("fell", "stayed stable") is wrong only when the \
+change between its two figures is larger than both their ±ranges together and goes the other way. A \
+claim about the writer's own grouping ("in the final stage" of the writer's own three stages) is never \
+a data error: only a wrong step order or a missing step is. A data correction must agree with the sheet: when an item \
 carries a CORRECTION CHECK (its correction's figures are not on the sheet), either give fixed_correct - \
 the correction rewritten with the sheet's figures for the same series - or keep=false. With no DATA \
 SHEET and no visual, a mistake about a figure is keep=false (nothing to check it against).
@@ -726,10 +754,14 @@ class Scores:
         return overall_band(list(self.bands.values()))
 
 
-def cap_bands(task_type: str, answer_text: str, bands: dict[str, float], notes: dict[str, str]):
+def cap_bands(task_type: str, answer_text: str, bands: dict[str, float], notes: dict[str, str],
+              figures_visual: bool = True):
     """The length and paragraphing policy (marking guide B2, chosen to match
     the books - Volume 2 gives Band 8.0 to a 148-word report): returns
-    (bands, notes, the caps applied, report notices)."""
+    (bands, notes, the caps applied, report notices). The "no comparisons"
+    cap is for visuals of figures only (`figures_visual`): #58, a life
+    cycle, had Task Achievement 5 for "figures listed with no comparisons"
+    and not one figure in it."""
     bands, notes = dict(bands), dict(notes)
     words, paragraphs = count_words(answer_text), paragraph_count(answer_text)
     capped, notices = [], []
@@ -749,7 +781,7 @@ def cap_bands(task_type: str, answer_text: str, bands: dict[str, float], notes: 
             notices.append(f"Your report has {words} words - no penalty this time, but aim for at least 150.")
             if notes.get("TR_or_TA"):
                 notes["TR_or_TA"] = f"{notes['TR_or_TA'].rstrip('. ')} ({words} words: aim for 150+)."
-        if count_comparisons(answer_text) == 0:
+        if figures_visual and count_comparisons(answer_text) == 0:
             cap("TR_or_TA", 5, "Figures are listed with no comparisons, so Task Achievement is 5 at most.")
     else:
         if words < 200:
@@ -761,16 +793,36 @@ def cap_bands(task_type: str, answer_text: str, bands: dict[str, float], notes: 
     return bands, notes, capped, notices
 
 
+_OMISSION = re.compile(r"\b(omit\w*|missing|leaves? out|left out|not (?:mention|cover|describ|includ)\w*|"
+                       r"(?:doesn't|does not|never) (?:mention|cover|describe|include|state|give)\w*|no mention|"
+                       r"absent|no overview|ignor\w*|skips?)\b", re.IGNORECASE)
+_QUOTED = re.compile(r"[\"“«']([^\"”»']{2,120})[\"”»']")
+
+
+def evidenced(weaknesses: list[str], answer_text: str) -> bool:
+    """Does a criterion's list of weaknesses quote the answer or name an
+    omission? An 8 without that is a 9 (the academic lead, 2026-10-27:
+    "could be richer" and "not fully developed" lowered Band 9 reports)."""
+    low = canon(answer_text).lower()
+    for w in weaknesses:
+        if _OMISSION.search(w):
+            return True
+        if any(canon(q).lower().strip(" .,") in low for q in _QUOTED.findall(w) if len(q.strip(" .,")) >= 2):
+            return True
+    return False
+
+
 async def _score_once(task_type, prompt_text, answer_text, prompt_images, sheet: str = "",
-                      evidence: str = "") -> dict:
+                      evidence: str = "", kind: str | None = None) -> dict:
     """One scoring run: {criterion: whole band, ..., "_notes": {criterion: note}}.
-    `evidence`: the checked mistakes and strong phrases (mistake_evidence)."""
+    `evidence`: the checked mistakes and strong phrases (mistake_evidence);
+    `kind`: the visual's kind, for its Band 9 anchor."""
     facts = f"COUNTED BY SOFTWARE: {count_words(answer_text)} words, {paragraph_count(answer_text)} paragraph(s)."
     text = f"QUESTION PROMPT:\n{prompt_text}\n\nANSWER:\n{answer_text}\n\n{facts}"
     if evidence:
         text += f"\n\n{evidence}"
     messages = [
-        {"role": "system", "content": _scoring_system(task_type)},
+        {"role": "system", "content": _scoring_system(task_type, kind, answer_text)},
         {"role": "user", "content": _with_images(text, prompt_images, task_type == "task1", _judged(sheet))},
     ]
     response = await _parse("score", SCORE_MAX_TOKENS, messages, WritingScoring,
@@ -779,6 +831,10 @@ async def _score_once(task_type, prompt_text, answer_text, prompt_images, sheet:
     if scores is None:
         raise RuntimeError("Scoring model returned no parsable result")
     out: dict = {k: whole_band(getattr(scores, k).band) for k in SCORE_KEYS}
+    for k in SCORE_KEYS:
+        if out[k] == 8 and not evidenced(getattr(scores, k).weaknesses, answer_text):
+            logger.info("Score %s 8 -> 9: no quoted weakness or named omission (%s)", k, getattr(scores, k).weaknesses)
+            out[k] = 9.0
     out["_notes"] = {k: getattr(scores, k).note.strip() for k in SCORE_KEYS}
     return out
 
@@ -819,18 +875,23 @@ async def decide_scores(
     prompt_images: list[tuple[bytes, str]] | None = None,
     sheet: str = "",
     evidence: str = "",
+    visual: dict | None = None,
 ) -> Scores:
     """The report's criterion bands: the median of SCORE_RUNS scoring runs,
     then the caps; each band's note comes from a run that gave that band.
-    `evidence`: the checked mistakes (grade_writing passes them)."""
+    `evidence`: the checked mistakes (grade_writing passes them); `visual`:
+    the sheet as data - its kind picks the Band 9 anchor and decides whether
+    comparisons are needed (the question's wording when there is none)."""
+    kind = visual_kind(prompt_text, visual) if task_type == "task1" else None
     medians, runs = await median_of_runs(
-        lambda: _score_once(task_type, prompt_text, answer_text, prompt_images, sheet, evidence), SCORE_KEYS,
+        lambda: _score_once(task_type, prompt_text, answer_text, prompt_images, sheet, evidence, kind), SCORE_KEYS,
         label=f"writing {task_type}",
     )
     notes = {}
     for k in SCORE_KEYS:
         notes[k] = next((r["_notes"][k] for r in runs if whole_band(r[k]) == medians[k] and r["_notes"].get(k)), "")
-    bands, notes, capped, notices = cap_bands(task_type, answer_text, medians, notes)
+    bands, notes, capped, notices = cap_bands(task_type, answer_text, medians, notes,
+                                              data_visual(prompt_text, visual) if task_type == "task1" else True)
     if capped:
         logger.info("Score caps (writing %s): %s", task_type, "; ".join(capped))
     return Scores(bands=bands, notes=notes, capped=capped, notices=notices,
@@ -891,7 +952,13 @@ async def grade_writing(
     their density, never by style preferences.
 
     The report always shows the student's original text; the model's marks
-    are located in it (services/ai/essay_marking.py), never an altered copy."""
+    are located in it (services/ai/essay_marking.py), never an altered copy -
+    after pasted-text cleaning (clean_pasted: lines broken mid-sentence
+    joined, page headers/footers left out), which the marks then match."""
+    answer_text, footers = clean_pasted(answer_text)
+    if footers and PASTE_NOTICE not in (notices or []):
+        notices = (notices or []) + [PASTE_NOTICE]
+    unchecked = set(unchecked_figures(answer_text, visual, prompt_text)) if visual else set()
     copied = [answer_text[s:e] for s, e in find_copied_spans(answer_text, prompt_text)]
     feedback = await _feedback_call(task_type, prompt_text, answer_text, prompt_images, copied, None, sheet)
     problems = assess(feedback, answer_text) if feedback else ["the answer ran past its token limit"]
@@ -969,16 +1036,23 @@ async def grade_writing(
                 logger.info("Dropped %s: its correction disagrees with the data sheet", label)
         return keep, crit, severity, correct
 
-    auto = {m.id for m in feedback.mistakes if question_word(m)}
+    def data_protected(m) -> bool:
+        """A Task mistake about a correct figure, one the sheet can't check,
+        or a category with an uncertain figure - never kept (the academic
+        lead, 2026-10-27)."""
+        return m.criterion == "TR" and protected_mistake(m.wrong, m.correct, m.why, visual, prompt_text, unchecked)
+
+    auto = {m.id for m in feedback.mistakes if question_word(m) or data_protected(m)}
     for m in feedback.mistakes:
         if m.id in auto:
-            logger.info("Dropped mistake %s by code: it only changes the question's own words (%r)", m.id, m.wrong)
+            logger.info("Dropped mistake %s by code: the question's own words, or a figure the sheet confirms or "
+                        "can't check (%r)", m.id, m.wrong)
     verdicts, missed = await asyncio.gather(
         verify([(m.id, "essay", m.wrong, m.correct, m.why, m.criterion, correction_note(m))
                 for m in feedback.mistakes if checkable(m) and m.id not in auto]),
         find_missed(),
     )
-    missed = [x for x in missed if not question_word(x)]
+    missed = [x for x in missed if not question_word(x) and not data_protected(x)]
     missed_verdicts = await verify(
         [(k, "essay", x.wrong, x.correct, x.why, x.criterion, correction_note(x))
          for k, x in enumerate(missed) if checkable(x)])
@@ -1030,7 +1104,7 @@ async def grade_writing(
                 for x, sev in zip(kept_missed, missed_severity)]
     strong = [seg.text.strip() for paragraph in feedback.essay for seg in paragraph if seg.type == "good"]
     scores = await decide_scores(task_type, prompt_text, answer_text, prompt_images, sheet,
-                                 mistake_evidence(answer_text, checked, strong))
+                                 mistake_evidence(answer_text, checked, strong), visual)
     # Priorities built on mistakes the filter dropped go now, so the model
     # answer and the report teach the same list (the last prompt's B2).
     feedback, priority_notes = drop_priorities(

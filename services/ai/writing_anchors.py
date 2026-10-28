@@ -21,11 +21,13 @@ part, so OpenAI's prompt cache bills them at a tenth of the price.
 """
 from __future__ import annotations
 
+import difflib
 import json
 import logging
 
 from bot.config import settings
 from services.ai import marking_config
+from services.ai.essay_marking import canon
 
 logger = logging.getLogger(__name__)
 
@@ -60,9 +62,33 @@ def anchor_ids() -> set[str]:
     return marking_config.anchor_ids()
 
 
-def anchors_text(task_type: str) -> str:
-    """The anchors as the scoring prompt shows them ("" without the file)."""
-    items = anchors(task_type)
+def _same_text(a: str, b: str) -> bool:
+    """Is `b` the anchor `a` itself (an anchor is never shown for its own report)?"""
+    if not a or not b:
+        return False
+    x, y = canon(a).lower()[:2500], canon(b).lower()[:2500]
+    return difflib.SequenceMatcher(None, x, y, autojunk=False).ratio() >= 0.9
+
+
+def type_anchor(kind: str | None, exclude: str = "") -> dict | None:
+    """The Band 9 report of the same kind of visual (data/calibration/
+    type_anchors.json: one per kind - line, bar, table, pie, process, cycle,
+    mixed - chosen by the academic lead on 2026-10-27), unless it is the
+    report being scored."""
+    if not kind or not marking_config.type_anchors_on():
+        return None
+    item = (_load("type_anchors.json") or {}).get(kind)
+    return None if item is None or _same_text(item.get("text", ""), exclude) else item
+
+
+def anchors_text(task_type: str, kind: str | None = None, exclude: str = "") -> str:
+    """The anchors as the scoring prompt shows them ("" without the file):
+    the fixed set, plus for Task 1 the Band 9 report of the visual's `kind`;
+    never the answer being scored (`exclude`) itself."""
+    items = [a for a in anchors(task_type) if not _same_text(a.get("text", ""), exclude)]
+    extra = type_anchor(kind, exclude) if task_type == "task1" else None
+    if extra is not None:
+        items = items + [extra]
     if not items:
         return ""
     piece = "report" if task_type == "task1" else "essay"
@@ -74,7 +100,8 @@ def anchors_text(task_type: str) -> str:
         f"criterion by criterion. They cover Band {low:g} to {high:g}; below {low:g}, use the guide."
     ]
     for k, a in enumerate(items, 1):
-        out.append(f"--- Anchor {k}: Band {a['band_label']} ---")
+        same_kind = f" - a report on the same kind of visual ({a['kind']})" if a.get("kind") else ""
+        out.append(f"--- Anchor {k}: Band {a['band_label']}{same_kind} ---")
         if a.get("question"):
             out.append(f"Question: {a['question']}")
         if a.get("sheet"):
