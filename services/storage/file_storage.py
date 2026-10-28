@@ -49,11 +49,12 @@ def read_file(path: str) -> bytes:
     return Path(path).read_bytes()
 
 
-def save_practice_image(content: bytes) -> str:
+def save_practice_image(content: bytes, folder: str = "practice") -> str:
     """Saves a practice question's chart/diagram (web admin panel upload),
     normalized to something Telegram's sendPhoto and the vision model both
     accept: PNG for line-art sources (keeps chart lines crisp), JPEG
-    otherwise, at most MAX_IMAGE_SIDE px. Raises ValueError for non-images."""
+    otherwise, at most MAX_IMAGE_SIDE px. Raises ValueError for non-images.
+    `folder`: "chart_keys" for a chart key's own copy (services/ai/chart_keys.py)."""
     try:
         image = Image.open(io.BytesIO(content))
         source_format = image.format
@@ -71,7 +72,7 @@ def save_practice_image(content: bytes) -> str:
         image = image.convert("RGB")
 
     keep_png = source_format in ("PNG", "GIF", "BMP")
-    d = settings.storage_dir / "practice"
+    d = settings.storage_dir / folder
     d.mkdir(parents=True, exist_ok=True)
     path = d / _timestamped_name(".png" if keep_png else ".jpg")
     if keep_png:

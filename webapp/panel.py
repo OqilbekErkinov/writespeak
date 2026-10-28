@@ -38,6 +38,7 @@ from bot.utils import checks_back, crm, runtime
 from db.database import get_session
 from db.models import (
     AdminAction,
+    ChartKey,
     PaymentKind,
     PaymentRequest,
     PaymentStatus,
@@ -162,12 +163,12 @@ def new_bot() -> Bot:
 
 # Pages that never show the top bar - no badges to count for them.
 NAV_SKIP = ("/login", "/logout", "/cabinet", "/reports/", "/export/", "/support/file/", "/broadcast/", "/payments/",
-            "/questions/")
+            "/questions/", "/chart-image/")
 
 
 async def nav_counts(request: Request) -> dict:
     """The top bar's badges, and who is signed in."""
-    out = {"support": 0, "payments": 0, "errors": await errors_today(), "window": False,
+    out = {"support": 0, "payments": 0, "charts": 0, "errors": await errors_today(), "window": False,
            "owner": is_owner(request), "admin": admin_name(request)}
     try:
         async with get_session() as session:
@@ -175,6 +176,8 @@ async def nav_counts(request: Request) -> dict:
                 SupportMessage.direction == "in", SupportMessage.read.is_(False)))).scalar() or 0
             out["payments"] = (await session.execute(select(func.count()).select_from(PaymentRequest).where(
                 PaymentRequest.status == PaymentStatus.pending))).scalar() or 0
+            out["charts"] = (await session.execute(select(func.count()).select_from(ChartKey).where(
+                ChartKey.status == "auto"))).scalar() or 0
         out["window"] = await runtime.window_on()
     except Exception as e:  # noqa: BLE001 - the page itself still opens
         logger.info("Nav badges not counted: %r", e)

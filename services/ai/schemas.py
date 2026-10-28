@@ -387,6 +387,7 @@ class VisualSheet(BaseModel):
     checks: list[str]  # what the code checks found
     features: KeyFeatures
     reads: int  # how many reads agreed on it (1 when the second failed)
+    chart_key: int = 0  # the checked chart key it comes from (services/ai/chart_keys.py); 0: read for this check
 
 
 class SampleShow(BaseModel):

@@ -273,6 +273,37 @@ class PracticeQuestion(Base):
     kind: Mapped[str | None] = mapped_column(String(30), nullable=True)
 
 
+class ChartKey(Base):
+    """The answer key of a Task 1 visual (the user, 2026-10-28): its data
+    sheet as the bot read it once, then checked and corrected by an admin on
+    the web panel's /charts page. The same chart sent again - a Practice
+    question, or a student's own photo of it - is judged by the checked
+    sheet instead of being read anew (services/ai/chart_keys.py)."""
+
+    __tablename__ = "chart_keys"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    # auto: as the bot read it (not used for judging); verified: an admin checked it
+    status: Mapped[str] = mapped_column(String(10), default="auto", server_default="auto", index=True)
+    source: Mapped[str] = mapped_column(String(10), default="student")  # student | practice
+    question_text: Mapped[str] = mapped_column(Text)
+    image_path: Mapped[str] = mapped_column(String(1024))  # its own copy of the picture
+    # recognising the chart again: the picture's difference hash, the question's embedding
+    fingerprint: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBEDDING_DIM), nullable=True)
+    sheet: Mapped[dict] = mapped_column(JSON)  # services/ai/schemas.py's VisualSheet
+    kind: Mapped[str | None] = mapped_column(String(30), nullable=True)  # bar, line, pie, table, map, process, ...
+    practice_question_id: Mapped[int | None] = mapped_column(
+        ForeignKey("practice_questions.id", ondelete="SET NULL"), nullable=True, index=True)
+    uses: Mapped[int] = mapped_column(Integer, default=1, server_default="1")  # checks that met this chart
+    last_submission_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    verified_by: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(),
+                                                 onupdate=func.now())
+
+
 class PracticeImportPost(Base):
     """A channel post the practice importer has already looked at, so it is
     read (and paid for) once - see services/practice_import/writing.py."""

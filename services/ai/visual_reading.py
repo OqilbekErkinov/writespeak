@@ -264,15 +264,25 @@ def _box_area(box: list[float]) -> float:
     return (box[2] - box[0]) * (box[3] - box[1])
 
 
-async def read_visual(question: str, images: list[tuple[bytes, str]]) -> VisualSheet | None:
+async def first_read(question: str, images: list[tuple[bytes, str]]) -> VisualExtraction | None:
+    """Read 1 alone - enough to recognise a chart that has a checked key
+    (services/ai/chart_keys.py). Raises ChartImageRejected."""
+    return await _read(READ_A, question, images, "read 1")
+
+
+async def read_visual(question: str, images: list[tuple[bytes, str]],
+                      first: VisualExtraction | None = None) -> VisualSheet | None:
     """The checked data sheet of the Task 1 visual in `images`. None when no
     read worked for some other reason: the check then goes on with each call
     reading the picture itself. Raises ChartImageRejected when OpenAI can't
-    open the picture."""
+    open the picture. `first`: read 1, already made - only read 2 runs."""
     prepared = [prepare_for_reading(data) for data, _ in images]
-    results = await asyncio.gather(
-        _read(READ_A, question, images, "read 1"), _read(READ_B, question, prepared, "read 2"),
-        return_exceptions=True)
+    if first is None:
+        results = await asyncio.gather(
+            _read(READ_A, question, images, "read 1"), _read(READ_B, question, prepared, "read 2"),
+            return_exceptions=True)
+    else:
+        results = [first, *await asyncio.gather(_read(READ_B, question, prepared, "read 2"), return_exceptions=True)]
     rejected = [r for r in results if isinstance(r, ChartImageRejected)]
     a, b = (None if isinstance(r, BaseException) else r for r in results)
     for r in results:
@@ -370,6 +380,11 @@ async def check_report_figures(answer: str, visual: dict, question: str,
         got = await read_one(question, images, fig["sentence"], fig["text"])
         value = None if got is None or not got.found else (0.0 if got.missing else got.value)
         cell = find_cell(visual, got.series, got.point) if got is not None and got.found else None
+        if visual.get("chart_key") and cell is not None and cell.get("value") is not None:
+            # a checked answer key is the truth: the re-read only tells which figure is meant
+            right = figure_agrees(fig, cell["value"], cell.get("precision") or 0.0)
+            (agreed if right else confirmed).append(fig["text"])
+            continue
         # A cell the two reads disagreed on (its value and ± cover both) may be
         # settled by a third reading; one a code check made uncertain (look-alike
         # legend patterns, a missing bar, slices off 100%) never is.
@@ -757,7 +772,9 @@ def sheet_text(sheet: VisualSheet | None) -> str:
         return ""
     lines = ["DATA SHEET - the visual, read twice and checked by software. Every figure in the scores, the "
              "feedback and the model answer comes from it."]
-    if sheet.reads == 1:
+    if sheet.chart_key:
+        lines[0] = lines[0].replace("read twice and checked by software", "with every figure checked by an examiner")
+    elif sheet.reads == 1:
         lines[0] = lines[0].replace("read twice and checked", "read once and checked")
     uncertain = []
     for i, blk in enumerate(sheet.blocks, 1):

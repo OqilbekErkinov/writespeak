@@ -71,6 +71,11 @@ app.include_router(cabinet.router)
 # Test window, broadcast, support inbox, errors, Excel, blocking, admins + audit.
 panel.templates = templates
 app.include_router(panel.router)
+# Task 1 chart keys: the checked data sheet of every chart the bot has met.
+from webapp import charts  # noqa: E402
+
+charts.templates = templates
+app.include_router(charts.router)
 
 
 @app.on_event("startup")

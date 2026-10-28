@@ -297,6 +297,7 @@
       <a href="/groups" class="{{ 'active' if active == 'groups' else '' }}">Guruhlar</a>
       <a href="/teachers" class="{{ 'active' if active == 'teachers' else '' }}">O'qituvchilar</a>
       <a href="/questions" class="{{ 'active' if active == 'questions' else '' }}">Savollar</a>
+      <a href="/charts" class="{{ 'active' if active == 'charts' else '' }}">Grafiklar{% if nav.charts %}<span class="nb" title="tekshirilmagan">{{ nav.charts }}</span>{% endif %}</a>
     </nav>
     <div class="tb-right">
       {% if nav.window %}{% if nav.owner %}<a class="tw-chip" href="/settings" title="Faqat sinovchilar va adminlar tekshira oladi">🧪<span class="t"> Test rejimi</span></a>{% else %}<span class="tw-chip" title="Faqat sinovchilar va adminlar tekshira oladi">🧪<span class="t"> Test rejimi</span></span>{% endif %}{% endif %}

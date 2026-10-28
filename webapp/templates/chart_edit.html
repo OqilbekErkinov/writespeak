@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+{% block title %}Grafik #{{ key.id }} — Bandzilla Admin{% endblock %}
+{% block wrapclass %}wide{% endblock %}
+{% block content %}
+<style>
+  .ce { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 20px; align-items: start; }
+  .ce-pic { position: sticky; top: 16px; }
+  .ce-pic img { width: 100%; border: 1px solid var(--border); border-radius: 12px; background: #fff; display: block; }
+  .ce-q { white-space: pre-line; margin: 0 0 6px; }
+  .ce-meta { font-size: 12.5px; color: var(--ink-faint); }
+  .ce-warn { background: #FFF6D1; border-left: 4px solid var(--yellow); border-radius: 10px; padding: 10px 12px;
+    font-size: 13px; margin: 12px 0 0; }
+  .ce-warn ul { margin: 4px 0 0; padding-left: 18px; }
+  .blk { margin-top: 16px; }
+  .blk h2 { display: flex; gap: 8px; align-items: center; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .fld { margin-bottom: 10px; }
+  .fld label { display: block; font-size: 12.5px; font-weight: 800; color: var(--ink-soft); margin-bottom: 4px; }
+  .fld input, .fld textarea { width: 100%; }
+  table.grid { border-collapse: collapse; width: auto; }
+  table.grid th, table.grid td { padding: 2px; border: 1px solid var(--border); }
+  table.grid input { width: 96px; padding: 5px 7px; font-size: 13.5px; border-radius: 6px; }
+  table.grid th input { font-weight: 800; }
+  table.grid tr:first-child th input { width: 96px; }
+  table.grid th:first-child input { width: 150px; }
+  table.grid td.unsure input { background: #FFF1A8; border-color: #E5C200; }
+  .grid-tools { display: flex; gap: 8px; margin-top: 8px; }
+  table.mapt input, table.mapt select { width: 100%; min-width: 90px; font-size: 13px; }
+  .bar { position: sticky; bottom: 0; z-index: 5; display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+    background: var(--paper); padding: 12px 0; margin-top: 14px; border-top: 1px solid var(--border); }
+  @media (max-width: 900px) { .ce { grid-template-columns: 1fr; } .ce-pic { position: static; } .row2 { grid-template-columns: 1fr; } }
+</style>
+
+<p style="margin: 0 0 10px;"><a href="/charts">← Grafiklar</a></p>
+{% if flash %}<div class="flash">{{ flash }}</div>{% endif %}
+
+<div class="ce">
+  <div class="ce-pic">
+    <a href="/chart-image/{{ key.id }}" target="_blank" title="To'liq o'lchamda ochish"><img src="/chart-image/{{ key.id }}" alt="grafik"></a>
+    <p class="hint">Rasmni bossangiz, to'liq o'lchamda ochiladi.</p>
+  </div>
+
+  <div>
+    <h1 style="margin: 0 0 6px;">Grafik #{{ key.id }}
+      {% if key.status == "verified" %}<span class="pill pill-good">Tekshirilgan</span>{% else %}<span class="pill pill-warn">Tekshirilmagan</span>{% endif %}</h1>
+    <p class="ce-q">{{ key.question_text }}</p>
+    <div class="ce-meta">{{ "Practice savoli" if key.source == "practice" else "Talaba yuborgan" }} · {{ key.uses }} marta ishlatilgan
+      · {{ kind_labels.get(key.kind, key.kind or "—") }} · qo'shilgan {{ key.created_at.strftime('%Y-%m-%d') }}
+      {%- if key.verified_by %} · tasdiqladi: {{ key.verified_by }}, {{ key.verified_at.strftime('%Y-%m-%d') }}{% endif %}</div>
+
+    {% if key.status != "verified" and (read_note or read_checks or unreadable or blocks|selectattr("form", "equalto", "grid")|list) %}
+    <div class="ce-warn">
+      <b>Bot o'qiganda nimadan shubhalandi:</b>
+      <ul>
+        {% if read_note %}<li>{{ read_note }}</li>{% endif %}
+        {% for c in read_checks %}<li>{{ c }}</li>{% endfor %}
+        {% for u in unreadable %}<li>o'qib bo'lmadi: {{ u }}</li>{% endfor %}
+        <li>Sariq kataklar — ikki o'qish kelishmagan raqamlar: avval shularni tekshiring. Sichqonchani katak ustiga olib borsangiz, sababi chiqadi.</li>
+      </ul>
+    </div>
+    {% endif %}
+
+    <form method="post" action="/charts/{{ key.id }}" id="sheetForm">
+      {% for b in blocks %}{% set i = loop.index0 %}
+      <div class="card blk">
+        <h2>{{ "%d-qism: " % (i + 1) if blocks|length > 1 }}{{ b.type }}</h2>
+        <div class="row2">
+          <div class="fld"><label>Sarlavha</label><input type="text" name="b{{ i }}.title" value="{{ b.title }}"></div>
+          <div class="fld"><label>Birlik (%, ming kishi, $…)</label><input type="text" name="b{{ i }}.units" value="{{ b.units }}"></div>
+        </div>
+
+        {% if b.form == "grid" %}
+        <div class="fld"><label>O'qdagi yozuvlar (vergul bilan, rasmdagidek: 0, 15, 30 …)</label>
+          <input type="text" name="b{{ i }}.axis" value="{{ b.axis }}"></div>
+        <div class="table-scroll">
+        <table class="grid" data-block="{{ i }}">
+          <tr><th></th>{% for p in b.points %}<th><input type="text" name="b{{ i }}.p{{ loop.index0 }}" value="{{ p }}" placeholder="ustun"></th>{% endfor %}</tr>
+          {% for row in b.rows %}{% set r = loop.index0 %}
+          <tr><th><input type="text" name="b{{ i }}.s{{ r }}" value="{{ row.label }}" placeholder="qator"></th>
+            {% for c in row.cells %}<td class="{{ 'unsure' if c.unsure }}" title="{{ c.note }}"><input type="text" inputmode="decimal" name="b{{ i }}.v{{ r }}.{{ loop.index0 }}" value="{{ c.text }}"></td>{% endfor %}
+          </tr>
+          {% endfor %}
+        </table>
+        </div>
+        <div class="grid-tools">
+          <button type="button" class="btn btn-sm" data-add-row="{{ i }}">+ qator</button>
+          <button type="button" class="btn btn-sm" data-add-col="{{ i }}">+ ustun</button>
+        </div>
+        <p class="hint">Raqamni rasmdagidek yozing (4300 yoki 4,300; 23.5; foiz belgisisiz ham bo'ladi). So'zli katak so'z bilan qoladi.
+          Katakni bo'shatsangiz o'chadi; butun qator yoki ustun bo'sh qolsa, u ham o'chadi.</p>
+
+        {% elif b.form == "map" %}
+        <div class="table-scroll">
+        <table class="mapt" data-map="{{ i }}" data-times="{{ b.times|length }}">
+          <tr><th>Obyekt</th><th>Joyi</th>{% for t in b.times %}<th><input type="text" name="b{{ i }}.t{{ loop.index0 }}" value="{{ t }}"></th>{% endfor %}</tr>
+          {% for f in b.features %}{% set k = loop.index0 %}
+          <tr>
+            <td><input type="text" name="b{{ i }}.f{{ k }}.name" value="{{ f.name }}"></td>
+            <td><input type="text" name="b{{ i }}.f{{ k }}.location" value="{{ f.location }}"></td>
+            {% for st, d in f.states %}<td>
+              <select name="b{{ i }}.f{{ k }}.st{{ loop.index0 }}">
+                {% for v, l in (("present", "bor"), ("absent", "yo'q"), ("changed", "o'zgargan")) %}<option value="{{ v }}" {{ 'selected' if v == st }}>{{ l }}</option>{% endfor %}
+              </select>
+              <input type="text" name="b{{ i }}.f{{ k }}.d{{ loop.index0 }}" value="{{ d }}" placeholder="qanday" style="margin-top: 4px;">
+            </td>{% endfor %}
+          </tr>
+          {% endfor %}
+        </table>
+        </div>
+        <div class="grid-tools"><button type="button" class="btn btn-sm" data-add-feature="{{ i }}">+ obyekt</button></div>
+        <p class="hint">Obyekt nomini bo'shatsangiz, u o'chadi.</p>
+
+        {% elif b.form == "process" %}
+        <div class="fld"><label>Bosqichlar (har qatorda bittasi, tartib bilan)</label>
+          <textarea name="b{{ i }}.steps" rows="{{ [b.steps.count('\n') + 2, 6]|max }}">{{ b.steps }}</textarea></div>
+        <div class="fld"><label>Katta bosqichlar (har qatorda: nomi: qadam raqamlari, masalan «Etishtirish: 1-2»)</label>
+          <textarea name="b{{ i }}.stages" rows="4">{{ b.stages }}</textarea></div>
+        {% endif %}
+
+        <div class="fld"><label>Asosiy fikr (bir gap — overview uchun)</label>
+          <input type="text" name="b{{ i }}.overall" value="{{ b.overall }}"></div>
+      </div>
+      {% endfor %}
+
+      <div class="bar">
+        <button type="submit" name="action" value="save" class="btn">Saqlash</button>
+        <button type="submit" name="action" value="verify" class="btn btn-good">Tasdiqlash</button>
+        {% if waiting > (0 if key.status == "verified" else 1) %}
+        <button type="submit" name="action" value="verify_next" class="btn btn-primary">Tasdiqlash va keyingisi ({{ waiting - (0 if key.status == "verified" else 1) }} ta qoldi)</button>
+        {% endif %}
+        {% if key.status == "verified" %}
+        <button type="submit" name="action" value="unverify" class="btn btn-warn">Tasdiqni bekor qilish</button>
+        {% endif %}
+      </div>
+    </form>
+
+    <form method="post" action="/charts/{{ key.id }}/delete" style="margin-top: 6px;"
+          data-confirm="Grafik #{{ key.id }} o'chirilsinmi?" data-confirm-text="Jadvali va rasmi o'chadi. Shu grafik yana kelsa, bot uni qaytadan o'qiydi." data-confirm-ok="O'chirish" data-tone="danger">
+      <button type="submit" class="btn btn-sm btn-bad">O'chirish</button>
+    </form>
+  </div>
+</div>
+
+<script>
+(function () {
+  function input(name, value) {
+    var el = document.createElement("input");
+    el.type = "text"; el.name = name; el.value = value || "";
+    return el;
+  }
+  document.querySelectorAll("[data-add-row]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var i = btn.dataset.addRow, table = document.querySelector('table.grid[data-block="' + i + '"]');
+      var r = table.rows.length - 1, cols = table.rows[0].cells.length - 1, tr = table.insertRow(-1);
+      var th = document.createElement("th"); th.appendChild(input("b" + i + ".s" + r)); tr.appendChild(th);
+      for (var c = 0; c < cols; c++) { tr.insertCell(-1).appendChild(input("b" + i + ".v" + r + "." + c)); }
+      th.firstChild.focus();
+    });
+  });
+  document.querySelectorAll("[data-add-col]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var i = btn.dataset.addCol, table = document.querySelector('table.grid[data-block="' + i + '"]');
+      var c = table.rows[0].cells.length - 1;
+      var th = document.createElement("th"); th.appendChild(input("b" + i + ".p" + c)); table.rows[0].appendChild(th);
+      for (var r = 1; r < table.rows.length; r++) { table.rows[r].insertCell(-1).appendChild(input("b" + i + ".v" + (r - 1) + "." + c)); }
+      th.firstChild.focus();
+    });
+  });
+  document.querySelectorAll("[data-add-feature]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var i = btn.dataset.addFeature, table = document.querySelector('table.mapt[data-map="' + i + '"]');
+      var k = table.rows.length - 1 + 100, times = +table.dataset.times, tr = table.insertRow(-1);
+      tr.insertCell(-1).appendChild(input("b" + i + ".f" + k + ".name"));
+      tr.insertCell(-1).appendChild(input("b" + i + ".f" + k + ".location"));
+      for (var j = 0; j < times; j++) {
+        var td = tr.insertCell(-1), sel = document.createElement("select");
+        sel.name = "b" + i + ".f" + k + ".st" + j;
+        [["present", "bor"], ["absent", "yo'q"], ["changed", "o'zgargan"]].forEach(function (o) {
+          var opt = document.createElement("option"); opt.value = o[0]; opt.textContent = o[1]; sel.appendChild(opt);
+        });
+        td.appendChild(sel); td.appendChild(input("b" + i + ".f" + k + ".d" + j));
+      }
+      tr.cells[0].firstChild.focus();
+    });
+  });
+})();
+</script>
+{% endblock %}

@@ -59,12 +59,12 @@ from bot.utils.quota import check_price, check_quota, free_check_note, payment_o
 from db import crud
 from db.database import get_session
 from db.models import SourceType
-from services.ai import marking_config, usage
+from services.ai import chart_keys, marking_config, usage
 from services.ai.essay_marking import PASTE_NOTICE, canon, clean_pasted
 from services.ai.openai_client import is_image_error
 from services.ai.sample_bank import build_model_answer, needs_from_feedback
 from services.ai.schemas import VocabularyItem
-from services.ai.visual_reading import ChartImageRejected, judge_ready, read_visual, sheet_text
+from services.ai.visual_reading import ChartImageRejected, judge_ready, sheet_text
 from services.ai.writing_grader import grade_writing
 from services.pdf.report_builder import build_progress, build_writing_report_pdf
 from services.storage.file_storage import image_mime, read_file, save_report
@@ -351,6 +351,7 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
     processing_msg = await message.answer(t("writing.grading_in_progress", lang))
     calls: list = []
     visual = None
+    chart_look = None  # how the chart was found: a checked chart key, or read now
     prompt_images = None
 
     try:
@@ -380,9 +381,11 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
         with usage.track(f"writing {data['task_type']} user={user_id}") as calls:
             if prompt_images:
                 # The chart read into a checked data sheet whose figures every call
-                # uses - and the first sign of a picture OpenAI can't open, before
-                # the scoring runs spend anything on it.
-                visual = await read_visual(data["prompt_text"], prompt_images)
+                # uses - an admin's checked sheet when the chart has a chart key -
+                # and the first sign of a picture OpenAI can't open, before the
+                # scoring runs spend anything on it.
+                visual, chart_look = await chart_keys.sheet_for(
+                    data["prompt_text"], prompt_images, data.get("practice_question_id"))
                 if visual is not None and visual.readability == "unreadable":
                     raise ChartUnreadable(visual.readability_note)
                 sheet = sheet_text(visual)
@@ -522,6 +525,10 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
                 submission_type="writing",
             )
         new_words = await crud.add_vocabulary_entries(session, user_id, vocabulary, source="writing")
+    if chart_look is not None:
+        # one more use of its chart key, or the chart kept for an admin to check
+        await chart_keys.remember(data["prompt_text"], prompt_images, visual, chart_look,
+                                  data.get("practice_question_id"), submission.id)
 
     found = len(report.mistakes)
     caption = (t("writing.done_caption", lang, band=report.overall_band, mistakes=found) if found

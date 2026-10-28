@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Grafiklar — Bandzilla Admin{% endblock %}
+{% block content %}
+<style>
+  .c-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+  .c-head h1 { margin: 0; }
+  .c-thumb { width: 120px; height: 80px; object-fit: contain; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--paper); display: block; }
+  .c-q { max-width: 520px; color: var(--ink); }
+  .c-meta { font-size: 12px; color: var(--ink-faint); margin-top: 4px; }
+  td { vertical-align: top; }
+  .kinds { margin-top: -6px; }
+  .kinds a { font-size: 12.5px; padding: 4px 12px; }
+</style>
+
+<div class="c-head">
+  <h1>Grafiklar</h1>
+</div>
+<p class="hint" style="margin: 0 0 16px; max-width: 760px;">Bot har bir Task 1 grafikni bir marta o'qiydi va shu yerga
+  saqlaydi. Grafikni oching, jadvalni rasm bilan solishtiring, xatosini tuzating va «Tasdiqlash»ni bosing — shundan keyin
+  shu grafikni yuborgan har bir talaba tasdiqlangan jadval bo'yicha baholanadi (grafik qayta o'qilmaydi). Eng ko'p
+  ishlatilganlari tepada turadi.</p>
+
+{% if flash %}<div class="flash">{{ flash }}</div>{% endif %}
+
+<div class="filters">
+  {% for value, label in status_labels.items() %}
+  <a href="/charts?status={{ value }}{{ '&kind=' ~ kind if kind }}" class="{{ 'active' if value == status }}">{{ label }} ({{ counts[value] }})</a>
+  {% endfor %}
+</div>
+<div class="filters kinds">
+  <a href="/charts?status={{ status }}" class="{{ 'active' if not kind }}">Barcha turlar</a>
+  {% for value, label in kind_labels.items() %}
+  <a href="/charts?status={{ status }}&kind={{ value }}" class="{{ 'active' if value == kind }}">{{ label }}</a>
+  {% endfor %}
+</div>
+
+<div class="card">
+  {% if keys %}
+  <div class="table-scroll">
+  <table>
+    <tr><th>#</th><th>Rasm</th><th>Savol</th><th>Turi</th><th>Ishlatilgan</th><th>Holati</th><th></th></tr>
+    {% for k in keys %}
+    <tr>
+      <td class="strong">#{{ k.id }}</td>
+      <td><a href="/charts/{{ k.id }}"><img class="c-thumb" src="/chart-image/{{ k.id }}" alt="grafik" loading="lazy"></a></td>
+      <td>
+        <div class="c-q">{{ k.question_text if k.question_text|length <= 220 else k.question_text[:220] ~ "…" }}</div>
+        <div class="c-meta">{{ "Practice savoli" if k.source == "practice" else "Talaba yuborgan" }} · {{ k.created_at.strftime('%Y-%m-%d') }}
+          {%- if k.verified_by %} · tasdiqladi: {{ k.verified_by }}{% endif %}</div>
+      </td>
+      <td>{{ kind_labels.get(k.kind, k.kind or "—") }}</td>
+      <td class="num">{{ k.uses }} marta</td>
+      <td>{% if k.status == "verified" %}<span class="pill pill-good">Tekshirilgan</span>{% else %}<span class="pill pill-warn">Tekshirilmagan</span>{% endif %}</td>
+      <td><a class="btn btn-sm {{ 'btn-primary' if k.status != 'verified' }}" href="/charts/{{ k.id }}">{{ "Tekshirish" if k.status != "verified" else "Ochish" }}</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+  <div style="display: flex; gap: 8px; margin-top: 12px;">
+    {% if page > 1 %}<a class="btn btn-sm" href="/charts?status={{ status }}&kind={{ kind }}&page={{ page - 1 }}">← Oldingi</a>{% endif %}
+    {% if more %}<a class="btn btn-sm" href="/charts?status={{ status }}&kind={{ kind }}&page={{ page + 1 }}">Keyingi →</a>{% endif %}
+  </div>
+  {% else %}
+  <div class="empty">{{ "Hamma grafiklar tekshirilgan." if status == "auto" else "Hali grafik yo'q — talabalar Task 1 yuborganda shu yerda paydo bo'ladi." }}</div>
+  {% endif %}
+</div>
+{% endblock %}
