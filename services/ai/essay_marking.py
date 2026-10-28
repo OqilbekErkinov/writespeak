@@ -48,6 +48,7 @@ COPY_MIN_WORDS = 8
 # Task 1: the visual's subject repeated by name ("three counties in the state of Oregon", "average household
 # spending on leisure activities in three countries") is no copy - a copied sentence is (2026-10-28, #61/#62).
 COPY_MIN_WORDS_TASK1 = 10
+UPGRADE_MAX = 3  # "Upgrade ideas": acceptable as written, another option only more common (2026-10-29)
 PRIORITY_COUNT = 3
 PRIORITY_IDS = (2, 5)
 VOCAB_RANGE = (10, 12)
@@ -563,6 +564,12 @@ class WritingReport:
     word_count: int
     notes: list[str] = field(default_factory=list)  # what validation repaired (logged)
     notices: list[str] = field(default_factory=list)  # shown to the student (e.g. the chart wasn't checked)
+    upgrades: list[dict] = field(default_factory=list)  # wrong, correct, why_html, tag, tag_cls - never mistakes
+
+    @property
+    def top_band(self) -> bool:
+        """At Band 9 there is no next target: the priorities are optional polish."""
+        return self.overall_band >= 9.0
 
     def criteria_scores(self) -> dict[str, float]:
         return {DB_KEYS[c["key"]]: c["band"] for c in self.criteria}
@@ -735,13 +742,16 @@ def build_report(
     retag: dict[int, str] | None = None,
     criterion_notes: dict[str, str] | None = None,
     notices: list[str] | None = None,
+    upgrades: list[dict] | None = None,
 ) -> WritingReport:
     """`bands`: the scoring runs' whole criterion bands; `dropped`: ids of
     mistakes the verification pass rejected; `retag`: {id: criterion} for
     mistakes it moved to the criterion they belong to (one problem, one
     criterion); `criterion_notes`: what decided each band (the scoring runs),
     used on the cover instead of the feedback's own notes; `notices`: lines
-    shown to the student."""
+    shown to the student; `upgrades`: what the filter found acceptable as
+    written ({wrong, correct, why, criterion}) - the report's "Upgrade
+    ideas", at most UPGRADE_MAX, in the essay's order, never a mistake."""
     notes: list[str] = []
     retag = retag or {}
 
@@ -936,6 +946,20 @@ def build_report(
             }
         )
 
+    upgrade_rows, seen = [], set()
+    placed = sorted(((locate(original, u["wrong"].strip(" .…")) or (len(original), 0))[0], k, u)
+                    for k, u in enumerate(upgrades or []) if u.get("wrong", "").strip() and u.get("correct", "").strip())
+    for _, _, u in placed:
+        key = canon(u["wrong"]).lower().strip(" .,")
+        if key in seen or any(_shared_run(u["wrong"], m.wrong) for m in mistakes):
+            continue
+        seen.add(key)
+        tag, tag_cls = TAGS.get(u.get("criterion"), TAGS["LR"])
+        upgrade_rows.append({"wrong": u["wrong"].strip(), "correct": u["correct"].strip(),
+                             "why_html": inline_format((u.get("why") or "").strip()), "tag": tag, "tag_cls": tag_cls})
+        if len(upgrade_rows) == UPGRADE_MAX:
+            break
+
     return WritingReport(
         task_type=task_type,
         question=question,
@@ -959,4 +983,5 @@ def build_report(
         word_count=count_words(original),
         notes=notes,
         notices=list(dict.fromkeys(notices or [])),
+        upgrades=upgrade_rows,
     )

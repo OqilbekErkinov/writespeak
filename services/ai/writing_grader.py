@@ -67,6 +67,7 @@ from services.ai import usage
 from services.ai.essay_marking import (
     PASTE_NOTICE,
     SCORE_KEYS,
+    TASK_MIN_WORDS,
     WritingReport,
     align_segments,
     assess,
@@ -163,7 +164,10 @@ parity", "buck the trend", a plainer word that is still correct, an optional com
 chart's label ("age at death" for "life expectancy", "proximity to home" for "close to parental \
 home"); a word or phrase the question itself uses; a proper name as its owner writes it ("Malala \
 Fund"); the writer's own grouping of steps or categories ("in the final stage" of the writer's own \
-three stages); anything whose "fix" would change what the student meant."""
+three stages); anything whose "fix" would change what the student meant.
+NEVER PENALISE (the academic lead, 2026-10-29): paraphrasing the question ("available" for "open" is good, \
+not a mistake); a free, non-template structure (no "This essay will discuss", a short body paragraph, an \
+unusual but logical order, the writer's own conclusion style); British or American spelling used consistently."""
 
 ONE_CRITERION = """ONE PROBLEM, ONE CRITERION: word choice, collocation, word form, spelling and \
 register -> LR (Lexical); grammar and punctuation -> GRA; linking, referencing, paragraphing and \
@@ -192,7 +196,14 @@ for the band, not only the absence of errors. Find the band that fits best - don
 6. Below 9 needs evidence: to give a criterion less than 9, its weaknesses must quote the specific \
 text, or name the specific omission (e.g. "the 55-64 group is never described"). "Could be richer", \
 "not fully developed", "needs more range" with no example are not reasons - with no such weakness, \
-give 9.
+give 9. A quote of something listed as ACCEPTABLE AS WRITTEN is no reason either.
+7. Judge, don't count (the academic lead, 2026-10-29): weigh errors by their density per 100 words, \
+their effect on meaning and the range the writer attempts - an error that comes from attempting less \
+common language weighs less than one in a simple structure. A slip is very small: Band 9 allows rare \
+slips.
+8. A wide range with a few slips is Band 8 or 9, never 7. Lexical Resource 6 or below only for a \
+genuinely limited range or words that make the meaning unclear: clear, less common vocabulary whose \
+meaning is always clear is at least 7.
 
 PLAIN-LANGUAGE BAND GUIDE
 Task Response (Task 2):
@@ -540,75 +551,93 @@ be determined.
 
 
 VERIFY_SYSTEM = f"""You are a senior IELTS Writing examiner double-checking a colleague's list of \
-mistakes in a student's essay or report. For each item ask: would an IELTS examiner count this as \
-an error? Decide whether to keep it, under which ONE criterion it belongs, and how serious it is.
+mistakes in a student's essay or report. Ask ONE question of every item: is this actually wrong in \
+standard British or American written English? Then give its kind and the ONE criterion it belongs to.
 
-keep=false when ANY of these is true:
-- BENEFIT OF THE DOUBT: you are not sure it is an error - the student gets the benefit of the doubt;
-- BOTH CORRECT: a careful editor would accept the original as standard written English - even when \
-your version is more common. A correction must fix an error, not swap one correct option for another;
-- the original is ALREADY CORRECT, grammatical and natural in its context - read the whole \
-sentence: a verb may correctly continue an earlier verb phrase ("people start using it and spend \
-hours" is right; "spending" would change the meaning), a negative or future form may be correct as \
-it stands;
-- it is a STYLE PREFERENCE or a valid variant (a demonstrative instead of an article, a near-synonym, \
-"ranging from X to Y", a slightly plainer word, an optional comma, British vs American usage);
-- the QUESTION'S OWN WORDS: a word or phrase the question prompt itself uses is never an error;
-- a PROPER NAME is correct as its owner writes it ("Malala Fund" needs no "the");
-- CONNOTATION: an expression whose connotation matches the writer's intent is not wrong ("fraught \
-with" before things presented as harmful);
-- the correction CHANGES WHAT THE STUDENT MEANT, or does NOT FIT BACK into the original sentence \
-(put it in place of the wrong part and read the sentence: it must read correctly, with no doubled or \
-missing words).
+kind (the academic lead's classes, 2026-10-29):
+- error: wrong, or it makes the meaning unclear - "it should be noticed", "provided" used to mean \
+"because", "this turn of events are", "people doesn't"; collocation errors, wrong-meaning or \
+overstated words, verb-pattern errors, linking that doesn't fit the logic, a conclusion that \
+contradicts the body;
+- slip: wrong, but a one-off small mistake the writer clearly controls elsewhere in the text - a \
+missing full stop, "Overtime" for "Over time", "feeling of loneliness" for "feelings", a single article \
+or plural slip, a typo. When the same pattern comes back, each one is an error;
+- alternative: acceptable as written - another option is only more common, more idiomatic or more \
+precise ("services are accessible at night" for "open", "eating regimes", "a positive trend", \
+"inconceivable" where "unimaginable" would do). It is no mistake: it never counts;
+- not_a_mistake: correct as written and the suggestion is no better; or the correction CHANGES WHAT \
+THE STUDENT MEANT, or does NOT FIT BACK into the sentence (put it in place of the wrong part and read \
+the sentence: no doubled or missing words); or you are not sure it is wrong - the student gets the \
+benefit of the doubt.
+
+Before calling anything an error or a slip, read the whole sentence: a verb may correctly continue an \
+earlier verb phrase ("people start using it and spend hours" is right), a negative or future form may \
+be correct as it stands. These are never an error or a slip: a style preference or valid variant (a \
+demonstrative for an article, a near-synonym, "ranging from X to Y", a plainer word, an optional comma, \
+British vs American usage); the QUESTION'S OWN WORDS; a PROPER NAME as its owner writes it ("Malala \
+Fund"); an expression whose CONNOTATION matches the writer's intent ("fraught with" before harmful \
+things).
 {NOT_ERRORS}
-
-keep=true for every real error an examiner would penalise, including collocation errors, \
-overstated or wrong-meaning words, verb-pattern errors, unclear meaning, linking phrases that \
-don't fit the logic, and logic errors (a conclusion that contradicts the body).
 
 criterion - by the real cause, one only: LR = word choice, collocation, word form, spelling, \
 register; GRA = grammar and punctuation; CC = linking, referencing, paragraphing, logic; TR = \
 content, task coverage, the overview, data. A word-choice problem is LR even when it was listed \
 under TR ("were quite passive" -> LR).
-severity - slip = a typo, a missing full stop, a single article or plural slip; error = everything else.
 
 A DATA item (a figure, ranking or trend in a Task 1 report) is judged ONLY by the DATA SHEET given \
-with the text and its DATA CHECK (a figure the check found on the sheet is correct): keep=false when \
+with the text and its DATA CHECK (a figure the check found on the sheet is correct): not_a_mistake when \
 the student's version agrees with the sheet - the printed figure (rounding with "about" is fine), any \
 figure within a scale reading's ±range, an UNCERTAIN figure or one the sheet can't read, a ranking or \
-trend the sheet shows - or when the "correction" itself disagrees with the sheet; keep=true when the \
+trend the sheet shows - or when the "correction" itself disagrees with the sheet; error when the \
 verified figures clearly contradict the student. A year printed on the axis, or between the first and \
 last labelled years, is never a TR mistake. A trend ("fell", "stayed stable") is wrong only when the \
 change between its two figures is larger than both their ±ranges together and goes the other way. A \
 claim about the writer's own grouping ("in the final stage" of the writer's own three stages) is never \
 a data error: only a wrong step order or a missing step is. A data correction must agree with the sheet: when an item \
 carries a CORRECTION CHECK (its correction's figures are not on the sheet), either give fixed_correct - \
-the correction rewritten with the sheet's figures for the same series - or keep=false. With no DATA \
-SHEET and no visual, a mistake about a figure is keep=false (nothing to check it against).
+the correction rewritten with the sheet's figures for the same series - or not_a_mistake. With no DATA \
+SHEET and no visual, a mistake about a figure is not_a_mistake (nothing to check it against).
+
+VOCABULARY (when listed): the words the report teaches the student, each with its meaning and an \
+example. For each give its index; meaning = the standard dictionary meaning in plain words only when \
+the given one is wrong, incomplete in a misleading way or backwards ("built-in redundancy" is extra \
+parts added so that a system keeps working when one fails - never "parts designed to fail"), else \
+null; example = a rewritten example only when it misuses the term or carries a CHECK (it disagrees \
+with the DATA SHEET - rewrite it with the sheet's figures and true comparisons), else null.
 
 Judge each item on its own; give a short reason. Return a verdict for every id."""
 
 
-async def _verify_call(source_text: str, items: list[tuple]) -> dict[int, tuple]:
-    """`items`: (id, where, wrong, correct, why, criterion, correction check or "").
-    {id: (keep, criterion, reason, severity, fixed_correct)}; items without a
-    verdict are kept as they are."""
-    if not items:
-        return {}
+async def _verify_call(source_text: str, items: list[tuple],
+                       vocabulary: list[tuple[int, str, str, str, str]] | None = None) -> tuple[dict, dict]:
+    """`items`: (id, where, wrong, correct, why, criterion, correction check or "");
+    `vocabulary`: (index, term, meaning, example, check or ""). Returns
+    ({id: (kind, criterion, reason, fixed_correct)} - items without a
+    verdict are kept as they are -, {index: (meaning or None, example or None)})."""
+    if not items and not vocabulary:
+        return {}, {}
     listed = "\n".join(
         f"{i}. [{crit}] «{wrong}» -> «{correct}» ({why})" + (f" CORRECTION CHECK: {note}" if note else "")
-        for i, _, wrong, correct, why, crit, note in items)
+        for i, _, wrong, correct, why, crit, note in items) or "(none)"
+    text = f"{source_text}\n\nMISTAKES TO CHECK:\n{listed}"
+    if vocabulary:
+        text += "\n\nVOCABULARY TO CHECK:\n" + "\n".join(
+            f"{i}. {term} - {meaning} - e.g. {example}" + (f" CHECK: {note}" if note else "")
+            for i, term, meaning, example, note in vocabulary)
     messages = [
         {"role": "system", "content": VERIFY_SYSTEM},
-        {"role": "user", "content": f"{source_text}\n\nMISTAKES TO CHECK:\n{listed}"},
+        {"role": "user", "content": text},
     ]
     response = await _parse("verify", VERIFY_MAX_TOKENS, messages, WritingVerdicts,
                             effort=settings.openai_verify_reasoning_effort)
     parsed = response.choices[0].message.parsed
     if not parsed:
-        return {}
-    return {v.id: (v.keep, v.criterion, v.reason, v.severity, (v.fixed_correct or "").strip() or None)
-            for v in parsed.verdicts}
+        return {}, {}
+    verdicts = {v.id: (v.kind, v.criterion, v.reason, (v.fixed_correct or "").strip() or None)
+                for v in parsed.verdicts}
+    words = {v.index: ((v.meaning or "").strip() or None, (v.example or "").strip() or None)
+             for v in parsed.vocabulary}
+    return verdicts, words
 
 
 NO_VISUAL_NOTE = (
@@ -805,24 +834,30 @@ _OMISSION = re.compile(r"\b(omit\w*|missing|leaves? out|left out|not (?:mention|
 _QUOTED = re.compile(r"[\"“«']([^\"”»']{2,120})[\"”»']")
 
 
-def evidenced(weaknesses: list[str], answer_text: str) -> bool:
+def evidenced(weaknesses: list[str], answer_text: str, acceptable: list[str] = ()) -> bool:
     """Does a criterion's list of weaknesses quote the answer or name an
-    omission? An 8 without that is a 9 (the academic lead, 2026-10-27:
-    "could be richer" and "not fully developed" lowered Band 9 reports)."""
+    omission? A band below 9 without that is a 9 (the academic lead,
+    2026-10-27 for an 8, 2026-10-29 for every band: "could be richer" and
+    "not fully developed" lowered Band 9 reports). A quote of something the
+    filter found acceptable as written (`acceptable`) is no reason."""
     low = canon(answer_text).lower()
+    fine = [canon(a).lower().strip(" .,") for a in acceptable if a.strip()]
     for w in weaknesses:
         if _OMISSION.search(w):
             return True
-        if any(canon(q).lower().strip(" .,") in low for q in _QUOTED.findall(w) if len(q.strip(" .,")) >= 2):
-            return True
+        for q in _QUOTED.findall(w):
+            q = canon(q).lower().strip(" .,")
+            if len(q) >= 2 and q in low and not any(q in a or a in q for a in fine):
+                return True
     return False
 
 
 async def _score_once(task_type, prompt_text, answer_text, prompt_images, sheet: str = "",
-                      evidence: str = "", kind: str | None = None) -> dict:
+                      evidence: str = "", kind: str | None = None, acceptable: list[str] = ()) -> dict:
     """One scoring run: {criterion: whole band, ..., "_notes": {criterion: note}}.
     `evidence`: the checked mistakes and strong phrases (mistake_evidence);
-    `kind`: the visual's kind, for its Band 9 anchor."""
+    `kind`: the visual's kind, for its Band 9 anchor; `acceptable`: what the
+    filter found acceptable as written - quoting it is no reason for a band."""
     facts = f"COUNTED BY SOFTWARE: {count_words(answer_text)} words, {paragraph_count(answer_text)} paragraph(s)."
     text = f"QUESTION PROMPT:\n{prompt_text}\n\nANSWER:\n{answer_text}\n\n{facts}"
     if evidence:
@@ -838,8 +873,9 @@ async def _score_once(task_type, prompt_text, answer_text, prompt_images, sheet:
         raise RuntimeError("Scoring model returned no parsable result")
     out: dict = {k: whole_band(getattr(scores, k).band) for k in SCORE_KEYS}
     for k in SCORE_KEYS:
-        if out[k] == 8 and not evidenced(getattr(scores, k).weaknesses, answer_text):
-            logger.info("Score %s 8 -> 9: no quoted weakness or named omission (%s)", k, getattr(scores, k).weaknesses)
+        if out[k] < 9 and not evidenced(getattr(scores, k).weaknesses, answer_text, acceptable):
+            logger.info("Score %s %g -> 9: no quoted weakness or named omission (%s)", k, out[k],
+                        getattr(scores, k).weaknesses)
             out[k] = 9.0
     out["_notes"] = {k: getattr(scores, k).note.strip() for k in SCORE_KEYS}
     return out
@@ -849,29 +885,69 @@ _EVIDENCE_NAMES = (("GRA", "Grammar (GRA)"), ("LR", "Vocabulary (LR)"), ("CC", "
                    ("TR", "Task (TR)"))
 
 
-def mistake_evidence(answer_text: str, mistakes: list, strong: list[str]) -> str:
+def mistake_evidence(answer_text: str, mistakes: list, strong: list[str], alternatives: list[dict] = ()) -> str:
     """The checked mistakes (each with .wrong, .correct, .criterion and
-    .severity - "slip" or "error") and the strong phrases, as the scoring
-    runs get them: per criterion the raw count and the weighted density per
-    100 words, a slip counting slip_weight (config/writing_marking.json)."""
+    .severity - "slip" or "error"), what was found acceptable as written and
+    the strong phrases, as the scoring runs get them: per criterion the
+    errors, the slips and the weighted density per 100 words, a slip
+    counting slip_weight (config/writing_marking.json)."""
     words = max(count_words(answer_text), 1)
     weight = marking_config.density()["slip_weight"]
-    lines = ["CHECKED MISTAKES (found by one examiner, checked by a second - everything that is not a real error "
-             f"was removed; this is the complete list). The answer has {words} words; a slip counts {weight:g}."]
+    lines = ["CHECKED MISTAKES (found by one examiner, checked by a second against standard British and American "
+             "English - errors and slips only; this is the complete list). The answer has "
+             f"{words} words; a slip counts {weight:g}."]
     for key, name in _EVIDENCE_NAMES:
         mine = [m for m in mistakes if m.criterion == key]
         if not mine:
             lines.append(f"- {name}: none.")
             continue
-        slips = sum(getattr(m, "severity", "error") == "slip" for m in mine)
-        weighted = (len(mine) - slips + slips * weight) * 100 / words
-        listed = "; ".join(f"«{m.wrong}» -> «{m.correct}»" + (" (slip)" if getattr(m, "severity", "") == "slip" else "")
-                           for m in mine[:14])
-        lines.append(f"- {name}: {len(mine)} ({slips} slips) = {weighted:.1f} weighted per 100 words "
-                     f"({len(mine) * 100 / words:.1f} raw): {listed}")
+        slips = [m for m in mine if getattr(m, "severity", "error") == "slip"]
+        errors = [m for m in mine if m not in slips]
+        weighted = (len(errors) + len(slips) * weight) * 100 / words
+        listed = "; ".join([f"«{m.wrong}» -> «{m.correct}»" for m in errors[:12]]
+                           + [f"«{m.wrong}» -> «{m.correct}» (slip)" for m in slips[:6]])
+        lines.append(f"- {name}: {len(errors)} errors, {len(slips)} slips = {weighted:.1f} weighted per 100 words: "
+                     f"{listed}")
+    if alternatives:
+        lines.append("ACCEPTABLE AS WRITTEN (another option is only more common - these are NOT mistakes: never count "
+                     "them, never quote them as a weakness): " + "; ".join(f"«{a['wrong']}»" for a in alternatives[:10]))
     if strong:
         lines.append("STRONG PHRASES the examiner marked (credit them): " + "; ".join(f"«{x}»" for x in strong[:6]))
     return "\n".join(lines)
+
+
+def floors(task_type: str, answer_text: str, bands: dict[str, float], checked: list | None,
+           strong: list[str] | None) -> tuple[dict[str, float], list[str]]:
+    """The least Lexical Resource and Grammar bands for what the answer shows
+    (config/writing_marking.json "floors", the academic lead 2026-10-29):
+    a wide range and only slips on a criterion - at least 8 ("wide range + a
+    few slips = 8 or 9, never 7"); a wide range, no word that makes the
+    meaning unclear and lexical errors under the Band 7 density - Lexical
+    Resource at least 7. Never Task Achievement/Response or Coherence, never
+    an answer under 150 (Task 1) / 250 (Task 2) words."""
+    if checked is None or count_words(answer_text) < TASK_MIN_WORDS.get(task_type, 0):
+        return bands, []
+    f = marking_config.floors()
+    if len(strong or []) < f["wide_range_phrases"]:
+        return bands, []
+    out, raised = dict(bands), []
+    words = max(count_words(answer_text), 1)
+    weight = marking_config.density()["slip_weight"]
+    for key in ("LR", "GRA"):
+        mine = [m for m in checked if m.criterion == key]
+        errors = [m for m in mine if getattr(m, "severity", "error") != "slip"]
+        least = f["slips_only_min"] if not errors else 0
+        if key == "LR" and not any(getattr(m, "unclear", False) for m in mine):
+            density = (len(errors) + (len(mine) - len(errors)) * weight) * 100 / words
+            if density <= marking_config.density()["band7_max"]:
+                least = max(least, f["clear_vocabulary_lr_min"])
+        if out[key] < least:
+            raised.append(f"{key} {out[key]:g} -> {least:g} ({'only slips' if not errors else 'clear, wide vocabulary'})")
+            out[key] = float(least)
+    return out, raised
+
+
+FLOOR_NOTES = {"LR": "Wide, precise vocabulary; only minor slips.", "GRA": "Wide range of structures; only minor slips."}
 
 
 async def decide_scores(
@@ -882,20 +958,29 @@ async def decide_scores(
     sheet: str = "",
     evidence: str = "",
     visual: dict | None = None,
+    checked: list | None = None,
+    strong: list[str] | None = None,
+    acceptable: list[str] = (),
 ) -> Scores:
     """The report's criterion bands: the median of SCORE_RUNS scoring runs,
-    then the caps; each band's note comes from a run that gave that band.
+    then the floors (`checked` mistakes and `strong` phrases: floors()) and
+    the caps; each band's note comes from a run that gave that band.
     `evidence`: the checked mistakes (grade_writing passes them); `visual`:
     the sheet as data - its kind picks the Band 9 anchor and decides whether
-    comparisons are needed (the question's wording when there is none)."""
+    comparisons are needed (the question's wording when there is none);
+    `acceptable`: what the filter found acceptable as written."""
     kind = visual_kind(prompt_text, visual) if task_type == "task1" else None
     medians, runs = await median_of_runs(
-        lambda: _score_once(task_type, prompt_text, answer_text, prompt_images, sheet, evidence, kind), SCORE_KEYS,
-        label=f"writing {task_type}",
+        lambda: _score_once(task_type, prompt_text, answer_text, prompt_images, sheet, evidence, kind, acceptable),
+        SCORE_KEYS, label=f"writing {task_type}",
     )
+    medians, raised = floors(task_type, answer_text, medians, checked, strong)
+    if raised:
+        logger.info("Band floors (writing %s): %s", task_type, "; ".join(raised))
     notes = {}
     for k in SCORE_KEYS:
-        notes[k] = next((r["_notes"][k] for r in runs if whole_band(r[k]) == medians[k] and r["_notes"].get(k)), "")
+        notes[k] = next((r["_notes"][k] for r in runs if whole_band(r[k]) == medians[k] and r["_notes"].get(k)),
+                        FLOOR_NOTES.get(k, ""))
     bands, notes, capped, notices = cap_bands(task_type, answer_text, medians, notes,
                                               data_visual(prompt_text, visual) if task_type == "task1" else True)
     if capped:
@@ -1012,12 +1097,12 @@ async def grade_writing(
         misses = [f["text"] for f in figures(m.correct) if match_figure(f, visual, prompt_text) == "miss"]
         return f"the correction's figures {', '.join(misses)} are not on the DATA SHEET" if misses else ""
 
-    async def verify(items) -> dict[int, tuple]:
+    async def verify(items, vocabulary=None) -> tuple[dict, dict]:
         try:
-            return await _verify_call(source, items)
+            return await _verify_call(source, items, vocabulary)
         except Exception:
             logger.exception("Verification pass failed - keeping those mistakes")
-            return {}
+            return {}, {}
 
     async def find_missed() -> list[MissedMistake]:
         try:
@@ -1027,20 +1112,34 @@ async def grade_writing(
             logger.exception("Missed-errors pass failed - the report goes out with the first pass only")
             return []
 
+    alternatives: list[dict] = []  # acceptable as written: the report's "Upgrade ideas", never a mistake
+
     def settle(item, verdict, label) -> tuple[bool, str, str, str]:
-        """(keep, criterion, severity, correct) from the filter's verdict - a
-        data correction off the sheet keeps only its sheet-checked rewrite."""
-        keep, crit, reason, severity, fixed = verdict
-        correct = item.correct
+        """(keep, criterion, severity, correct) from the filter's verdict - an
+        error or a slip is kept (a slip weighs less), an alternative goes to
+        the upgrade ideas, anything else goes; a data correction off the sheet
+        keeps only its sheet-checked rewrite."""
+        kind, crit, reason, fixed = verdict
+        keep, correct = kind in ("error", "slip"), item.correct
+        if kind == "alternative" and crit != "TR":
+            alternatives.append({"wrong": item.wrong, "correct": item.correct, "why": reason, "criterion": crit})
         if not keep:
-            logger.info("Verification dropped %s: %s", label, reason)
+            logger.info("Verification set aside %s (%s): %s", label, kind, reason)
         elif correction_note(item):
             if fixed and not correction_note(item.model_copy(update={"correct": fixed})):
                 correct = fixed
             else:
                 keep = False
                 logger.info("Dropped %s: its correction disagrees with the data sheet", label)
-        return keep, crit, severity, correct
+        return keep, crit, "slip" if kind == "slip" else "error", correct
+
+    # the vocabulary the report teaches: its meanings, and (Task 1) its examples against the sheet
+    def example_check(example: str) -> str:
+        from services.ai.sample_bank import example_problems  # the model answer's checks; that module is heavier
+
+        return "; ".join(example_problems(example, prompt_text, visual)) if visual else ""
+
+    words = [(i, v.term, v.meaning, v.example, example_check(v.example)) for i, v in enumerate(feedback.vocabulary)]
 
     def data_protected(m) -> bool:
         """A Task mistake about a correct figure, one the sheet can't check,
@@ -1053,15 +1152,16 @@ async def grade_writing(
         if m.id in auto:
             logger.info("Dropped mistake %s by code: the question's own words, or a figure the sheet confirms or "
                         "can't check (%r)", m.id, m.wrong)
-    verdicts, missed = await asyncio.gather(
+    (verdicts, fixes), missed = await asyncio.gather(
         verify([(m.id, "essay", m.wrong, m.correct, m.why, m.criterion, correction_note(m))
-                for m in feedback.mistakes if checkable(m) and m.id not in auto]),
+                for m in feedback.mistakes if checkable(m) and m.id not in auto], words),
         find_missed(),
     )
     missed = [x for x in missed if not question_word(x) and not data_protected(x)]
-    missed_verdicts = await verify(
+    missed_verdicts, _ = await verify(
         [(k, "essay", x.wrong, x.correct, x.why, x.criterion, correction_note(x))
          for k, x in enumerate(missed) if checkable(x)])
+    feedback = _vocabulary_fixed(feedback, fixes, example_check)
 
     dropped, retag, severity, rewritten = set(auto), {}, {}, {}
     for m in feedback.mistakes:
@@ -1104,13 +1204,15 @@ async def grade_writing(
     # filter kept, under the criterion it belongs to, slips weighted less)
     # and the strong phrases.
     checked = [SimpleNamespace(wrong=m.wrong, correct=m.correct, criterion=retag.get(m.id, m.criterion),
-                               severity=severity.get(m.id, "error"))
+                               severity=severity.get(m.id, "error"), unclear=m.unclear)
                for m in feedback.mistakes if m.id not in dropped]
-    checked += [SimpleNamespace(wrong=x.wrong, correct=x.correct, criterion=x.criterion, severity=sev)
+    checked += [SimpleNamespace(wrong=x.wrong, correct=x.correct, criterion=x.criterion, severity=sev,
+                                unclear=x.unclear)
                 for x, sev in zip(kept_missed, missed_severity)]
     strong = [seg.text.strip() for paragraph in feedback.essay for seg in paragraph if seg.type == "good"]
     scores = await decide_scores(task_type, prompt_text, answer_text, prompt_images, sheet,
-                                 mistake_evidence(answer_text, checked, strong), visual)
+                                 mistake_evidence(answer_text, checked, strong, alternatives), visual,
+                                 checked=checked, strong=strong, acceptable=[a["wrong"] for a in alternatives])
     # Priorities built on mistakes the filter dropped go now, so the model
     # answer and the report teach the same list (the last prompt's B2).
     feedback, priority_notes = drop_priorities(
@@ -1125,10 +1227,30 @@ async def grade_writing(
 
     report = build_report(task_type, prompt_text, answer_text, feedback, kept_missed, bands=scores.bands,
                           dropped=dropped, retag=retag, criterion_notes=scores.notes,
-                          notices=(notices or []) + scores.notices)
+                          notices=(notices or []) + scores.notices, upgrades=alternatives)
     if report.notes:
         logger.info("Report validation: %s", "; ".join(report.notes))
     return report
+
+
+def _vocabulary_fixed(feedback: WritingFeedback, fixes: dict, example_check) -> WritingFeedback:
+    """The vocabulary with the filter's corrections: a wrong meaning set right
+    (#66's "built-in redundancy" defined backwards); an example rewritten when
+    it misused the term or disagreed with the chart - and left out when a
+    chart example still disagrees after that."""
+    if not fixes and not any(example_check(v.example) for v in feedback.vocabulary):
+        return feedback
+    kept = []
+    for i, v in enumerate(feedback.vocabulary):
+        meaning, example = fixes.get(i, (None, None))
+        item = v.model_copy(update={"meaning": meaning or v.meaning, "example": example or v.example})
+        if meaning or example:
+            logger.info("Vocabulary %r set right: %s", v.term, {"meaning": meaning, "example": example})
+        if example_check(item.example):
+            logger.info("Vocabulary %r left out: its example still disagrees with the chart", v.term)
+            continue
+        kept.append(item)
+    return feedback.model_copy(update={"vocabulary": kept})
 
 
 _WORD = re.compile(r"[a-z]+(?:'[a-z]+)?")

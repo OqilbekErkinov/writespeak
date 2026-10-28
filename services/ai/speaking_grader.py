@@ -1,23 +1,31 @@
 """Speaking (Part 1 / 2 / 3 / full test) grading against the IELTS Speaking
 Band Descriptors (Speaking report prompt, 2026-10-13).
 
-  1. scores: SCORE_RUNS independent scoring calls, whole bands, median per
-     criterion (services/ai/scoring.py). Fluency and Pronunciation are scored
-     from what was measured in the recording (services/ai/voice.py: pace,
-     pauses; services/ai/pronunciation.py: Azure's pronunciation
-     assessment). Fillers, restarts and pauses between ideas are natural
-     speech, never a fault (the academic lead, 2026-10-27: a real Band 9.0
-     candidate was given 6.5 for them). Without a pronunciation measurement
-     the Pronunciation band is the mean of the other three, "not measured".
-     The scoring prompt carries anchor recordings with their official band
-     (data/calibration/speaking_anchors.json, config/speaking_marking.json);
-  2. the feedback call returns SpeakingFeedback (JSON only), written for the
-     scores already decided, so its notes and priorities match the numbers.
-     If speaking_marking's `assess` finds a problem worth paying for, the
-     call is made once more and the better answer kept;
-  3. a second call finds mistakes the first one missed;
-  4. a third call checks every mistake: is it definitely wrong, and does the
-     correction keep the student's meaning? Anything that isn't is dropped;
+Mistakes first, then the bands (the academic lead, 2026-10-29: "stop
+counting, start judging" - the 9.0 speaker's Grammar came out 8 for five
+"mistakes" that were self-corrections and native-like forms):
+
+  1. the feedback call returns SpeakingFeedback (JSON only): the mistakes,
+     the marked transcript, priorities, vocabulary. If speaking_marking's
+     `assess` finds a problem worth paying for, the call is made once more
+     and the better answer kept;
+  2. a second call finds mistakes the first one missed;
+  3. self-corrections are taken out by code (speaking_marking.self_correction);
+     a third call asks of every other flag one question - is it actually
+     wrong in natural spoken English? - error, slip, alternative (acceptable
+     as said: the report's "Upgrade ideas") or not a mistake; it also checks
+     the vocabulary's meanings;
+  4. scores: SCORE_RUNS independent scoring calls, whole bands, median per
+     criterion (services/ai/scoring.py), judged from the checked errors and
+     slips, their density and the range shown. A band below 9 needs a quoted
+     reason. Fluency is scored from what was measured in the recording
+     (services/ai/voice.py: pace, pauses); fillers, restarts and pauses
+     between ideas are natural speech, never a fault (2026-10-27). Without a
+     pronunciation measurement the Pronunciation band is the mean of the
+     other three, "not measured"; the intonation measured from the pitch
+     never reaches the scoring. The scoring prompt carries anchor recordings
+     with their official band (data/calibration/speaking_anchors.json,
+     config/speaking_marking.json);
   5. speaking_marking.build_report validates everything and assembles the report.
 
 `score_answers_text` is the same examiner scoring a written-out answer -
@@ -33,6 +41,7 @@ import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
 
 import openai
 
@@ -40,7 +49,8 @@ from bot.config import settings
 from services.ai import usage
 from services.ai.openai_client import parse_flex
 from services.ai.pronunciation import Assessment
-from services.ai.schemas import SpeakingFeedback, SpeakingMissedMistakes, SpeakingScores, Verdicts
+from services.ai import marking_config
+from services.ai.schemas import SpeakingFeedback, SpeakingMissedMistakes, SpeakingScoring, SpeakingVerdicts
 from services.ai.scoring import LENIENCY_NOTE, median_of_runs, whole_band
 from services.ai.voice import CONFIDENCE_LIMIT, AnswerAudio, Pitch, VoiceMetrics
 
@@ -215,7 +225,7 @@ def evidence_text(items: list[SessionItem], ev: Evidence, for_scoring: bool = Fa
         lines.append(f"- Fillers: {m.fillers} ({m.fillers_per_minute:.1f} a minute): "
                      + (", ".join(f"{name} x{n}" for name, n in m.filler_types) or "none")
                      + ". Fillers are natural in fluent speech - never a fault on their own.")
-    if ev.pitch is not None:
+    if ev.pitch is not None and not for_scoring:  # the intonation comment never affects a band (2026-10-29)
         lines.append(
             f"- Intonation: the voice's pitch moves over {ev.pitch.span:.1f} semitones (10th-90th "
             "percentile; natural, lively speech is about 8-12, under 5 sounds flat)."
@@ -308,27 +318,46 @@ IELTS SPEAKING BAND DESCRIPTORS (summary):
 
 {LENIENCY_NOTE}
 
+{JUDGING}
+
 The transcript is verbatim speech recognition: fillers (uh, um), repeats and false starts were \
 really said; punctuation is the recogniser's guess, not the student's. Words followed by (?) may be \
 misheard - don't count them as errors. Score Fluency & Coherence by the rules above, with the \
-measured pace and pauses; {pron}. Return the four bands as whole numbers.""" + (f"\n\n{anchors}" if anchors else "")
+measured pace and pauses; {pron}. For Fluency & Coherence, Lexical Resource and Grammar give the \
+strengths, the weaknesses (each with a short quote), the whole band and a 6-14-word note; \
+Pronunciation as a whole band.""" + (f"\n\n{anchors}" if anchors else "")
 
 
-def _feedback_system(part: str, scores: dict[str, float], overall: float, target: float, has_pron: bool) -> str:
+JUDGING = """JUDGE, DON'T COUNT (the academic lead, 2026-10-29):
+- The answers come with the CHECKED MISTAKES - errors and slips found by one examiner and checked by \
+a second against natural spoken English. Self-corrections ("there are so many, there's so much"; \
+"daily lifestyles... routines"), false starts, repeated words, fragments, fillers, natural spoken \
+phrases ("and stuff like that", "you know", "I mean") and colloquial forms native speakers use widely \
+("much more free") were taken out: they are never mistakes. What is ACCEPTABLE AS SAID is listed \
+apart - never count it or quote it as a weakness.
+- Weigh errors by their density, their effect on meaning and the range the speaker attempts: an error \
+that comes from attempting less common language weighs less. A slip is very small - Band 9 Grammar \
+allows mistakes characteristic of native-speaker speech.
+- A wide range with a few slips is Band 8 or 9, never 7. Lexical Resource 6 or below only for a \
+genuinely limited range or words that make the meaning unclear.
+- Below 9 needs a reason: a criterion's weaknesses must quote the transcript (a real error, a search \
+for language) or name what is missing. "Could be more varied", "minor slips" with no quote are no \
+reasons - with no such weakness, give 9."""
+
+
+def _feedback_system(part: str, has_pron: bool) -> str:
     """FEEDBACK_RULES (the same for every check, so OpenAI's prompt cache bills
     it at a tenth of the price when checks follow each other) and then what
-    is particular to this student."""
+    is particular to this student. The bands are decided after the list is
+    checked (mistakes first, 2026-10-29)."""
     notes = [
         PART_NOTES[part],
-        f"THE SCORES ARE ALREADY DECIDED (separate scoring runs): Fluency & Coherence {scores['FC']:.0f}, "
-        f"Lexical Resource {scores['LR']:.0f}, Grammatical Range & Accuracy {scores['GRA']:.0f}, Pronunciation "
-        f"{scores['P']:.0f}; overall band {overall:.1f}; the student's next target is {target:.1f}. Everything "
-        "you write must be consistent with these scores.",
-        "Priorities: where real mistakes are few"
-        + (" (the overall band is 7 or above)" if overall >= 7 else "")
-        + ", take them from what separates this band from the next in the descriptors (extend answers with "
-        "reasons and examples, less common vocabulary and collocations, more complex structures, livelier "
-        "intonation), with mistake_ids=[] - never from trivial slips.",
+        "THE BANDS ARE DECIDED AFTER YOUR LIST IS CHECKED: write criterion_notes as short observations - software "
+        "replaces them with the examiner's.",
+        "Priorities: from real, repeated patterns of mistakes; where real mistakes are few, from what separates "
+        "these answers from Band 9 in the descriptors (extend answers with reasons and examples, less common "
+        "vocabulary and collocations, more complex structures), with mistake_ids=[] - never from trivial slips, "
+        "self-corrections, restarts or fillers.",
     ]
     if not has_pron:
         notes.append("Pronunciation is not measured: no PRON mistake, no pronunciation priority, and the P note "
@@ -443,29 +472,28 @@ if_you_meant only when the meaning can't be determined.
 
 
 VERIFY_SYSTEM = """You are a senior IELTS Speaking examiner double-checking a colleague's list of \
-mistakes in a student's recorded answers. For each item decide whether to keep it.
+mistakes in a student's recorded answers. Ask ONE question of every item: is this actually wrong in \
+natural spoken English? Then give its kind (the academic lead's classes, 2026-10-29):
+- error: wrong, or it makes the meaning unclear - "people doesn't", a wrong verb pattern, a \
+collocation error, a wrong-meaning word, a vague or invented word a fluent speaker wouldn't use where \
+a precise one is expected;
+- slip: wrong, but a one-off small mistake the speaker clearly controls elsewhere - an article ("the \
+Eastern countries"), a redundant word in a set phrase ("if not done so properly"), one plural or \
+agreement slip;
+- alternative: acceptable as said - another option is only more common, more idiomatic or more \
+precise (a near-synonym, "inconceivable" where "unimaginable" would do). It is no mistake;
+- not_a_mistake: correct as said; natural spoken English - contractions, short answers ("I can't say \
+I am"), informal phrases ("kind of", "to be honest", "and stuff like that", "you know"), fragments, \
+starting with "and"/"so", colloquial forms native speakers use widely ("much more free"); a restart, a \
+repeated word or a SELF-CORRECTION ("there are so many, there's so much", "daily lifestyles, \
+routines"); a style preference; a correction that changes what the student meant; anything about \
+punctuation, capitals or spelling (the recogniser's, not the student's) or a filler alone (a filler \
+inside a wrong phrase, "lost like a part of", is a real error); or you are not sure - the student gets \
+the benefit of the doubt.
 
-keep=false when:
-- the original is ALREADY CORRECT, grammatical and natural in its context - read the whole \
-sentence: a verb may correctly continue an earlier verb phrase, a negative or future form may be \
-correct as it stands;
-- it is only a STYLE PREFERENCE or a different-but-equally-good choice (a near-synonym, a slightly \
-plainer word, "In my childhood" vs "When I was a child");
-- the correction CHANGES WHAT THE STUDENT MEANT;
-- it is natural spoken English: contractions, short answers ("I can't say I am" is a correct answer \
-to "Are you the kind of person who...?"), informal phrases ("kind of", "to be honest"), fragments, \
-starting with "and"/"so";
-- it is a restart, a repeated word or a self-correction ("can make them, that can make them", "the \
-ticket costs and, you know, other, the hotels"): normal speech, not an error;
-- it is about punctuation, capitals or spelling (the transcript's punctuation is the speech \
-recogniser's, not the student's), or it is about a filler alone (a filler inside a wrong phrase, \
-"lost like a part of" -> "lost part of", is a real error).
-
-keep=true for every real error an examiner would penalise, including collocation errors, \
-wrong-meaning words, verb-pattern errors, unclear meaning, and vague or unnatural words a fluent \
-speaker wouldn't use where a precise one is expected (an invented job title, a word that doesn't \
-fit the thing named). A "plainer" or "more precise" option is a style preference only when the \
-original is already natural.
+VOCABULARY (when listed): the words the report teaches, each with its meaning and an example. For \
+each give its index; meaning = the standard dictionary meaning in plain words only when the given one \
+is wrong or backwards, else null; example = a rewritten example only when it misuses the term, else null.
 
 Judge each item on its own; give a short reason. Return a verdict for every id."""
 
@@ -495,25 +523,102 @@ async def parse_call(purpose: str, max_tokens: int, messages: list[dict], respon
     return response
 
 
-async def score_session(part: str, items: list[SessionItem], ev: Evidence) -> dict[str, float]:
-    """Median of SCORE_RUNS scoring runs, whole bands: {"FC", "LR", "GRA", "P"}."""
+async def score_session(part: str, items: list[SessionItem], ev: Evidence, evidence: str = "",
+                        acceptable: list[str] = ()) -> tuple[dict[str, float], dict[str, str]]:
+    """(the median of SCORE_RUNS scoring runs, whole bands {"FC", "LR",
+    "GRA", "P"}; each band's note, from a run that gave it). `evidence`: the
+    checked mistakes (mistake_evidence); `acceptable`: what was found
+    acceptable as said - quoting it is no reason for a band. A band below 9
+    whose weaknesses quote nothing real is a 9."""
+    from services.ai.writing_grader import evidenced  # the same rule as Writing's
+
+    spoken = " ".join(item.audio.text for item in items)
     messages = [
         {"role": "system", "content": _scoring_system(part, ev.pron is not None)},
         {"role": "user", "content": f"{answers_text(items, mark_uncertain=True, mark_pauses=True)}\n\n"
-                                    f"{evidence_text(items, ev, for_scoring=True)}"},
+                                    f"{evidence_text(items, ev, for_scoring=True)}"
+                                    + (f"\n\n{evidence}" if evidence else "")},
     ]
 
-    async def once() -> dict[str, float]:
-        response = await parse_call("score", SCORE_MAX_TOKENS, messages, SpeakingScores)
+    async def once() -> dict:
+        response = await parse_call("score", SCORE_MAX_TOKENS, messages, SpeakingScoring)
         parsed = response.choices[0].message.parsed
         if parsed is None:
             raise RuntimeError("Scoring returned nothing")
-        return parsed.model_dump()
+        out: dict = {"P": float(parsed.P), "_notes": {}}
+        for k in ("FC", "LR", "GRA"):
+            j = getattr(parsed, k)
+            out[k] = whole_band(j.band)
+            if out[k] < 9 and not evidenced(j.weaknesses, spoken, acceptable):
+                logger.info("Speaking %s %g -> 9: no quoted weakness (%s)", k, out[k], j.weaknesses)
+                out[k] = 9.0
+            out["_notes"][k] = j.note.strip()
+        return out
 
-    bands, _ = await median_of_runs(once, SCORE_KEYS, label=f"speaking {part}")
+    bands, runs = await median_of_runs(once, SCORE_KEYS, label=f"speaking {part}")
     if ev.pron is None:  # not measured: never a band lowered without evidence
         bands["P"] = whole_band((bands["FC"] + bands["LR"] + bands["GRA"]) / 3)
-    return bands
+    notes = {k: next((r["_notes"][k] for r in runs if whole_band(r[k]) == bands[k] and r["_notes"].get(k)), "")
+             for k in ("FC", "LR", "GRA")}
+    return bands, notes
+
+
+def mistake_evidence(items: list[SessionItem], checked: list, alternatives: list[dict], corrected: list[str],
+                     strong: list[str]) -> str:
+    """The checked errors and slips per criterion with their density per 100
+    spoken words (a slip counting slip_weight, as in Writing), what was
+    acceptable as said, the self-corrections taken out, the strong phrases."""
+    words = max(sum(item.audio.word_count for item in items), 1)
+    weight = marking_config.density()["slip_weight"]
+    lines = [f"CHECKED MISTAKES (errors and slips only; the complete list). The answers have {words} words; "
+             f"a slip counts {weight:g}."]
+    for key, name in (("GRA", "Grammar (GRA)"), ("LR", "Vocabulary (LR)"), ("FLU", "Fluency (FC)")):
+        mine = [m for m in checked if m.criterion == key]
+        if not mine:
+            lines.append(f"- {name}: none.")
+            continue
+        slips = [m for m in mine if m.severity == "slip"]
+        errors = [m for m in mine if m.severity != "slip"]
+        density = (len(errors) + len(slips) * weight) * 100 / words
+        listed = "; ".join([f"«{m.wrong}» -> «{m.correct}»" for m in errors[:10]]
+                           + [f"«{m.wrong}» -> «{m.correct}» (slip)" for m in slips[:6]])
+        lines.append(f"- {name}: {len(errors)} errors, {len(slips)} slips = {density:.1f} weighted per 100 words: "
+                     f"{listed}")
+    if alternatives:
+        lines.append("ACCEPTABLE AS SAID (another option is only more common - NOT mistakes, never count or quote "
+                     "them): " + "; ".join(f"«{a['wrong']}»" for a in alternatives[:10]))
+    if corrected:
+        lines.append("SELF-CORRECTIONS the speaker made (natural speech, never a mistake): "
+                     + "; ".join(f"«{c}»" for c in corrected[:8]))
+    if strong:
+        lines.append("STRONG PHRASES the examiner marked (credit them): " + "; ".join(f"«{x}»" for x in strong[:6]))
+    return "\n".join(lines)
+
+
+def speaking_floors(items: list[SessionItem], bands: dict[str, float], checked: list,
+                    strong: list[str]) -> tuple[dict[str, float], list[str]]:
+    """Writing's band floors for Lexical Resource and Grammar (config/
+    writing_marking.json "floors", the academic lead 2026-10-29), for answers
+    of 150 words or more: a wide range and only slips - at least 8; Lexical
+    Resource with a wide range, nothing unclear and errors under the Band 7
+    density - at least 7. Never Fluency or Pronunciation."""
+    f = marking_config.floors()
+    words = sum(item.audio.word_count for item in items)
+    if words < 150 or len(strong) < f["wide_range_phrases"]:
+        return bands, []
+    out, raised = dict(bands), []
+    weight = marking_config.density()["slip_weight"]
+    for key in ("LR", "GRA"):
+        mine = [m for m in checked if m.criterion == key]
+        errors = [m for m in mine if m.severity != "slip"]
+        least = f["slips_only_min"] if not errors else 0
+        if key == "LR" and not any(m.unclear for m in mine):
+            if (len(errors) + (len(mine) - len(errors)) * weight) * 100 / words <= marking_config.density()["band7_max"]:
+                least = max(least, f["clear_vocabulary_lr_min"])
+        if out[key] < least:
+            raised.append(f"{key} {out[key]:g} -> {least:g}")
+            out[key] = float(least)
+    return out, raised
 
 
 async def score_answers_text(part: str, qa: list[tuple[str, str]]) -> float:
@@ -529,12 +634,12 @@ async def score_answers_text(part: str, qa: list[tuple[str, str]]) -> float:
     )
     response = await parse_call(
         "self_check", SCORE_MAX_TOKENS, [{"role": "system", "content": system}, {"role": "user", "content": text}],
-        SpeakingScores,
+        SpeakingScoring,
     )
     s = response.choices[0].message.parsed
     if s is None:
         raise RuntimeError("Self-check scoring returned nothing")
-    return overall_band([whole_band(s.FC), whole_band(s.LR), whole_band(s.GRA), whole_band(s.LR)])
+    return overall_band([whole_band(s.FC.band), whole_band(s.LR.band), whole_band(s.GRA.band), whole_band(s.LR.band)])
 
 
 def _uncertain_text(items: list[SessionItem]) -> str:
@@ -546,13 +651,11 @@ def _uncertain_text(items: list[SessionItem]) -> str:
     return "UNCERTAIN WORDS (may be misheard - never base a mistake on them):\n" + ("\n".join(lines) or "none")
 
 
-async def feedback_call(
-    part: str, items: list[SessionItem], ev: Evidence, scores: dict[str, float], overall: float, target: float
-) -> SpeakingFeedback | None:
+async def feedback_call(part: str, items: list[SessionItem], ev: Evidence) -> SpeakingFeedback | None:
     """None when the answer ran past FEEDBACK_MAX_TOKENS."""
     text = f"{answers_text(items, mark_uncertain=False)}\n\n{_uncertain_text(items)}\n\n{evidence_text(items, ev)}"
     messages = [
-        {"role": "system", "content": _feedback_system(part, scores, overall, target, ev.pron is not None)},
+        {"role": "system", "content": _feedback_system(part, ev.pron is not None)},
         {"role": "user", "content": text},
     ]
     try:
@@ -578,20 +681,30 @@ async def missed_call(items: list[SessionItem], found) -> list:
     return parsed.mistakes if parsed is not None else []
 
 
-async def verify_call(source_text: str, items: list[tuple[int, str, str, str, str]]) -> dict[int, tuple[bool, str]]:
-    """`items`: (id, where, wrong, correct, why). {id: (keep, reason)};
-    items without a verdict are kept."""
-    if not items:
-        return {}
-    listed = "\n".join(f"{i}. [{where}] «{wrong}» -> «{correct}» ({why})" for i, where, wrong, correct, why in items)
+async def verify_call(source_text: str, items: list[tuple[int, str, str, str, str]],
+                      vocabulary: list[tuple[int, str, str, str]] | None = None) -> tuple[dict, dict]:
+    """`items`: (id, where, wrong, correct, why); `vocabulary`: (index, term,
+    meaning, example). ({id: (kind, reason)} - items without a verdict are
+    kept -, {index: (meaning or None, example or None)})."""
+    if not items and not vocabulary:
+        return {}, {}
+    listed = "\n".join(f"{i}. [{where}] «{wrong}» -> «{correct}» ({why})"
+                       for i, where, wrong, correct, why in items) or "(none)"
+    text = f"{source_text}\n\nMISTAKES TO CHECK:\n{listed}"
+    if vocabulary:
+        text += "\n\nVOCABULARY TO CHECK:\n" + "\n".join(f"{i}. {term} - {meaning} - e.g. {example}"
+                                                         for i, term, meaning, example in vocabulary)
     response = await parse_call(
         "verify", VERIFY_MAX_TOKENS,
-        [{"role": "system", "content": VERIFY_SYSTEM},
-         {"role": "user", "content": f"{source_text}\n\nMISTAKES TO CHECK:\n{listed}"}],
-        Verdicts,
+        [{"role": "system", "content": VERIFY_SYSTEM}, {"role": "user", "content": text}],
+        SpeakingVerdicts,
     )
     parsed = response.choices[0].message.parsed
-    return {v.id: (v.keep, v.reason) for v in parsed.verdicts} if parsed else {}
+    if not parsed:
+        return {}, {}
+    return ({v.id: (v.kind, v.reason) for v in parsed.verdicts},
+            {v.index: ((v.meaning or "").strip() or None, (v.example or "").strip() or None)
+             for v in parsed.vocabulary})
 
 
 # --- The whole grading ------------------------------------------------------------------------------------
@@ -599,23 +712,19 @@ async def verify_call(source_text: str, items: list[tuple[int, str, str, str, st
 
 async def grade_speaking(part: str, items: list[SessionItem], ev: Evidence, practise: list[dict] | None = None,
                          on_feedback=None):
-    """Scores, feedback, missed-errors pass, verification -> SpeakingReport.
-    `on_feedback(scores, overall, feedback)` is called as soon as the
-    feedback is final, so work that needs it (the candidate-specific model
-    answers) runs alongside the last two passes."""
+    """Feedback, missed-errors pass, self-corrections out, the filter, then the
+    bands -> SpeakingReport. `on_feedback(scores, overall, feedback)` is
+    called as soon as the bands are decided, so the candidate-specific model
+    answers run alongside the report's assembly."""
     # Imported here: speaking_marking imports SessionItem from this module.
-    from services.ai.scoring import overall_band, target_band
-    from services.ai.speaking_marking import assess, build_report
+    from services.ai.scoring import overall_band
+    from services.ai.speaking_marking import assess, build_report, self_correction
 
-    scores = await score_session(part, items, ev)
-    overall = overall_band(list(scores.values()))
-    target = target_band(overall)
-
-    feedback = await feedback_call(part, items, ev, scores, overall, target)
+    feedback = await feedback_call(part, items, ev)
     problems = assess(feedback, items) if feedback else ["the answer ran past its token limit"]
     if problems:
         logger.warning("Speaking feedback needs another try: %s", "; ".join(problems))
-        retry = await feedback_call(part, items, ev, scores, overall, target)
+        retry = await feedback_call(part, items, ev)
         if retry is not None:
             retry_problems = assess(retry, items)
             if feedback is None or len(retry_problems) < len(problems):
@@ -624,22 +733,16 @@ async def grade_speaking(part: str, items: list[SessionItem], ev: Evidence, prac
             raise RuntimeError("Speaking feedback ran past its token limit twice")
         if problems:
             logger.warning("Speaking feedback still has problems after the retry: %s", "; ".join(problems))
-    if on_feedback is not None:
-        try:
-            on_feedback(scores, overall, feedback)
-        except Exception:
-            logger.exception("on_feedback failed")
 
-    # The first pass's mistakes are verified while the missed-errors pass
-    # runs; whatever that pass finds is verified after it (a short call).
     source = answers_text(items, mark_uncertain=True)
+    texts = {item.qid: item.audio.text for item in items}
 
-    async def verify(checks) -> dict[int, tuple[bool, str]]:
+    async def verify(checks, vocabulary=None) -> tuple[dict, dict]:
         try:
-            return await verify_call(source, checks)
+            return await verify_call(source, checks, vocabulary)
         except Exception:
             logger.exception("Speaking verification pass failed - keeping those mistakes")
-            return {}
+            return {}, {}
 
     async def find_missed() -> list:
         try:
@@ -648,28 +751,70 @@ async def grade_speaking(part: str, items: list[SessionItem], ev: Evidence, prac
             logger.exception("Speaking missed-errors pass failed - first pass only")
             return []
 
-    # Only language corrections are verified: Fluency items (an unclear or
+    # Only language corrections are checked: Fluency items (an unclear or
     # undeveloped answer), Pronunciation items and unclear meaning are
     # judgements about the answer, not corrections that could be "already right".
     def checkable(m) -> bool:
         return m.criterion in ("GRA", "LR") and not m.unclear
 
-    verdicts, missed = await asyncio.gather(
-        verify([(m.id, m.question, m.wrong, m.correct, m.why) for m in feedback.mistakes if checkable(m)]),
+    def corrected(m) -> bool:
+        """A self-correction, by code: the speaker said it right straight away (#32)."""
+        return checkable(m) and self_correction(texts.get(m.question.strip().upper(), ""), m.wrong, m.correct)
+
+    words = [(i, v.term, v.meaning, v.example) for i, v in enumerate(feedback.vocabulary)]
+    (verdicts, fixes), missed = await asyncio.gather(
+        verify([(m.id, m.question, m.wrong, m.correct, m.why) for m in feedback.mistakes
+                if checkable(m) and not corrected(m)], words),
         find_missed(),
     )
-    missed_verdicts = await verify(
-        [(k, x.question, x.wrong, x.correct, x.why) for k, x in enumerate(missed) if checkable(x)]
-    )
-    dropped = {i for i, (keep, _) in verdicts.items() if not keep}
-    dropped_missed = {k for k, (keep, _) in missed_verdicts.items() if not keep}
-    for label, found in (("mistake", verdicts), ("missed-pass item", missed_verdicts)):
-        for i, (keep, reason) in found.items():
-            if not keep:
-                logger.info("Verification dropped %s %s: %s", label, i, reason)
+    missed_verdicts, _ = await verify(
+        [(k, x.question, x.wrong, x.correct, x.why) for k, x in enumerate(missed) if checkable(x) and not corrected(x)])
+    if fixes:
+        feedback = feedback.model_copy(update={"vocabulary": [
+            v.model_copy(update={"meaning": fixes.get(i, (None, None))[0] or v.meaning,
+                                 "example": fixes.get(i, (None, None))[1] or v.example})
+            for i, v in enumerate(feedback.vocabulary)]})
+
+    self_corrected, alternatives, checked = [], [], []
+    dropped, dropped_missed = set(), set()
+    for found, verdict_of, kept_ids, label in ((list(enumerate(feedback.mistakes)), verdicts, dropped, "mistake"),
+                                               (list(enumerate(missed)), missed_verdicts, dropped_missed, "missed")):
+        for k, m in found:
+            key = m.id if label == "mistake" else k
+            if corrected(m):
+                kept_ids.add(key)
+                self_corrected.append(m.wrong)
+                logger.info("Speaking %s %s set aside: a self-correction (%r)", label, key, m.wrong)
+                continue
+            kind, reason = verdict_of.get(key, ("error", ""))
+            if kind not in ("error", "slip"):
+                kept_ids.add(key)
+                logger.info("Speaking %s %s set aside (%s): %s", label, key, kind, reason)
+                if kind == "alternative":
+                    alternatives.append({"q": m.question, "wrong": m.wrong, "correct": m.correct, "why": reason,
+                                         "criterion": m.criterion})
+                continue
+            checked.append(SimpleNamespace(wrong=m.wrong, correct=m.correct, criterion=m.criterion, severity=kind,
+                                           unclear=m.unclear))
+
+    strong = [seg.text.strip() for answer in feedback.answers for seg in answer.segments if seg.type == "good"]
+    scores, notes = await score_session(part, items, ev, mistake_evidence(items, checked, alternatives,
+                                                                          self_corrected, strong),
+                                        [a["wrong"] for a in alternatives] + self_corrected)
+    scores, raised = speaking_floors(items, scores, checked, strong)
+    if raised:
+        logger.info("Band floors (speaking %s): %s", part, "; ".join(raised))
+        if ev.pron is None:
+            scores["P"] = whole_band((scores["FC"] + scores["LR"] + scores["GRA"]) / 3)
+    overall = overall_band(list(scores.values()))
+    if on_feedback is not None:
+        try:
+            on_feedback(scores, overall, feedback)
+        except Exception:
+            logger.exception("on_feedback failed")
 
     report = build_report(part, items, feedback, missed, dropped, dropped_missed, scores, ev.metrics, ev.pron,
-                          practise, ev.pitch)
+                          practise, ev.pitch, criterion_notes=notes, upgrades=alternatives)
     if report.notes:
         logger.info("Speaking report validation: %s", "; ".join(report.notes))
     return report

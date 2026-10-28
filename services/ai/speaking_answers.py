@@ -64,6 +64,10 @@ from services.ai.scoring import aim_band
 logger = logging.getLogger(__name__)
 
 LENGTHS = {"part1": (40, 60), "part2": (250, 300), "part3": (70, 100)}
+# about as long as the candidate's own answer (the academic lead, 2026-10-29), within these bounds
+OWN_LENGTH = 0.2
+LENGTH_BOUNDS = {"part1": (30, 110), "part2": (180, 340), "part3": (50, 170)}
+ALTERNATIVE_FROM = 8.5  # already at this level: one answer said another way, not a full set
 WORDS_PER_MINUTE = 140
 DEFAULT_BAND = 7.5  # without the student's results
 SELF_CHECK_MARGIN = 0.5
@@ -335,8 +339,19 @@ def _opener(text: str) -> str:
     return " ".join(re.findall(r"[a-z']+", text.lower())[:3])
 
 
-def _system(part: str, band: float, profile: StyleProfile | None, references: list[BookAnswer]) -> str:
-    lo, hi = LENGTHS[part]
+def length_for(target: "Target") -> tuple[int, int]:
+    """About the candidate's own length (±OWN_LENGTH), within LENGTH_BOUNDS;
+    the part's usual length when they said little or nothing."""
+    own = count_words(target.student_answer)
+    lo, hi = LENGTH_BOUNDS[target.part]
+    if own < lo * 0.6:
+        return LENGTHS[target.part]
+    return (max(lo, round(own * (1 - OWN_LENGTH))), min(hi, max(lo + 10, round(own * (1 + OWN_LENGTH)))))
+
+
+def _system(part: str, band: float, profile: StyleProfile | None, references: list[BookAnswer],
+            length: tuple[int, int] | None = None) -> str:
+    lo, hi = length or LENGTHS[part]
     style = ""
     if profile is not None:
         clean = json.dumps(profile.model_dump(), ensure_ascii=False, indent=1)
@@ -376,7 +391,8 @@ def _system(part: str, band: float, profile: StyleProfile | None, references: li
         "Skip priorities measured from the voice.\n"
         "No invented real-world facts: no statistics, studies, dates, named organisations or claims about "
         "real places presented as true; personal details are fine. Never mention any teacher, speaker or "
-        "book." + style
+        "book. Keep to one spelling (British or American) throughout, end with a complete sentence, and never "
+        "add words just to show a priority - where one doesn't fit naturally, leave it out." + style
     )
 
 
@@ -415,8 +431,10 @@ def _shows(parsed: _Answer, text: str, needs: Needs | None) -> list[dict]:
 async def _write_one(target: Target, band: float, profile: StyleProfile | None, references: list[BookAnswer],
                      needs: Needs | None = None, note: str = "") -> tuple[str, list[dict]]:
     """(the answer, its "what this shows" notes)."""
-    lo, hi = LENGTHS[target.part]
-    system = _system(target.part, band, profile, references) + (f"\n\n{note}" if note else "")
+    from services.ai.sample_bank import mixed_spelling, unfinished
+
+    lo, hi = length_for(target)
+    system = _system(target.part, band, profile, references, (lo, hi)) + (f"\n\n{note}" if note else "")
     user = f"QUESTION:\n{target.question}"
     if needs is not None:
         user += "\n\n" + _needs_text(needs, target)
@@ -439,10 +457,13 @@ async def _write_one(target: Target, band: float, profile: StyleProfile | None, 
         off = 0 if lo <= words <= hi else min(abs(words - lo), abs(words - hi))
         leaked = names_in(text)
         reused = reuse_share(text, target.student_answer)
+        spelling, broken = mixed_spelling(text), unfinished([text])
         if leaked:
             off += 1000
         if reused > REUSE_LIMIT:
             off += 500
+        if spelling or broken:
+            off += 200
         if off < best_off:
             best, best_shows, best_off = text, _shows(parsed, text, needs), off
         if off == 0:
@@ -450,7 +471,10 @@ async def _write_one(target: Target, band: float, profile: StyleProfile | None, 
         problems = ([f"it has {words} words; it must be {lo}-{hi}"] if not lo <= words <= hi else []) + \
                    ([f"remove the names {', '.join(leaked)}"] if leaked else []) + \
                    (["it repeats too much of the student's own wording - build a separate answer in new "
-                     "sentences"] if reused > REUSE_LIMIT else [])
+                     "sentences"] if reused > REUSE_LIMIT else []) + \
+                   ([f"keep to one spelling throughout: \"{spelling[0]}\" and \"{spelling[1]}\""] if spelling
+                    else []) + \
+                   ([f"finish every sentence: \"{broken[0]}\""] if broken else [])
         messages = messages[:2] + [{"role": "assistant", "content": text},
                                    {"role": "user", "content": "Revise it: " + "; ".join(problems) + "."}]
     if not best:
@@ -549,6 +573,11 @@ async def build_model_answers(targets: list[Target], needs: Needs | None = None,
     from services.ai.speaking_grader import score_answers_text  # the heavier module
 
     log: dict = {"answers": {}}
+    alternative = needs is not None and needs.overall >= ALTERNATIVE_FROM and len(targets) > 1
+    if alternative:
+        # already at this level (2026-10-29): one answer said another way - the longest one they gave
+        targets = [max(targets, key=lambda t: count_words(t.student_answer))]
+        log["alternative"] = targets[0].label
     library = []
     try:
         library = load_library()
@@ -691,6 +720,7 @@ async def build_model_answers(targets: list[Target], needs: Needs | None = None,
             "band": a.band if a else band,
             "source": "published_reference" if a else "ai_generated",
             "shows": shows.get(t.label, []),
+            "alternative": needs is not None and needs.overall >= ALTERNATIVE_FROM,
         })
         log["answers"].setdefault(t.label, {})["words"] = words
     logger.info("Speaking model answers: %s", json.dumps(log, ensure_ascii=False))

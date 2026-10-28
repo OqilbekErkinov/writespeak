@@ -12,7 +12,7 @@
   <div class="cc-l"><div class="cc-score">{{ "%.1f"|format(c.band) }}</div><div class="cc-of">out of 9</div></div>
   <div class="cc-r">
     <div class="cc-head"><span class="cc-name">{{ c.name }}</span><span class="cc-chip c-{{ c.cls }}">{{ c.chip }}</span></div>
-    <div class="cc-bar"><div class="cc-fill" style="width:{{ (c.band / 9 * 100)|round(1) }}%"></div><div class="cc-tick" style="left:{{ (report.target_band / 9 * 100)|round(1) }}%"></div></div>
+    <div class="cc-bar"><div class="cc-fill" style="width:{{ (c.band / 9 * 100)|round(1) }}%"></div>{% if not report.top_band %}<div class="cc-tick" style="left:{{ (report.target_band / 9 * 100)|round(1) }}%"></div>{% endif %}</div>
     <div class="cc-note">{{ c.note }}</div>
   </div>
 </div>
@@ -42,7 +42,7 @@
 <line x1="{{ ring.x1 }}" y1="{{ ring.y1 }}" x2="{{ ring.x2 }}" y2="{{ ring.y2 }}" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round"/>
 </svg>
         <div class="g-num">{{ "%.1f"|format(report.overall_band) }}</div><div class="g-lab">Overall band</div>
-        <div class="g-target"><span>Next target · {{ target }}</span></div>
+        <div class="g-target"><span>{% if report.top_band %}The top band{% else %}Next target · {{ target }}{% endif %}</span></div>
       </div>
     </div>
   </div>
@@ -51,7 +51,7 @@
   <div class="cc-row cc-row2" style="margin-left:16mm;margin-right:16mm">{{ card(report.criteria[2]) }}{{ card(report.criteria[3]) }}</div>
 
   <div class="cbody">
-    <div class="tickkey">▮ marks your {{ target }} target</div>
+    {% if not report.top_band %}<div class="tickkey">▮ marks your {{ target }} target</div>{% endif %}
 
     <div class="well">
       <div class="q">“</div>
@@ -64,10 +64,14 @@
 
     {% if report.priorities %}
     {% set fixes = report.priorities|rejectattr("tip")|list %}
+    {% if report.top_band %}
+    <div class="prio-h"><span class="t">You're at the top band</span><span class="s">Optional polish - small touches, not things you must fix.</span></div>
+    {% else %}
     <div class="prio-h"><span class="t">Your {{ "priority" if report.priorities|length == 1 else report.priorities|length ~ " priorities" }} for Band {{ target }}</span><span class="s">{{ "Fix these first — they cost you the most." if fixes else "What takes you to the next band." }}</span></div>
+    {% endif %}
     <div class="prios">
       {% for p in report.priorities %}
-      <div class="prio{{ ' tip' if p.tip }}"><div class="n">{{ p.n }}{% if p.tip %}<span class="kind">Next-band tip</span>{% endif %}</div>
+      <div class="prio{{ ' tip' if p.tip or report.top_band }}"><div class="n">{{ p.n }}{% if report.top_band %}<span class="kind">Polish</span>{% elif p.tip %}<span class="kind">Next-band tip</span>{% endif %}</div>
         <div class="h">{{ p.title }}</div>
         <div class="r">{{ p.rule_html|safe }}</div>
         <div class="ex">{% if p.ex_wrong %}<s>{{ p.ex_wrong }}</s> → <b>{{ p.ex_right }}</b>{% else %}{{ p.ex_right }}{% endif %}</div>
@@ -134,6 +138,16 @@
 {% else %}
 <div class="nomist">✓ No mistakes that need fixing were found in this {{ piece }}.</div>
 {% endfor %}
+{% if report.upgrades %}
+<div class="upg-box">
+  <div class="upg-h">Upgrade ideas</div>
+  <div class="upg-s">Correct as you wrote it - another option is only a little more common or precise. These are not mistakes.</div>
+  {% for u in report.upgrades %}
+  <div class="upg"><div class="body"><div class="fix"><span class="o">{{ u.wrong }}</span> → <span class="r">{{ u.correct }}</span></div>
+    {% if u.why_html %}<div class="why">{{ u.why_html|safe }}</div>{% endif %}</div><div class="side"><span class="tag {{ u.tag_cls }}">{{ u.tag }}</span></div></div>
+  {% endfor %}
+</div>
+{% endif %}
 
 <!-- ================= VOCABULARY ================= -->
 <div class="page-break"></div>
@@ -152,11 +166,11 @@
 <div class="kick">04 · Model answer</div>
 <div class="mhead">
   <div><h2 id="s-model">Model answer</h2>
-  <div class="sub" style="margin:0">{% if report.overall_band >= 9 %}Your report is already at Band 9 - here is another way to write it, for comparison.{% else %}An answer to your exact question{{ ", built around your priorities" if report.priorities }}. Compare it with your own {{ piece }}.{% endif %}</div></div>
-  {# "Aimed at" only when our examiner's score for it reaches the aim; otherwise its own score -
-     and a report already at Band 9 is told so, never shown a "better" answer #}
-  {% if report.overall_band >= 9 %}<div class="bandbadge already"><span>Your report is</span><b>Band 9</b></div>
-  {% elif answer.score is not none and answer.score < answer.band %}<div class="bandbadge"><span>Scored</span><b>{{ "%.1f"|format(answer.score) }}</b></div>
+  <div class="sub" style="margin:0">{% if answer.alternative %}Your answer is already at this level - here is one paragraph written another way, for comparison.{% else %}An answer to your exact question{{ ", built around your priorities" if report.priorities }}. Compare it with your own {{ piece }}.{% endif %}</div></div>
+  {# 2026-10-29: never weaker than the student - from 8.5 one paragraph written another way;
+     a score is shown only when it reaches the aim, and never one below the student's band #}
+  {% if answer.alternative %}<div class="bandbadge already"><span>Your {{ piece }} is</span><b>Band {{ "%.1f"|format(report.overall_band) }}</b></div>
+  {% elif answer.score is not none and answer.score < answer.band and answer.score >= report.overall_band %}<div class="bandbadge"><span>Scored</span><b>{{ "%.1f"|format(answer.score) }}</b></div>
   {% else %}<div class="bandbadge"><span>Aimed at</span><b>{{ "%.1f"|format(answer.band) }}</b></div>{% endif %}
 </div>
 <div class="qbox"><div class="ql">Question</div><div class="qt">{{ question }}</div>{% for img in chart_images %}<img class="qimg" src="{{ img }}">{% endfor %}</div>

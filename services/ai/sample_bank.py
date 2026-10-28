@@ -69,6 +69,7 @@ from services.ai import usage
 from services.ai.essay_marking import WORD_RE, count_words
 from services.ai.openai_client import client
 from services.ai.schemas import GeneratedSample, StyleProfile, Task1Label, Task2Label
+from services.ai import marking_config
 from services.ai.scoring import writing_aim_band
 from services.ai.writing_anchors import patterns_text
 
@@ -78,6 +79,10 @@ TASK_TYPES = {"task1": "task1_academic", "task2": "task2"}  # bot task -> librar
 # Task 2 since 2026-10-17: 300-340 (aim 320) - a fuller answer shows the
 # student more clearly what each part of the question needs (the user's call).
 WORD_RANGE = {"task2": (300, 340), "task1_academic": (170, 200)}
+# From 8.5 the student is already at the model answer's level (the academic lead, 2026-10-29): one
+# paragraph written another way - Task 1 its overview, Task 2 one body paragraph - not a weaker full answer.
+ALTERNATIVE_FROM = 8.5
+ALTERNATIVE_RANGE = {"task2": (90, 140), "task1_academic": (40, 75)}
 COPY_NGRAM = 8  # a shared run of this many words counts as a copied sentence
 SAME_QUESTION_RATIO = 0.9
 REFERENCES = 3
@@ -116,6 +121,7 @@ class ModelAnswer:
     score: float | None = None  # our examiner's band for the answer as kept (the report's badge)
     source: str = "ai_generated"  # ai_generated | published_reference | human_reviewed
     log: dict = field(default_factory=dict)  # writer, sample ids, checks - internal only
+    alternative: bool = False  # one paragraph written another way: the student is already at this level
 
     @property
     def word_count(self) -> int:
@@ -611,8 +617,9 @@ def _task_rules(task_type: str) -> str:
     )
 
 
-def _system(task_type: str, band: float, profile: StyleProfile | None, references: list[LibrarySample]) -> str:
-    lo, hi = WORD_RANGE[task_type]
+def _system(task_type: str, band: float, profile: StyleProfile | None, references: list[LibrarySample],
+            alternative: bool = False) -> str:
+    lo, hi = (ALTERNATIVE_RANGE if alternative else WORD_RANGE)[task_type]
     style = ""
     if profile is not None:
         refs = "\n\n".join(
@@ -656,19 +663,29 @@ def _system(task_type: str, band: float, profile: StyleProfile | None, reference
         "for this topic - never rare synonyms for their own sake. Grammar: a useful variety of accurate "
         "structures."
     )
+    one = ("THE STUDENT IS ALREADY AT THIS LEVEL: write ONE paragraph only, as another way to write part of their "
+           "answer - " + ("the overview: the main trends or differences in 2-3 sentences, with no figures"
+                          if task1 else "one body paragraph that develops one of their main ideas differently, "
+                          "with a clear topic sentence, explanation and an example") + ".\n") if alternative else ""
     return (
         "You write IELTS Writing model answers that a student reads right after their own feedback report - "
         "each one written to TEACH this student what their report says they need.\n\n"
         f"{_task_rules(task_type)}\nWrite at about IELTS band {band:.1f} - not above it, natural, no "
         f"memorised templates. Length: {lo}-{hi} words (aim for about {(lo + hi) // 2}; count before "
         "answering). Answer every part of the question.\n"
+        f"{one}"
         "TEACH, DON'T REWRITE: when the student's results are given, write a separate, complete answer to "
         "the same question that demonstrates their priorities while staying a strong answer overall. "
         f"{teach} The student's own text is given for comparison: you may share a sound idea, but never "
         "their sentences, and never keep a weak argument or a misreading of the question.\n"
-        "shows: when priorities are given, 1-3 places in YOUR answer that demonstrate them (the first "
-        "priority first): the priority number, a phrase copied exactly from your answer, and what the "
-        "student should notice there.\n"
+        "shows: when priorities are given, up to 3 places in YOUR answer where a priority is shown naturally "
+        "(the first priority first): the priority number, a phrase copied exactly from your answer, and what the "
+        "student should notice, in plain words (never an invented term such as \"comparative-like adjective\"). "
+        "Never add words just to show a priority (\"it often feels freer\"): where a priority doesn't fit the "
+        "answer naturally, leave it out - fewer shows, or none, is fine.\n"
+        "Open paragraphs in your own way - no stock openers (\"There is a view that\", \"First and foremost\", "
+        "\"The following paragraphs explain\"); keep to one spelling (British or American) throughout; write "
+        "\"In my view\" only when the question asks for an opinion; end with a complete sentence.\n"
         "No invented real-world facts: no statistics, studies, surveys, named programmes, "
         "laws, dates, and no claims about real countries, cities or organisations that a reader could "
         f"take as fact.{facts} Every example supports the point of its own paragraph - never an example for "
@@ -689,14 +706,18 @@ async def _write(
     needs: Needs | None = None,
     sheet: str = "",
     visual: dict | None = None,
+    alternative: bool = False,
+    avoid: list[str] = (),
 ) -> tuple[list[str], list[str], list[dict]]:
     """(paragraphs, problems left, "what this shows" notes) - the best of up
     to GENERATION_ATTEMPTS. `sheet`: a Task 1 chart's data sheet - the figures
-    the report used, so the answer never contradicts its feedback."""
+    the report used, so the answer never contradicts its feedback;
+    `alternative`: one paragraph only (ALTERNATIVE_RANGE); `avoid`: the
+    student's recent model answers' paragraph openers."""
     from services.ai.visual_reading import ANSWER_RULES
 
-    lo, hi = WORD_RANGE[task_type]
-    system = _system(task_type, band, profile, references) + (f"\n\n{note}" if note else "")
+    lo, hi = (ALTERNATIVE_RANGE if alternative else WORD_RANGE)[task_type]
+    system = _system(task_type, band, profile, references, alternative) + (f"\n\n{note}" if note else "")
     text = f"QUESTION:\n{question}"
     if sheet:
         text += f"\n\n{sheet}\n\n{ANSWER_RULES}"
@@ -737,8 +758,13 @@ async def _write(
             problems.append(f"remove the names {', '.join(names)}")
         if reused > REUSE_LIMIT:
             problems.append("it repeats too much of the student's own wording - write a separate answer in new sentences")
-        problems += data_problems(full, question, visual) if task_type == "task1_academic" else []
+        problems += data_problems(full, question, visual) if task_type == "task1_academic" and not alternative \
+            else [p for p in data_problems(full, question, visual) if not p.startswith("name every category")] \
+            if task_type == "task1_academic" else []
         problems += [f'"{c}" contradicts itself - say clearly which side wins' for c in self_contradictions(full)]
+        problems += answer_problems(paragraphs, question, "task2" if task_type == "task2" else "task1", avoid)
+        if alternative and len(paragraphs) != 1:
+            problems.append("write ONE paragraph only")
         overused = overused_phrases(full, profile)
         if overused:
             problems.append("use each of these phrases at most once, and only where its logic fits: "
@@ -811,6 +837,123 @@ def gap_claims(text: str, visual: dict | None) -> list[str]:
     return out
 
 
+_RISE = r"(?:rise|increase|growth|gain|jump|surge|climb|upturn|upswing|rose|grew|increased|climbed|gained)"
+_BIGGEST = re.compile(
+    r"\b(?:largest|biggest|greatest|sharpest|steepest|fastest|strongest|most\s+(?:significant|dramatic|substantial|"
+    r"considerable|marked|notable|rapid|pronounced|striking))\s+(?P<noun>rise|increase|growth|gain|jump|surge|climb|"
+    r"upturn|fall|decrease|decline|drop|reduction|dip|slump)s?\b"
+    r"|\b(?P<verb>rose|grew|increased|climbed|gained|fell|dropped|declined|decreased|shrank)\s+(?:the\s+)?"
+    r"(?:most|fastest|furthest|sharpest|steepest)\b", re.IGNORECASE)
+_OVERTOOK = re.compile(r"\b(?:overt(?:ook|akes?|aking|aken)|surpass(?:ed|es|ing)?|outstrip(?:ped|s|ping)?|"
+                       r"outnumber(?:ed|s|ing)?)\b", re.IGNORECASE)
+_TOP = re.compile(r"\b(?:the\s+)?(?P<rank>highest|lowest|largest|smallest|biggest|most\s+popular|least\s+popular)\b",
+                  re.IGNORECASE)
+_OWN_TOP = re.compile(r"\b(?:its|their|his|her)\s+(?:\w+\s+)?(?:highest|lowest|largest|smallest|biggest)\b|"
+                      r"\b(?:highest|lowest)\s+(?:point|level|peak|figure|value)\s+(?:of|in)\s+(?:its|their)\b",
+                      re.IGNORECASE)
+_ALWAYS = re.compile(r"\b(?:remain\w*|stay\w*|throughout|whole|entire|every\s+year|all\s+(?:the\s+)?years|"
+                     r"consistently|always|over\s+the\s+(?:period|years)|at\s+every)\b", re.IGNORECASE)
+
+
+def _mentions(sentence: str, labels: set[str]) -> list[tuple[int, str]]:
+    """The categories a sentence names, with where (characters) each is named first."""
+    from services.ai.visual_check import _key, _key_word, _named_among
+
+    low = sentence.lower()
+    out = []
+    for label in _named_among(labels, _key(sentence)):
+        word = (_key_word(label) or label).lower()
+        at = low.find(word[:-1] if word.endswith("s") and len(word) > 4 else word)
+        out.append((at if at >= 0 else len(low), label))
+    return sorted(out)
+
+
+def _nearest(mentions: list[tuple[int, str]], at: int, before: bool | None = None) -> str | None:
+    pool = [(abs(pos - at), label) for pos, label in mentions
+            if before is None or (pos < at if before else pos > at)]
+    return min(pool)[1] if pool else None
+
+
+def comparison_claims(text: str, visual: dict | None) -> list[str]:
+    """Sentences comparing categories in a way the sheet's figures don't show,
+    beyond their precision (the academic lead, 2026-10-29: every comparison in
+    a model answer and a vocabulary example is checked): the largest rise or
+    fall (between the sentence's two years, else the first and last points,
+    by amount or by share - true by either counts), one category overtaking
+    another, and the highest or lowest (at every point when it "remained" so,
+    else at the sentence's year)."""
+    if not visual:
+        return []
+    from services.ai.schemas import SheetBlock
+    from services.ai.visual_check import _YEAR_IN
+    from services.ai.visual_features import INF, _Grid
+
+    grids = []
+    for block in visual.get("blocks", []):
+        try:
+            grid = _Grid(SheetBlock.model_validate(block))
+        except Exception:
+            continue
+        if len(grid.series) >= 2:
+            grids.append(grid)
+    out = []
+    for sentence in re.split(r"(?<=[.!?])\s+", text):
+        wrong = False
+        for grid in grids:
+            def cell(s, p):
+                c = grid.loose.get((s, p))
+                return None if c is None or c[1] == INF else c
+
+            mentions = _mentions(sentence, set(grid.series))
+            years = [y for y in _YEAR_IN.findall(sentence) if y in grid.points]
+            if not mentions:
+                continue
+            found = _BIGGEST.search(sentence)
+            if found and len(grid.points) >= 2:
+                rise = re.fullmatch(_RISE, (found.group("noun") or found.group("verb")).lower()) is not None
+                who = _nearest(mentions, found.start())
+                p0, p1 = (years[0], years[-1]) if len(set(years)) >= 2 else (grid.points[0], grid.points[-1])
+                change = {}
+                for s_ in grid.series:
+                    a, b = cell(s_, p0), cell(s_, p1)
+                    if a and b:
+                        change[s_] = (b[0] - a[0], a[1] + b[1], (b[0] - a[0]) / a[0] if a[0] else None)
+                if who in change:
+                    sign = 1 if rise else -1
+                    mine, slack, share = change[who]
+                    by_amount = all(sign * mine >= sign * c - (slack + sl) for o, (c, sl, _) in change.items() if o != who)
+                    by_share = share is not None and all(
+                        r is None or sign * share >= sign * r - 0.02 for o, (_, _, r) in change.items() if o != who)
+                    if sign * mine < -slack or not (by_amount or by_share):
+                        wrong = True
+            found = _OVERTOOK.search(sentence)
+            if found:
+                first, second = _nearest(mentions, found.start(), True), _nearest(mentions, found.end(), False)
+                if first and second and first != second:
+                    gaps = [(a[0] - b[0], a[1] + b[1]) for p in grid.points
+                            if (a := cell(first, p)) and (b := cell(second, p))]
+                    if gaps and (all(g > sl for g, sl in gaps) or all(g < -sl for g, sl in gaps)):
+                        wrong = True  # always ahead, or never caught up: no overtaking
+            found = _TOP.search(sentence)
+            if found and not _OWN_TOP.search(sentence):
+                who = _nearest(mentions, found.start())
+                high = found.group("rank").lower().split()[0] in ("highest", "largest", "biggest", "most")
+                points = grid.points if _ALWAYS.search(sentence) else years or (
+                    grid.points if len(grid.points) == 1 else [])
+                for p in points:
+                    mine = cell(who, p) if who else None
+                    if not mine:
+                        continue
+                    for o in grid.series:
+                        other = cell(o, p)
+                        if o != who and other and (other[0] - mine[0] if high else mine[0] - other[0]) > \
+                                max(0.5, mine[1] + other[1]):
+                            wrong = True
+        if wrong:
+            out.append(sentence.strip()[:200])
+    return out
+
+
 # A model answer talking about the data sheet instead of the visual.
 _META = re.compile(r"\b(?:(?:is|are|was|were) not (?:given|shown|stated|provided|labell?ed|visible|clear|known|available)|"
                    r"exact (?:value|figure|number)s? (?:is|are|was|were) not|(?:un)?verified|data sheet|uncertain|"
@@ -838,6 +981,11 @@ def data_problems(text: str, question: str, visual: dict | None) -> list[str]:
     if gaps:  # #62: "Brazil narrowed the gap" - 12 points behind the US in 2005, 13 in 2015
         out.append("these sentences say a gap narrowed or widened, which the DATA SHEET's figures don't show - say how "
                    "it really changed, or leave it out: " + " | ".join(f'"{x}"' for x in gaps[:3]))
+    compared = [x for x in comparison_claims(text, visual) if x not in gaps]
+    if compared:
+        out.append("these sentences compare categories in a way the DATA SHEET's figures don't show (the largest rise "
+                   "or fall, overtaking, the highest or lowest) - check them against its figures, or leave them out: "
+                   + " | ".join(f'"{x}"' for x in compared[:3]))
     meta = list(dict.fromkeys(m.group(0) for m in _META.finditer(text)))
     if meta:  # #93: "the exact male value is not given here"; #94: "its lead in the verified years"
         out.append("never write about the data itself being missing, unclear or verified - describe the visual as "
@@ -863,6 +1011,120 @@ def data_problems(text: str, question: str, visual: dict | None) -> list[str]:
     if missing and not _GROUP_WORDS.search(text):
         out.append("name every category on the DATA SHEET, or cover the rest as a group (\"the other countries\"): "
                    + ", ".join(missing[:8]))
+    return out
+
+
+def example_problems(text: str, question: str, visual: dict | None) -> list[str]:
+    """A vocabulary example about the chart checked like the model answer is
+    (the academic lead, 2026-10-29): its figures on the sheet, its gaps and
+    comparisons true by the sheet's figures."""
+    if not visual:
+        return []
+    from services.ai.visual_check import figures, match_figure
+
+    out = []
+    misses = [f["text"] for f in figures(text) if match_figure(f, visual, question) in ("miss", "raw-uncertain")]
+    if misses:
+        out.append(f"{', '.join(misses)} not verified figures on the DATA SHEET")
+    claims = list(dict.fromkeys(gap_claims(text, visual) + comparison_claims(text, visual)))
+    if claims:
+        out.append("its comparison is not what the DATA SHEET's figures show")
+    return out
+
+
+_OPINION_ASKED = re.compile(
+    r"\b(?:agree|disagree|opinion|your (?:own )?view|do you think|do you believe|do you feel|to what extent|"
+    r"outweigh|positive or negative|a good thing|good or bad|which (?:do you|is better)|what do you|should)\b",
+    re.IGNORECASE)
+_MY_VIEW = re.compile(r"\b(?:in my (?:view|opinion)|from my (?:perspective|point of view)|to my mind|personally,|"
+                      r"as far as i am concerned|i (?:firmly |strongly |would )?(?:believe|argue|contend))\b",
+                      re.IGNORECASE)
+_TERMINAL = re.compile(r"[.!?…][\"'”’)\]]*\s*$")
+_SENTENCES = re.compile(r"(?<=[.!?])\s+")
+# British and American spellings of the same words: one answer keeps to one (2026-10-29: "traveling"
+# next to "travellers")
+_STEMS = ("organ|recogn|real|emphas|priorit|special|critic|minim|maxim|urban|global|modern|industrial|util|"
+          "apolog|categor|character|summar|memor|econom|stabil|standard|visual|normal|final|legal|mobil|"
+          "central|capital|social|civil|subsid|harmon|optim|familiar|author|commerc|digit|hospital")
+_SPELLINGS = (
+    (r"\btravell(?:ing|ed|er|ers)\b", r"\btravel(?:ing|ed|er|ers)\b"),
+    (r"\b(?:colou?r|favou?r|behaviou?r|labou?r|neighbou?r|honou?r|humou?r|flavou?r|rumou?r)\w*",
+     None),  # by the letters themselves below
+    (rf"\b(?:{_STEMS})is(?:e|es|ed|ing|ation|ations)\b", rf"\b(?:{_STEMS})iz(?:e|es|ed|ing|ation|ations)\b"),
+    (r"\b(?:centre|theatre|litre|fibre)s?\b", r"\b(?:center|theater|liter|fiber)s?\b"),
+    (r"\b(?:defence|offence)s?\b", r"\b(?:defense|offense)s?\b"),
+    (r"\banalys(?:e|es|ed|ing)\b", r"\banalyz(?:e|es|ed|ing)\b"),
+    (r"\b(?:catalogue|ageing|judgement|fulfilment|enrolment|grey)s?\b",
+     r"\b(?:catalog|aging|judgment|fulfillment|enrollment|gray)s?\b"),
+)
+
+
+def mixed_spelling(text: str) -> list[str]:
+    """British and American spellings side by side ("travellers" and
+    "traveling"): one example of each."""
+    british, american = [], []
+    for brit, amer in _SPELLINGS:
+        if amer is None:
+            for w in re.findall(brit, text, re.IGNORECASE):
+                (british if "our" in w.lower() else american).append(w)
+            continue
+        british += re.findall(brit, text, re.IGNORECASE)
+        american += re.findall(amer, text, re.IGNORECASE)
+    return [british[0], american[0]] if british and american else []
+
+
+def opinion_asked(question: str) -> bool:
+    return bool(_OPINION_ASKED.search(question))
+
+
+def unfinished(paragraphs: list[str]) -> list[str]:
+    """Paragraphs that stop mid-sentence, and fragments standing as sentences
+    (#66's answer ended with "In conclusion.")."""
+    out = []
+    for p in paragraphs:
+        p = p.strip()
+        if p and not _TERMINAL.search(p):
+            out.append(p[-60:])
+        for sentence in _SENTENCES.split(p):
+            words = re.findall(r"[A-Za-z']+", sentence)
+            if 0 < len(words) <= 3 and not re.fullmatch(r"\W*(?:yes|no|not really|absolutely|definitely)\W*",
+                                                          sentence.strip(), re.IGNORECASE):
+                out.append(sentence.strip())
+    return out
+
+
+def openers(paragraphs: list[str]) -> list[str]:
+    """Each paragraph's first four words - what the next answers for this
+    student avoid repeating."""
+    return [" ".join(re.findall(r"[A-Za-z']+", p)[:4]).lower() for p in paragraphs if p.strip()]
+
+
+def answer_problems(paragraphs: list[str], question: str, task_type: str, avoid: list[str] = ()) -> list[str]:
+    """The model answer's code checks (the academic lead, 2026-10-29): no
+    unfinished sentence, no "In my view" where the question asks no opinion
+    (Task 2), none of the stock openers, none of this student's recent
+    openers, one spelling throughout."""
+    text = "\n\n".join(paragraphs)
+    out = []
+    broken = unfinished(paragraphs)
+    if broken:
+        out.append("finish every sentence - these stop or stand as fragments: " + " | ".join(f'"{b}"' for b in broken[:3]))
+    if task_type == "task2" and not opinion_asked(question):
+        mine = list(dict.fromkeys(m.group(0) for m in _MY_VIEW.finditer(text)))
+        if mine:
+            out.append("the question asks for no opinion - leave out " + ", ".join(f'"{m}"' for m in mine[:3]))
+    low = text.lower()
+    stock = [o for o in marking_config.banned_openers() if o.lower() in low]
+    if stock:
+        out.append("don't use these stock phrases: " + ", ".join(f'"{o}"' for o in stock))
+    seen = set(avoid)
+    again = [o for o in openers(paragraphs) if o in seen]
+    if again:
+        out.append("open these paragraphs differently - the student's recent model answers began the same way: "
+                   + ", ".join(f'"{o}"' for o in again[:3]))
+    spelling = mixed_spelling(text)
+    if spelling:
+        out.append(f"keep to one spelling throughout (British or American): \"{spelling[0]}\" and \"{spelling[1]}\"")
     return out
 
 
@@ -1026,6 +1288,7 @@ async def build_model_answer(
     needs: Needs | None = None,
     sheet: str = "",
     visual: dict | None = None,
+    avoid: list[str] = (),
 ) -> ModelAnswer:
     """`task_type`: the bot's "task1" / "task2". `seed` (e.g. the student's id
     plus essay count) takes turns between writers level on every count.
@@ -1065,22 +1328,34 @@ async def build_model_answer(
     log["aimed_at"] = band
     if needs is not None:
         log["priorities"] = [p["title"] for p in needs.priorities]
+    if needs is not None and needs.overall >= ALTERNATIVE_FROM:
+        # already at this level: one paragraph written another way, no full (and maybe weaker) answer
+        paragraphs, problems, shows = await _write(question, lib_task, prompt_images, band, profile, references,
+                                                   needs=needs, sheet=sheet, visual=visual, alternative=True,
+                                                   avoid=avoid)
+        log.update(problems=problems, alternative=True, words=sum(count_words(p) for p in paragraphs),
+                   openers=openers(paragraphs), source="ai_generated", score=None)
+        logger.info("Model answer (alternative paragraph): %s", json.dumps(log, ensure_ascii=False))
+        return ModelAnswer(question=question, paragraphs=paragraphs, band=band, shows=shows, log=log,
+                           alternative=True)
     paragraphs, problems, shows = await _write(question, lib_task, prompt_images, band, profile, references,
-                                               needs=needs, sheet=sheet, visual=visual)
+                                               needs=needs, sheet=sheet, visual=visual, avoid=avoid)
     log["problems"] = problems
     kept_score = None
+    floor = max(band - SELF_CHECK_MARGIN, needs.overall if needs is not None else 0.0)  # never under the student
     try:
         score = await score_writing(task_type, question, "\n\n".join(paragraphs), prompt_images, sheet)
         kept_score = score
         log["self_check"] = [score]
-        if score < band - SELF_CHECK_MARGIN:
+        if score < floor:
             note = (
                 f"An examiner scored a previous attempt {score:.1f}. This answer must read as a clear "
                 f"Band {band:.1f} answer: develop every idea fully, with precise vocabulary and "
                 "accurate, varied grammar."
             )
             second, second_problems, second_shows = await _write(
-                question, lib_task, prompt_images, band, profile, references, note, needs, sheet, visual)
+                question, lib_task, prompt_images, band, profile, references, note, needs, sheet, visual,
+                avoid=avoid)
             second_score = await score_writing(task_type, question, "\n\n".join(second), prompt_images, sheet)
             log["self_check"].append(second_score)
             if second_score >= score:
@@ -1095,7 +1370,8 @@ async def build_model_answer(
         if problem:
             note = f"A reviewer rejected a previous version: {problem}. Write it again and fix exactly that."
             again, again_problems, again_shows = await _write(
-                question, lib_task, prompt_images, band, profile, references, note, needs, sheet, visual)
+                question, lib_task, prompt_images, band, profile, references, note, needs, sheet, visual,
+                avoid=avoid)
             again_problem = await quality_problem(task_type, question, again, subtype, prompt_images, sheet)
             log["quality_retry"] = again_problem or "ok"
             if again_problem is None:
@@ -1109,6 +1385,7 @@ async def build_model_answer(
     except Exception:
         logger.exception("Model answer quality check failed - keeping the answer as written")
     log["words"] = sum(count_words(p) for p in paragraphs)
+    log["openers"] = openers(paragraphs)
     log["shows"] = [x["n"] for x in shows]
     if needs is not None:
         log["reuse"] = round(reuse_share("\n\n".join(paragraphs), needs.essay, question), 2)

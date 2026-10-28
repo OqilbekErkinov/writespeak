@@ -307,8 +307,8 @@ _T: dict[str, dict[str, str]] = {
         "ru": "— <b>{part}</b> —",
     },
     "speaking.grading_in_progress": {
-        "uz": "🎧 Yozuvingizni tinglab, tahlil qilyapman… tishlarim o'tkir 🦷 Bu 2–4 daqiqa oladi.",
-        "ru": "🎧 Слушаю запись и разбираю… зубы острые 🦷 Это займёт 2–4 минуты.",
+        "uz": "🎧 Yozuvingizni tinglab, tahlil qilyapman… tishlarim o'tkir 🦷 Bu 2–5 daqiqa oladi.",
+        "ru": "🎧 Слушаю запись и разбираю… зубы острые 🦷 Это займёт 2–5 минут.",
     },
     "speaking.resubmitted": {
         "uz": "♻️ Bu — {number}-sessiyadagi aynan o'sha yozuv, shuning uchun saqlangan hisobotingizni "

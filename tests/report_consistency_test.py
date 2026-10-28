@@ -154,8 +154,9 @@ def main() -> int:
     report_builder._page_of = lambda document, anchor: 1
     progress = {"first": True, "note": "First."}
 
-    def page(score, band, report_=report):
-        answer = sample_bank.ModelAnswer(question="Q", paragraphs=["One.", "Two."], band=band, score=score)
+    def page(score, band, report_=report, alternative=False):
+        answer = sample_bank.ModelAnswer(question="Q", paragraphs=["One.", "Two."], band=band, score=score,
+                                         alternative=alternative)
         pages.clear()
         report_builder.build_writing_report_pdf(report_, answer, progress, "Test", 1)
         return pages[0]
@@ -238,6 +239,24 @@ def acceptance_60_62() -> None:
     check("...while a gap that really widened may be said to widen",
           not gap_claims("The gap between the United States and Brazil widened markedly.", widening))
 
+    # Every comparison in a model answer or a vocabulary example is checked (the academic lead, 2026-10-29).
+    from services.ai.sample_bank import comparison_claims
+
+    oregon = {"blocks": [{**leisure["blocks"][0], "units": "thousands", "values": [
+        {**leisure["blocks"][0]["values"][0], "series": s, "point": p, "value": v}
+        for s, row in (("Washington", (75, 125, 245)), ("Yamhill", (30, 45, 90)), ("Columbia", (25, 35, 80)))
+        for p, v in zip(("1940", "1970", "2000"), row)]}]}
+    for sentence, wrong in (("Washington saw the largest rise, from 75,000 to 245,000.", False),
+                            ("Columbia recorded the biggest increase over the period.", True),
+                            ("Yamhill grew the fastest in relative terms.", True),
+                            ("Washington remained the most populous county throughout.", False),
+                            ("Yamhill remained the highest throughout.", True),
+                            ("In 2000, Columbia had the largest population.", True),
+                            ("Washington reached its highest level in 2000.", False),
+                            ("Columbia overtook Washington in 1970.", True)):
+        check(f"comparison {'caught' if wrong else 'kept'}: {sentence}",
+              bool(comparison_claims(sentence, oregon)) == wrong)
+
 
 def rulings(page) -> None:
     """The academic lead's rulings of 2026-10-27 (#53-#59, the 9.0 speaker)."""
@@ -278,9 +297,16 @@ def rulings(page) -> None:
 
     nine = essay_marking.build_report("task2", "Q. Discuss.", ESSAY, feedback([], [], [], "x"),
                                       bands={"TR_or_TA": 9, "CC": 9, "LR": 9, "GRA": 9})
-    html = page(8.5, 9.0, nine)
-    check("a report already at Band 9 is told so - never shown a 'better' model answer", ">Band 9<" in html
-          and "Your report is already at Band 9" in html and ">Scored<" not in html)
+    html = page(None, 9.0, nine, alternative=True)
+    check("a report already at this level (8.5+) is told so, with one paragraph another way - never a 'better' "
+          "model answer (2026-10-29)", ">Band 9.0<" in html and "Your answer is already at this level" in html
+          and ">Scored<" not in html)
+    check("...and at Band 9 it says 'the top band', with no next target",
+          "The top band" in html and "Next target" not in html)
+    eight = essay_marking.build_report("task2", "Q. Discuss.", ESSAY, feedback([], [], [], "x"),
+                                       bands={"TR_or_TA": 8, "CC": 8, "LR": 8, "GRA": 8})
+    check("a model answer scored under the student's band never shows that score (8.0 student, scored 7.5)",
+          ">Scored<" not in page(7.5, 9.0, eight) and ">Aimed at<" in page(7.5, 9.0, eight))
     check("British spelling in the Speaking transcripts",
           british("Traveling is my favorite; I realized the color.") == "Travelling is my favourite; I realised the colour.")
 

@@ -1,6 +1,6 @@
 """The academic values of the Writing marking (Bandzilla last prompt,
 2026-10-26): config/writing_marking.json, owned by the academic lead -
-density thresholds, anchors, calibration overrides, progress minimums,
+density thresholds, band floors, anchors, calibration overrides, progress minimums,
 regression expectations. The code reads them from here and never hard-codes
 them; a missing file or key falls back to DEFAULTS (logged once).
 """
@@ -22,6 +22,8 @@ DEFAULTS = {
     "progress": {"min_words": {"task1": 100, "task2": 150}},
     "regression": {},
     "type_anchors": {"use": True},
+    "floors": {"wide_range_phrases": 3, "slips_only_min": 8, "clear_vocabulary_lr_min": 7},
+    "model_answer": {"banned_openers": []},
 }
 
 _cache: dict = {}
@@ -62,6 +64,16 @@ def anchor_ids(task_type: str | None = None) -> list[str] | set[str]:
 def type_anchors_on() -> bool:
     """Whether Task 1 scoring shows the Band 9 report of the same kind of visual."""
     return bool(load()["type_anchors"].get("use", True))
+
+
+def floors() -> dict:
+    """The least Lexical Resource / Grammar band a long-enough answer gets for
+    what it shows (the academic lead, 2026-10-29)."""
+    return load()["floors"]
+
+
+def banned_openers() -> list[str]:
+    return list(load()["model_answer"].get("banned_openers", []))
 
 
 def calibration() -> dict:

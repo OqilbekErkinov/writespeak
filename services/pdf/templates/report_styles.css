@@ -270,3 +270,14 @@ sup.k, .shows .k { display: inline-block; font-weight: 800; font-size: 6.3pt; co
 /* the notes under the model answer never start a page alone (the last prompt's B7) */
 .sample-foot { page-break-before: avoid; break-before: avoid; page-break-inside: avoid; break-inside: avoid; }
 .sample p:last-child { page-break-inside: avoid; }
+
+/* "Upgrade ideas" (2026-10-29): acceptable as written, another option only more common - never a mistake */
+.upg-box { margin-top: 5mm; padding: 3mm 4mm; border-radius: 2.5mm; background: var(--mint-soft); page-break-inside: avoid; }
+.upg-h { font-weight: 800; font-size: 11pt; color: var(--ink); }
+.upg-s { font-size: 8.8pt; color: var(--muted); margin: .5mm 0 1.5mm; }
+.upg { display: flex; justify-content: space-between; gap: 3mm; padding: 1.4mm 0; border-top: 1px solid var(--line); }
+.upg .fix { font-size: 9.6pt; }
+.upg .o { color: var(--ink); }
+.upg .r { color: var(--moss); font-weight: 700; }
+.upg .why { font-size: 8.8pt; color: var(--muted); margin-top: .4mm; }
+.upg .side .tag { margin: 0; }

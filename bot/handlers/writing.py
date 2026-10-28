@@ -362,6 +362,9 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
         async with get_session() as session:
             earlier_essays, previous = await crud.get_writing_history(
                 session, user_id, data["task_type"], min_words=marking_config.progress_min_words(data["task_type"]))
+            # the paragraph openers of the student's last model answers: the next one opens differently
+            recent = await crud.get_writing_sessions(session, user_id, data["task_type"], limit=3)
+        avoid = [o for sub in recent for o in (((sub.report_data or {}).get("model_answer") or {}).get("openers") or [])]
         if data["task_type"] == "task1":
             prompt_images = _load_prompt_images(data.get("prompt_image_paths") or [])
         seed = user_id + earlier_essays
@@ -377,7 +380,7 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
             needs = needs_from_feedback(bands, overall, feedback, data["answer_text"])
             answer_task = asyncio.create_task(build_model_answer(
                 data["task_type"], data["prompt_text"], prompt_images, seed=seed, needs=needs, sheet=sheet,
-                visual=visual_data))
+                visual=visual_data, avoid=avoid))
 
         notices = [PASTE_NOTICE] if footers else []
         if data["task_type"] == "task1" and not prompt_images:
@@ -426,7 +429,7 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
                 try:
                     answer = await build_model_answer(
                         data["task_type"], data["prompt_text"], prompt_images, seed=seed, needs=needs, sheet=sheet,
-                        visual=visual_data
+                        visual=visual_data, avoid=avoid
                     )
                 except Exception:
                     logger.exception("Model answer failed again for user %s - report goes out without it", user_id)
@@ -509,6 +512,7 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
                     "provisional": answer.source != "human_reviewed",
                     "shows": [x["n"] for x in answer.shows], "writer": answer.log.get("chosen"),
                     "reference_ids": answer.log.get("reference_ids", []),
+                    "alternative": answer.alternative, "openers": answer.log.get("openers", []),
                 },
                 "resubmission_of": similar.id if similar is not None else None,
                 # a Task 1 chart's data sheet: the figures every part of the report used

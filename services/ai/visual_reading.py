@@ -14,7 +14,11 @@ and verification passes, the model answer and its checks.
   3. Code checks: every pie adds up to 100% (±1), table totals add up, no
      two legend entries share a colour, every category has a value at every
      time point. A failed check makes its figures uncertain.
-  4. The key features a Band 7-8 report has to mention are computed in code
+  4. Line and bar charts are measured from the picture in code
+     (services/ai/chart_measure.py: local OCR for the axis, the lines traced,
+     the bars followed to their tops) while the reads run; where a figure
+     is measured, the measurement stands over the reads.
+  5. The key features a Band 7-8 report has to mention are computed in code
      from the verified figures (services/ai/visual_features.py).
 Uncertain figures are never used to mark the student wrong.
 
@@ -33,11 +37,12 @@ import logging
 import re
 from collections import Counter
 
+import numpy as np
 import openai
 from PIL import Image, ImageChops, ImageOps, ImageStat
 
 from bot.config import settings
-from services.ai import usage
+from services.ai import chart_measure, usage
 from services.ai.openai_client import is_image_error, parse_flex
 from services.ai.schemas import (
     FocusedRead,
@@ -279,6 +284,8 @@ async def read_visual(question: str, images: list[tuple[bytes, str]],
     reading the picture itself. Raises ChartImageRejected when OpenAI can't
     open the picture. `first`: read 1, already made - only read 2 runs."""
     prepared = [prepare_for_reading(data) for data, _ in images]
+    # the picture's own labels for the measurement, read (OCR) while the AI reads run
+    picture = asyncio.create_task(asyncio.to_thread(_ocr_picture, images[0][0])) if len(images) == 1 else None
     if first is None:
         results = await asyncio.gather(
             _read(READ_A, question, images, "read 1"), _read(READ_B, question, prepared, "read 2"),
@@ -304,12 +311,111 @@ async def read_visual(question: str, images: list[tuple[bytes, str]],
             c = None
         if c is not None:
             b = c
-    sheet = await settle(question, images, combine(a, b))
+    sheet = combine(a, b)
+    if picture is not None and sheet.readability != "unreadable":
+        sheet = await measured(sheet, picture, images[0][0], (a or b).rotation)
+    sheet = await settle(question, images, sheet)
     counts = Counter(v.status for blk in sheet.blocks for v in blk.values)
     logger.info("Chart read: %s, %d reads, %s, %s%s; checks: %s", ", ".join(blk.visual_type for blk in sheet.blocks),
                 sheet.reads, dict(counts), sheet.readability,
                 f" - {sheet.readability_note}" if sheet.readability_note else "", "; ".join(sheet.checks) or "none")
     return sheet
+
+
+# --- The chart measured from the picture --------------------------------------------------------------------
+
+
+def _ocr_picture(data: bytes) -> chart_measure.Picture | None:
+    """The picture and its printed labels, for the measurement; None when that
+    fails - it never stands in the way of the reads."""
+    try:
+        return chart_measure.prepare(data)
+    except Exception as e:
+        logger.warning("The chart could not be prepared for measuring: %r", e)
+        return None
+
+
+async def measured(sheet: VisualSheet, picture, data: bytes, rotation: int = 0) -> VisualSheet:
+    """The sheet with its line and bar figures measured from the picture
+    (apply_measured); the sheet as it was when nothing could be measured.
+    `picture`: the task preparing the upright picture's OCR."""
+    try:
+        pic = await picture
+        if rotation in (90, 180, 270):  # a sideways photo: its labels read again, upright
+            pic = await asyncio.to_thread(chart_measure.prepare, data, rotation)
+        if pic is None:
+            return sheet
+        results = await asyncio.to_thread(chart_measure.measure, pic, [b.model_dump() for b in sheet.blocks])
+    except Exception:
+        logger.exception("Measuring the chart failed - the reads stand")
+        return sheet
+    return apply_measured(sheet, results) if results else sheet
+
+
+def _scale_step(labels: list[str]) -> float | None:
+    nums = sorted({n for x in labels if (n := chart_measure.number(x)) is not None and not (
+        1800 <= n <= 2100 and n == int(n))})
+    gaps = [b - a for a, b in zip(nums, nums[1:])]
+    return min(gaps) if gaps else None
+
+
+def _granularity(step: float) -> float:
+    """How finely a measured figure is given: the largest of 1, 2, 2.5 and 5
+    (times a power of ten) within an eighth of the axis step - 245 on a
+    0-15-30 axis, 0.25 on a 0-2-4 one."""
+    target = step / 8
+    if target <= 0:
+        return 1.0
+    power = 10.0 ** np.floor(np.log10(target))
+    return max(m * power for m in (1, 2, 2.5, 5, 10) if m * power <= target * 1.0001)
+
+
+def apply_measured(sheet: VisualSheet, results: dict) -> VisualSheet:
+    """The reads' figures replaced by the measured ones (chart_measure.measure):
+    the academic lead's rule (2026-10-29) - a measurement, where there is
+    one, stands over the reads. A figure a code check made uncertain (look-
+    alike legend patterns, a missing bar) stays so. When the reads took the
+    axis for another scale than the one printed (#61: 0-225 for 0-255) the
+    axis labels are set right too. Precision stays the scale's own - a
+    student reading by eye has the same leeway as before."""
+    out = sheet.model_copy(deep=True)
+    measured_count, apart, misread = 0, [], []
+    for i, res in results.items():
+        block = out.blocks[i]
+        read_step = _scale_step(block.axis_labels)
+        if read_step is not None and abs(read_step - res.step) > 1e-6 * max(1.0, res.step):
+            misread.append(f"{block.title or block.visual_type}: the reads gave a step of {read_step:g}, "
+                           f"the printed axis {res.step:g}")
+            block.axis_labels = [f"{v:g}" for v in np.arange(res.low, res.high + res.step / 2, res.step)]
+        own = res.step / 2 if block.visual_type == "line" else res.step / 4
+        grain = _granularity(res.step)
+        for v in block.values:
+            m = res.figures.get((v.series, v.point))
+            if m is None or v.printed or v.value is None:
+                continue
+            reads = _DISAGREE.match(v.note or "")
+            if v.status == "uncertain" and not reads and v.note != "seen by one read only":
+                continue  # a code check's doubt, which a measurement doesn't answer
+            value = round(round(m.value / grain) * grain, 6)
+            read = f"{reads.group(1)} / {reads.group(2)}" if reads else f"{v.value:g}"
+            if abs(m.value - v.value) > max(v.precision, own):
+                apart.append(f"{v.series} {v.point}: read {read}, measured {value:g}".replace("  ", " "))
+            v.value, v.precision, v.status = value, own, "verified"
+            v.note = f"measured from the picture (read {read})"
+            measured_count += 1
+    if measured_count:
+        out.checks.append(f"{measured_count} figures measured from the picture")
+    out.checks += misread
+    all_sure = all(v.status == "verified" for b in out.blocks for v in b.values)
+    if out.readability == "partly_unclear" and out.readability_note == "some figures could not be confirmed" \
+            and not out.unreadable and all_sure:
+        out.readability, out.readability_note = "clear", ""
+    if out.readability != "unreadable":
+        out.features = key_features(out)
+    logger.info("Chart measured: %d figures%s%s", measured_count,
+                f"; set right from the reads: {'; '.join(apart)}" if apart else "",
+                f"; {'; '.join(misread)}" if misread else "")
+    return out
 
 
 # --- A third read of the figures the two reads disagree on -----------------------------------------------
@@ -332,10 +438,11 @@ async def settle(question: str, images: list[tuple[bytes, str]], sheet: VisualSh
     """The figures the two reads disagree on, read a third time on an
     enlarged copy (2026-10-28, #61: the reads put every 1940 point one
     gridline apart - Washington 60 vs 75 - so the student's 1940 figures went
-    unchecked and the model answer left 1940 out). A figure the third read
-    places within the scale's precision of one read (or of both) becomes
-    verified at their mean; any other stays uncertain. One call per chart,
-    only when the reads disagree."""
+    unchecked and the model answer left 1940 out). The academic lead's rule
+    (2026-10-29): when two of the three readings lie within half a gridline
+    of each other, the figure is verified at the mean of those two (of all
+    three when every pair does); otherwise it stays uncertain. One call per chart, only when the reads disagree - a measured
+    figure (apply_measured) never comes here."""
     cells = [(bi, vi, v) for bi, b in enumerate(sheet.blocks) for vi, v in enumerate(b.values)
              if v.status == "uncertain" and v.value is not None and _DISAGREE.match(v.note or "")][:SETTLE_MAX]
     if not cells or not images:
@@ -365,15 +472,20 @@ async def settle(question: str, images: list[tuple[bytes, str]], sheet: VisualSh
     settled = []
     for bi, vi, v in cells:
         c = third.get((_norm(v.series), _norm(v.point)))
-        a, b = (float(x) for x in _DISAGREE.match(v.note).groups())
         if c is None:
             continue
+        a, b = (float(x) for x in _DISAGREE.match(v.note).groups())
         base = max(v.precision - abs(a - b) / 2, 0.5)  # the scale's own precision, before the reads' spread
-        near = [r for r in (a, b) if abs(c - r) <= base]
-        if not near:
+        step = _scale_step(out.blocks[bi].axis_labels)
+        half = step / 2 if step else base  # half a gridline (a bar's own precision is a quarter)
+        pairs = sorted((abs(x - y), x, y) for x, y in ((a, c), (b, c), (a, b)) if abs(x - y) <= half)
+        if not pairs:
             continue
+        _, x, y = pairs[0]
         cell = out.blocks[bi].values[vi]
-        cell.value = round((sum(near) + c) / (len(near) + 1), 2)
+        # the closest two's mean - all three's when every pair is close, or the third read sits right between
+        both = len(pairs) == 3 or (len(pairs) == 2 and abs(pairs[0][0] - pairs[1][0]) < 1e-9)
+        cell.value = round((a + b + c) / 3 if both else (x + y) / 2, 2)
         cell.precision, cell.status = base, "verified"
         cell.note = f"settled by a third read ({a:g} / {b:g} / {c:g})"
         settled.append(f"{v.series} {v.point}".strip())
@@ -453,8 +565,10 @@ async def check_report_figures(answer: str, visual: dict, question: str,
         got = await read_one(question, images, fig["sentence"], fig["text"])
         value = None if got is None or not got.found else (0.0 if got.missing else got.value)
         cell = find_cell(visual, got.series, got.point) if got is not None and got.found else None
-        if visual.get("chart_key") and cell is not None and cell.get("value") is not None:
-            # a checked answer key is the truth: the re-read only tells which figure is meant
+        if cell is not None and cell.get("value") is not None and (
+                visual.get("chart_key") or str(cell.get("note", "")).startswith("measured")):
+            # a checked answer key, or a figure measured from the picture, is the
+            # truth: the re-read only tells which figure is meant
             right = figure_agrees(fig, cell["value"], cell.get("precision") or 0.0)
             (agreed if right else confirmed).append(fig["text"])
             continue

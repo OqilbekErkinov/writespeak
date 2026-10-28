@@ -425,12 +425,24 @@ class GeneratedSample(BaseModel):
 SpeakingCriterion = Literal["LR", "GRA", "FLU", "PRON"]
 
 
-class SpeakingScores(BaseModel):
-    """One scoring run: whole bands only (Speaking prompt section 1.9)."""
+class SpeakingJudgement(BaseModel):
+    """One criterion of a Speaking scoring run (2026-10-29: judged, not
+    counted - strengths, then weaknesses with quotes, then the band)."""
 
-    FC: int = Field(description="Fluency & Coherence, a whole band 0-9.")
-    LR: int = Field(description="Lexical Resource, a whole band 0-9.")
-    GRA: int = Field(description="Grammatical Range & Accuracy, a whole band 0-9.")
+    strengths: list[str] = Field(description="What earns credit on THIS criterion, each with a short quote.")
+    weaknesses: list[str] = Field(
+        description="Real problems of THIS criterion only, each with a short quote from the transcript - never a "
+        "self-correction, a restart, a filler or anything listed as acceptable.")
+    band: int = Field(description="The whole band 0-9 that fits best.")
+    note: str = Field(description="6-14 plain words for the student naming what decided this band.")
+
+
+class SpeakingScoring(BaseModel):
+    """One Speaking scoring run."""
+
+    FC: SpeakingJudgement = Field(description="Fluency & Coherence.")
+    LR: SpeakingJudgement = Field(description="Lexical Resource.")
+    GRA: SpeakingJudgement = Field(description="Grammatical Range & Accuracy.")
     P: int = Field(description="Pronunciation, a whole band 0-9.")
 
 
@@ -529,25 +541,63 @@ class Verdicts(BaseModel):
     verdicts: list[Verdict]
 
 
-class WritingVerdict(BaseModel):
-    """The Writing mistake filter (marking guide B5, 2026-10-22): would an
-    examiner count it, and under which ONE criterion?"""
+class SpeakingVerdict(BaseModel):
+    """The Speaking mistake filter: one question for every flag (the academic
+    lead, 2026-10-29) - is it actually wrong in natural spoken English?"""
 
     id: int
-    keep: bool = Field(description="False when it is not definitely an error an examiner would penalise.")
+    kind: Literal["error", "slip", "alternative", "not_a_mistake"] = Field(
+        description="error: wrong, or the meaning is unclear. slip: a one-off small mistake the speaker clearly "
+        "controls elsewhere. alternative: acceptable as said - the suggestion is only more common. not_a_mistake: "
+        "natural spoken English, a self-correction or restart, or the suggestion is no better.")
+    reason: str = Field(description="Short: why it is or isn't wrong; for an alternative, why the suggestion is a "
+                                    "small upgrade although both are fine.")
+
+
+MistakeKind = Literal["error", "slip", "alternative", "not_a_mistake"]
+
+
+class WritingVerdict(BaseModel):
+    """The Writing mistake filter: one question for every flag (the academic
+    lead, 2026-10-29) - is it actually wrong in standard British or American
+    English? - and under which ONE criterion it belongs."""
+
+    id: int
+    kind: MistakeKind = Field(
+        description="error: wrong, or the meaning is unclear. slip: a one-off small mistake the writer clearly "
+        "controls elsewhere (a missing full stop, 'Overtime' for 'Over time', one article or plural slip). "
+        "alternative: acceptable as written - the suggestion is only more common or more idiomatic. "
+        "not_a_mistake: correct as written and the suggestion is no better, or it changes the meaning or doesn't fit.")
     criterion: MistakeCriterion = Field(
         description="The one criterion it belongs to: LR word choice, GRA grammar/punctuation, CC linking/"
         "paragraphing/logic, TR content, task coverage or data.")
-    reason: str = Field(description="Short: why it is or isn't an error.")
-    severity: Literal["slip", "error"] = Field(
-        description="slip = a typo, a missing full stop, a single article or plural slip; error = everything else.")
+    reason: str = Field(description="Short: why it is or isn't wrong; for an alternative, why the suggestion is a "
+                                    "small upgrade although both are correct.")
     fixed_correct: Optional[str] = Field(
         description="Only for a kept data (TR) item whose correction disagrees with the DATA SHEET: the correction "
         "rewritten with the sheet's figures. null otherwise.")
 
 
+class VocabVerdict(BaseModel):
+    """A vocabulary item the report teaches, checked like a mistake is."""
+
+    index: int
+    meaning: Optional[str] = Field(description="The standard dictionary meaning in plain words when the given one is "
+                                               "wrong or backwards; null when it is right.")
+    example: Optional[str] = Field(description="The example rewritten when it misuses the term or, for a chart, "
+                                               "disagrees with the DATA SHEET (a CHECK says how); null when it is fine.")
+
+
+class SpeakingVerdicts(BaseModel):
+    verdicts: list[SpeakingVerdict]
+    vocabulary: list[VocabVerdict] = Field(default_factory=list, description="One per VOCABULARY item listed; [] "
+                                                                             "when none are listed.")
+
+
 class WritingVerdicts(BaseModel):
     verdicts: list[WritingVerdict]
+    vocabulary: list[VocabVerdict] = Field(default_factory=list, description="One per VOCABULARY item listed; [] "
+                                                                             "when none are listed.")
 
 
 class SampleHighlight(BaseModel):

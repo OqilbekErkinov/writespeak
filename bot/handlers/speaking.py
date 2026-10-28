@@ -475,9 +475,12 @@ async def _grade(
     data = await state.get_data()
     user_id = message.chat.id
     part = data["part"]
-    coins = check_price(data, speaking_kind(part))
+    # A test run (scripts/live_check.py) is always graded anew, costs nothing and is
+    # kept apart: no progress, word bank or admins' card from it.
+    test_run = bool(data.get("test_run"))
+    coins = 0 if test_run else check_price(data, speaking_kind(part))
 
-    repeated, sessions = await _repeated(message, state, data, audio_hash, lang)
+    repeated, sessions = (False, []) if test_run else await _repeated(message, state, data, audio_hash, lang)
     if repeated:
         return
 
@@ -547,7 +550,7 @@ async def _grade(
         "cost": usage.merge(usage.merge(usage.summary(calls), data.get("split_cost")), data.get("input_cost"),
                             prefix="input: "),
         "seconds": round(time.monotonic() - started),
-        "paid_with": await payment_of(user_id, coins, data.get("payer_id")),
+        "paid_with": {"mode": "test-run"} if test_run else await payment_of(user_id, coins, data.get("payer_id")),
         # what each sample is: its source, the band it was aimed at (provisional),
         # the priorities it demonstrates - and its text, spoken when the student
         # taps its button (voice_file_id: Telegram's copy, reused after that)
@@ -579,8 +582,9 @@ async def _grade(
             coins=coins,
             assignment_part_id=data.get("assignment_part_id"),
             payer_id=data.get("payer_id"),
+            is_test=test_run,
         )
-        if data.get("practice_question_id"):
+        if data.get("practice_question_id") and not test_run:
             await crud.mark_practice_complete(
                 session,
                 user_id=user_id,
@@ -588,7 +592,8 @@ async def _grade(
                 submission_id=submission.id,
                 submission_type="speaking",
             )
-        new_words = await crud.add_vocabulary_entries(session, user_id, vocabulary, source="speaking")
+        new_words = 0 if test_run else await crud.add_vocabulary_entries(session, user_id, vocabulary,
+                                                                         source="speaking")
 
     found = len(report.mistakes)
     caption = (t("writing.done_caption", lang, band=report.overall_band, mistakes=found) if found
@@ -619,7 +624,8 @@ async def _grade(
     else:
         await state.clear()
         await message.answer(t("nav.what_next", lang), reply_markup=_after_result_kb(data, lang))
-    await crm_events.check_done("s", submission.id)
+    if not test_run:
+        await crm_events.check_done("s", submission.id)
 
 
 # --- One recording with every answer (the last prompt's D) --------------------------------------
@@ -740,8 +746,9 @@ async def finish_recording(callback: CallbackQuery, state: FSMContext, lang: str
             await state.update_data(rec_msg_id=sent.message_id)
             return
         await state.set_state(SpeakingStates.processing)
-    # the very same pieces again: their saved report, before anything is paid for
-    repeated, _ = await _repeated(callback.message, state, data, _fingerprint(_piece_bytes(data)), lang)
+    # the very same pieces again: their saved report, before anything is paid for (a test run: always anew)
+    repeated, _ = (False, None) if data.get("test_run") else \
+        await _repeated(callback.message, state, data, _fingerprint(_piece_bytes(data)), lang)
     if not repeated:
         await _read_recording(callback.message, state, lang)
 

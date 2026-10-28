@@ -71,7 +71,7 @@ EN: dict[str, str] = {
     "speaking.full_intro": "🎯 <b>Speaking Full test</b>\n\nJust like the exam: Part 1 (short questions), Part 2 (cue card, you speak for 1–2 minutes) and Part 3 (discussion). Answer each question with a voice message — at the end you get one report and your <b>Speaking band</b>.",
     "speaking.full_no_questions": "The question bank for the Full test isn't ready yet. Please try again a little later.",
     "speaking.part_start": "— <b>{part}</b> —",
-    "speaking.grading_in_progress": "🎧 Listening to your recording and chewing it over… my teeth are sharp 🦷 This takes 2–4 minutes.",
+    "speaking.grading_in_progress": "🎧 Listening to your recording and chewing it over… my teeth are sharp 🦷 This takes 2–5 minutes.",
     "speaking.resubmitted": "♻️ This is exactly the same recording as session {number}, so I've sent your saved report again (no coins charged). Band: <b>{band}</b>",
     "speaking.listen_prompt": "🔊 Tap to listen to the model answers:",
     "speaking.listen_gone": "This model answer wasn't found.",

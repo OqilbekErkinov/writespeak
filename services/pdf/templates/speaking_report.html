@@ -99,7 +99,7 @@ table.intt td.sv { width: 66mm; padding-right: 4mm; }
   <div class="cc-l"><div class="cc-score">{{ "%.1f"|format(c.band) }}</div><div class="cc-of">out of 9</div></div>
   <div class="cc-r">
     <div class="cc-head"><span class="cc-name">{{ c.name }}</span><span class="cc-chip c-{{ c.cls }}">{{ c.chip }}</span></div>
-    <div class="cc-bar"><div class="cc-fill" style="width:{{ (c.band / 9 * 100)|round(1) }}%"></div><div class="cc-tick" style="left:{{ (report.target_band / 9 * 100)|round(1) }}%"></div></div>
+    <div class="cc-bar"><div class="cc-fill" style="width:{{ (c.band / 9 * 100)|round(1) }}%"></div>{% if not report.top_band %}<div class="cc-tick" style="left:{{ (report.target_band / 9 * 100)|round(1) }}%"></div>{% endif %}</div>
     <div class="cc-note">{{ c.note }}</div>
   </div>
 </div>
@@ -127,7 +127,7 @@ table.intt td.sv { width: 66mm; padding-right: 4mm; }
 <line x1="{{ ring.x1 }}" y1="{{ ring.y1 }}" x2="{{ ring.x2 }}" y2="{{ ring.y2 }}" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round"/>
 </svg>
         <div class="g-num">{{ "%.1f"|format(report.overall_band) }}</div><div class="g-lab">{{ report.band_label }}</div>
-        <div class="g-target"><span>Next target · {{ target }}</span></div>
+        <div class="g-target"><span>{% if report.top_band %}The top band{% else %}Next target · {{ target }}{% endif %}</span></div>
       </div>
     </div>
   </div>
@@ -136,7 +136,7 @@ table.intt td.sv { width: 66mm; padding-right: 4mm; }
   <div class="cc-row cc-row2" style="margin-left:16mm;margin-right:16mm">{{ card(report.criteria[2]) }}{{ card(report.criteria[3]) }}</div>
 
   <div class="cbody">
-    <div class="tickkey">▮ marks your {{ target }} target</div>
+    {% if not report.top_band %}<div class="tickkey">▮ marks your {{ target }} target</div>{% endif %}
     <div class="well">
       <div class="q">“</div>
       <div>
@@ -147,10 +147,14 @@ table.intt td.sv { width: 66mm; padding-right: 4mm; }
     </div>
 
     {% if report.priorities %}
+    {% if report.top_band %}
+    <div class="prio-h"><span class="t">You're at the top band</span><span class="s">Optional polish - small touches, not things you must fix.</span></div>
+    {% else %}
     <div class="prio-h"><span class="t">Your {{ "priority" if report.priorities|length == 1 else report.priorities|length ~ " priorities" }} for Band {{ target }}</span><span class="s">Fix these first — they cost you the most.</span></div>
+    {% endif %}
     <div class="prios">
       {% for p in report.priorities %}
-      <div class="prio"><div class="n">{{ p.n }}</div>
+      <div class="prio{{ ' tip' if report.top_band }}"><div class="n">{{ p.n }}{% if report.top_band %}<span class="kind">Polish</span>{% endif %}</div>
         <div class="h">{{ p.title }}</div>
         <div class="r">{{ p.rule_html|safe }}</div>
         <div class="ex">{% if p.ex_wrong %}<s>{{ p.ex_wrong }}</s> → <b>{{ p.ex_right }}</b>{% else %}{{ p.ex_right }}{% endif %}</div>
@@ -224,6 +228,16 @@ table.intt td.sv { width: 66mm; padding-right: 4mm; }
 {% else %}
 <div class="nomist">✓ No mistakes that need fixing were found in your answers.</div>
 {% endfor %}
+{% if report.upgrades %}
+<div class="upg-box">
+  <div class="upg-h">Upgrade ideas</div>
+  <div class="upg-s">Fine as you said it - another option is only a little more common or precise. These are not mistakes.</div>
+  {% for u in report.upgrades %}
+  <div class="upg"><div class="body"><div class="fix">{% if u.q %}<b>{{ u.q }}</b> {% endif %}<span class="o">{{ u.wrong }}</span> → <span class="r">{{ u.correct }}</span></div>
+    {% if u.why_html %}<div class="why">{{ u.why_html|safe }}</div>{% endif %}</div><div class="side"><span class="tag {{ u.tag_cls }}">{{ u.tag }}</span></div></div>
+  {% endfor %}
+</div>
+{% endif %}
 
 <!-- ================= VOICE ================= -->
 {% set v = report.voice %}
@@ -285,11 +299,12 @@ table.intt td.sv { width: 66mm; padding-right: 4mm; }
 <div class="kick">05 · Model answers</div>
 <div class="mhead">
   <div><h2 id="s-model">Model answers</h2>
-  <div class="sub" style="margin:0">Answers to your exact questions, written for your priorities and aimed above your current band.{% if voice_sent %} Read them, then listen to them in Telegram.{% endif %}</div></div>
-  {% if answers_band %}<div class="bandbadge"><span>Aimed at</span><b>{{ "%.1f"|format(answers_band) }}</b></div>{% endif %}
+  <div class="sub" style="margin:0">{% if answers and answers[0].alternative %}Your answers are already at this level - here is one of them said another way, for comparison.{% else %}Answers to your exact questions, written for your priorities and aimed above your current band.{% endif %}{% if voice_sent %} Read them, then listen to them in Telegram.{% endif %}</div></div>
+  {% if answers and answers[0].alternative %}<div class="bandbadge already"><span>You are at</span><b>Band {{ "%.1f"|format(report.overall_band) }}</b></div>
+  {% elif answers_band %}<div class="bandbadge"><span>Aimed at</span><b>{{ "%.1f"|format(answers_band) }}</b></div>{% endif %}
 </div>
 {% for a in answers %}
-<div class="mans">{% if not answers_band %}<span class="mb"><b>Aimed at</b>{{ "%.1f"|format(a.band) }}</span>{% endif %}<div class="qn">{{ a.label }}</div><div class="qt">{{ a.question }}</div><div class="txt">{% for p in a.html_paragraphs %}{{ p|safe }}{% if not loop.last %}<br><br>{% endif %}{% endfor %}</div>
+<div class="mans">{% if not answers_band and not a.alternative %}<span class="mb"><b>Aimed at</b>{{ "%.1f"|format(a.band) }}</span>{% endif %}<div class="qn">{{ a.label }}</div><div class="qt">{{ a.question }}</div><div class="txt">{% for p in a.html_paragraphs %}{{ p|safe }}{% if not loop.last %}<br><br>{% endif %}{% endfor %}</div>
 {% if a.shows %}<div class="shows">{% for s in a.shows %}<div><span class="k">{{ loop.index }}</span> <b>Priority {{ s.n }} · {{ s.title }}</b> — {{ s.note }}</div>{% endfor %}</div>{% endif %}
 <div class="ft"><span>{{ a.words }} words · about {{ a.seconds }} seconds · {{ "Published reference" if a.source == "published_reference" else "AI example" }}</span>{% if a.voice %}<span class="listen">▶ Listen to it in Telegram</span>{% endif %}</div></div>
 {% else %}

@@ -236,6 +236,7 @@ class SpeakingSubmission(Base):
     )
     paid_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     coins_spent: Mapped[int] = mapped_column(Integer, default=0, server_default="0")  # as in WritingSubmission
+    is_test: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")  # as in WritingSubmission
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     user: Mapped["User"] = relationship(back_populates="speaking_submissions", foreign_keys=[user_id])

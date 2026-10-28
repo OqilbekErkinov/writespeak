@@ -53,6 +53,7 @@ INLINE_FIX_MAX_WORDS = 6
 MAX_GOOD = 5
 PRIORITY_COUNT = 3
 PRIORITY_IDS = (2, 5)
+UPGRADE_MAX = 3
 VOCAB_RANGE = (10, 12)
 CHECKLIST_RANGE = (5, 6)
 PART2_TARGET_SECONDS = 120
@@ -456,6 +457,12 @@ class SpeakingReport:
     disclaimer: str
     notes: list[str] = field(default_factory=list)
     notices: list[str] = field(default_factory=list)  # shown to the student (answers split from one recording)
+    upgrades: list[dict] = field(default_factory=list)  # acceptable as said, another option only more common
+
+    @property
+    def top_band(self) -> bool:
+        """At Band 9 there is no next target: the priorities are optional polish."""
+        return self.overall_band >= 9.0
 
     def criteria_scores(self) -> dict[str, float]:
         return {DB_KEYS[c["key"]]: c["band"] for c in self.criteria}
@@ -463,6 +470,52 @@ class SpeakingReport:
     def mistakes_json(self) -> list[dict]:
         keys = ("n", "q", "wrong", "correct", "why", "criterion", "unclear", "if_you_meant")
         return [{k: m[k] for k in keys} for m in self.mistakes]
+
+
+_CONTRACTIONS = {"there's": "there is", "it's": "it is", "that's": "that is", "what's": "what is",
+                 "don't": "do not", "doesn't": "does not", "didn't": "did not", "can't": "cannot",
+                 "won't": "will not", "isn't": "is not", "aren't": "are not", "wasn't": "was not",
+                 "i'm": "i am", "you're": "you are", "they're": "they are", "we're": "we are",
+                 "i've": "i have", "we've": "we have", "they've": "they have", "i'd": "i would", "i'll": "i will"}
+# where a speaker restarts: a comma, a pause or an ellipsis, a dash, "I mean", "sorry", "or rather"
+_RESTART = re.compile(r"\s*(?:,|…|\.\.\.|\s-\s|–|—|\bi mean\b|\bsorry\b|\bor rather\b|\bor\b|\bwell\b|"
+                      r"\buh\b|\bum\b|\byou know\b)\s*", re.IGNORECASE)
+
+
+def _spoken_words(text: str) -> list[str]:
+    words = re.findall(r"[a-z']+", canon(text).lower())
+    out = []
+    for w in words:
+        out += _CONTRACTIONS.get(w, w).split()
+    return out
+
+
+def self_correction(text: str, wrong: str, correct: str) -> bool:
+    """Did the speaker correct this themselves, right away (the academic lead,
+    2026-10-29: self-corrections are never mistakes)? Either the flagged
+    stretch already holds the correction after a restart ("there are so
+    many, there's so much to explore" -> "there's so much to explore"), or
+    the words the correction brings follow straight after it, past a comma,
+    a pause or an "I mean" ("daily lifestyles, routines" -> "daily routines").
+    Earlier detection missed both: it only knew restarts with a pause or
+    "I mean" and repeated words."""
+    want = _spoken_words(correct)
+    if not want:
+        return False
+    parts = [p for p in _RESTART.split(wrong) if p and p.strip()]
+    if len(parts) >= 2:
+        last = _spoken_words(parts[-1])
+        if last and (last == want or " ".join(want) in " ".join(last) or " ".join(last) in " ".join(want)):
+            return True
+    loc = locate(text, wrong)
+    if loc is None:
+        return False
+    after = text[loc[1]:loc[1] + 80]
+    if not _RESTART.match(after):
+        return False
+    new = [w for w in want if w not in set(_spoken_words(wrong))]
+    following = _spoken_words(_RESTART.sub(" ", after, count=1))[:6]
+    return bool(new) and all(w in following for w in new)
 
 
 def _disclaimer(part: str) -> str:
@@ -493,9 +546,15 @@ def build_report(
     pron: Assessment | None,
     practise: list[dict] | None,
     pitch: Pitch | None = None,
+    criterion_notes: dict[str, str] | None = None,
+    upgrades: list[dict] | None = None,
 ) -> SpeakingReport:
     """`dropped` / `dropped_missed`: ids of the first-pass mistakes and
-    indexes of the missed-pass ones the verification pass rejected."""
+    indexes of the missed-pass ones the verification pass set aside (not
+    wrong, a self-correction, or only an alternative); `criterion_notes`:
+    what decided each band (the scoring runs); `upgrades`: what was found
+    acceptable as said ({q, wrong, correct, why, criterion}) - "Upgrade
+    ideas", never a mistake."""
     notes: list[str] = []
     index = _answer_index(items)
 
@@ -662,10 +721,17 @@ def build_report(
     # pronunciation when it was not measured (no "/th/" without evidence).
     priorities = []
     kept_priorities = []
+    gone = [canon(m.wrong).lower() for m in fb.mistakes if m.id in dropped]
+    gone += [canon(x.wrong).lower() for k, x in enumerate(missed) if k in dropped_missed]
     for p in fb.priorities[:PRIORITY_COUNT]:
         about = f"{p.title} {p.rule}".lower()
         if "filler" in about or ("PRON" in p.criteria and pron is None):
             notes.append(f"dropped priority {p.title!r} (fillers, or pronunciation without a measurement)")
+            continue
+        example = canon(p.example_wrong).lower().strip(" .…")
+        if not p.voice_ref and ((p.mistake_ids and not any(x in by_model_id for x in p.mistake_ids))
+                                or (example and any(example in g or g in example for g in gone if g))):
+            notes.append(f"dropped priority {p.title!r}: built on mistakes the check set aside")
             continue
         kept_priorities.append(p)
     for i, p in enumerate(kept_priorities, 1):
@@ -705,7 +771,7 @@ def build_report(
             chip, cls = "On track", "ok"
         else:
             chip, cls = "Focus", "focus"
-        note = getattr(fb.criterion_notes, key).strip()
+        note = (criterion_notes or {}).get(key) or getattr(fb.criterion_notes, key).strip()
         if key == "P" and pron is None:
             note = P_NOT_MEASURED
         criteria.append({"key": key, "name": name, "band": band, "note": note, "chip": chip, "cls": cls})
@@ -743,6 +809,16 @@ def build_report(
             "unclear": m.unclear, "if_you_meant": m.if_you_meant,
         })
 
+    upgrade_rows, seen_up = [], set()
+    for u in upgrades or []:
+        key = canon(u.get("wrong", "")).lower().strip(" .,")
+        if not key or key in seen_up or not u.get("correct", "").strip() or len(upgrade_rows) >= UPGRADE_MAX:
+            continue
+        seen_up.add(key)
+        tag, tag_cls = TAGS.get(u.get("criterion"), TAGS["LR"])
+        upgrade_rows.append({"q": u.get("q", ""), "wrong": u["wrong"].strip(), "correct": u["correct"].strip(),
+                             "why_html": inline_format((u.get("why") or "").strip()), "tag": tag, "tag_cls": tag_cls})
+
     answered = [it for it in items if not it.audio.no_speech]
     if part == "part2":
         count = ("1", "talk")
@@ -776,4 +852,5 @@ def build_report(
         checklist=checklist,
         disclaimer=_disclaimer(part),
         notes=notes,
+        upgrades=upgrade_rows,
     )

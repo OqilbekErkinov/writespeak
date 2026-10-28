@@ -199,10 +199,11 @@ async def save_speaking_submission(
     coins: int = 0,
     assignment_part_id: int | None = None,
     payer_id: int | None = None,
+    is_test: bool = False,
 ) -> SpeakingSubmission:
     """`coins` (the check's price, 0 when free - bot/utils/coins.py) are
     spent from `payer_id` (a group's sponsor) when given, else from the
-    student."""
+    student. `is_test`: a test run (scripts/live_check.py)."""
     submission = SpeakingSubmission(
         user_id=user_id,
         part=part,
@@ -219,6 +220,7 @@ async def save_speaking_submission(
         assignment_part_id=assignment_part_id,
         paid_by_id=payer_id if coins and payer_id else None,
         coins_spent=coins,
+        is_test=is_test,
     )
     session.add(submission)
     if coins:
@@ -253,7 +255,8 @@ async def get_speaking_history(session: AsyncSession, user_id: int, part: str) -
     2026-10-13 report, which measured no voice."""
     count = (
         await session.execute(
-            select(func.count()).select_from(SpeakingSubmission).where(SpeakingSubmission.user_id == user_id)
+            select(func.count()).select_from(SpeakingSubmission).where(SpeakingSubmission.user_id == user_id,
+                                                                      SpeakingSubmission.is_test.is_(False))
         )
     ).scalar() or 0
     latest = (
@@ -263,6 +266,7 @@ async def get_speaking_history(session: AsyncSession, user_id: int, part: str) -
                 SpeakingSubmission.user_id == user_id,
                 SpeakingSubmission.part == part,
                 SpeakingSubmission.overall_band.is_not(None),
+                SpeakingSubmission.is_test.is_(False),  # a test run is no previous session
             )
             .order_by(SpeakingSubmission.created_at.desc())
             .limit(1)
@@ -281,7 +285,7 @@ async def get_speaking_sessions(session: AsyncSession, user_id: int, part: str, 
     stmt = (
         select(SpeakingSubmission)
         .where(SpeakingSubmission.user_id == user_id, SpeakingSubmission.part == part,
-               SpeakingSubmission.overall_band.is_not(None))
+               SpeakingSubmission.overall_band.is_not(None), SpeakingSubmission.is_test.is_(False))
         .order_by(SpeakingSubmission.created_at.desc())
         .limit(limit)
     )

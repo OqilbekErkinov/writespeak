@@ -304,8 +304,8 @@ class FakeAI:
             # A careful checker, as the real one is asked to be: a figure inside
             # the data sheet's range is not a mistake.
             parsed = schemas.WritingVerdicts(verdicts=[
-                schemas.WritingVerdict(id=int(i), keep=not ("DATA SHEET" in text and "7%" in wrong), criterion=crit,
-                                       reason="checked", severity="error", fixed_correct=None)
+                schemas.WritingVerdict(id=int(i), kind="not_a_mistake" if "DATA SHEET" in text and "7%" in wrong
+                                       else "error", criterion=crit, reason="checked", fixed_correct=None)
                 for i, crit, wrong in listed])
         elif name == "GeneratedSample":
             task1 = "Academic Writing Task 1" in kw["messages"][0]["content"]
