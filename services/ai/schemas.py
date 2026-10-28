@@ -352,6 +352,19 @@ class SheetBlock(BaseModel):
     bars_drawn: list[GroupBars] = []  # grouped bars: how many each group has drawn
 
 
+class SettledFigure(BaseModel):
+    series: str = Field(description="As listed.")
+    point: str = Field(description="As listed ('' when listed as '(one point)').")
+    value: Optional[float] = Field(description="The figure in the visual's units; null when you can't read it.")
+    how: str = Field(description="One line: the printed figure, or the axis labels around it and how far between.")
+
+
+class SettleReads(BaseModel):
+    """A third read of the figures the two reads disagree on (visual_reading.settle)."""
+
+    figures: list[SettledFigure]
+
+
 class FocusedRead(BaseModel):
     """One figure read again on its own, before a student's figure is called
     wrong (services/ai/visual_reading.py read_one)."""

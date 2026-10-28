@@ -219,6 +219,44 @@ def islamov_93_95() -> None:
     check("...and the DATA CHECK lists no figure as not found", "Not found" not in data_check(answer93, checked, q93),
           data_check(answer93, checked, q93))
 
+    # A third read settles the figures the two reads disagree on (#61's 1940 points, one gridline apart).
+    from types import SimpleNamespace
+
+    from services.ai.schemas import SettledFigure, SettleReads
+
+    oregon61 = sheet("line", "thousands of people", years, {
+        "Columbia": dict(zip(years, [(25, 12.5), (32.5, 7.5), (77.5, 7.5)])),
+        "Washington": dict(zip(years, [(67.5, 15), (120, 7.5), (240, 7.5)])),
+        "Yamhill": dict(zip(years, [(30, 12.5), (42.5, 7.5), (90, 7.5)]))},
+        notes={("Columbia", "1940"): "the reads disagree: 20 vs 30", ("Washington", "1940"): "the reads disagree: 60 vs 75",
+               ("Yamhill", "1940"): "the reads disagree: 25 vs 35"})
+    asked = []
+
+    async def third_read(**kw):
+        asked.append(kw["messages"][1]["content"][0]["text"])
+        figures = [SettledFigure(series="Washington", point="1940", value=75, how=""),
+                   SettledFigure(series="Columbia", point="1940", value=25, how=""),
+                   SettledFigure(series="Yamhill", point="1940", value=50, how="")]
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(parsed=SettleReads(figures=figures)))])
+    real_parse = visual_reading.parse_flex
+    visual_reading.parse_flex = third_read
+    try:
+        settled = asyncio.run(visual_reading.settle("q", [(b"x", "image/png")], VisualSheet.model_validate(oregon61)))
+    finally:
+        visual_reading.parse_flex = real_parse
+    cells = {(v.series, v.point): v for v in settled.blocks[0].values}
+    check("third read: one call for the disagreeing figures only", len(asked) == 1 and "Washington | 1940" in asked[0]
+          and "1970" not in asked[0], asked)
+    check("...a figure it places next to one read is verified at their mean (Washington 1940: 60 / 75 / 75 -> 75)",
+          cells[("Washington", "1940")].status == "verified" and cells[("Washington", "1940")].value == 75
+          and cells[("Washington", "1940")].precision == 7.5, cells[("Washington", "1940")])
+    check("...next to both: their mean (Columbia 20 / 30 / 25 -> 25)",
+          cells[("Columbia", "1940")].status == "verified" and cells[("Columbia", "1940")].value == 25)
+    check("...far from both: still uncertain (Yamhill 25 / 35 / 50)", cells[("Yamhill", "1940")].status == "uncertain")
+    check("...and the student's 1940 figure is then checked, not set aside",
+          not unchecked_figures("In 1940, Washington had a population of approximately 75,000.", settled.model_dump(),
+                                "The line graph below shows the population (in thousands) of three counties."))
+
     problems = data_problems("For Over-60-year-olds females consumed 2,500 mg while the male bar exceeds this level "
                              "(exact male value is not shown). Washington sustained its lead in the verified years.",
                              q93, salt)

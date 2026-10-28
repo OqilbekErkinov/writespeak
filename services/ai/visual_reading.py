@@ -42,6 +42,7 @@ from services.ai.openai_client import is_image_error, parse_flex
 from services.ai.schemas import (
     FocusedRead,
     KeyFeatures,
+    SettleReads,
     SheetBlock,
     SheetValue,
     VisualBlock,
@@ -303,12 +304,83 @@ async def read_visual(question: str, images: list[tuple[bytes, str]],
             c = None
         if c is not None:
             b = c
-    sheet = combine(a, b)
+    sheet = await settle(question, images, combine(a, b))
     counts = Counter(v.status for blk in sheet.blocks for v in blk.values)
     logger.info("Chart read: %s, %d reads, %s, %s%s; checks: %s", ", ".join(blk.visual_type for blk in sheet.blocks),
                 sheet.reads, dict(counts), sheet.readability,
                 f" - {sheet.readability_note}" if sheet.readability_note else "", "; ".join(sheet.checks) or "none")
     return sheet
+
+
+# --- A third read of the figures the two reads disagree on -----------------------------------------------
+
+SETTLE_MAX = 12  # figures settled per chart
+SETTLE = """Two careful readings of this IELTS Task 1 visual disagree on the figures listed below. Read ONLY \
+these figures again, as carefully as you can, on the enlarged picture, and give each in the visual's units:
+- printed on the visual (a data label, a table cell): copy it exactly;
+- a point on a line: tell the line by its legend style where it starts and where it ends; then find the two \
+printed axis labels just below and above the point (read every printed label - a scale may run 0, 15, 30 ...) \
+and how far between them the point sits;
+- a bar: find its group, then its place in the legend's order (a bar that is not drawn is 0); read its top \
+against the printed labels around it;
+- a pie slice: match it by its pattern or colour AND the percentage printed by it.
+value = null when you can't read a figure. Never guess."""
+_DISAGREE = re.compile(r"the reads disagree: (-?[\d.]+) vs (-?[\d.]+)$")
+
+
+async def settle(question: str, images: list[tuple[bytes, str]], sheet: VisualSheet) -> VisualSheet:
+    """The figures the two reads disagree on, read a third time on an
+    enlarged copy (2026-10-28, #61: the reads put every 1940 point one
+    gridline apart - Washington 60 vs 75 - so the student's 1940 figures went
+    unchecked and the model answer left 1940 out). A figure the third read
+    places within the scale's precision of one read (or of both) becomes
+    verified at their mean; any other stays uncertain. One call per chart,
+    only when the reads disagree."""
+    cells = [(bi, vi, v) for bi, b in enumerate(sheet.blocks) for vi, v in enumerate(b.values)
+             if v.status == "uncertain" and v.value is not None and _DISAGREE.match(v.note or "")][:SETTLE_MAX]
+    if not cells or not images:
+        return sheet
+    listing = "\n".join(f"- {v.series} | {v.point or '(one point)'}" for _, _, v in cells)
+    zoomed = [prepare_for_reading(data, zoom=True) for data, _ in images]
+    messages = [
+        {"role": "system", "content": SETTLE},
+        {"role": "user", "content": [
+            {"type": "text", "text": f"QUESTION:\n{question}\n\nFIGURES TO READ (series | point):\n{listing}"},
+            *_image_parts(zoomed),
+        ]},
+    ]
+    try:
+        response = await parse_flex(model=settings.openai_model_vision, messages=messages, response_format=SettleReads,
+                                    max_completion_tokens=READ_MAX_TOKENS,
+                                    extra_body={"reasoning_effort": settings.openai_chart_reasoning_effort})
+    except Exception as e:  # the sheet as it was: its uncertain figures stay unchecked
+        logger.warning("The third read failed: %r", e)
+        return sheet
+    usage.record("chart_settle", response)
+    got = response.choices[0].message.parsed
+    if got is None:
+        return sheet
+    third = {(_norm(f.series), _norm(f.point)): f.value for f in got.figures if f.value is not None}
+    out = sheet.model_copy(deep=True)
+    settled = []
+    for bi, vi, v in cells:
+        c = third.get((_norm(v.series), _norm(v.point)))
+        a, b = (float(x) for x in _DISAGREE.match(v.note).groups())
+        if c is None:
+            continue
+        base = max(v.precision - abs(a - b) / 2, 0.5)  # the scale's own precision, before the reads' spread
+        near = [r for r in (a, b) if abs(c - r) <= base]
+        if not near:
+            continue
+        cell = out.blocks[bi].values[vi]
+        cell.value = round((sum(near) + c) / (len(near) + 1), 2)
+        cell.precision, cell.status = base, "verified"
+        cell.note = f"settled by a third read ({a:g} / {b:g} / {c:g})"
+        settled.append(f"{v.series} {v.point}".strip())
+    if settled:
+        out.features = key_features(out)
+        logger.info("Third read settled %d of %d figures: %s", len(settled), len(cells), ", ".join(settled))
+    return out
 
 
 # --- One figure read again, before a student's figure is called wrong ---------------------------------
