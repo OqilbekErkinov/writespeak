@@ -197,6 +197,9 @@ class WritingSubmission(Base):
     # Coins this check cost (its payer's: paid_by_id, else the student) - 0
     # when free (test window, subscription) or saved before coins.
     coins_spent: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # A test run (scripts/live_check.py, the academic lead's acceptance runs): never
+    # a "previous essay" for the progress page, never a resubmission to give back.
+    is_test: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     user: Mapped["User"] = relationship(back_populates="writing_submissions", foreign_keys=[user_id])

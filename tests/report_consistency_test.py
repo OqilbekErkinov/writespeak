@@ -178,10 +178,65 @@ def main() -> int:
           "first essay" in report_builder.build_progress(report, None)["note"])
     css = (report_builder.TEMPLATE_DIR / "report_styles.css").read_text(encoding="utf-8")
     rulings(page)
+    acceptance_60_62()
     check("css: the footer never starts a page alone", ".sample-foot { page-break-before: avoid" in css)
 
     print(f"\nFAILURES: {', '.join(fails) or 'none'}")
     return 1 if fails else 0
+
+
+def acceptance_60_62() -> None:
+    """The academic lead's acceptance list of 2026-10-28 (#60-#62): no copy
+    flag on a Task 1 question's 7-9-word subject; a Task problem as priority
+    01 of a short report that leaves out half the chart; no "narrowed the
+    gap" in a model answer when the gap stayed the same."""
+    from services.ai.essay_marking import copy_min_words, find_copied_spans, task_first
+    from services.ai.sample_bank import gap_claims
+
+    q61 = "The line graph below shows the population (in thousands) of three counties in the state of Oregon, USA."
+    a61 = "The line graph illustrates changes in the populations of three counties in the state of Oregon, namely ..."
+    q62 = "The line graph shows the average household spending on leisure activities in three countries from 2005 to 2015."
+    a62 = "The line graph illustrates average household spending on Leisure Activities in Three Countries between ..."
+    check("copy: a Task 1 question's 8-9-word subject is no copy (#61, #62)",
+          not find_copied_spans(a61, q61, copy_min_words("task1")) and not find_copied_spans(a62, q62, copy_min_words("task1")))
+    check("...a copied Task 1 sentence still is", find_copied_spans(
+        "The line graph shows the average household spending on leisure activities in three countries from 2005.",
+        q62, copy_min_words("task1")))
+    q2 = "Some people believe that university education should be free for every student in the country."
+    check("...and Task 2 keeps its 8 words", find_copied_spans(
+        "I agree that university education should be free for every student.", q2, copy_min_words("task2")))
+
+    fb = feedback([priority("fix", "Hyphenate age ranges", "12- 19-", "12-19", [1, 2]),
+                   priority("tip", "Compare both series clearly", "", "Males 4,300 vs females 3,000.", [], ("TR",))],
+                  [("I hyphenate age ranges.", "Priority 01"), ("I compare both sexes.", "Priority 02")],
+                  [], "x")
+    bands = {"TR_or_TA": 6.0, "CC": 6.0, "LR": 7.0, "GRA": 5.0}
+    first, notes = task_first(fb, bands, 124, "task1")
+    check("#60: under 150 words, the Task priority is 01 (before 'Hyphenate age ranges'); checklist follows",
+          [p.title for p in first.priorities] == ["Compare both series clearly", "Hyphenate age ranges"]
+          and [c.ref for c in first.checklist] == ["Priority 02", "Priority 01"], (first.priorities, first.checklist))
+    only_grammar = feedback([priority("fix", "Hyphenate age ranges", "12- 19-", "12-19", [1, 2])],
+                            [("I hyphenate age ranges.", "Priority 01")], [], "x")
+    first, _ = task_first(only_grammar, bands, 124, "task1")
+    check("...with no Task priority, a length tip comes first",
+          first.priorities[0].title == "Write at least 150 words" and first.priorities[0].criteria == ["TR"]
+          and first.checklist[0].ref == "Priority 02", first.priorities)
+    same, _ = task_first(fb, {"TR_or_TA": 8.0, "CC": 7.0, "LR": 7.0, "GRA": 7.0}, 180, "task1")
+    check("...a long enough report whose Task band is not the lowest keeps the order", same is fb)
+
+    leisure = {"blocks": [{"visual_type": "line", "title": "", "units": "%", "time_points": [], "axis_labels": [],
+                           "legend": [], "map_features": [], "overall": "", "process": None, "bars_drawn": [],
+                           "values": [{"series": s, "point": p, "value": v, "text": "", "printed": False,
+                                       "precision": 2.5, "status": "verified", "note": ""}
+                                      for s, row in (("United States", (20, 30)), ("Japan", (12, 22)), ("Brazil", (8, 17)))
+                                      for p, v in zip(("2005", "2015"), row)]}]}
+    check("#62: 'Brazil narrowed the gap' (12 points behind the US, then 13) is caught",
+          gap_claims("Overall, the United States remained the largest, while Brazil narrowed the gap by 2015.", leisure))
+    widening = {"blocks": [{**leisure["blocks"][0], "values": [
+        {**v, "value": {("United States", "2015"): 40}.get((v["series"], v["point"]), v["value"])}
+        for v in leisure["blocks"][0]["values"]]}]}
+    check("...while a gap that really widened may be said to widen",
+          not gap_claims("The gap between the United States and Brazil widened markedly.", widening))
 
 
 def rulings(page) -> None:

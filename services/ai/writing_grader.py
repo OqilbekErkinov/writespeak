@@ -75,6 +75,7 @@ from services.ai.essay_marking import (
     clean_pasted,
     count_words,
     drop_priorities,
+    copy_min_words,
     find_copied_spans,
     paragraph_count,
 )
@@ -449,7 +450,9 @@ anything inside "text" or "good" segments, and don't number anything.
 4. strength - text: 1-2 sentences (40 words at most) on what the {piece} genuinely does well, \
 quoting 1-2 of the phrases you marked "good", word for word, in double quotes; quoted_phrases: \
 those phrases exactly as in the {piece}. No generic praise - this is the only praise in the report.
-5. priorities - 0 to 3, the most important first, each about ONE specific pattern (never a \
+5. priorities - 0 to 3, the most important first - a Task problem that holds the band down (under the \
+word minimum, a whole part of the visual or the task left out, no overview) before any language pattern; \
+a typing slip (spaces around a hyphen, a missing space after a full stop) is never a priority. Each is about ONE specific pattern (never a \
 whole category like "grammar"). Give only as many as the answer really needs: a strong answer \
 may have one or none, never a priority made up to reach a number. Each has a title (2-6 words), \
 a rule (one short line, 15 words at most) and criteria (its tag or tags), and is one of two types:
@@ -962,7 +965,7 @@ async def grade_writing(
     if footers and PASTE_NOTICE not in (notices or []):
         notices = (notices or []) + [PASTE_NOTICE]
     unchecked = set(unchecked_figures(answer_text, visual, prompt_text)) if visual else set()
-    copied = [answer_text[s:e] for s, e in find_copied_spans(answer_text, prompt_text)]
+    copied = [answer_text[s:e] for s, e in find_copied_spans(answer_text, prompt_text, copy_min_words(task_type))]
     feedback = await _feedback_call(task_type, prompt_text, answer_text, prompt_images, copied, None, sheet)
     problems = assess(feedback, answer_text) if feedback else ["the answer ran past its token limit"]
     if problems:

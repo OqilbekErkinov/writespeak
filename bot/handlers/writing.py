@@ -330,7 +330,11 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
     # The very same essay again gets its saved report, not a new (differently
     # scored) check - reports #14 and #15 were one essay graded 8.0 and 8.5,
     # with "progress" between them.
-    same, similar, numbers = await _repeat_of(user_id, data["task_type"], data["answer_text"])
+    # A test run (scripts/live_check.py) is always graded anew, costs nothing and is
+    # kept apart: no progress, word bank, chart key or admins' card from it.
+    test_run = bool(data.get("test_run"))
+    same, similar, numbers = (None, None, {}) if test_run else \
+        await _repeat_of(user_id, data["task_type"], data["answer_text"])
     if same is not None and same.feedback_pdf_path and Path(same.feedback_pdf_path).exists():
         logger.info("Writing resubmission by user %s: same text as submission %s", user_id, same.id)
         await message.answer_document(
@@ -470,8 +474,8 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
         for v in report.vocabulary
     ]
 
-    coins = check_price(data, writing_kind(data["task_type"]))
-    paid_with = await payment_of(user_id, coins, data.get("payer_id"))
+    coins = 0 if test_run else check_price(data, writing_kind(data["task_type"]))
+    paid_with = {"mode": "test-run", "coins": 0} if test_run else await payment_of(user_id, coins, data.get("payer_id"))
     async with get_session() as session:
         submission = await crud.save_writing_submission(
             session,
@@ -497,6 +501,7 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
             coins=coins,
             assignment_part_id=data.get("assignment_part_id"),
             payer_id=data.get("payer_id"),
+            is_test=test_run,
             report_data={
                 # where the model answer came from: internal only, never in the report
                 "model_answer": None if answer is None else {
@@ -524,8 +529,9 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
                 submission_id=submission.id,
                 submission_type="writing",
             )
-        new_words = await crud.add_vocabulary_entries(session, user_id, vocabulary, source="writing")
-    if chart_look is not None:
+        new_words = 0 if test_run else await crud.add_vocabulary_entries(session, user_id, vocabulary,
+                                                                         source="writing")
+    if chart_look is not None and not test_run:
         # one more use of its chart key, or the chart kept for an admin to check
         await chart_keys.remember(data["prompt_text"], prompt_images, visual, chart_look,
                                   data.get("practice_question_id"), submission.id)
@@ -558,7 +564,8 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
     else:
         await state.clear()
         await message.answer(t("nav.what_next", lang), reply_markup=_after_result_kb(data, lang))
-    await crm_events.check_done("w", submission.id)
+    if not test_run:
+        await crm_events.check_done("w", submission.id)
 
 
 def _after_result_kb(data: dict, lang: str):

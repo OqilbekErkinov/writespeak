@@ -68,8 +68,9 @@ the right) is one block per axis, each with its own units; a pie with an inner a
 one block per ring. Two or more pictures of the same kind of thing compared side by side (two tunnels, \
 two houses) are ONE table block: series = each feature (with its unit, e.g. "Cost (US$ million)"), \
 point = each item. visual_type: line, bar, pie, table, map, process, other.
-- axis_labels: the tick labels on each axis exactly as printed, in order (years, categories, values); \
-time_points: the time labels exactly as printed - never add or shift a year the axis doesn't print \
+- axis_labels: the tick labels on each axis exactly as printed, in order (years, categories, values) - \
+every value label, copied one by one from the bottom, never worked out from the first two (a scale may run \
+0, 15, 30 ... 255: #61's was read as 0, 25 ... 225, and every point came out low); time_points: the time labels exactly as printed - never add or shift a year the axis doesn't print \
 (an axis of 1984, 1988, 1992 ... is not 1987, 1990, 1993).
 - overall: for every block, its main point in one line - a chart's main trend or contrast, a map's \
 overall direction of development, a diagram's main difference.

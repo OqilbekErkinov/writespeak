@@ -144,6 +144,7 @@ async def save_writing_submission(
     assignment_part_id: int | None = None,
     payer_id: int | None = None,
     report_data: dict | None = None,
+    is_test: bool = False,
 ) -> WritingSubmission:
     """`annotations` holds the report's numbered mistakes (each with its
     `criterion`) since the 2026-10 report redesign - get_writing_history
@@ -170,6 +171,7 @@ async def save_writing_submission(
         assignment_part_id=assignment_part_id,
         paid_by_id=payer_id if coins and payer_id else None,
         coins_spent=coins,
+        is_test=is_test,
     )
     session.add(submission)
     if coins:
@@ -292,7 +294,7 @@ async def get_writing_sessions(session: AsyncSession, user_id: int, task_type: s
     stmt = (
         select(WritingSubmission)
         .where(WritingSubmission.user_id == user_id, WritingSubmission.task_type == task_type,
-               WritingSubmission.overall_band.is_not(None))
+               WritingSubmission.overall_band.is_not(None), WritingSubmission.is_test.is_(False))
         .order_by(WritingSubmission.created_at.desc())
         .limit(limit)
     )
@@ -330,6 +332,7 @@ async def get_writing_history(
                 WritingSubmission.user_id == user_id,
                 WritingSubmission.task_type == task_type,
                 WritingSubmission.overall_band.is_not(None),
+                WritingSubmission.is_test.is_(False),  # a test run is no previous essay
             )
             .order_by(WritingSubmission.created_at.desc())
             .limit(20)

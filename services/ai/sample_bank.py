@@ -594,7 +594,8 @@ def _task_rules(task_type: str) -> str:
             "accurately - with a DATA SHEET, only its VERIFIED figures, never an UNCERTAIN one - and give no "
             "personal opinion. A category whose figure is UNCERTAIN is still described, in words and without a "
             "number (\"well above the others\", \"slightly higher\"); the answer never says that a figure is "
-            "missing, not given, not shown, unclear or verified - it reads as a writer's report. For a process or a cycle, describe the stages in natural language, as a writer "
+            "missing, not given, not shown, unclear or verified - it reads as a writer's report. A gap narrowed or "
+            "widened only when the sheet's first and last figures show it. For a process or a cycle, describe the stages in natural language, as a writer "
             "would (\"the bamboo is first planted in spring and harvested in autumn\"): never copy the diagram's "
             "labels in Title Case (\"running from Plant bamboo plants (Spring) to Finished clothing products\") "
             "and never invent names for its stages in capitals."
@@ -761,6 +762,55 @@ _GROUP_WORDS = re.compile(
     r"every\s+(?:other\s+)?(?:country|category|group|sector|type|age\s+group|region)|all\s+(?:three|four|five|six|"
     r"seven|eight|nine|ten)|both)\b", re.IGNORECASE)
 _NOT_NAMES = {"the", "and", "other", "others", "total", "average", "all", "per", "for", "of"}
+_GAP_WORDS = r"(?:narrow\w*|clos(?:ed|es|ing)|widen\w*|shr[iu]nk\w*|grew|grow\w*|increas\w*|decreas\w*)"
+_GAP = re.compile(rf"\b(?:narrow\w*|clos(?:ed|es|ing)|widen\w*|shr[iu]nk\w*)\b[^.;]{{0,60}}\bgaps?\b"
+                  rf"|\bgaps?\b[^.;]{{0,80}}?\b{_GAP_WORDS}\b|\b(?:catch\w* up|caught up|clos\w* in on)\b", re.IGNORECASE)
+
+
+def gap_claims(text: str, visual: dict | None) -> list[str]:
+    """Sentences claiming a gap narrowed or widened (or one category caught
+    up) that the sheet's first and last figures don't show, within their
+    precision - for the categories the sentence names (with one named: its
+    gap to any other)."""
+    if not visual:
+        return []
+    from itertools import combinations
+
+    from services.ai.schemas import SheetBlock
+    from services.ai.visual_check import _key, _named_among
+    from services.ai.visual_features import INF, _Grid
+
+    out = []
+    for sentence in re.split(r"(?<=[.!?])\s+", text):
+        found = _GAP.search(sentence)
+        if not found:
+            continue
+        narrowing = bool(re.search(r"narrow|clos|shr[iu]nk|catch|caught|decreas", found.group(0), re.IGNORECASE))
+        verdicts = []
+        for block in visual.get("blocks", []):
+            try:
+                grid = _Grid(SheetBlock.model_validate(block))
+            except Exception:
+                continue
+            if len(grid.points) < 2:
+                continue
+            named = sorted(_named_among(set(grid.series), _key(sentence)), key=grid.series.index)
+            pairs = list(combinations(named, 2)) if len(named) >= 2 else \
+                [(named[0], s) for s in grid.series if s != named[0]] if named else []
+            p0, p1 = grid.points[0], grid.points[-1]
+            for a, b in pairs:
+                cells = [grid.loose.get((s, p)) for s in (a, b) for p in (p0, p1)]
+                if not all(cells) or any(c[1] == INF for c in cells):
+                    continue
+                (a0, a1, b0, b1) = cells
+                g0, g1 = abs(a0[0] - b0[0]), abs(a1[0] - b1[0])
+                slack = max(0.5, sum(c[1] for c in cells))
+                verdicts.append("narrowed" if g1 < g0 - slack else "widened" if g1 > g0 + slack else "same")
+        if verdicts and ("narrowed" if narrowing else "widened") not in verdicts:
+            out.append(sentence.strip()[:200])
+    return out
+
+
 # A model answer talking about the data sheet instead of the visual.
 _META = re.compile(r"\b(?:(?:is|are|was|were) not (?:given|shown|stated|provided|labell?ed|visible|clear|known|available)|"
                    r"exact (?:value|figure|number)s? (?:is|are|was|were) not|(?:un)?verified|data sheet|uncertain|"
@@ -784,6 +834,10 @@ def data_problems(text: str, question: str, visual: dict | None) -> list[str]:
     unsure = [t for t, m in matches if m == "raw-uncertain"]
     if unsure:
         out.append("these figures are UNCERTAIN on the DATA SHEET - leave them out: " + ", ".join(unsure[:6]))
+    gaps = gap_claims(text, visual)
+    if gaps:  # #62: "Brazil narrowed the gap" - 12 points behind the US in 2005, 13 in 2015
+        out.append("these sentences say a gap narrowed or widened, which the DATA SHEET's figures don't show - say how "
+                   "it really changed, or leave it out: " + " | ".join(f'"{x}"' for x in gaps[:3]))
     meta = list(dict.fromkeys(m.group(0) for m in _META.finditer(text)))
     if meta:  # #93: "the exact male value is not given here"; #94: "its lead in the verified years"
         out.append("never write about the data itself being missing, unclear or verified - describe the visual as "

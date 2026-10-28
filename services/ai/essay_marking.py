@@ -45,6 +45,9 @@ from services.ai.scoring import overall_band, target_band, whole_band
 INLINE_FIX_MAX_WORDS = 6
 MAX_GOOD_HIGHLIGHTS = 5
 COPY_MIN_WORDS = 8
+# Task 1: the visual's subject repeated by name ("three counties in the state of Oregon", "average household
+# spending on leisure activities in three countries") is no copy - a copied sentence is (2026-10-28, #61/#62).
+COPY_MIN_WORDS_TASK1 = 10
 PRIORITY_COUNT = 3
 PRIORITY_IDS = (2, 5)
 VOCAB_RANGE = (10, 12)
@@ -132,6 +135,10 @@ def paragraph_count(text: str) -> int:
 
 def _word_key(word: str) -> str:
     return word.lower().replace("’", "'")
+
+
+def copy_min_words(task_type: str) -> int:
+    return COPY_MIN_WORDS_TASK1 if task_type == "task1" else COPY_MIN_WORDS
 
 
 def find_copied_spans(essay: str, question: str, min_words: int = COPY_MIN_WORDS) -> list[tuple[int, int]]:
@@ -667,6 +674,55 @@ def drop_priorities(fb: WritingFeedback, gone: set[int], kept_wrongs: list[str])
     return fb.model_copy(update={"priorities": priorities, "checklist": checklist}), notes
 
 
+TASK_MIN_WORDS = {"task1": 150, "task2": 250}
+
+
+def task_first(fb: WritingFeedback, bands: dict[str, float], words: int, task_type: str) -> tuple[WritingFeedback, list[str]]:
+    """A Task problem that holds the band down comes first (the academic
+    lead, 2026-10-28: #60, a 124-word report leaving out half the chart, had
+    "Hyphenate age ranges" as priority 01). Under the task's word minimum, or
+    with Task Achievement / Response as the lowest band, the Task priorities
+    lead; under the minimum with none, a tip about the length comes first.
+    Checklist lines follow their priority's new number."""
+    if task_type != "task1":  # the ruling was on Task 1 reports
+        return fb, []
+    priorities = list(fb.priorities[:PRIORITY_COUNT])
+    minimum = TASK_MIN_WORDS.get(task_type, 0)
+    short = words < minimum
+    lowest = bands["TR_or_TA"] <= min(bands[k] for k in SCORE_KEYS if k != "TR_or_TA")
+    if not (short or lowest):
+        return fb, []
+    order = sorted(range(len(priorities)), key=lambda i: (0 if "TR" in priorities[i].criteria else 1, i))
+    new = [priorities[i] for i in order]
+    notes = []
+    if short and not any("TR" in p.criteria for p in new):
+        from services.ai.schemas import Priority
+
+        new.insert(0, Priority(
+            type="tip", title=f"Write at least {minimum} words",
+            rule=f"Your answer has {words} words: cover every part of the task in {minimum} words or more.",
+            example_wrong="", criteria=["TR"], mistake_ids=[],
+            example_right="Describe every group the visual shows, with figures, in one paragraph each."
+            if task_type == "task1" else "Develop each main idea with an explanation and an example."))
+        notes.append(f"a length tip added first ({words} words)")
+        order.insert(0, -1)
+    new, order = new[:PRIORITY_COUNT], order[:PRIORITY_COUNT]
+    if [p.title for p in new] == [p.title for p in priorities]:
+        return fb, notes
+    numbers = {old + 1: n for n, old in enumerate(order, 1) if old >= 0}  # old number -> new number
+    checklist = []
+    for item in fb.checklist:
+        ref = re.search(r"priority\D*(\d+)", item.ref, re.IGNORECASE)
+        if ref is None:
+            checklist.append(item)
+        elif int(ref.group(1)) in numbers:
+            checklist.append(item.model_copy(update={"ref": f"Priority {numbers[int(ref.group(1))]:02d}"}))
+        else:
+            notes.append(f"checklist line dropped with its priority: {item.text!r}")
+    notes.append("Task priorities first: " + ", ".join(repr(p.title) for p in new))
+    return fb.model_copy(update={"priorities": new, "checklist": checklist}), notes
+
+
 def build_report(
     task_type: str,
     question: str,
@@ -705,7 +761,7 @@ def build_report(
 
     # Text copied from the question: grey, with its own Task mistake.
     marks: list[_Mark] = []
-    for start, end in find_copied_spans(original, question):
+    for start, end in find_copied_spans(original, question, copy_min_words(task_type)):
         text = original[start:end]
         free = [m for m in mistakes if not m.copy]
         i = _copy_mistake_index(text, free)
@@ -812,6 +868,8 @@ def build_report(
     gone = {m.id for m in fb.mistakes} - set(by_model_id)
     fb, dropped_notes = drop_priorities(fb, gone, [m.wrong for m in mistakes])
     notes += dropped_notes
+    fb, first_notes = task_first(fb, {k: whole_band(bands[k]) for k in SCORE_KEYS}, count_words(original), task_type)
+    notes += first_notes
     priorities = []
     for i, p in enumerate(fb.priorities[:PRIORITY_COUNT], 1):
         tags = [c for c in dict.fromkeys(p.criteria) if c in TAGS]
