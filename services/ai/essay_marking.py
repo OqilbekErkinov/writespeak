@@ -85,6 +85,12 @@ def canon(text: str) -> str:
 
 PASTE_NOTICE = "Page headers/footers from pasted text were ignored."
 _PAGE_MARK = re.compile(r"\bpage\s+\d+\s*(?:of|/)\s*\d+\b", re.IGNORECASE)
+# a running footer inside a line: "Ilhom Alijanov | IELTS Task 1: 9.0 | Page 3 of 154" (#106 had it
+# mid-sentence: it was marked as a grammar mistake and the name reached the report)
+_FOOTER = re.compile(r"\s*(?:[A-Z][\w'’.-]*\s+){0,3}[A-Z][\w'’.-]*\s*\|[^|\n]{0,60}\|\s*(?i:page)\s+\d+\s*"
+                     r"(?:(?i:of)|/)\s*\d+\s*")
+_PAGE_INLINE = re.compile(r"\s*\|\s*(?i:page)\s+\d+\s*(?:(?i:of)|/)\s*\d+\s*\|?\s*|\s*\|?\s*(?i:page)\s+\d+\s*"
+                          r"(?:(?i:of)|/)\s*\d+\s*\|\s*")
 _SENTENCE_END = re.compile(r"[.!?…:;\"”’')\]]\s*$")
 
 
@@ -94,13 +100,26 @@ def clean_pasted(text: str) -> tuple[str, bool]:
     printed line a "paragraph" and "Ilhom Alijanov | IELTS Task 1: 9.0 | Page
     3 of 154" in the middle of a sentence): a line that ends mid-sentence
     joins the next one, a word hyphenated at a line end is joined up, blank
-    lines collapse, and a "Page N of M" line goes. Text typed with one
-    paragraph per line (Telegram) comes out the same."""
+    lines collapse, and a "Page N of M" line, a running footer inside a line
+    ("Name | IELTS ... | Page N of M") and a short line that comes back word
+    for word all go. Text typed with one paragraph per line (Telegram) comes
+    out the same."""
     kept, removed = [], False
-    for line in text.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
-        if _PAGE_MARK.search(line) and len(line.split()) <= 14:
+    lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    # a short line that comes back word for word (a running header with the author's name)
+    seen: dict[str, int] = {}
+    for line in lines:
+        key = line.strip()
+        if key and len(key.split()) <= 8 and not _SENTENCE_END.search(key):
+            seen[key] = seen.get(key, 0) + 1
+    for line in lines:
+        if _PAGE_MARK.search(line) and len(line.split()) <= 14 or seen.get(line.strip(), 0) >= 2:
             removed = True
             continue
+        clean = _PAGE_INLINE.sub(" ", _FOOTER.sub(" ", line))
+        if clean != line:
+            removed = True
+            line = re.sub(r"[ \t]{2,}", " ", clean)
         kept.append(line.strip())
     paragraphs, current = [], ""
     for line in kept:
@@ -681,6 +700,42 @@ def drop_priorities(fb: WritingFeedback, gone: set[int], kept_wrongs: list[str])
     return fb.model_copy(update={"priorities": priorities, "checklist": checklist}), notes
 
 
+def without_priorities(fb: WritingFeedback, drop: set[int]) -> WritingFeedback:
+    """The feedback without the priorities numbered in `drop` (1-based); the
+    rest numbered again, their checklist lines following, the dropped ones'
+    lines gone."""
+    numbers, kept = {}, []
+    for i, p in enumerate(fb.priorities, 1):
+        if i not in drop:
+            numbers[i] = len(kept) + 1
+            kept.append(p)
+    checklist = []
+    for item in fb.checklist:
+        ref = re.search(r"priority\D*(\d+)", item.ref, re.IGNORECASE)
+        if ref and int(ref.group(1)) in drop:
+            continue
+        if ref and int(ref.group(1)) in numbers:
+            item = item.model_copy(update={"ref": f"Priority {numbers[int(ref.group(1))]:02d}"})
+        checklist.append(item)
+    return fb.model_copy(update={"priorities": kept, "checklist": checklist})
+
+
+_CONTENT = re.compile(r"[a-z]{4,}")
+_FILLER_WORDS = {"your", "with", "that", "this", "each", "every", "when", "make", "sure", "before", "write",
+                 "writing", "always", "check", "next", "time", "report", "essay", "answer", "clear", "clearly",
+                 "keep", "use", "using", "from", "into", "than", "them", "they", "their", "have"}
+
+
+def fits(line: str, about: str) -> bool:
+    """Does a checklist line share a real word with what it refers to (a
+    priority, a mistake)? "Keep units consistent" under a priority about
+    group comparisons does not (2026-10-29)."""
+    words = {w for w in _CONTENT.findall(line.lower()) if w not in _FILLER_WORDS}
+    target = {w for w in _CONTENT.findall(about.lower()) if w not in _FILLER_WORDS}
+    stems = {w[:5] for w in target}
+    return bool(words & target) or any(w[:5] in stems for w in words)
+
+
 TASK_MIN_WORDS = {"task1": 150, "task2": 250}
 
 
@@ -912,6 +967,17 @@ def build_report(
         ref = _ref(item.ref, by_model_id, len(priorities), gone | set(dropped))
         if ref is None:
             notes.append(f"checklist line dropped with its mistake ({item.ref}): {item.text!r}")
+            continue
+        number = re.search(r"(\d+)", ref)
+        about = ""
+        if ref.startswith("Priority") and number and int(number.group(1)) <= len(fb.priorities):
+            p = fb.priorities[int(number.group(1)) - 1]
+            about = f"{p.title} {p.rule} {p.example_wrong} {p.example_right}"
+        elif ref.startswith("Mistake") and number:
+            m = next((x for x in mistakes if x.n == int(number.group(1))), None)
+            about = f"{m.wrong} {m.correct} {m.why}" if m else ""
+        if about and not fits(item.text, about):
+            notes.append(f"checklist line dropped - it doesn't match {ref}: {item.text!r}")
             continue
         checklist.append({"html": inline_format(item.text.strip()), "ref": ref})
 

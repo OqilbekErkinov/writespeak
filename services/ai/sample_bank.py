@@ -1122,6 +1122,11 @@ def answer_problems(paragraphs: list[str], question: str, task_type: str, avoid:
     if again:
         out.append("open these paragraphs differently - the student's recent model answers began the same way: "
                    + ", ".join(f'"{o}"' for o in again[:3]))
+    starts = [re.match(r"\s*([A-Za-z]+(?:\s+[a-z]+)?)\s*,", p) for p in paragraphs]
+    linkers = [m.group(1).lower() if m else "" for m in starts]
+    twice = [a for a, b in zip(linkers, linkers[1:]) if a and a == b]
+    if twice:  # #71's model answer: "Moreover" opening two paragraphs in a row
+        out.append(f"don't open two paragraphs in a row with \"{twice[0].capitalize()}\" - vary the linking")
     spelling = mixed_spelling(text)
     if spelling:
         out.append(f"keep to one spelling throughout (British or American): \"{spelling[0]}\" and \"{spelling[1]}\"")

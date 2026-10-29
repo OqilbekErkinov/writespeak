@@ -202,6 +202,12 @@ async def part1_reading() -> None:
         outcome = outcomes["next"]
         if isinstance(outcome, BaseException):
             raise outcome
+        if kw["response_format"].__name__ == "SettleReads":  # a third read of the figures left uncertain
+            from services.ai.schemas import SettledFigure, SettleReads
+
+            return NS(choices=[NS(message=NS(parsed=SettleReads(figures=[
+                SettledFigure(series=s, point=label, value=v, how="") for label, boys, girls in BARS
+                for s, v in (("Boys", boys), ("Girls", girls))]), refusal=None))], usage=None, model="gpt-5")
         outcomes["messages"] = kw["messages"]
         return NS(choices=[NS(message=NS(parsed=outcome, refusal="I can't help" if outcome is None else None))],
                   usage=None, model="gpt-5")
@@ -291,7 +297,7 @@ class FakeAI:
         elif name == "WritingScoring":
             if self.fail_scoring:
                 raise server_error()
-            judged = schemas.CriterionJudgement(strengths=["clear"], weaknesses=["some slips"], band=6,
+            judged = schemas.CriterionJudgement(checklist=[], strengths=["clear"], weaknesses=["some slips"], band=6,
                                                 note="Clear overview; figures match the chart.")
             parsed = schemas.WritingScoring(TR_or_TA=judged, CC=judged, LR=judged, GRA=judged)
         elif name == "WritingFeedback":

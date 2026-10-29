@@ -28,6 +28,7 @@ from PIL import Image  # noqa: E402
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from services.ai import chart_measure, visual_reading  # noqa: E402
+from services.ai.visual_check import protected_mistake  # noqa: E402
 from services.ai.schemas import FocusedRead, SettledFigure, SettleReads, VisualSheet  # noqa: E402
 
 fails: list[str] = []
@@ -167,6 +168,13 @@ def rules() -> None:
           w40.value == 75 and w40.status == "verified" and w40.note == "measured from the picture (read 60 / 75)", w40)
     check("...and over reads that agree a step away (Columbia 1970: read 50, measured 35.3 -> 35)",
           c70.value == 35 and c70.status == "verified", c70)
+    far = visual_reading.apply_measured(
+        sheet([{"series": "2006", "point": "16-24", "value": 95, "precision": 5}], [str(v) for v in range(0, 121, 20)],
+              kind="bar"), {0: result({("2006", "16-24"): 17.5}, 0, 120, 20)})
+    check("a measurement more than 1.5 steps from every read is not trusted: the third read decides "
+          "(#107: a striped bar measured 18 for 90-100)",
+          far.blocks[0].values[0].status == "uncertain"
+          and far.blocks[0].values[0].note == "the reads disagree: 95 vs 17.5", far.blocks[0].values[0])
     check("a code check's doubt (a legend colour shared) is not answered by a measurement: still uncertain",
           y00.status == "uncertain" and y00.value == 85, y00)
     check("the sheet stays 'partly unclear' while a figure is uncertain", out.readability == "partly_unclear")
@@ -232,6 +240,33 @@ def rules() -> None:
           [x for x in checked["confirmed_wrong"] if "150,000" in x] and cell["status"] == "verified"
           and cell["value"] == 125,
           (checked["confirmed_wrong"], checked["accepted_figures"], cell))
+
+    # one figure for three measured cells (#62: "In 2011, ... United States, Brazil and Japan rose to 6%")
+    visual = sheet([{"series": s, "point": "2011", "value": v, "precision": 1.0, "note": "measured from the picture"}
+                    for s, v in (("United States", 26), ("Brazil", 13), ("Japan", 18))]
+                   + [{"series": "Brazil", "point": "2005", "value": 6, "precision": 1.0, "note": "measured from the picture"}],
+                   axis).model_dump()
+
+    async def no_cell(question, images, sentence, figure):
+        return FocusedRead(series="", point="2011", found=False, missing=False, value=None, how="")
+    visual_reading.read_one = no_cell
+    try:
+        checked = asyncio.run(visual_reading.check_report_figures(
+            "In 2011, spending in each of the three countries, the United States, Brazil and Japan, rose to 6%.",
+            visual, "household spending on leisure in three countries", [(b"x", "image/png")]))
+        fair = asyncio.run(visual_reading.check_report_figures(
+            "In 2011, spending in the United States, Brazil and Japan rose to 13%.",
+            visual, "household spending on leisure in three countries", [(b"x", "image/png")]))
+    finally:
+        visual_reading.read_one = real_one
+    check("a figure given for three measured cells that agrees with none is wrong, though the re-read finds no "
+          "one cell (#62's 6%)", checked["confirmed_wrong"] == ["6%"], (checked["confirmed_wrong"],
+                                                                     checked["accepted_figures"]))
+    check("...one that agrees with one of them is not", "13%" not in fair["confirmed_wrong"],
+          (fair["confirmed_wrong"], fair["accepted_figures"]))
+    check("...and the examiner's Task mistake on it is kept, though 'rose to 6%' out of its sentence matches "
+          "Brazil's 2005 figure", not protected_mistake("rose to 6%", "rose to 26%, 13% and 18% respectively",
+                                                        "wrong figures", checked, "spending", set()))
 
 
 if __name__ == "__main__":

@@ -22,8 +22,9 @@ DEFAULTS = {
     "progress": {"min_words": {"task1": 100, "task2": 150}},
     "regression": {},
     "type_anchors": {"use": True},
-    "floors": {"wide_range_phrases": 3, "slips_only_min": 8, "clear_vocabulary_lr_min": 7},
+    "floors": {"wide_range_phrases": 3, "slips_only_min": 8, "clear_vocabulary_lr_min": 7, "band8_density_min": 0},
     "model_answer": {"banned_openers": []},
+    "accepted": {"phrases": []},
 }
 
 _cache: dict = {}
@@ -74,6 +75,12 @@ def floors() -> dict:
 
 def banned_openers() -> list[str]:
     return list(load()["model_answer"].get("banned_openers", []))
+
+
+def accepted_phrases() -> list[str]:
+    """Wordings the academic lead ruled acceptable: a flag on one is an
+    alternative (an upgrade idea), never a mistake."""
+    return list(load()["accepted"].get("phrases", []))
 
 
 def calibration() -> dict:

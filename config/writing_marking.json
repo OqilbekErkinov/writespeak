@@ -16,16 +16,18 @@
     "wide_range_phrases": 3,
     "slips_only_min": 8,
     "clear_vocabulary_lr_min": 7,
+    "band8_density_min": 8,
+    "_band8_density": "Proposal (2026-10-29, review=true): band8_density_min - Lexical Resource / Grammar at least this when the range is wide and the weighted density stays within density.band8_max (0.8 per 100 words, 'Band 8: about 1-3 slips in a 250-350-word essay'). #67 got Grammar 7 for one agreement error and two slips in 374 words (0.4 per 100 words) - 'Band 8 allows occasional errors', 'wide range + a few slips = 8 or 9, never 7'. Remove the key to switch it off.",
     "review": false
   },
   "model_answer": {
     "_about": "Openers no model answer uses: they came back in report after report (the academic lead, 2026-10-29). The student's last three model answers' paragraph openers are avoided too.",
-    "banned_openers": ["There is a view that", "First and foremost", "The following paragraphs explain", "These advantages notwithstanding", "With the advent of", "In this day and age"],
+    "banned_openers": ["There is a view that", "There is an opinion that", "First and foremost", "The following paragraphs explain", "In this essay, I will", "This essay will discuss", "These advantages notwithstanding", "With the advent of", "In this day and age"],
     "review": false
   },
-  "model_answer": {
-    "_about": "Openers no model answer uses: they came back in report after report (the academic lead, 2026-10-29). The student's last three model answers' paragraph openers are avoided too.",
-    "banned_openers": ["There is a view that", "First and foremost", "The following paragraphs explain", "These advantages notwithstanding", "With the advent of", "In this day and age"],
+  "accepted": {
+    "_about": "Wordings the academic lead ruled acceptable as written (2026-10-29: the false flags on #65, #66, #67 and #105-#108). A flag on one of them becomes an alternative - an upgrade idea, never a mistake - whatever the mistake filter says. Matched inside the flagged words, ignoring case and curly quotes.",
+    "phrases": ["shops are available", "positive tendency", "sleep regimes", "certain parts of the day", "certain people's freedoms", "the night shift's popularization", "use their tools", "are both a testament", "that particular device", "creates a pressure", "known for its visual nature", "declines in outputs", "plant the seed of", "develop their economy"],
     "review": false
   },
   "anchors": {
@@ -77,6 +79,8 @@
             "replace": ["Young adults aged 16-24 dominated the chart.", "Young adults aged 16-24 dominated the chart, and 16-24 reached 100% in 2004."],
             "flagged": ["100% in 2004"]},
     "_53_59": "The academic lead's expectations for Ilhom Alijanov's Band 9 reports pasted as #53-#59 (2026-10-27). Every Task 1 case also checks that no figure the sheet confirms is flagged.",
+    "s105": {"overall": [9.0, 9.0], "GRA_min": 8, "not_flagged": ["one-third"], "figures": {"other workers|Germany": 20, "other workers|Italy": 20, "other workers|Czech Republic": 20, "doctors|Czech Republic": 63}, "_about": "Submission 105 (the academic lead's Essay #2, doctors' pay, horizontal bars, 2026-10-29): true values France 70/30, Italy 60/20, Czech 63/20, Germany 62/20, Finland 50/25, Switzerland 70/40, US 120/45; two slips with a wide range - Grammar at least 8; no tip or vocabulary example claiming Germany's others earned about $30,000."},
+    "s106": {"overall_min": 8.5, "not_flagged": ["declines in outputs", "Alijanov", "Page 3"], "no_text_in_report": ["Alijanov"], "_about": "Submission 106 (the academic lead's Essay #3 = #53 pasted with a running footer mid-sentence, 2026-10-29): the footer is ignored with the notice, never marked; 'declines in outputs' is correct; no uncertainty banner (the line graph is measured)."},
     "review": true
   }
 }

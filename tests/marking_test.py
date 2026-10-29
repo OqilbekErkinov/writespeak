@@ -43,9 +43,14 @@ def writing() -> None:
     error = NS(criterion="LR", severity="error", unclear=False, wrong="make the case worse", correct="worsen it")
     strong = ["scorching hot", "the emergence of logistics companies", "more tolerable"]
     bands = {"TR_or_TA": 7.0, "CC": 7.0, "LR": 5.0, "GRA": 7.0}
-    out, raised = writing_grader.floors("task2", essay, bands, [slip, error], strong)
+    errors = [NS(criterion="LR", severity="error", unclear=False, wrong=f"word {i}", correct=f"term {i}")
+              for i in range(4)]  # 4 in 360 words: past the Band 8 density, within Band 7's
+    out, raised = writing_grader.floors("task2", essay, bands, [slip] + errors, strong)
     check("floors: clear, less common vocabulary - Lexical Resource at least 7 (#65's LR 5)", out["LR"] == 7, raised)
     check("...only slips in Grammar and a wide range - Grammar at least 8 (#67)", out["GRA"] == 8, raised)
+    one, raised = writing_grader.floors("task2", essay, bands, [slip, error], strong)
+    check("...one error in 360 words is within the Band 8 density: Lexical Resource at least 8", one["LR"] == 8,
+          raised)
     check("...never Task Response or Coherence", out["TR_or_TA"] == 7 and out["CC"] == 7)
     short, _ = writing_grader.floors("task2", "Too short an essay. " * 20, bands, [slip], strong)
     check("...never an answer under 250 words", short == bands, short)
@@ -236,8 +241,136 @@ def speaking() -> None:
           and "already at this level" in html, len(html))
 
 
+def round2() -> None:
+    """The academic lead's checks of the deployed round (2026-10-29)."""
+    from services.ai.essay_marking import clean_pasted, fits
+
+    text, removed = clean_pasted("In 1990 output fell. Over the Ilhom Alijanov | IELTS Task 1: 9.0 | Page 3 of 154 "
+                                 "next decade, it rose.")
+    check("a running footer inside a sentence goes (#106) - and the name with it",
+          removed and text == "In 1990 output fell. Over the next decade, it rose.", text)
+    check("checklist line that fits its priority stays", fits("Double-check ratios like one-third vs one-half.",
+                                                             "Be precise in group comparisons adjust ratios"))
+    check("...a filler line ('Keep units consistent') under another priority goes",
+          not fits("Keep units consistent.", "Be precise in group comparisons adjust ratios for each exception"))
+    check("model answer: 'Moreover' opening two paragraphs in a row goes back",
+          any("two paragraphs in a row" in p for p in sample_bank.answer_problems(
+              ["Sport unites nations.", "Moreover, it brings money.", "Moreover, it builds pride."],
+              "Discuss both views and give your opinion.", "task2")))
+    check("...and 'There is an opinion that' is a stock opener",
+          any("stock phrases" in p for p in sample_bank.answer_problems(
+              ["There is an opinion that sport matters."], "Discuss both views and give your opinion.", "task2")))
+
+    # the scorer's checklist (#71: Coherence 9 though a linker followed nothing)
+    essay = ("Sport brings nations together. Taking this into account, tourism rises. " * 40).strip()
+
+    def judged(band, found=(), weak=(), looked=True):
+        items = writing_grader.CHECKLISTS["CC"]
+        checklist = [schemas.CheckFinding(item=i, found=bool(found) and k == 0, quote=found[0] if found and k == 0
+                                          else "") for k, i in enumerate(items)] if looked else []
+        return schemas.CriterionJudgement(checklist=checklist, strengths=[], weaknesses=list(weak), band=band,
+                                          note="Linking could be sharper." if band == 9 else "n")
+
+    def run(cc):
+        task = [schemas.CheckFinding(item=i, found=False, quote="") for i in writing_grader.CHECKLISTS["TR_or_TA"]["task2"]]
+        lr = [schemas.CheckFinding(item=i, found=False, quote="") for i in writing_grader.CHECKLISTS["LR"]]
+        gra = [schemas.CheckFinding(item=i, found=False, quote="") for i in writing_grader.CHECKLISTS["GRA"]]
+        nine = lambda c: schemas.CriterionJudgement(checklist=c, strengths=[], weaknesses=[], band=9, note="Fine.")  # noqa: E731
+        scoring = schemas.WritingScoring(TR_or_TA=nine(task), CC=cc, LR=nine(lr), GRA=nine(gra))
+
+        async def fake(purpose, max_tokens, messages, response_format, effort=None):
+            return NS(choices=[NS(message=NS(parsed=scoring))])
+        real = writing_grader._parse
+        writing_grader._parse = fake
+        try:
+            return asyncio.run(writing_grader._score_once("task2", "Q?", essay, None))
+        finally:
+            writing_grader._parse = real
+
+    check("a 9 whose checklist found a problem (a quoted illogical linker) is an 8",
+          run(judged(9, found=("Taking this into account",)))["CC"] == 8)
+    check("an 8 with no quoted reason, checklist answered and clear, is a 9", run(judged(8))["CC"] == 9)
+    check("...but an 8 whose checklist was never run stays 8 ('didn't look' is no 9)",
+          run(judged(8, looked=False))["CC"] == 8)
+    check("a 6 whose reason came back unquoted is never lifted to 9 (#60, #62: Coherence 6 -> 9)",
+          run(judged(6, weak=["Linking is basic and repetitive"]))["CC"] == 6)
+    check("a quote shortened with '...' still counts as a quote",
+          writing_grader.evidenced(['Linking repeats time markers: "Sport brings... tourism rises"'], essay))
+
+    slip = lambda w, c: NS(wrong=w, correct=c, criterion="GRA", severity="slip")  # noqa: E731
+    two = writing_grader.distinct_slips([slip("Czech Republic", "the Czech Republic"),
+                                         slip("Italy, Czech Republic and Germany", "Italy, the Czech Republic and Germany"),
+                                         slip("and other $25 000", "and others $25 000")])
+    check("the same slip made twice counts once (#105: 'the Czech Republic' twice + 'others' = 2 slips)",
+          [n for _, n in two] == [2, 1], two)
+
+    err = lambda w, c, crit="GRA": NS(wrong=w, correct=c, criterion=crit, severity="error")  # noqa: E731
+    items = [err("such society", "such a society"), err("the previous one", "the previous ones"),
+             err("they want it", "they want them"), err("strategies This", "strategies. This"),
+             err("people doesn't", "people don't"), err("this turn of events are", "this turn of events is"),
+             err("disposed into the oceans", "disposed of in the oceans", "LR"),
+             err("an useful tool", "a useful tool"), err("more cheaper", "cheaper")]
+    writing_grader.small_slips(items)
+    check("an article, a pronoun's number or a full stop is a slip by its correction (#66); a verb's agreement, "
+          "a wrong particle, 'an useful' and 'more cheaper' stay errors (T9)", [m.severity for m in items]
+          == ["slip", "slip", "slip", "slip", "error", "error", "error", "error", "error"],
+          [m.severity for m in items])
+    feel = err("contributing to feeling of worthlessness", "contributing to feelings of worthlessness")
+    writing_grader.small_slips([feel])
+    check("'feeling of' -> 'feelings of' is a noun's number: a slip (#67)", feel.severity == "slip", feel.severity)
+
+    # #67: one agreement error and two slips in 374 words, a wide range - Grammar 7 is lifted to 8
+    essay67 = " ".join(["word"] * 374)
+    gra = [NS(wrong="this turn of events are", correct="this turn of events is", criterion="GRA", severity="error"),
+           NS(wrong="feeling of loneliness", correct="a feeling of loneliness", criterion="GRA", severity="slip"),
+           NS(wrong="feeling of worthlessness", correct="feelings of worthlessness", criterion="GRA", severity="slip")]
+    bands, raised = writing_grader.floors("task2", essay67, {"TR_or_TA": 9, "CC": 9, "LR": 8, "GRA": 7}, gra,
+                                          ["a", "b", "c"])
+    check("within the Band 8 density with a wide range: Grammar at least 8 (#67)", bands["GRA"] == 8, raised)
+    many = gra + [NS(wrong=f"err {i}", correct=f"fix {i}", criterion="GRA", severity="error") for i in range(4)]
+    bands, raised = writing_grader.floors("task2", essay67, {"TR_or_TA": 7, "CC": 7, "LR": 7, "GRA": 7}, many,
+                                          ["a", "b", "c"])
+    check("...but not past it (5 errors in 374 words stay 7)", bands["GRA"] == 7, raised)
+    agree = NS(wrong="people doesn’t use", correct="people don't use", criterion="GRA", severity="slip")
+    writing_grader.small_slips([agree])
+    check("a verb's agreement the filter called a slip is an error (T9: 'people doesn't')",
+          agree.severity == "error", agree.severity)
+    three = [err("such society", "such a society"), err("of throwaway society", "of a throwaway society"),
+             err("in United States", "in the United States")]
+    writing_grader.small_slips(three)
+    check("...but a third article slip means articles aren't controlled: all stay errors",
+          all(m.severity == "error" for m in three), [m.severity for m in three])
+    check("a wording the academic lead accepted is found inside a longer flag (#66, #65)",
+          writing_grader.lead_accepted("as people use their tools for a limited time") == "use their tools"
+          and writing_grader.lead_accepted("the night shift’s popularization") == "the night shift's popularization"
+          and writing_grader.lead_accepted("The automotive industry along with the smartphone market are both a "
+                                           "testament to this") == "are both a testament")
+    check("...and nothing else is", writing_grader.lead_accepted("disposed into the oceans") is None
+          and writing_grader.lead_accepted("are") is None)
+    check("Speaking: 'daily lifestyles' (self-corrected in the recording, not in the transcript) is no mistake",
+          speaking_grader.lead_accepted("to their daily lifestyles") == "daily lifestyles"
+          and speaking_grader.lead_accepted("if not done so properly") is None)
+
+    fb = schemas.WritingFeedback(
+        mistakes=[], essay=[[schemas.EssaySegment(type="text", text="x", mistake_id=None, fix=None)]],
+        criterion_notes=schemas.CriterionNotes(TR_or_TA="x", CC="x", LR="x", GRA="x"),
+        strength=schemas.Strength(text="x", quoted_phrases=[]),
+        priorities=[schemas.Priority(type="tip", title="Be precise in group comparisons", rule="Adjust ratios.",
+                                     example_wrong="", example_right="Germany was about a half.", criteria=["TR"],
+                                     mistake_ids=[]),
+                    schemas.Priority(type="tip", title="Name the extremes", rule="x", example_wrong="",
+                                     example_right="The US paid doctors most.", criteria=["TR"], mistake_ids=[])],
+        vocabulary=[], checklist=[schemas.ChecklistItem(text="Adjust ratios for exceptions.", ref="Priority 01"),
+                                  schemas.ChecklistItem(text="Name the extremes first.", ref="Priority 02")])
+    kept, notes = writing_grader.true_tips(fb, lambda t: "half" in t)
+    check("a tip whose data claim the chart doesn't bear out goes, with its checklist line (#105)",
+          [p.title for p in kept.priorities] == ["Name the extremes"]
+          and [c.ref for c in kept.checklist] == ["Priority 01"], (kept.priorities, kept.checklist))
+
+
 if __name__ == "__main__":
     writing()
+    round2()
     speaking()
     print(f"\n{len(fails)} failed" if fails else "\nall passed")
     sys.exit(1 if fails else 0)

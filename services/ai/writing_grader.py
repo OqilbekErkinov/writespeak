@@ -55,6 +55,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import difflib
 import logging
 import re
 from dataclasses import dataclass, field
@@ -78,6 +79,7 @@ from services.ai.essay_marking import (
     drop_priorities,
     copy_min_words,
     find_copied_spans,
+    without_priorities,
     paragraph_count,
 )
 from services.ai.openai_client import parse_flex
@@ -174,6 +176,37 @@ register -> LR (Lexical); grammar and punctuation -> GRA; linking, referencing, 
 logic -> CC; content, task coverage and data -> TR (Task Achievement/Response). A language problem \
 never lowers Task Achievement/Response - "were quite passive" in a report is a word-choice (LR) \
 issue, not a Task one."""
+
+# What a scorer looks for on each criterion before it may give 9 (the academic lead, 2026-10-29: #71's
+# Coherence 9 though "Taking this into account" followed nothing and one paragraph held two central ideas)
+CHECKLISTS = {
+    "TR_or_TA": {
+        "task1": ["no clear overview of the main trends or differences", "a key feature left out",
+                  "a figure or comparison the DATA SHEET contradicts", "details listed without comparisons"],
+        "task2": ["a part of the question not answered", "a position that is unclear or changes",
+                  "a main idea stated but not extended or supported", "an idea off the question"],
+    },
+    "CC": ["a linker that doesn't fit the logic of what it joins", "a paragraph with two central ideas",
+           "mechanical or repetitive linking (the same linker again, a linker opening every sentence)",
+           "unclear referencing (this / it / they with no clear antecedent)",
+           "an order of ideas that breaks the progression"],
+    "LR": ["a wrong word or collocation among the CHECKED MISTAKES", "repetition where range is expected",
+           "a word whose register doesn't fit"],
+    "GRA": ["a grammar error among the CHECKED MISTAKES", "a narrow range of structures"],
+}
+
+
+def checklist_text(task_type: str) -> str:
+    lines = ["CHECKLIST - run it on every criterion BEFORE choosing its band: answer every item (found or not; "
+             "when found, quote the words that show it). A found item is a reason for a band below 9; a band of "
+             "9 means you looked and found none. Only real problems count - never anything listed as "
+             "ACCEPTABLE AS WRITTEN."]
+    for key, name in (("TR_or_TA", "Task Achievement" if task_type == "task1" else "Task Response"),
+                      ("CC", "Coherence & Cohesion"), ("LR", "Lexical Resource"), ("GRA", "Grammar")):
+        items = CHECKLISTS[key][task_type] if key == "TR_or_TA" else CHECKLISTS[key]
+        lines.append(f"{name}: " + "; ".join(items) + ".")
+    return "\n".join(lines)
+
 
 def marking_guide() -> str:
     """The marking guide, its density thresholds from config/writing_marking.json (academic lead)."""
@@ -515,8 +548,10 @@ def _scoring_system(task_type: str, kind: str | None = None, answer: str = "") -
         marking_guide(),
         extra,
         anchors_text(task_type, kind, answer),
-        f"{check} For each criterion (TR_or_TA = {first}) give the strengths, then the weaknesses, then "
-        "the whole band and the note. The student is an ESL learner, but that never changes a band.",
+        checklist_text(task_type),
+        f"{check} For each criterion (TR_or_TA = {first}) answer its checklist, then give the strengths, the "
+        "weaknesses, the whole band and the note - a note for a Band 9 names what works, never a criticism. The "
+        "student is an ESL learner, but that never changes a band.",
     ]
     return "\n\n".join(p for p in parts if p)
 
@@ -561,10 +596,23 @@ overstated words, verb-pattern errors, linking that doesn't fit the logic, a con
 contradicts the body;
 - slip: wrong, but a one-off small mistake the writer clearly controls elsewhere in the text - a \
 missing full stop, "Overtime" for "Over time", "feeling of loneliness" for "feelings", a single article \
-or plural slip, a typo. When the same pattern comes back, each one is an error;
+or plural slip ("Czech Republic" without "the" while "the US" is right; "such society" where the text \
+also writes "such a scenario"), a pronoun or "one" that doesn't agree with a plural several words back \
+("teenagers want gadgets ... not because they want it", "fixing the previous one" for items), a word \
+left out where the meaning stays obvious ("doctors $50,000 and other $25,000" for "other workers"; \
+"not only of land but also water"), a particle or an idiom's word slightly off while the meaning is \
+plain ("disposed into the oceans" for "disposed of in", "to make the case worse" for "matters" - the \
+academic lead's rulings), a typo. The test is control: when the text gets the same point \
+right elsewhere, it is a slip; only a pattern that is wrong every time it comes up is an error. A verb \
+that doesn't agree with its subject ("people doesn't", "this turn of events are") is always an error;
 - alternative: acceptable as written - another option is only more common, more idiomatic or more \
 precise ("services are accessible at night" for "open", "eating regimes", "a positive trend", \
-"inconceivable" where "unimaginable" would do). It is no mistake: it never counts;
+"inconceivable" where "unimaginable" would do, "the most inevitable consequence" - an absolute \
+adjective intensified in its common, clear sense). A near-synonym in a familiar pattern that a reader \
+understands at once is an alternative, not a miscollocation (the academic lead's rulings: "a positive \
+tendency", "at certain parts of the day", "sleep regimes", "certain people's freedoms", "shops are \
+available"): call a collocation an error only when an educated native reader would find it wrong, not \
+when another word is merely more frequent. It is no mistake: it never counts;
 - not_a_mistake: correct as written and the suggestion is no better; or the correction CHANGES WHAT \
 THE STUDENT MEANT, or does NOT FIT BACK into the sentence (put it in place of the wrong part and read \
 the sentence: no doubled or missing words); or you are not sure it is wrong - the student gets the \
@@ -572,7 +620,14 @@ benefit of the doubt.
 
 Before calling anything an error or a slip, read the whole sentence: a verb may correctly continue an \
 earlier verb phrase ("people start using it and spend hours" is right), a negative or future form may \
-be correct as it stands. These are never an error or a slip: a style preference or valid variant (a \
+be correct as it stands. Correct, so never an error or a slip: a plural for several items of a kind \
+("declines in outputs" of several products); a perfect infinitive after seem / appear ("seemed to have \
+thrived"); an idiom used in its usual sense ("plant the seed of"); "develop their economy" (one economy \
+per country); a fixed expression that keeps its present form in a past account ("the former had an edge \
+when it comes to other workers", "as far as pay is concerned") - no tense shift; a plural verb after \
+"X along with / coupled with / together with Y" (the academic lead accepted "The automotive industry along \
+with the smartphone market are both a testament"). When one flagged stretch holds a single real error, only that error counts ("the football" \
+-> "football" - the correct words around it are not wrong). These are never an error or a slip: a style preference or valid variant (a \
 demonstrative for an article, a near-synonym, "ranging from X to Y", a plainer word, an optional comma, \
 British vs American usage); the QUESTION'S OWN WORDS; a PROPER NAME as its owner writes it ("Malala \
 Fund"); an expression whose CONNOTATION matches the writer's intent ("fraught with" before harmful \
@@ -602,8 +657,9 @@ VOCABULARY (when listed): the words the report teaches the student, each with it
 example. For each give its index; meaning = the standard dictionary meaning in plain words only when \
 the given one is wrong, incomplete in a misleading way or backwards ("built-in redundancy" is extra \
 parts added so that a system keeps working when one fails - never "parts designed to fail"), else \
-null; example = a rewritten example only when it misuses the term or carries a CHECK (it disagrees \
-with the DATA SHEET - rewrite it with the sheet's figures and true comparisons), else null.
+null; example = a rewritten example only when it misuses the term (a "slump" is a sudden, sharp fall - \
+never a steady decline) or carries a CHECK (it disagrees with the DATA SHEET - rewrite it with the \
+sheet's verified figures and true comparisons), else null.
 
 Judge each item on its own; give a short reason. Return a verdict for every id."""
 
@@ -828,27 +884,29 @@ def cap_bands(task_type: str, answer_text: str, bands: dict[str, float], notes: 
     return bands, notes, capped, notices
 
 
-_OMISSION = re.compile(r"\b(omit\w*|missing|leaves? out|left out|not (?:mention|cover|describ|includ)\w*|"
+_OMISSION = re.compile(r"\b(omit\w*|omission|missing|leaves? out|left out|not (?:mention|cover|describ|includ)\w*|"
                        r"(?:doesn't|does not|never) (?:mention|cover|describe|include|state|give)\w*|no mention|"
-                       r"absent|no overview|ignor\w*|skips?)\b", re.IGNORECASE)
+                       r"absen\w*|lacks?|lacking|no overview|ignor\w*|skips?)\b", re.IGNORECASE)
 _QUOTED = re.compile(r"[\"“«']([^\"”»']{2,120})[\"”»']")
 
 
 def evidenced(weaknesses: list[str], answer_text: str, acceptable: list[str] = ()) -> bool:
     """Does a criterion's list of weaknesses quote the answer or name an
-    omission? A band below 9 without that is a 9 (the academic lead,
-    2026-10-27 for an 8, 2026-10-29 for every band: "could be richer" and
-    "not fully developed" lowered Band 9 reports). A quote of something the
-    filter found acceptable as written (`acceptable`) is no reason."""
+    omission? An 8 without that is a 9 (the academic lead, 2026-10-27:
+    "could be richer" and "not fully developed" lowered Band 9 reports). A
+    quote of something the filter found acceptable as written (`acceptable`)
+    is no reason."""
     low = canon(answer_text).lower()
     fine = [canon(a).lower().strip(" .,") for a in acceptable if a.strip()]
     for w in weaknesses:
         if _OMISSION.search(w):
             return True
-        for q in _QUOTED.findall(w):
-            q = canon(q).lower().strip(" .,")
-            if len(q) >= 2 and q in low and not any(q in a or a in q for a in fine):
-                return True
+        for quoted in _QUOTED.findall(w):
+            # a quote shortened with "..." counts by its pieces ("In 2005... In 2011... By 2015,")
+            for q in re.split(r"\s*(?:\.\.\.|…)\s*", canon(quoted).lower()):
+                q = q.strip(" .,")
+                if len(q) >= 2 and q in low and not any(q in a or a in q for a in fine):
+                    return True
     return False
 
 
@@ -873,9 +931,17 @@ async def _score_once(task_type, prompt_text, answer_text, prompt_images, sheet:
         raise RuntimeError("Scoring model returned no parsable result")
     out: dict = {k: whole_band(getattr(scores, k).band) for k in SCORE_KEYS}
     for k in SCORE_KEYS:
-        if out[k] < 9 and not evidenced(getattr(scores, k).weaknesses, answer_text, acceptable):
-            logger.info("Score %s %g -> 9: no quoted weakness or named omission (%s)", k, out[k],
-                        getattr(scores, k).weaknesses)
+        judged = getattr(scores, k)
+        found = [f'"{c.quote}"' for c in judged.checklist if c.found and c.quote.strip()]
+        looked = len(judged.checklist) >= len(CHECKLISTS[k][task_type] if k == "TR_or_TA" else CHECKLISTS[k])
+        if out[k] == 9 and found and evidenced(found, answer_text, acceptable):
+            logger.info("Score %s 9 -> 8: its checklist found %s", k, found)
+            out[k] = 8.0
+        elif out[k] == 8 and looked and not evidenced(judged.weaknesses + found, answer_text, acceptable):
+            # only an 8 is lifted: a 6 or 7 whose reason came back unquoted stays (2026-10-29: #60's and
+            # #62's Coherence 6-7 -> 9 with "linking is basic and repetitive" as their reason)
+            logger.info("Score %s %g -> 9: no quoted weakness or named omission, checklist clear (%s)", k, out[k],
+                        judged.weaknesses)
             out[k] = 9.0
     out["_notes"] = {k: getattr(scores, k).note.strip() for k in SCORE_KEYS}
     return out
@@ -883,6 +949,102 @@ async def _score_once(task_type, prompt_text, answer_text, prompt_images, sheet:
 
 _EVIDENCE_NAMES = (("GRA", "Grammar (GRA)"), ("LR", "Vocabulary (LR)"), ("CC", "Coherence (CC)"),
                    ("TR", "Task (TR)"))
+
+
+def _tokens(text: str) -> list[str]:
+    return re.findall(r"[\w'$%]+", canon(text).lower())
+
+
+def _edits(m) -> list[tuple]:
+    """A correction's changes: (words taken out, words put in, the word after them)."""
+    a, b = _tokens(m.wrong), _tokens(m.correct)
+    return [(tuple(a[i1:i2]), tuple(b[j1:j2]), a[i2] if i2 < len(a) else "")
+            for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, a, b, autojunk=False).get_opcodes()
+            if tag != "equal"]
+
+
+def _change(m) -> tuple:
+    """What a correction changes first ("Czech Republic" -> "the Czech
+    Republic" and "Italy, Czech Republic" -> "Italy, the Czech Republic"
+    make one change)."""
+    return (_edits(m) or [((), (), "")])[0]
+
+
+def lead_accepted(wrong: str) -> str | None:
+    """The wording the academic lead accepted (config "accepted") that a
+    flag is about: it is in the flagged words, or the flagged words are a
+    part of it ("are both a testament to this")."""
+    low = canon(wrong).lower().strip(" .,")
+    for phrase in marking_config.accepted_phrases():
+        p = canon(phrase).lower().strip(" .,")
+        if p and (p in low or (len(low) >= 12 and low in p)):
+            return phrase
+    return None
+
+
+_ARTICLES = {"a", "an", "the"}
+_NUMBER = {("it", "them"), ("one", "ones"), ("this", "these"), ("that", "those"), ("other", "others"),
+           ("its", "their"), ("another", "other")}
+_AGREEMENT = {("doesn't", "don't"), ("does", "do"), ("is", "are"), ("was", "were"), ("has", "have"),
+              ("isn't", "aren't"), ("wasn't", "weren't"), ("hasn't", "haven't")}
+ARTICLE_SLIPS_MAX = 2  # a third article left out or wrong: the writer doesn't control articles
+
+
+def small_kind(m) -> str | None:
+    """'punctuation', 'article' or 'number' when a correction changes only
+    that - the academic lead's slips ("a missing full stop", "a single
+    article or plural slip"; 2026-10-29, #66's "such society", "the previous
+    one", "they want it" were kept as errors). A verb's agreement ("people
+    doesn't", "this turn of events are") is none of them: an error."""
+    edits = _edits(m)
+    if not edits:
+        return "punctuation" if canon(m.wrong) != canon(m.correct) else None
+    if len(edits) != 1:
+        return None
+    out, put, after = edits[0]
+    if len(out) <= 1 and len(put) <= 1 and set(out + put) <= _ARTICLES and set(out + put) != {"a", "an"}:
+        return "article"  # "an useful" -> "a useful" is the article's form, not its use: an error
+    if len(out) == len(put) == 1 and ((out[0], put[0]) in _NUMBER or (put[0], out[0]) in _NUMBER):
+        return "number"
+    if len(out) == len(put) == 1 and after == "of" and (put[0] in (out[0] + "s", out[0] + "es")
+                                                       or out[0] in (put[0] + "s", put[0] + "es")):
+        return "number"  # "feeling of worthlessness" -> "feelings of": a noun's number
+    if len(out) == len(put) == 1 and ((out[0], put[0]) in _AGREEMENT or (put[0], out[0]) in _AGREEMENT):
+        return "agreement"
+    return None
+
+
+def small_slips(checked: list) -> list[str]:
+    """Marks as slips the checked errors whose correction is only a full
+    stop, an article or a pronoun's number - unless articles go wrong more
+    than ARTICLE_SLIPS_MAX times (then the writer doesn't control them) -
+    and as an error a verb's agreement the filter called a slip. Never a
+    Task (data) mistake. Returns what it changed, for the log."""
+    kinds = [small_kind(m) if m.criterion != "TR" else None for m in checked]
+    articles = sum(k == "article" for k in kinds)
+    changed = []
+    for m, k in zip(checked, kinds):
+        if k == "agreement":  # "people doesn't": an error, whatever the filter said (T9, 2026-10-29)
+            if m.severity == "slip":
+                m.severity = "error"
+                changed.append(f"{m.wrong!r} (a verb's agreement: an error)")
+        elif k and m.severity == "error" and not (k == "article" and articles > ARTICLE_SLIPS_MAX):
+            m.severity = "slip"
+            changed.append(f"{m.wrong!r} ({k})")
+    return changed
+
+
+def distinct_slips(slips: list) -> list[tuple]:
+    """(slip, how many times) - the same slip made again counts once (the
+    academic lead, 2026-10-29: "the Czech Republic" left without "the" twice
+    and "other" for "others" are 2 slips, not 3)."""
+    seen: dict[tuple, list] = {}
+    for m in slips:
+        key = _change(m)
+        if key == ((), (), ""):
+            key = (canon(m.wrong).lower(), canon(m.correct).lower())
+        seen.setdefault(key, [m, 0])[1] += 1
+    return [(m, n) for m, n in seen.values()]
 
 
 def mistake_evidence(answer_text: str, mistakes: list, strong: list[str], alternatives: list[dict] = ()) -> str:
@@ -901,11 +1063,12 @@ def mistake_evidence(answer_text: str, mistakes: list, strong: list[str], altern
         if not mine:
             lines.append(f"- {name}: none.")
             continue
-        slips = [m for m in mine if getattr(m, "severity", "error") == "slip"]
-        errors = [m for m in mine if m not in slips]
+        slips = distinct_slips([m for m in mine if getattr(m, "severity", "error") == "slip"])
+        errors = [m for m in mine if getattr(m, "severity", "error") != "slip"]
         weighted = (len(errors) + len(slips) * weight) * 100 / words
         listed = "; ".join([f"«{m.wrong}» -> «{m.correct}»" for m in errors[:12]]
-                           + [f"«{m.wrong}» -> «{m.correct}» (slip)" for m in slips[:6]])
+                           + [f"«{m.wrong}» -> «{m.correct}» (slip{', ' + str(n) + ' times' if n > 1 else ''})"
+                              for m, n in slips[:6]])
         lines.append(f"- {name}: {len(errors)} errors, {len(slips)} slips = {weighted:.1f} weighted per 100 words: "
                      f"{listed}")
     if alternatives:
@@ -936,18 +1099,28 @@ def floors(task_type: str, answer_text: str, bands: dict[str, float], checked: l
     for key in ("LR", "GRA"):
         mine = [m for m in checked if m.criterion == key]
         errors = [m for m in mine if getattr(m, "severity", "error") != "slip"]
-        least = f["slips_only_min"] if not errors else 0
-        if key == "LR" and not any(getattr(m, "unclear", False) for m in mine):
-            density = (len(errors) + (len(mine) - len(errors)) * weight) * 100 / words
-            if density <= marking_config.density()["band7_max"]:
-                least = max(least, f["clear_vocabulary_lr_min"])
+        density = (len(errors) + len(distinct_slips([m for m in mine if m not in errors])) * weight) * 100 / words
+        least, why = (f["slips_only_min"], "only slips") if not errors else (0, "")
+        clear = not any(getattr(m, "unclear", False) for m in mine)
+        if clear and density <= marking_config.density()["band8_max"] and f.get("band8_density_min", 0) > least:
+            least, why = f["band8_density_min"], f"{density:.2f} per 100 words, within Band 8"
+        if key == "LR" and clear and density <= marking_config.density()["band7_max"] \
+                and f["clear_vocabulary_lr_min"] > least:
+            least, why = f["clear_vocabulary_lr_min"], "clear, wide vocabulary"
         if out[key] < least:
-            raised.append(f"{key} {out[key]:g} -> {least:g} ({'only slips' if not errors else 'clear, wide vocabulary'})")
+            raised.append(f"{key} {out[key]:g} -> {least:g} ({why})")
             out[key] = float(least)
     return out, raised
 
 
 FLOOR_NOTES = {"LR": "Wide, precise vocabulary; only minor slips.", "GRA": "Wide range of structures; only minor slips."}
+NINE_NOTES = {"TR_or_TA": {"task1": "Clear overview; every key feature covered precisely.",
+                           "task2": "Every part answered; ideas fully developed and supported."},
+              "CC": "Seamless organisation; linking that never draws attention.",
+              "LR": "Wide, precise and natural vocabulary.", "GRA": "Wide range of structures, used accurately."}
+_CRITICISM = re.compile(r"\b(?:could|should|but|though|although|however|slightly|minor|lapses?|lacks?|limited|"
+                        r"occasional|sharper|clearer|more|less|a few|some|weak\w*|errors?|slips?|missing)\b",
+                        re.IGNORECASE)
 
 
 async def decide_scores(
@@ -981,6 +1154,8 @@ async def decide_scores(
     for k in SCORE_KEYS:
         notes[k] = next((r["_notes"][k] for r in runs if whole_band(r[k]) == medians[k] and r["_notes"].get(k)),
                         FLOOR_NOTES.get(k, ""))
+        if medians[k] >= 9 and _CRITICISM.search(notes[k]):  # "grouping could be sharper" under a 9
+            notes[k] = NINE_NOTES[k][task_type] if k == "TR_or_TA" else NINE_NOTES[k]
     bands, notes, capped, notices = cap_bands(task_type, answer_text, medians, notes,
                                               data_visual(prompt_text, visual) if task_type == "task1" else True)
     if capped:
@@ -1120,6 +1295,10 @@ async def grade_writing(
         the upgrade ideas, anything else goes; a data correction off the sheet
         keeps only its sheet-checked rewrite."""
         kind, crit, reason, fixed = verdict
+        ruled = lead_accepted(item.wrong) if kind in ("error", "slip") and crit != "TR" else None
+        if ruled:
+            logger.info("%s is an alternative: the academic lead accepted %r (the filter said %s)", label, ruled, kind)
+            kind, reason = "alternative", f"Acceptable as written; «{item.correct}» is only a more common option."
         keep, correct = kind in ("error", "slip"), item.correct
         if kind == "alternative" and crit != "TR":
             alternatives.append({"wrong": item.wrong, "correct": item.correct, "why": reason, "criterion": crit})
@@ -1209,6 +1388,8 @@ async def grade_writing(
     checked += [SimpleNamespace(wrong=x.wrong, correct=x.correct, criterion=x.criterion, severity=sev,
                                 unclear=x.unclear)
                 for x, sev in zip(kept_missed, missed_severity)]
+    for note in small_slips(checked):
+        logger.info("Severity by its correction: %s", note)
     strong = [seg.text.strip() for paragraph in feedback.essay for seg in paragraph if seg.type == "good"]
     scores = await decide_scores(task_type, prompt_text, answer_text, prompt_images, sheet,
                                  mistake_evidence(answer_text, checked, strong, alternatives), visual,
@@ -1217,6 +1398,9 @@ async def grade_writing(
     # answer and the report teach the same list (the last prompt's B2).
     feedback, priority_notes = drop_priorities(
         feedback, dropped, [m.wrong for m in feedback.mistakes if m.id not in dropped] + [x.wrong for x in kept_missed])
+    if task_type == "task1" and visual:
+        feedback, tip_notes = true_tips(feedback, example_check)
+        priority_notes += tip_notes
     for note in priority_notes:
         logger.info("Feedback: %s", note)
     if on_feedback is not None:
@@ -1231,6 +1415,20 @@ async def grade_writing(
     if report.notes:
         logger.info("Report validation: %s", "; ".join(report.notes))
     return report
+
+
+def true_tips(feedback: WritingFeedback, check) -> tuple[WritingFeedback, list[str]]:
+    """Task 1: a next-band tip whose rule or example makes a data claim the
+    sheet doesn't bear out goes (#105: "Germany was about a half" - the
+    student's one-third was right), with its checklist lines; the rest are
+    numbered again."""
+    bad = {i for i, p in enumerate(feedback.priorities[:3], 1)
+           if p.type == "tip" and check(f"{p.rule} {p.example_right}")}
+    if not bad:
+        return feedback, []
+    notes = [f"tip {i} dropped - its data claim disagrees with the chart: {feedback.priorities[i - 1].title!r}"
+             for i in sorted(bad)]
+    return without_priorities(feedback, bad), notes
 
 
 def _vocabulary_fixed(feedback: WritingFeedback, fixes: dict, example_check) -> WritingFeedback:

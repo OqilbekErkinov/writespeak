@@ -359,6 +359,14 @@ def _scale_step(labels: list[str]) -> float | None:
     return min(gaps) if gaps else None
 
 
+def _same_scale(read_step: float, step: float) -> bool:
+    """Do the reads' axis labels give the printed scale? Labels every second
+    or fifth gridline do (10 for a printed 5); 25 for a printed 15 doesn't
+    (#61: 0-225 read for 0-255) - its figures are off in proportion."""
+    ratio = max(read_step, step) / max(min(read_step, step), 1e-9)
+    return abs(ratio - round(ratio)) <= 0.02 * ratio
+
+
 def _granularity(step: float) -> float:
     """How finely a measured figure is given: the largest of 1, 2, 2.5 and 5
     (times a power of ten) within an eighth of the axis step - 245 on a
@@ -370,10 +378,15 @@ def _granularity(step: float) -> float:
     return max(m * power for m in (1, 2, 2.5, 5, 10) if m * power <= target * 1.0001)
 
 
+FAR_STEPS = 1.5  # a measurement this many gridline steps from every read is not trusted over them
+
+
 def apply_measured(sheet: VisualSheet, results: dict) -> VisualSheet:
     """The reads' figures replaced by the measured ones (chart_measure.measure):
     the academic lead's rule (2026-10-29) - a measurement, where there is
-    one, stands over the reads. A figure a code check made uncertain (look-
+    one, stands over the reads - unless every read lies more than FAR_STEPS
+    gridline steps from it: then the measurement more likely failed (#107)
+    and the third read decides. A figure a code check made uncertain (look-
     alike legend patterns, a missing bar) stays so. When the reads took the
     axis for another scale than the one printed (#61: 0-225 for 0-255) the
     axis labels are set right too. Precision stays the scale's own - a
@@ -383,7 +396,8 @@ def apply_measured(sheet: VisualSheet, results: dict) -> VisualSheet:
     for i, res in results.items():
         block = out.blocks[i]
         read_step = _scale_step(block.axis_labels)
-        if read_step is not None and abs(read_step - res.step) > 1e-6 * max(1.0, res.step):
+        wrong_scale = read_step is not None and not _same_scale(read_step, res.step)
+        if wrong_scale:
             misread.append(f"{block.title or block.visual_type}: the reads gave a step of {read_step:g}, "
                            f"the printed axis {res.step:g}")
             block.axis_labels = [f"{v:g}" for v in np.arange(res.low, res.high + res.step / 2, res.step)]
@@ -398,6 +412,15 @@ def apply_measured(sheet: VisualSheet, results: dict) -> VisualSheet:
                 continue  # a code check's doubt, which a measurement doesn't answer
             value = round(round(m.value / grain) * grain, 6)
             read = f"{reads.group(1)} / {reads.group(2)}" if reads else f"{v.value:g}"
+            readings = [float(reads.group(1)), float(reads.group(2))] if reads else [v.value]
+            if not wrong_scale and all(abs(m.value - r) > FAR_STEPS * res.step for r in readings):
+                # every read far from the measurement - more likely a failed measurement (#107: a
+                # striped bar measured 18 for 90) than reads that both missed: the third read decides
+                v.value, v.status = (readings[0] + value) / 2, "uncertain"
+                v.precision = own + abs(readings[0] - value) / 2
+                v.note = f"the reads disagree: {readings[0]:g} vs {value:g}"
+                apart.append(f"{v.series} {v.point}: read {read}, measured {value:g} - left to the third read")
+                continue
             if abs(m.value - v.value) > max(v.precision, own):
                 apart.append(f"{v.series} {v.point}: read {read}, measured {value:g}".replace("  ", " "))
             v.value, v.precision, v.status = value, own, "verified"
@@ -549,7 +572,7 @@ async def check_report_figures(answer: str, visual: dict, question: str,
     ("accepted_figures"); one that two readings contradict is listed in
     "confirmed_wrong"; one the sheet, the re-read and the student agree on is
     correct ("agreed_figures"). Years and ratio words are not re-read."""
-    from services.ai.visual_check import figure_agrees, figures, find_cell, is_difference, match_figure
+    from services.ai.visual_check import figure_agrees, figures, find_cell, is_difference, match_figure, named_cells
 
     visual = copy.deepcopy(visual)
     accepted, confirmed, agreed, reads = [], [], [], 0
@@ -565,6 +588,17 @@ async def check_report_figures(answer: str, visual: dict, question: str,
         got = await read_one(question, images, fig["sentence"], fig["text"])
         value = None if got is None or not got.found else (0.0 if got.missing else got.value)
         cell = find_cell(visual, got.series, got.point) if got is not None and got.found else None
+        named = named_cells(fig, visual)
+        truth = [c for c in named if c.get("value") is not None and (
+            visual.get("chart_key") or str(c.get("note", "")).startswith("measured"))]
+        if (value is None or cell is None) and truth and len(truth) == len(named) \
+                and not any(figure_agrees(fig, c["value"], c.get("precision") or 0.0) for c in truth):
+            # the re-read can't tie it to one cell, but every cell the sentence names is
+            # measured (or checked) and none agrees: "In 2011, the United States, Brazil and
+            # Japan rose to 6%" against 26, 13 and 18 (#62)
+            confirmed.append(fig["text"])
+            logger.info("Focused re-read of %s: no one cell; the %d cells named disagree", fig["text"], len(truth))
+            continue
         if cell is not None and cell.get("value") is not None and (
                 visual.get("chart_key") or str(cell.get("note", "")).startswith("measured")):
             # a checked answer key, or a figure measured from the picture, is the

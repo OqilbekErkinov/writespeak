@@ -283,6 +283,19 @@ def speaking_config() -> dict:
     return _load_json(CONFIG) or {}
 
 
+def lead_accepted(wrong: str) -> str | None:
+    """The spoken wording the academic lead ruled no mistake (config
+    "accepted") that a flag is about."""
+    from services.ai.essay_marking import canon
+
+    low = canon(wrong).lower().strip(" .,")
+    for phrase in speaking_config().get("accepted", {}).get("phrases", []):
+        p = canon(phrase).lower().strip(" .,")
+        if p and (p in low or (len(low) >= 12 and low in p)):
+            return phrase
+    return None
+
+
 def anchors_text() -> str:
     """Recordings with their OFFICIAL IELTS band, as the scoring prompt shows
     them (verbatim transcripts, fillers and restarts included - they earned
@@ -528,8 +541,8 @@ async def score_session(part: str, items: list[SessionItem], ev: Evidence, evide
     """(the median of SCORE_RUNS scoring runs, whole bands {"FC", "LR",
     "GRA", "P"}; each band's note, from a run that gave it). `evidence`: the
     checked mistakes (mistake_evidence); `acceptable`: what was found
-    acceptable as said - quoting it is no reason for a band. A band below 9
-    whose weaknesses quote nothing real is a 9."""
+    acceptable as said - quoting it is no reason for a band. An 8 whose
+    weaknesses quote nothing real is a 9."""
     from services.ai.writing_grader import evidenced  # the same rule as Writing's
 
     spoken = " ".join(item.audio.text for item in items)
@@ -549,7 +562,7 @@ async def score_session(part: str, items: list[SessionItem], ev: Evidence, evide
         for k in ("FC", "LR", "GRA"):
             j = getattr(parsed, k)
             out[k] = whole_band(j.band)
-            if out[k] < 9 and not evidenced(j.weaknesses, spoken, acceptable):
+            if out[k] == 8 and not evidenced(j.weaknesses, spoken, acceptable):  # only an 8, as in Writing
                 logger.info("Speaking %s %g -> 9: no quoted weakness (%s)", k, out[k], j.weaknesses)
                 out[k] = 9.0
             out["_notes"][k] = j.note.strip()
@@ -787,6 +800,8 @@ async def grade_speaking(part: str, items: list[SessionItem], ev: Evidence, prac
                 logger.info("Speaking %s %s set aside: a self-correction (%r)", label, key, m.wrong)
                 continue
             kind, reason = verdict_of.get(key, ("error", ""))
+            if kind in ("error", "slip") and (ruled := lead_accepted(m.wrong)):
+                kind, reason = "not_a_mistake", f"the academic lead accepted {ruled!r}"
             if kind not in ("error", "slip"):
                 kept_ids.add(key)
                 logger.info("Speaking %s %s set aside (%s): %s", label, key, kind, reason)

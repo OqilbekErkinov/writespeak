@@ -236,6 +236,30 @@ def _in_labels(f: float, labels: set[float]) -> bool:
     return any(abs(f - x * s) <= 1e-9 * max(1.0, abs(f)) for x in labels for s in (1, 1e3, 1e6, 1e9))
 
 
+def _naming(fig: dict, vals: list[dict]) -> tuple[set[str], set[str]]:
+    """The categories and points named just before a figure."""
+    near = _key(fig.get("before", fig.get("context", "")))
+    tight = _key(fig.get("tight", fig.get("before", "")))
+    series_named = _named_among({v["series"] for v in vals}, near, tight)
+    points_named = _named_among({v["point"] for v in vals}, near, tight)
+    if not points_named and fig.get("lead"):
+        # a year the sentence opens with, no figure in between: "In 2011, ... rose to 6%" is 2011's
+        years = {v["point"] for v in vals if _YEAR.fullmatch(v["point"].strip())}
+        points_named = _named_among(years, _key(fig["lead"]), _key(fig["lead"]))
+    return series_named, points_named
+
+
+def named_cells(fig: dict, reading: dict | None) -> list[dict]:
+    """The cells a figure names by both category and point ("In 2011, ...
+    the United States, Brazil and Japan rose to 6%": the three 2011 cells)."""
+    out = []
+    for b in (reading or {}).get("blocks", []):
+        vals = _values(b)
+        series_named, points_named = _naming(fig, vals)
+        out += [v for v in vals if v["series"] in series_named and v["point"] in points_named]
+    return out
+
+
 def match_figure(fig: dict, reading: dict | None, question: str) -> str:
     """'raw' | 'raw-uncertain' | 'derived' | 'label' | 'miss' - `reading` is
     a VisualSheet as a dict (model_dump)."""
@@ -274,8 +298,6 @@ def match_figure(fig: dict, reading: dict | None, question: str) -> str:
     # A figure is compared with the categories named just before it ("Sport rose
     # from 15% to 25%"): a wrong figure that happens to be another category's
     # is not "found". With no category named nearby, any figure counts.
-    near = _key(fig.get("before", fig.get("context", "")))
-    tight = _key(fig.get("tight", fig.get("before", "")))
     # A level is no difference: "rose to 6%", "stood at 6%" give a figure, not the gap
     # between two others (#95's "6%" passed as 18 - 13); "a gap of", "rose by",
     # "6% higher than" do - and a change is worked out from its category's own figures.
@@ -285,12 +307,7 @@ def match_figure(fig: dict, reading: dict | None, question: str) -> str:
     pools = []  # per visual: (the figures this one may be, whether a category was named)
     for b in blocks:
         vals = _values(b)
-        series_named = _named_among({v["series"] for v in vals}, near, tight)
-        points_named = _named_among({v["point"] for v in vals}, near, tight)
-        if not points_named and fig.get("lead"):
-            # a year the sentence opens with, no figure in between: "In 2011, ... rose to 6%" is 2011's
-            years = {v["point"] for v in vals if _YEAR.fullmatch(v["point"].strip())}
-            points_named = _named_among(years, _key(fig["lead"]), _key(fig["lead"]))
+        series_named, points_named = _naming(fig, vals)
         both = [v for v in vals if v["series"] in series_named and v["point"] in points_named]
         if both:  # "doctors in the US": that cell only (a sum of two other cells is no match)
             named = both
@@ -466,6 +483,9 @@ def protected_mistake(wrong: str, correct: str, why: str, reading: dict | None, 
     if not reading:
         return False
     figs = figures(wrong)
+    if any(f["text"] in set(reading.get("confirmed_wrong") or []) for f in figs):
+        # matched again out of its sentence, "rose to 6%" passes as another cell's 6 (#62)
+        return False
     if any(f["text"] in unchecked for f in figs):
         return True
     agreed = set(reading.get("agreed_figures") or [])  # the sheet, a focused re-read and the student agree

@@ -409,7 +409,7 @@ def _plot(img: np.ndarray, tokens: list[Token], axis: Axis, left: float, right: 
     axis = _on_gridlines(img, axis, x0, x1)
     step = axis.step_px
     y0 = int(max(0, axis.pos(axis.high) - 0.7 * step))
-    y1 = int(min(h, axis.pos(axis.low) + 0.25 * step))
+    y1 = int(min(h, axis.pos(min(axis.low, _base_value(axis))) + 0.25 * step))  # down to where bars stand
     if x1 - x0 < 20 or y1 - y0 < 20:
         return None
     area = img[y0:y1, x0:x1].astype(int)
@@ -691,8 +691,12 @@ def trace(mask: np.ndarray, plot: Plot, xs: list[float], guesses: list[float | N
         for y, colour in _candidates(mask, plot, x, img, join):
             if g is not None and abs(y - g) > window:
                 continue
-            if g is not None and rivals and any(abs(y - r) < abs(y - g) for r in rivals[i]):
-                continue  # nearer another series' figure: that series' line (v1-p052: dotted England on grey Germany)
+            if g is not None and rivals and any(abs(y - r) < abs(y - g) and abs(r - g) > 0.5 * step
+                                                for r in rivals[i]):
+                # nearer another series' figure, which the reads set apart from this one: that series'
+                # line (v1-p052: dotted England on grey Germany) - where the reads put two series
+                # together, the lines cross and the run is both (#106's 1990)
+                continue
             c = 0.0 if g is None else 0.5 * ((y - g) / sigma) ** 2
             if own is not None and len(others):
                 mine = float(np.linalg.norm(colour - own))
@@ -830,12 +834,23 @@ class Bar:
         return (self.x0 + self.x1) / 2
 
 
+def _base_value(axis: Axis) -> float:
+    """Where bars stand: 0 when the axis shows it - or when its lowest label is
+    one step above 0, the "0" the OCR missed (#105: bars of exactly 20 on a
+    0-140 axis read as 20-140 were never seen) - else the lowest label."""
+    if axis.low <= 0 <= axis.high or abs(axis.low - axis.step) < 1e-6 * max(1.0, axis.step):
+        return 0.0
+    return axis.low
+
+
 def find_bars(img: np.ndarray, plot: Plot, min_width: float) -> list[Bar]:
     """Every bar standing on the base (0 when the axis shows it, else its
     lowest label): runs of one colour along a row just above the base, each
-    followed up while its colour lasts."""
+    followed up while its colour lasts - and, for a bar filled with a pattern
+    (stripes, dots: #107's 2006 bars came out 18 for 90), while the pattern
+    lasts. Pieces of one patterned bar the scan row cut apart are joined."""
     axis = plot.axis
-    base = axis.pos(0.0) if axis.low <= 0 <= axis.high else axis.pos(axis.low)
+    base = axis.pos(_base_value(axis))
     scan = int(round(base - max(2.0, 0.12 * axis.step_px)))
     if not plot.y0 + 2 <= scan < plot.y1:
         return []
@@ -847,13 +862,16 @@ def find_bars(img: np.ndarray, plot: Plot, min_width: float) -> list[Bar]:
         if same and start is None:
             start = i
         elif not same and start is not None:
-            if i - start >= min_width:
+            if i - start >= 2:
                 runs.append((start, i - 1))
             start = i if i < len(row) and drawn[i] else None
+    runs = _joined_pieces(runs, min_width)
     out = []
     for s, e in runs:
         inner = slice(plot.x0 + s + (e - s) // 5, plot.x0 + e - (e - s) // 5 + 1)
         colour = np.median(img[scan - 2:scan + 1, inner].reshape(-1, 3), axis=0)
+        if np.abs(colour - plot.background).max() < 1.5 * INK:
+            continue  # barely off the paper: an axis line's soft edge on a turned picture, not a bar (#107)
         top, misses = scan, 0
         for y in range(scan - 1, plot.y0 - 1, -1):
             share = (_colour_dist(img[y, inner], colour) < 50).mean()
@@ -863,14 +881,57 @@ def find_bars(img: np.ndarray, plot: Plot, min_width: float) -> list[Bar]:
                 misses += 1
                 if misses >= 2:
                     break
+        patterned = _pattern_top(img, plot, inner, scan)
+        if patterned is not None and patterned < top - max(3.0, 0.1 * axis.step_px):
+            top = patterned
         # an outline drawn round the bar: its top edge counts
-        for y in range(top - 1, max(plot.y0, top - 4) - 1, -1):
+        for y in range(int(top) - 1, max(plot.y0, int(top) - 4) - 1, -1):
             if (np.abs(img[y, inner].astype(int) - plot.background).max(axis=1) > 2 * INK).mean() >= 0.6:
                 top = y
             else:
                 break
-        out.append(Bar(plot.x0 + s, plot.x0 + e, colour, float(top)))
+        drawn_pixels = img[int(top):scan + 1, inner].reshape(-1, 3).astype(int)
+        ink = drawn_pixels[np.abs(drawn_pixels - plot.background).max(axis=1) > INK]
+        out.append(Bar(plot.x0 + s, plot.x0 + e, np.median(ink, axis=0) if len(ink) else colour, float(top)))
     return out
+
+
+def _joined_pieces(runs: list[tuple[int, int]], min_width: float) -> list[tuple[int, int]]:
+    """Runs along the scan row as bars: narrow pieces a patterned bar was cut
+    into (its stripes change colour) joined while they touch and together
+    stay within a usual bar's width; anything narrower than `min_width` left."""
+    if not runs:
+        return []
+    wide = [e - s + 1 for s, e in runs if e - s + 1 >= min_width]
+    usual = float(np.median(wide)) if wide else 0.0
+    out: list[tuple[int, int]] = []
+    for s, e in runs:
+        if out and s - out[-1][1] <= 2 and usual and (out[-1][1] - out[-1][0] + 1 < 0.8 * usual
+                                                     or e - s + 1 < 0.8 * usual) \
+                and e - out[-1][0] + 1 <= 1.15 * usual:
+            out[-1] = (out[-1][0], e)
+        else:
+            out.append((s, e))
+    return [(s, e) for s, e in out if e - s + 1 >= min_width]
+
+
+def _pattern_top(img: np.ndarray, plot: Plot, inner: slice, scan: int) -> float | None:
+    """The top of a bar by how much is drawn in it, row by row, smoothed over
+    a few rows - a striped or dotted fill is drawn in a third or more of
+    each stretch of rows up to its top; a gridline (one row) is not."""
+    rows = img[plot.y0:scan + 1, inner].astype(int)
+    if rows.size == 0:
+        return None
+    share = (np.abs(rows - plot.background).max(axis=-1) > INK).mean(axis=1)
+    k = 7
+    smooth = np.convolve(share, np.ones(k) / k, mode="same")
+    y = len(share) - 1
+    if smooth[y] < 0.3:
+        return None
+    while y > 0 and smooth[y - 1] >= 0.3:
+        y -= 1
+    drawn = np.where(share[y:y + k] > 0.15)[0]
+    return float(plot.y0 + y + (drawn[0] if len(drawn) else 0))
 
 
 # --- One block -------------------------------------------------------------------------------------------
@@ -889,10 +950,12 @@ def _values(block: dict) -> list[dict]:
 
 
 def _below(tokens: list[Token], plot: Plot) -> list[Token]:
-    """The labels under a plot's base, within its width."""
-    base = plot.axis.pos(plot.axis.low)
+    """The labels under a plot's base, within its width - by their edge nearest
+    the base: on a picture turned for horizontal bars a long category name
+    ("Czech Republic", #105) reaches far below it."""
+    base = plot.axis.pos(_base_value(plot.axis))
     height = float(np.median([t.h for t in plot.axis.labels]))
-    return [t for t in tokens if base - 0.3 * plot.axis.step_px < t.cy < base + 6 * height
+    return [t for t in tokens if base - 0.3 * plot.axis.step_px < t.y0 < base + 4 * height
             and plot.x0 - height < t.cx < plot.x1 + height]
 
 
@@ -984,7 +1047,9 @@ def measure_bars(img: np.ndarray, tokens: list[Token], plot: Plot, block: dict,
                 # clearly one series' colour (a swatch's outline makes its colour a little off)
                 if near < 0.5 * second and (s, g) not in out and (s, g) not in printed:
                     out[(s, g)] = Measured(plot.axis.value(b.top), "bar, by colour", b.cx, b.top)
-        elif len(mine) == len(series):
+        elif len(mine) == len(series) and max(b.x1 - b.x0 for b in mine) <= 1.35 * min(b.x1 - b.x0 for b in mine):
+            # by place only when the group's bars look alike - two bars run together, or a piece
+            # of one, would put every figure after it on the wrong series (#107's 65+)
             for s, b in zip(series, mine):
                 if (s, g) not in printed:
                     out[(s, g)] = Measured(plot.axis.value(b.top), "bar, by place", b.cx, b.top)

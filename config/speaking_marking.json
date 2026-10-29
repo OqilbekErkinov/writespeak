@@ -1,5 +1,9 @@
 {
   "_about": "Academic values of the Speaking marking, read by services/ai/speaking_grader.py and scripts/speaking_regression.py. Owned by the academic lead: change a value here, not in the code.",
+  "accepted": {
+    "_about": "Spoken wordings the academic lead ruled no mistake (2026-10-29, the Part 3 travel report): a flag on one of them is set aside whatever the mistake filter says. \"daily lifestyles\" was self-corrected to \"routines\" in the recording, but the transcript drops the correction, so the self-correction check can't see it.",
+    "phrases": ["daily lifestyles", "much more free"]
+  },
   "anchors": {
     "_about": "Recordings with their OFFICIAL IELTS Speaking band shown to every scoring run (transcripts in data/calibration/speaking_anchors.json). real9-p3-travel: a candidate with an official 9.0 (Speaking 9.0), Part 3, six travel questions - added by the academic lead on 2026-10-27.",
     "ids": ["real9-p3-travel"],

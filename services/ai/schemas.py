@@ -149,11 +149,19 @@ class CriterionScores(BaseModel):
     GRA: int = Field(description="Grammatical Range & Accuracy, a whole band 0-9.")
 
 
+class CheckFinding(BaseModel):
+    item: str = Field(description="The checklist item, as listed.")
+    found: bool = Field(description="True when the answer has this problem.")
+    quote: str = Field(description="When found: the words of the answer that show it, copied exactly; else ''.")
+
+
 class CriterionJudgement(BaseModel):
     """One criterion of a Writing scoring run (marking guide, 2026-10-22):
-    strengths first, then weaknesses, then the band - in that order, so the
-    band is decided after both are listed."""
+    the checklist first (2026-10-29: "no reason -> 9" must never mean "didn't
+    look -> 9"), strengths, then weaknesses, then the band - in that order,
+    so the band is decided after all of it."""
 
+    checklist: list[CheckFinding] = Field(description="Every item of this criterion's CHECKLIST, answered.")
     strengths: list[str] = Field(
         description="What earns credit on THIS criterion, each with a short quote from the answer.")
     weaknesses: list[str] = Field(
