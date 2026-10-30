@@ -331,6 +331,25 @@ def round2() -> None:
     bands, raised = writing_grader.floors("task2", essay67, {"TR_or_TA": 7, "CC": 7, "LR": 7, "GRA": 7}, many,
                                           ["a", "b", "c"])
     check("...but not past it (5 errors in 374 words stay 7)", bands["GRA"] == 7, raised)
+    # the academic lead's 2026-10-30 reports #72-#74
+    pct = err("at only 13% men and 9% women", "at only 13% for men and 9% for women")
+    writing_grader.small_slips([pct])
+    check("'13% men and 9% women' -> '13% for men...': a preposition left out after a figure is a slip (#74)",
+          pct.severity == "slip", pct.severity)
+    check("a Task correction that only adds to the student's words is an omission, no mistake (#73)",
+          writing_grader.only_adds("marking the closure of the landfill.", "marking the closure of the landfill, "
+                                   "while drainage at the base continues to the tank.")
+          and not writing_grader.only_adds("bottled, labeled, and finally transported",
+                                           "bottled and finally transported")
+          and not writing_grader.only_adds("people", "people's"))
+    text74 = "Males predominated, except for emailing and online shopping, where females had the upper hand. " \
+             "Research lagged far behind at only 13% men and 9% women."
+    check("Lexical: a quote of a phrase the filter never flagged is no reason (#74 'had the upper hand')",
+          not writing_grader.evidenced(['Minor register lapse: "had the upper hand"'], text74, [], []))
+    check("...a quote of a checked error is", writing_grader.evidenced(['"13% men and 9% women" lacks a preposition'
+                                                                        .replace("lacks", "has no")], text74, [],
+                                                                       ["at only 13% men and 9% women"]))
+    check("...a named repetition still is", writing_grader.evidenced(['"predominated" is repeated'], text74, [], []))
     agree = NS(wrong="people doesn’t use", correct="people don't use", criterion="GRA", severity="slip")
     writing_grader.small_slips([agree])
     check("a verb's agreement the filter called a slip is an error (T9: 'people doesn't')",

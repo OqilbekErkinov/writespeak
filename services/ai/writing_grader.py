@@ -166,7 +166,13 @@ parity", "buck the trend", a plainer word that is still correct, an optional com
 chart's label ("age at death" for "life expectancy", "proximity to home" for "close to parental \
 home"); a word or phrase the question itself uses; a proper name as its owner writes it ("Malala \
 Fund"); the writer's own grouping of steps or categories ("in the final stage" of the writer's own \
-three stages); anything whose "fix" would change what the student meant.
+three stages); anything whose "fix" would change what the student meant; a standard phrase of data \
+reports ("had the upper hand", "took the lead", "by far the most popular") - never a register lapse; in a \
+process or diagram, two adjacent parts named together ("lined with a layer of clay and synthetic material" \
+for a clay liner and a synthetic lining) or a step put in fewer words ("pressed and filtered using a \
+hydraulic press"); a detail a correct sentence leaves out (at most a tip, never a mistake). A Task mistake \
+in a process is only a wrong step, a wrong order, a wrong part or a step the diagram doesn't show \
+("bottled, labeled" with no labelling step).
 NEVER PENALISE (the academic lead, 2026-10-29): paraphrasing the question ("available" for "open" is good, \
 not a mistake); a free, non-template structure (no "This essay will discuss", a short body paragraph, an \
 unusual but logical order, the writer's own conclusion style); British or American spelling used consistently."""
@@ -890,14 +896,23 @@ _OMISSION = re.compile(r"\b(omit\w*|omission|missing|leaves? out|left out|not (?
 _QUOTED = re.compile(r"[\"“«']([^\"”»']{2,120})[\"”»']")
 
 
-def evidenced(weaknesses: list[str], answer_text: str, acceptable: list[str] = ()) -> bool:
+_REPEATED = re.compile(r"\b(repeat\w*|repetit\w*|overus\w*)\b", re.IGNORECASE)
+
+
+def evidenced(weaknesses: list[str], answer_text: str, acceptable: list[str] = (),
+              errors: list[str] | None = None) -> bool:
     """Does a criterion's list of weaknesses quote the answer or name an
     omission? An 8 without that is a 9 (the academic lead, 2026-10-27:
     "could be richer" and "not fully developed" lowered Band 9 reports). A
     quote of something the filter found acceptable as written (`acceptable`)
-    is no reason."""
+    is no reason. With `errors` (Lexical Resource, Grammar: the criterion's
+    checked errors) a quote counts only when it is one of them, or names a
+    repetition - a slip is allowed at Band 9, and a phrase the filter never
+    flagged is no reason (#74: "had the upper hand" called a register lapse,
+    Lexical 8)."""
     low = canon(answer_text).lower()
     fine = [canon(a).lower().strip(" .,") for a in acceptable if a.strip()]
+    wrong = [canon(e).lower().strip(" .,") for e in errors or [] if e.strip()]
     for w in weaknesses:
         if _OMISSION.search(w):
             return True
@@ -905,17 +920,22 @@ def evidenced(weaknesses: list[str], answer_text: str, acceptable: list[str] = (
             # a quote shortened with "..." counts by its pieces ("In 2005... In 2011... By 2015,")
             for q in re.split(r"\s*(?:\.\.\.|…)\s*", canon(quoted).lower()):
                 q = q.strip(" .,")
-                if len(q) >= 2 and q in low and not any(q in a or a in q for a in fine):
+                if len(q) < 2 or q not in low or any(q in a or a in q for a in fine):
+                    continue
+                if errors is None or _REPEATED.search(w) or any(q in e or e in q for e in wrong):
                     return True
     return False
 
 
 async def _score_once(task_type, prompt_text, answer_text, prompt_images, sheet: str = "",
-                      evidence: str = "", kind: str | None = None, acceptable: list[str] = ()) -> dict:
+                      evidence: str = "", kind: str | None = None, acceptable: list[str] = (),
+                      checked: list | None = None) -> dict:
     """One scoring run: {criterion: whole band, ..., "_notes": {criterion: note}}.
     `evidence`: the checked mistakes and strong phrases (mistake_evidence);
     `kind`: the visual's kind, for its Band 9 anchor; `acceptable`: what the
-    filter found acceptable as written - quoting it is no reason for a band."""
+    filter found acceptable as written - quoting it is no reason for a band;
+    `checked`: the checked mistakes - a Lexical or Grammar reason must be
+    one of that criterion's errors (evidenced)."""
     facts = f"COUNTED BY SOFTWARE: {count_words(answer_text)} words, {paragraph_count(answer_text)} paragraph(s)."
     text = f"QUESTION PROMPT:\n{prompt_text}\n\nANSWER:\n{answer_text}\n\n{facts}"
     if evidence:
@@ -934,10 +954,12 @@ async def _score_once(task_type, prompt_text, answer_text, prompt_images, sheet:
         judged = getattr(scores, k)
         found = [f'"{c.quote}"' for c in judged.checklist if c.found and c.quote.strip()]
         looked = len(judged.checklist) >= len(CHECKLISTS[k][task_type] if k == "TR_or_TA" else CHECKLISTS[k])
-        if out[k] == 9 and found and evidenced(found, answer_text, acceptable):
+        errors = [m.wrong for m in checked if m.criterion == k and getattr(m, "severity", "error") != "slip"] \
+            if checked is not None and k in ("LR", "GRA") else None
+        if out[k] == 9 and found and evidenced(found, answer_text, acceptable, errors):
             logger.info("Score %s 9 -> 8: its checklist found %s", k, found)
             out[k] = 8.0
-        elif out[k] == 8 and looked and not evidenced(judged.weaknesses + found, answer_text, acceptable):
+        elif out[k] == 8 and looked and not evidenced(judged.weaknesses + found, answer_text, acceptable, errors):
             # only an 8 is lifted: a 6 or 7 whose reason came back unquoted stays (2026-10-29: #60's and
             # #62's Coherence 6-7 -> 9 with "linking is basic and repetitive" as their reason)
             logger.info("Score %s %g -> 9: no quoted weakness or named omission, checklist clear (%s)", k, out[k],
@@ -970,6 +992,15 @@ def _change(m) -> tuple:
     return (_edits(m) or [((), (), "")])[0]
 
 
+def only_adds(wrong: str, correct: str) -> bool:
+    """Does the correction keep the student's words as they are and only add
+    to them (two words or more)?"""
+    a, b = _tokens(wrong), _tokens(correct)
+    if not a or len(b) < len(a) + 2:
+        return False
+    return any(b[i:i + len(a)] == a for i in range(len(b) - len(a) + 1))
+
+
 def lead_accepted(wrong: str) -> str | None:
     """The wording the academic lead accepted (config "accepted") that a
     flag is about: it is in the flagged words, or the flagged words are a
@@ -988,17 +1019,25 @@ _NUMBER = {("it", "them"), ("one", "ones"), ("this", "these"), ("that", "those")
 _AGREEMENT = {("doesn't", "don't"), ("does", "do"), ("is", "are"), ("was", "were"), ("has", "have"),
               ("isn't", "aren't"), ("wasn't", "weren't"), ("hasn't", "haven't")}
 ARTICLE_SLIPS_MAX = 2  # a third article left out or wrong: the writer doesn't control articles
+_FIGURE = re.compile(r"\$?\d[\d,.]*%?")
+_FIGURE_PREPOSITIONS = {"of", "for", "among"}
 
 
 def small_kind(m) -> str | None:
-    """'punctuation', 'article' or 'number' when a correction changes only
-    that - the academic lead's slips ("a missing full stop", "a single
+    """'punctuation', 'article', 'number' or 'preposition' (one left out
+    right after a figure) when a correction changes only that - the
+    academic lead's slips ("a missing full stop", "a single
     article or plural slip"; 2026-10-29, #66's "such society", "the previous
     one", "they want it" were kept as errors). A verb's agreement ("people
     doesn't", "this turn of events are") is none of them: an error."""
     edits = _edits(m)
     if not edits:
         return "punctuation" if canon(m.wrong) != canon(m.correct) else None
+    a, b = _tokens(m.wrong), _tokens(m.correct)
+    ops = [op for op in difflib.SequenceMatcher(None, a, b, autojunk=False).get_opcodes() if op[0] != "equal"]
+    if ops and all(tag == "insert" and i1 > 0 and _FIGURE.fullmatch(a[i1 - 1]) and len(b[j1:j2]) == 1
+                   and b[j1] in _FIGURE_PREPOSITIONS for tag, i1, _, j1, j2 in ops):
+        return "preposition"  # "at only 13% men and 9% women": the meaning stays obvious (#74)
     if len(edits) != 1:
         return None
     out, put, after = edits[0]
@@ -1144,7 +1183,8 @@ async def decide_scores(
     `acceptable`: what the filter found acceptable as written."""
     kind = visual_kind(prompt_text, visual) if task_type == "task1" else None
     medians, runs = await median_of_runs(
-        lambda: _score_once(task_type, prompt_text, answer_text, prompt_images, sheet, evidence, kind, acceptable),
+        lambda: _score_once(task_type, prompt_text, answer_text, prompt_images, sheet, evidence, kind, acceptable,
+                            checked),
         SCORE_KEYS, label=f"writing {task_type}",
     )
     medians, raised = floors(task_type, answer_text, medians, checked, strong)
@@ -1295,6 +1335,11 @@ async def grade_writing(
         the upgrade ideas, anything else goes; a data correction off the sheet
         keeps only its sheet-checked rewrite."""
         kind, crit, reason, fixed = verdict
+        if kind in ("error", "slip") and crit == "TR" and only_adds(item.wrong, item.correct):
+            # "marking the closure of the landfill." -> "..., while drainage continues": the
+            # sentence is right as it stands - a detail it leaves out is no mistake (#73)
+            logger.info("%s set aside: its correction only adds to the student's words", label)
+            kind = "not_a_mistake"
         ruled = lead_accepted(item.wrong) if kind in ("error", "slip") and crit != "TR" else None
         if ruled:
             logger.info("%s is an alternative: the academic lead accepted %r (the filter said %s)", label, ruled, kind)
