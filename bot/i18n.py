@@ -198,6 +198,13 @@ _T: dict[str, dict[str, str]] = {
         "uz": "✅ Qabul qilindi.\n\n✏️ Endi javobingizni yuboring (kamida {min_words} so'z).",
         "ru": "✅ Принято.\n\n✏️ Теперь отправьте свой ответ (минимум {min_words} слов).",
     },
+    "writing.wrong_section": {
+        "uz": "⚠️ Bu savol <b>{section}</b> savoliga o'xshaydi, siz esa boshqa bo'limdasiz. Noto'g'ri mezon bilan "
+        "tekshirilsa, ball to'g'ri chiqmaydi.\n\nUni {section} bo'limida tekshiraymi? Hozircha coin olinmadi.",
+        "ru": "⚠️ Этот вопрос похож на вопрос <b>{section}</b>, а вы в другом разделе. По чужим критериям балл "
+        "будет неверным.\n\nПроверить его в разделе {section}? Монеты пока не списаны.",
+    },
+    "writing.btn_switch_section": {"uz": "✅ {section} bo'limida tekshirish", "ru": "✅ Проверить в разделе {section}"},
     "writing.send_chart": {
         "uz": "✅ Savol qabul qilindi.\n\n📊 Endi shu Task 1 ning <b>grafik yoki diagramma rasmini</b> yuboring.\n\n"
         "Task 1 da ball rasmdagi ma'lumotga qarab qo'yiladi: Bandzilla javobingizdagi har bir raqam, "

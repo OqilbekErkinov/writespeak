@@ -275,6 +275,7 @@ class Needs:
     issues: list[str] = field(default_factory=list)  # task- and logic-level problems
     strengths: list[str] = field(default_factory=list)
     essay: str = ""  # the student's own text, for comparison
+    lower_case: list[str] = field(default_factory=list)  # words the report corrects to lower case
 
     @property
     def aim(self) -> float:
@@ -292,8 +293,11 @@ def needs_from_feedback(bands: dict[str, float], overall: float, fb, essay: str)
         for i, p in enumerate(fb.priorities[:3], 1)
     ]
     issues = [f"«{m.wrong}» - {m.why}" for m in fb.mistakes if m.criterion in ("TR", "CC") or m.unclear][:5]
+    lower_case = list(dict.fromkeys(
+        w for m in fb.mistakes for w in re.findall(r"\b[A-Z][a-z]{3,}\b", m.wrong)
+        if re.search(rf"\b{w.lower()}\b", m.correct)))
     return Needs(overall=overall, bands=bands, priorities=priorities, issues=issues,
-                 strengths=[q.strip() for q in fb.strength.quoted_phrases][:3], essay=essay)
+                 strengths=[q.strip() for q in fb.strength.quoted_phrases][:3], essay=essay, lower_case=lower_case)
 
 
 def _needs_text(needs: Needs, task_type: str) -> str:
@@ -683,6 +687,7 @@ def _system(task_type: str, band: float, profile: StyleProfile | None, reference
         "student should notice, in plain words (never an invented term such as \"comparative-like adjective\"). "
         "Never add words just to show a priority (\"it often feels freer\"): where a priority doesn't fit the "
         "answer naturally, leave it out - fewer shows, or none, is fine.\n"
+        "Names of sectors and categories are ordinary nouns: lower case unless they are proper names. "
         "Open paragraphs in your own way - no stock openers (\"There is a view that\", \"First and foremost\", "
         "\"The following paragraphs explain\"); keep to one spelling (British or American) throughout; write "
         "\"In my view\" only when the question asks for an opinion; end with a complete sentence.\n"
@@ -762,7 +767,8 @@ async def _write(
             else [p for p in data_problems(full, question, visual) if not p.startswith("name every category")] \
             if task_type == "task1_academic" else []
         problems += [f'"{c}" contradicts itself - say clearly which side wins' for c in self_contradictions(full)]
-        problems += answer_problems(paragraphs, question, "task2" if task_type == "task2" else "task1", avoid)
+        problems += answer_problems(paragraphs, question, "task2" if task_type == "task2" else "task1", avoid,
+                                    needs.lower_case if needs is not None else ())
         if alternative and len(paragraphs) != 1:
             problems.append("write ONE paragraph only")
         overused = overused_phrases(full, profile)
@@ -1099,13 +1105,19 @@ def openers(paragraphs: list[str]) -> list[str]:
     return [" ".join(re.findall(r"[A-Za-z']+", p)[:4]).lower() for p in paragraphs if p.strip()]
 
 
-def answer_problems(paragraphs: list[str], question: str, task_type: str, avoid: list[str] = ()) -> list[str]:
+def answer_problems(paragraphs: list[str], question: str, task_type: str, avoid: list[str] = (),
+                    lower_case: list[str] = ()) -> list[str]:
     """The model answer's code checks (the academic lead, 2026-10-29): no
     unfinished sentence, no "In my view" where the question asks no opinion
     (Task 2), none of the stock openers, none of this student's recent
-    openers, one spelling throughout."""
+    openers, one spelling throughout - and what the report corrects it never
+    does itself ("the number of Manufacturing jobs" under a fix to lower case)."""
     text = "\n\n".join(paragraphs)
     out = []
+    capitals = [w for w in lower_case if re.search(rf"[a-z,;] {w}\b", text)]
+    if capitals:
+        out.append("the report corrects these to lower case - write them so inside a sentence: "
+                   + ", ".join(f'"{w}"' for w in capitals))
     broken = unfinished(paragraphs)
     if broken:
         out.append("finish every sentence - these stop or stand as fragments: " + " | ".join(f'"{b}"' for b in broken[:3]))

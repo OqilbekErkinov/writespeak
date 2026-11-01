@@ -41,6 +41,8 @@ from bot.keyboards.practice_kb import CB_BACK_TO_LIST_PREFIX, after_result_kb
 from bot.keyboards.share_kb import share_card_kb
 from bot.keyboards.writing_task_kb import (
     CB_NO_CHART,
+    CB_SWITCH_SECTION,
+    wrong_section_kb,
     CB_TASK1,
     CB_TASK2,
     CB_WRITING_MENU,
@@ -60,7 +62,7 @@ from db import crud
 from db.database import get_session
 from db.models import SourceType
 from services.ai import chart_keys, marking_config, usage
-from services.ai.essay_marking import PASTE_NOTICE, canon, clean_pasted
+from services.ai.essay_marking import PASTE_NOTICE, canon, clean_pasted, wrong_section
 from services.ai.openai_client import is_image_error
 from services.ai.sample_bank import build_model_answer, needs_from_feedback
 from services.ai.schemas import VocabularyItem
@@ -193,6 +195,21 @@ async def _receive_input(message: Message, state: FSMContext, field: str, lang: 
     )
 
 
+@router.callback_query(WritingStates.confirming_section, F.data == CB_SWITCH_SECTION)
+async def switch_section(callback: CallbackQuery, state: FSMContext, lang: str) -> None:
+    await callback.answer()
+    await strip_buttons(callback.message)
+    data = await state.get_data()
+    task_type = data["switch_to"]
+    quota = await check_quota(callback.from_user.id, writing_kind(task_type))
+    if not quota.allowed:
+        await send_paywall(callback.message, lang, quota)
+        return
+    await state.update_data(task_type=task_type, spend_credit=quota.spend_credit, payer_id=quota.payer_id,
+                            switch_to=None, prompt_image_paths=[] if task_type == "task2" else data.get("prompt_image_paths"))
+    await _advance(callback.message, state, "prompt", lang)
+
+
 def _preview(text: str) -> str:
     return html.escape(text if len(text) <= 3500 else text[:3500] + "…", quote=False)
 
@@ -223,6 +240,16 @@ async def confirm_or_edit(callback: CallbackQuery, state: FSMContext, lang: str)
 async def _advance(message: Message, state: FSMContext, field: str, lang: str) -> None:
     if field == "prompt":
         data = await state.get_data()
+        own_question = data.get("mock_session_id") or data.get("assignment_part_id") or data.get("practice_question_id")
+        section = None if own_question else wrong_section(data["task_type"], data.get("prompt_text", ""))
+        if section:
+            # A Task 2 essay is never marked against Task Achievement: the student decides first.
+            await state.update_data(switch_to=section)
+            await state.set_state(WritingStates.confirming_section)
+            name = "Task 1" if section == "task1" else "Task 2"
+            await message.answer(t("writing.wrong_section", lang, section=name),
+                                 reply_markup=wrong_section_kb(lang, name, CB_WRITING_MENU))
+            return
         if data["task_type"] == "task1" and not data.get("prompt_image_paths"):
             # A Task 1 question typed as text: the report is checked against the
             # chart/diagram itself, so ask for its picture first.
@@ -414,6 +441,7 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
                     sheet=judged,
                     notices=notices,
                     visual=visual_data,
+                    text_source=data.get("answer_source") or "text",
                 )
             except BaseException:
                 if answer_task is not None:

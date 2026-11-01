@@ -91,6 +91,7 @@ class Settings(BaseSettings):
 
     # --- Redis ---
     redis_url: str = "redis://localhost:6379/0"
+    marking_cache_enabled: bool = True  # the same text gets the same marks (services/ai/result_cache.py)
 
     # --- Storage ---
     file_storage_path: str = "./data/storage"

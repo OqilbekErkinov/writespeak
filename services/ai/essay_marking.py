@@ -94,6 +94,27 @@ _PAGE_INLINE = re.compile(r"\s*\|\s*(?i:page)\s+\d+\s*(?:(?i:of)|/)\s*\d+\s*\|?\
 _SENTENCE_END = re.compile(r"[.!?…:;\"”’')\]]\s*$")
 
 
+_TASK2_QUESTION = re.compile(
+    r"to what extent|do you agree|discuss both|both (?:these )?views|your own opinion|what is your opinion|"
+    r"advantages? (?:and|outweigh)|disadvantages|positive or negative|why is this|what are the (?:causes|reasons|"
+    r"problems)|at least 250 words|own knowledge or experience", re.IGNORECASE)
+_TASK1_QUESTION = re.compile(
+    r"summari[sz]e the information|selecting and reporting|main features|at least 150 words|make comparisons where|"
+    r"\b(?:chart|graph|table|diagram|maps?|plans?|process)\b[^.]{0,60}\b(?:below|shows?|illustrates?|gives?|compares?)\b",
+    re.IGNORECASE)
+
+
+def wrong_section(task_type: str, question: str) -> str | None:
+    """The section a question belongs to when it is clearly not this one
+    (a Task 2 essay is never marked against Task Achievement); else None."""
+    one, two = bool(_TASK1_QUESTION.search(question or "")), bool(_TASK2_QUESTION.search(question or ""))
+    if task_type == "task1" and two and not one:
+        return "task2"
+    if task_type == "task2" and one and not two:
+        return "task1"
+    return None
+
+
 def clean_pasted(text: str) -> tuple[str, bool]:
     """(the text, whether page headers/footers were left out) - text pasted
     from a PDF (the academic lead, 2026-10-27: #53-#59 came in with every
@@ -584,6 +605,7 @@ class WritingReport:
     notes: list[str] = field(default_factory=list)  # what validation repaired (logged)
     notices: list[str] = field(default_factory=list)  # shown to the student (e.g. the chart wasn't checked)
     upgrades: list[dict] = field(default_factory=list)  # wrong, correct, why_html, tag, tag_cls - never mistakes
+    flags: list[dict] = field(default_factory=list)  # every flag with its final class: wrong, correct, class, criterion
 
     @property
     def top_band(self) -> bool:

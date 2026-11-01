@@ -50,6 +50,7 @@ from services.ai import usage
 from services.ai.openai_client import parse_flex
 from services.ai.pronunciation import Assessment
 from services.ai import marking_config
+from services.ai.mistake_rules import final_kind
 from services.ai.schemas import SpeakingFeedback, SpeakingMissedMistakes, SpeakingScoring, SpeakingVerdicts
 from services.ai.scoring import LENIENCY_NOTE, median_of_runs, whole_band
 from services.ai.voice import CONFIDENCE_LIMIT, AnswerAudio, Pitch, VoiceMetrics
@@ -715,7 +716,9 @@ async def verify_call(source_text: str, items: list[tuple[int, str, str, str, st
     parsed = response.choices[0].message.parsed
     if not parsed:
         return {}, {}
-    return ({v.id: (v.kind, v.reason) for v in parsed.verdicts},
+    # "Another phrase is more common" is an alternative, always (the academic lead, 2026-10-31)
+    return ({v.id: ("alternative" if v.basis == "style" and v.kind in ("error", "slip") else v.kind, v.reason)
+             for v in parsed.verdicts},
             {v.index: ((v.meaning or "").strip() or None, (v.example or "").strip() or None)
              for v in parsed.vocabulary})
 
@@ -802,6 +805,10 @@ async def grade_speaking(part: str, items: list[SessionItem], ev: Evidence, prac
             kind, reason = verdict_of.get(key, ("error", ""))
             if kind in ("error", "slip") and (ruled := lead_accepted(m.wrong)):
                 kind, reason = "not_a_mistake", f"the academic lead accepted {ruled!r}"
+            elif kind in ("error", "slip"):
+                # the same rules as Writing: phrases examiners praise, either spelling, the lead's wordings, a synonym
+                kind, decided = final_kind(m.wrong, m.correct, kind, m.criterion)
+                reason = decided or reason
             if kind not in ("error", "slip"):
                 kept_ids.add(key)
                 logger.info("Speaking %s %s set aside (%s): %s", label, key, kind, reason)

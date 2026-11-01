@@ -9,6 +9,7 @@ interest" after the filter dropped that "mistake" (it is correct English);
 answer aimed at 8.0 but scored 7.0 still said "Aimed at 8.0"; a model answer's
 thesis read "the benefits are far outweighed by the advantages".
 """
+import pickle
 import sys
 import types
 from pathlib import Path
@@ -101,6 +102,7 @@ def main() -> int:
     report = essay_marking.build_report(
         "task2", "Some people think the internet has improved our lives. Discuss.", ESSAY, fb,
         bands={"TR_or_TA": 6, "CC": 6, "LR": 6, "GRA": 6}, dropped={3})
+    check("a report survives the marking cache", pickle.loads(pickle.dumps(report)).priorities == report.priorities)
     check("report: two priorities, numbered 01 and 02",
           [(p["n"], p["title"]) for p in report.priorities] == [("01", "Plural verbs"), ("02", "Develop each idea")],
           report.priorities)

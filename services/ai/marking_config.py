@@ -16,15 +16,19 @@ logger = logging.getLogger(__name__)
 PATH = Path(__file__).resolve().parents[2] / "config" / "writing_marking.json"
 
 DEFAULTS = {
-    "density": {"slip_weight": 0.5, "band9_max": 0.5, "band8_max": 1.2, "band7_max": 2.5, "start_at_band8_max": 1.2},
+    "density": {"slip_weight": 0.5, "band9_max": 0.5, "band8_max": 1.2, "band7_max": 2.5, "start_at_band8_max": 1.2,
+                "less_common_weight": 0.5, "grammar_band6_above": 2.8},
     "anchors": {"task1": ["v2-p072", "v2-p068", "v2-p084"], "task2": ["v2-p026", "v2-p034", "v2-p078"]},
     "calibration": {"overrides": {}, "low_band_max": 6.0, "low_band_max_rise": 0.5, "max_cost_per_check": 0.15},
     "progress": {"min_words": {"task1": 100, "task2": 150}},
     "regression": {},
     "type_anchors": {"use": True},
-    "floors": {"wide_range_phrases": 3, "slips_only_min": 8, "clear_vocabulary_lr_min": 7, "band8_density_min": 0},
+    "floors": {"wide_range_phrases": 3, "slips_only_min": 8, "clear_vocabulary_lr_min": 7, "band8_density_min": 0,
+               "clear_vocabulary_max_per_100": 1.0},
     "model_answer": {"banned_openers": []},
     "accepted": {"phrases": []},
+    "praised": {"phrases": []},
+    "real_mistakes": {"phrases": []},
 }
 
 _cache: dict = {}
@@ -75,6 +79,21 @@ def floors() -> dict:
 
 def banned_openers() -> list[str]:
     return list(load()["model_answer"].get("banned_openers", []))
+
+
+def similar_anchors_max() -> int:
+    """How many official samples a scoring run sees."""
+    return int(load()["anchors"].get("similar_max", 3))
+
+
+def praised_phrases() -> list[str]:
+    """Phrases examiners praise in official samples and Band 9 books: never flagged."""
+    return list(load()["praised"].get("phrases", []))
+
+
+def real_mistakes() -> list[str]:
+    """Real mistakes by the academic lead's ruling: a slip at least, whatever the filter says."""
+    return list(load()["real_mistakes"].get("phrases", []))
 
 
 def accepted_phrases() -> list[str]:

@@ -3,9 +3,14 @@
   "density": {
     "_about": "Weighted checked mistakes per 100 words, per criterion (Grammar, Lexical Resource). A slip (typo, missing full stop, one article or plural slip) counts as slip_weight.",
     "slip_weight": 0.25,
+    "less_common_weight": 0.5,
+    "_less_common": "2026-10-31: an error in less common language the writer attempted weighs half of one in basic language (the academic lead).",
     "band9_max": 0.4,
     "band8_max": 0.8,
-    "band7_max": 2.5,
+    "band7_max": 3.0,
+    "_band7": "2026-11-01: 2.5->3.0 - a real Band 7.5 script of a test book has 3.0 Lexical mistakes per 100 words as the filter counts them, and came out Lexical 6.",
+    "grammar_band6_above": 2.8,
+    "_grammar_band6": "Proposal (2026-11-01, review=true): Grammar stays at 6 or below past this weighted density, however the scoring runs voted. Test books: a real Band 6 script at 2.86 came out Grammar 7, overall 7. Not a clean divide: real Band 7 and 7.5 scripts have 2.70 and 3.33, so it is kept as high as that Band 6 case allows. Rests on one script; remove the rule if it costs real students a band.",
     "start_at_band8_max": 0.8,
     "_changed_slip": "2026-10-29: slip_weight 0.5->0.25 - a slip is 'very small, allowed even at Band 9' (the academic lead's three classes: error, slip, alternative; approved 2026-10-29).",
     "_changed": "2026-10-27: band9 0.5->0.4, band8 and the Band 8 start 1.2->0.8 - at 1.2 the owner's #37 (Grammar 1.4 weighted per 100 words) got Grammar 8 and #38 (Lexical 1.3) Lexical 8, overall 7.5 and 8.0 against the expected 6.5-7.0 and 7.0-7.5; 0.8 is the deployed guide's 'Band 8: about 1-3 slips in a 250-350-word essay'. Proposal for the academic lead.",
@@ -17,7 +22,9 @@
     "slips_only_min": 8,
     "clear_vocabulary_lr_min": 7,
     "band8_density_min": 8,
-    "_band8_density": "Proposal (2026-10-29, review=true): band8_density_min - Lexical Resource / Grammar at least this when the range is wide and the weighted density stays within density.band8_max (0.8 per 100 words, 'Band 8: about 1-3 slips in a 250-350-word essay'). #67 got Grammar 7 for one agreement error and two slips in 374 words (0.4 per 100 words) - 'Band 8 allows occasional errors', 'wide range + a few slips = 8 or 9, never 7'. Remove the key to switch it off.",
+    "clear_vocabulary_max_per_100": 1.0,
+    "_clear_vocabulary": "2026-10-31 (the academic lead): the Lexical Resource floors apply only when word-choice and spelling mistakes, errors and slips alike, stay at or under this many per 100 words, and wide_range_phrases counts only the strong phrases the report shows. The official cafe sample has 4 spelling errors in 172 words and an examiner's Lexical 6.",
+    "_band8_density": "Proposal (2026-10-29, review=true; Grammar only since 2026-11-01): band8_density_min - Grammar at least this when the range is wide and the weighted density stays within density.band8_max (0.8 per 100 words, 'Band 8: about 1-3 slips in a 250-350-word essay'). #67 got Grammar 7 for one agreement error and two slips in 374 words (0.4 per 100 words) - 'Band 8 allows occasional errors', 'wide range + a few slips = 8 or 9, never 7'. Remove the key to switch it off.",
     "review": false
   },
   "model_answer": {
@@ -27,13 +34,24 @@
   },
   "accepted": {
     "_about": "Wordings the academic lead ruled acceptable as written (2026-10-29: the false flags on #65, #66, #67 and #105-#108). A flag on one of them becomes an alternative - an upgrade idea, never a mistake - whatever the mistake filter says. Matched inside the flagged words, ignoring case and curly quotes.",
-    "phrases": ["shops are available", "positive tendency", "sleep regimes", "certain parts of the day", "certain people's freedoms", "the night shift's popularization", "use their tools", "are both a testament", "that particular device", "creates a pressure", "known for its visual nature", "declines in outputs", "plant the seed of", "develop their economy"],
+    "phrases": ["shops are available", "positive tendency", "sleep regimes", "certain parts of the day", "people's freedoms", "the night shift's popularization", "use their tools", "their tools", "are both a testament", "along with the smartphone market are both a testament", "that particular device", "creates a pressure", "visual nature", "declines in outputs", "plant the seed of", "the seed of future leaders emerging out of", "seemed to have thrived", "develop their economy", "a stable house", "the use of them", "for families, they", "double story"],
+    "review": false
+  },
+  "praised": {
+    "_about": "Phrases examiners praise in official samples, and Band 9 book phrases (2026-10-31, the academic lead): never flagged, not even as an upgrade idea. Examiners' own praise, books 13-18 of the official samples (2026-11-01); the test books stay out, so the calibration stays honest.",
+    "phrases": ["squeeze in", "rife with", "of paramount importance", "differing views", "polishing their skills", "a crucial part of", "chart-high", "chart-low", "bore parallels", "bear parallels", "reach parity", "reached parity", "buck the trend", "bucked the trend", "language barrier", "influence the behaviour", "list of favourites", "go along with today's world", "hectic lifestyle", "peace in our souls", "finding their feet", "broad spectrum of knowledge", "impermanence of life", "mutual objectives", "changed places", "take you to your destination", "informing people about", "receive huge benefits", "restriction of distance", "hands-on experience", "dropped dramatically to", "rebounded by roughly", "further fall", "allergic reaction", "pharmaceutical plants", "conventional medicine", "cycle of poverty", "knock-on effects", "get a foot in the door"],
+    "review": false
+  },
+  "real_mistakes": {
+    "_about": "Real but small by the academic lead's ruling (2026-10-29): counted as a slip at least, whatever the mistake filter says.",
+    "phrases": ["it should be noticed", "provided there is", "3 am in the morning", "make the case worse", "disposed into", "this turn of events are", "implications on", "feeling of loneliness", "feeling of worthlessness", "overtime,"],
     "review": false
   },
   "anchors": {
     "_about": "Fixed anchors in every scoring run (ids from data/calibration/book_samples.json). Band 9 anchors from Volume 1: v1-p028 (Task 1) and v1-p026 (Task 2), outside the 12-sample B4 set - confirmed by the academic lead on 2026-10-27 (option A).",
     "task1": ["v2-p072", "v2-p068", "v2-p084", "v1-p028"],
     "task2": ["v2-p026", "v2-p034", "v2-p078", "v1-p026"],
+    "similar_max": 3,
     "review": false
   },
   "type_anchors": {

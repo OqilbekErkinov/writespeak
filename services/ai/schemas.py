@@ -176,6 +176,10 @@ class WritingScoring(BaseModel):
     CC: CriterionJudgement = Field(description="Coherence & Cohesion.")
     LR: CriterionJudgement = Field(description="Lexical Resource.")
     GRA: CriterionJudgement = Field(description="Grammatical Range & Accuracy.")
+    overview: Literal["clear", "generic", "none"] = Field(
+        default_factory=lambda: "clear",
+        description="Task 1: clear - it names the main trends, differences or stages; generic - an attempt that names "
+        "none of them (\"the economy changed significantly\"); none - no sentence sums up the visual. Task 2: clear.")
 
 
 class CriterionNotes(BaseModel):
@@ -549,6 +553,14 @@ class Verdicts(BaseModel):
     verdicts: list[Verdict]
 
 
+MistakeBasis = Literal["grammar", "meaning", "clarity", "spelling", "punctuation", "style"]
+MISTAKE_BASIS = ("Why it is wrong: grammar (ungrammatical), meaning (the word means something else, or a wrong fixed "
+                 "phrase), clarity (it confuses the reader), spelling, punctuation, or style (another phrase is only "
+                 "more common or more natural). style is always an alternative, never an error or a slip.")
+LESS_COMMON = ("True when the mistake is in less common vocabulary or a complex structure the candidate attempted; "
+               "false when it is in basic language.")
+
+
 class SpeakingVerdict(BaseModel):
     """The Speaking mistake filter: one question for every flag (the academic
     lead, 2026-10-29) - is it actually wrong in natural spoken English?"""
@@ -560,6 +572,8 @@ class SpeakingVerdict(BaseModel):
         "natural spoken English, a self-correction or restart, or the suggestion is no better.")
     reason: str = Field(description="Short: why it is or isn't wrong; for an alternative, why the suggestion is a "
                                     "small upgrade although both are fine.")
+    basis: MistakeBasis = Field(default_factory=lambda: "grammar", description=MISTAKE_BASIS)
+    less_common: bool = Field(default_factory=lambda: False, description=LESS_COMMON)
 
 
 MistakeKind = Literal["error", "slip", "alternative", "not_a_mistake"]
@@ -584,6 +598,8 @@ class WritingVerdict(BaseModel):
     fixed_correct: Optional[str] = Field(
         description="Only for a kept data (TR) item whose correction disagrees with the DATA SHEET: the correction "
         "rewritten with the sheet's figures. null otherwise.")
+    basis: MistakeBasis = Field(default_factory=lambda: "grammar", description=MISTAKE_BASIS)
+    less_common: bool = Field(default_factory=lambda: False, description=LESS_COMMON)
 
 
 class VocabVerdict(BaseModel):

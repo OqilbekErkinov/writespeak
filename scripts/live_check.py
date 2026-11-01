@@ -75,7 +75,7 @@ async def run(cases: list[dict], out: Path, uid: int) -> None:
     async def wverify(source_text, items, vocabulary=None):
         verdicts, words = await real_wverify(source_text, items, vocabulary)
         for i, _, wrong, correct, _why, crit, _note in items:
-            kind, crit2, reason, _ = verdicts.get(i, ("error", crit, "no verdict", None))
+            kind, crit2, reason, *_ = verdicts.get(i, ("error", crit, "no verdict", None))
             flags.append({"wrong": wrong, "correct": correct, "class": kind, "criterion": crit2, "reason": reason})
         return verdicts, words
 
@@ -218,7 +218,7 @@ async def run(cases: list[dict], out: Path, uid: int) -> None:
             "mistakes": [{"n": m["n"], "wrong": m["wrong"], "correct": m["correct"], "criterion": m["criterion"],
                           "why": m["why"]} for m in report.mistakes],
             "upgrades": [{"wrong": u["wrong"], "correct": u["correct"]} for u in report.upgrades],
-            "flags": list(flags),
+            "flags": getattr(report, "flags", None) or list(flags),  # Writing: the final classes
             "criterion_notes": {c["key"]: c["note"] for c in report.criteria},
             "progress": captured.get("progress"),
             "cost": (data.get("cost") or {}).get("total_usd"),

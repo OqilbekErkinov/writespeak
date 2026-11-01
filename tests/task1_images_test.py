@@ -25,6 +25,7 @@ import openai
 from PIL import Image, ImageDraw
 
 fails: list[str] = []
+os.environ.setdefault("MARKING_CACHE_ENABLED", "0")  # every scenario here is marked afresh
 RUN = os.urandom(3).hex()  # every run's answers are new essays, never "the same essay again"
 
 
@@ -683,9 +684,64 @@ async def part2_bot() -> None:
     await redis().aclose()
 
 
+async def wrong_section_flow() -> None:
+    """F6: a Task 2 question sent to Task 1 - the student is told before anything is marked, and it goes on in Task 2."""
+    from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.base import StorageKey
+    from aiogram.fsm.storage.memory import MemoryStorage
+
+    from bot.handlers import writing
+    from bot.keyboards.writing_task_kb import CB_SWITCH_SECTION
+    from bot.states.writing_states import WritingStates
+
+    said: list[tuple[str, object]] = []
+
+    async def answer(text, reply_markup=None, **kw):
+        said.append((text, reply_markup))
+
+    message = NS(answer=answer, chat=NS(id=1))
+    state = FSMContext(storage=MemoryStorage(), key=StorageKey(bot_id=1, chat_id=1, user_id=1))
+    question = ("Some people say that theatres are no longer important. Others disagree. Discuss both these views and "
+                "give your own opinion.")
+    await state.update_data(task_type="task1", prompt_text=question, prompt_image_paths=[])
+    await writing._advance(message, state, "prompt", "uz")
+    check("F6 a Task 2 question in Task 1: the student is told, nothing asked or marked yet",
+          await state.get_state() == WritingStates.confirming_section.state and "Task 2" in said[-1][0], said)
+    buttons = [b.callback_data for row in said[-1][1].inline_keyboard for b in row]
+    check("F6 ...with a button to mark it in Task 2", CB_SWITCH_SECTION in buttons, buttons)
+
+    async def quota(user_id, kind):
+        return NS(allowed=True, spend_credit=True, payer_id=user_id)
+
+    async def strip(_message):
+        return None
+
+    async def callback_answer(*a, **kw):
+        return None
+
+    real_quota, real_strip = writing.check_quota, writing.strip_buttons
+    writing.check_quota, writing.strip_buttons = quota, strip
+    try:
+        await writing.switch_section(NS(answer=callback_answer, message=message, from_user=NS(id=1)), state, "uz")
+    finally:
+        writing.check_quota, writing.strip_buttons = real_quota, real_strip
+    data = await state.get_data()
+    check("F6 ...tapping it moves the question to Task 2 and asks for the answer",
+          data["task_type"] == "task2" and await state.get_state() == WritingStates.awaiting_answer.state,
+          (data.get("task_type"), await state.get_state()))
+
+    # The right section is left alone
+    said.clear()
+    await state.clear()
+    await state.update_data(task_type="task2", prompt_text=question)
+    await writing._advance(message, state, "prompt", "uz")
+    check("F6 ...a Task 2 question in Task 2 goes straight on", await state.get_state() == WritingStates.awaiting_answer.state)
+
+
 async def main() -> int:
     part1_pictures()
     await part1_reading()
+    await wrong_section_flow()
     if "--pictures-only" not in sys.argv:
         await part2_bot()
     print("FAILURES:", fails or "none")
