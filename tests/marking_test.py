@@ -724,7 +724,8 @@ def fair_marking() -> None:
     finally:
         writing_grader._parse = real_parse
     purposes = [a[0] for a in asked]
-    check("marks only: the bands and every flag come back", marks.overall == 6 and marks.flags[0]["class"] == "error",
+    # TA 6, CC 5 (one block of text), LR 6, GRA 6: 5.75, rounded down to 5.5 (the user's rule, 2026-11-09)
+    check("marks only: the bands and every flag come back", marks.overall == 5.5 and marks.flags[0]["class"] == "error",
           marks)
     check("...one feedback call, no retry, no vocabulary in the filter", purposes.count("feedback") == 1
           and "VOCABULARY TO CHECK" not in next(a[2] for a in asked if a[0] == "verify")
@@ -750,10 +751,33 @@ def fair_marking() -> None:
     check("a finished check comes back as it was", got is None or got[0] == {"LR": 6.0}, got)
 
 
+def rounding() -> None:
+    """The user's rule (2026-11-09), Writing and Speaking alike: a mean of .25
+    or .75 goes down to the half band below it."""
+    from db.crud import mock_overall
+    from services.ai.scoring import band_down, overall_band, writing_speaking_overall
+
+    cases = {(6, 7, 7, 7): 6.5, (5, 5, 5, 6): 5.0, (6, 6, 7, 7): 6.5, (7, 7, 7, 7): 7.0, (8, 9, 9, 9): 8.5,
+             (9, 9, 9, 9): 9.0, (6, 6, 6, 7): 6.0, (4, 5, 5, 5): 4.5}
+    got = {c: overall_band(list(c)) for c in cases}
+    check("overall band: 6.75 -> 6.5, 5.25 -> 5.0, 6.5 stays, 8.75 -> 8.5 (rounded down)", got == cases, got)
+    check("#138's bands (TA 6, CC 7, LR 7, GRA 7) now give 6.5, the examiner's band",
+          overall_band([6.0, 7.0, 7.0, 7.0]) == 6.5)
+    check("band_down: a float mean just under a half band is not pushed below it",
+          band_down((6.5 + 2 * 6.5) / 3) == 6.5 and band_down(20.5 / 3) == 6.5 and band_down(7.0) == 7.0)
+    check("Writing + Speaking estimate keeps the IELTS overall rule (6.25 -> 6.5, 6.75 -> 7.0)",
+          (writing_speaking_overall(6.25), writing_speaking_overall(6.75), writing_speaking_overall(6.5)) == (6.5, 7.0, 6.5))
+    mock = mock_overall({"writing_task1": 6.0, "writing_task2": 6.5, "speaking_part1": 7.0, "speaking_part2": 6.5,
+                         "speaking_part3": 6.5})
+    check("mock: Writing (6 + 2 x 6.5) / 3 = 6.33 -> 6.0, Speaking 6.67 -> 6.5, overall 6.25 -> 6.5",
+          mock == {"writing": 6.0, "speaking": 6.5, "overall": 6.5}, mock)
+
+
 if __name__ == "__main__":
     writing()
     round2()
     fair_marking()
     speaking()
+    rounding()
     print(f"\n{len(fails)} failed" if fails else "\nall passed")
     sys.exit(1 if fails else 0)

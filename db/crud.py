@@ -49,6 +49,7 @@ from db.models import (
 )
 from services.ai import usage
 from services.ai.essay_marking import count_words
+from services.ai.scoring import band_down, writing_speaking_overall
 from services.ai.schemas import VocabularyItem
 
 # --- Users / access control -------------------------------------------------
@@ -2137,18 +2138,16 @@ async def get_part_bands(session: AsyncSession, part_ids: list[int], user_ids: l
 
 
 def mock_overall(bands: dict[str, float | None]) -> dict:
-    """Writing = (Task 1 + 2 x Task 2) / 3, Speaking = mean of its parts,
-    overall = their mean - each rounded to the nearest 0.5 (a Writing+Speaking
+    """Writing = (Task 1 + 2 x Task 2) / 3, Speaking = mean of its parts - each
+    rounded down to the half band (band_down, the user's rule 2026-11-09);
+    overall = their mean by the IELTS overall rule (a Writing+Speaking
     estimate, not a full four-skill IELTS score). `bands` maps module -> band."""
-
-    def half(value: float) -> float:
-        return round(value * 2) / 2
-
     w1, w2 = bands.get("writing_task1"), bands.get("writing_task2")
     speaking = [bands[m] for m in ("speaking_part1", "speaking_part2", "speaking_part3") if bands.get(m) is not None]
-    writing = half((w1 + 2 * w2) / 3) if w1 is not None and w2 is not None else None
-    speaking_band = half(sum(speaking) / len(speaking)) if len(speaking) == 3 else None
-    overall = half((writing + speaking_band) / 2) if writing is not None and speaking_band is not None else None
+    writing = band_down((w1 + 2 * w2) / 3) if w1 is not None and w2 is not None else None
+    speaking_band = band_down(sum(speaking) / len(speaking)) if len(speaking) == 3 else None
+    overall = writing_speaking_overall((writing + speaking_band) / 2) \
+        if writing is not None and speaking_band is not None else None
     return {"writing": writing, "speaking": speaking_band, "overall": overall}
 
 

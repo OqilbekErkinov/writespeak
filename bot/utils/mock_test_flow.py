@@ -18,6 +18,7 @@ from bot.utils.quota import check_quota, send_paywall
 from db import crud
 from db.database import get_session
 from db.models import MockTestPart, MockTestPartType
+from services.ai.scoring import band_down, writing_speaking_overall
 
 TASK_LABELS = {"task1": "Writing Task 1 (Report)", "task2": "Writing Task 2 (Essay)"}
 PART_LABELS = {"part1": "Speaking Part 1", "part2": "Speaking Part 2", "part3": "Speaking Part 3"}
@@ -109,16 +110,17 @@ async def _finish(
 
     writing_bands = [p.band for p in parts if p.part_type.value.startswith("writing") and p.band]
     speaking_bands = [p.band for p in parts if p.part_type.value.startswith("speaking") and p.band]
-    w_avg = sum(writing_bands) / len(writing_bands) if writing_bands else None
-    s_avg = sum(speaking_bands) / len(speaking_bands) if speaking_bands else None
+    # each module's mean rounded down to the half band (the user's rule, 2026-11-09: 6.75 -> 6.5)
+    w_avg = band_down(sum(writing_bands) / len(writing_bands)) if writing_bands else None
+    s_avg = band_down(sum(speaking_bands) / len(speaking_bands)) if speaking_bands else None
     section_avgs = [b for b in (w_avg, s_avg) if b is not None]
-    overall = round(sum(section_avgs) / len(section_avgs) * 2) / 2 if section_avgs else None
+    overall = writing_speaking_overall(sum(section_avgs) / len(section_avgs)) if section_avgs else None
 
     lines = ["🎯 <b>Mock Test yakunlandi!</b>", ""]
     if w_avg is not None:
-        lines.append(f"✍️ Writing (o'rtacha): <b>{w_avg:.1f}</b>")
+        lines.append(f"✍️ Writing (o'rtacha): <b>{w_avg}</b>")
     if s_avg is not None:
-        lines.append(f"🎙 Speaking (o'rtacha): <b>{s_avg:.1f}</b>")
+        lines.append(f"🎙 Speaking (o'rtacha): <b>{s_avg}</b>")
     if overall is not None:
         lines.append("")
         lines.append(f"📊 Writing + Speaking umumiy bali: <b>{overall}</b>")

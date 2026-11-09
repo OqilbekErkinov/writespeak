@@ -2,8 +2,9 @@
 rules, Speaking report prompt section 1.9 and Part 4, 2026-10-13/16).
 
   * every criterion is a whole band (0-9), as in the real IELTS descriptors;
-  * the overall band is the mean of the four, rounded the IELTS way
-    (.25 up to .5, .75 up to the next whole band);
+  * the overall band is the mean of the four, rounded DOWN to the half band
+    (6.25 -> 6.0, 6.75 -> 6.5 - the user's rule for Writing and Speaking,
+    2026-11-09; until then .25 and .75 were rounded up);
   * a report's criterion bands are the median of SCORE_RUNS independent
     scoring calls - gpt-5 accepts no temperature, so this is what keeps one
     answer's band from moving between runs (the third call is only made
@@ -44,11 +45,23 @@ def whole_band(value: float) -> float:
     return float(max(0, min(9, math.floor(float(value) + 0.5))))
 
 
+def band_down(value: float) -> float:
+    """A Writing or Speaking band from a mean: down to the half band at or
+    below it (the user's rule, 2026-11-09): 6.25 -> 6.0, 6.75 -> 6.5, 5.25 -> 5.0,
+    6.5 stays 6.5. The tiny epsilon keeps a float mean like 6.4999999 at 6.5."""
+    return math.floor(float(value) * 2 + 1e-9) / 2
+
+
 def overall_band(criteria: list[float]) -> float:
-    """Mean of the four criteria, rounded the IELTS way: .25 up to .5, .75 up
-    to the next whole band."""
-    mean = sum(criteria) / len(criteria)
-    return math.floor(mean * 2 + 0.5) / 2
+    """Mean of the four criteria, rounded down to the half band (band_down)."""
+    return band_down(sum(criteria) / len(criteria))
+
+
+def writing_speaking_overall(value: float) -> float:
+    """A Writing + Speaking estimate (a mock test) from the two module bands:
+    the IELTS overall-score rule, .25 up to .5 and .75 up to the next whole
+    band - the round-down rule is for a Writing or Speaking band itself."""
+    return math.floor(float(value) * 2 + 0.5 + 1e-9) / 2
 
 
 AIM_RANGE = (6.0, 8.0)
