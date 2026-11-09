@@ -125,49 +125,152 @@ SCORE_MAX_TOKENS = 8000
 # (Task Achievement/Response, Coherence & Cohesion, Lexical Resource,
 # Grammatical Range & Accuracy) — grounding context for the grading model,
 # not a verbatim reproduction of the official IELTS document.
-BAND_DESCRIPTORS = """
-Band 9 — Full, precise command: fully addresses the task; ideas are relevant, extended and \
-skilfully organized with seamless cohesion and natural paragraphing; wide, precise, natural \
-vocabulary with rare minor slips; wide range of accurate, error-free grammar structures.
+# The official IELTS Writing band descriptors (public version, updated May 2023), close to word for word -
+# the user sent them on 2026-11-09 to mark "like a real examiner". Until then the prompts carried a loose
+# summary of an older version (no "must fully fit", no limiting features, "error-free" at Band 9). The
+# Academic lines only; [LIMIT] is the official bold: a negative feature that limits the rating.
+_TA_T1 = """TASK ACHIEVEMENT (Task 1)
+9: All the requirements of the task are fully and appropriately satisfied. There may be extremely rare lapses in content.
+8: The response covers all the requirements of the task appropriately, relevantly and sufficiently. Key features are \
+skilfully selected, and clearly presented, highlighted and illustrated. There may be occasional omissions or lapses in content.
+7: The response covers the requirements of the task. The content is relevant and accurate - there may be a few \
+omissions or lapses. The format is appropriate. Key features which are selected are covered and clearly highlighted \
+but could be more fully or more appropriately illustrated or extended. It presents a clear overview, the data are \
+appropriately categorised, and main trends or differences are identified.
+6: The response focuses on the requirements of the task and an appropriate format is used. Key features which are \
+selected are covered and adequately highlighted. A relevant overview is attempted. Information is appropriately \
+selected and supported using figures/data. Some irrelevant, inappropriate or inaccurate information may occur in areas \
+of detail or when illustrating or extending the main points. Some details may be missing (or excessive) and further \
+extension or illustration may be needed.
+5: The response generally addresses the requirements of the task. The format may be inappropriate in places. Key \
+features which are selected are not adequately covered. The recounting of detail is mainly mechanical. [LIMIT] There \
+may be no data to support the description. There may be a tendency to focus on details (without referring to the \
+bigger picture). The inclusion of irrelevant, inappropriate or inaccurate material in key areas detracts from the task \
+achievement. There is limited detail when extending and illustrating the main points.
+4: The response is an attempt to address the task. Few key features have been selected. [LIMIT] The format may be \
+inappropriate. Key features which are presented may be irrelevant, repetitive, inaccurate or inappropriate.
+3: The response does not address the requirements of the task (possibly because of misunderstanding of the \
+data/diagram). Key features which are presented may be largely irrelevant. Limited information is presented, and this \
+may be used repetitively.
+2: The content barely relates to the task.
+1: [LIMIT] Responses of 20 words or fewer are rated at Band 1. [LIMIT] The content is wholly unrelated to the task. \
+Any copied rubric must be discounted."""
 
-Band 8 — Very good command: covers all task requirements well, with a clear, well-developed \
-position/overview; logically organized with effective cohesion, minor lapses only; wide \
-vocabulary used flexibly and precisely, occasional inaccuracies; wide range of structures, the \
-majority error-free, only occasional slips.
+_TR_T2 = """TASK RESPONSE (Task 2)
+9: The prompt is appropriately addressed and explored in depth. A clear and fully developed position is presented \
+which directly answers the question/s. Ideas are relevant, fully extended and well supported. Any lapses in content or \
+support are extremely rare.
+8: The prompt is appropriately and sufficiently addressed. A clear and well-developed position is presented in \
+response to the question/s. Ideas are relevant, well extended and supported. There may be occasional omissions or \
+lapses in content.
+7: The main parts of the prompt are appropriately addressed. A clear and developed position is presented. Main ideas \
+are extended and supported but there may be a tendency to over-generalise or there may be a lack of focus and \
+precision in supporting ideas/material.
+6: The main parts of the prompt are addressed (though some may be more fully covered than others). An appropriate \
+format is used. A position is presented that is directly relevant to the prompt, although the conclusions drawn may be \
+unclear, unjustified or repetitive. Main ideas are relevant, but some may be insufficiently developed or may lack \
+clarity, while some supporting arguments and evidence may be less relevant or inadequate.
+5: [LIMIT] The main parts of the prompt are incompletely addressed. The format may be inappropriate in places. The \
+writer expresses a position, but the development is not always clear. Some main ideas are put forward, but they are \
+limited and are not sufficiently developed and/or there may be irrelevant detail. There may be some repetition.
+4: The prompt is tackled in a minimal way, or the answer is tangential, possibly due to some misunderstanding of the \
+prompt. [LIMIT] The format may be inappropriate. A position is discernible, but the reader has to read carefully to \
+find it. Main ideas are difficult to identify and such ideas that are identifiable may lack relevance, clarity and/or \
+support. Large parts of the response may be repetitive.
+3: No part of the prompt is adequately addressed, or the prompt has been misunderstood. No relevant position can be \
+identified, and/or there is little direct response to the question/s. There are few ideas, and these may be irrelevant \
+or insufficiently developed.
+2: The content is barely related to the prompt. No position can be identified. There may be glimpses of one or two \
+ideas without development.
+1: [LIMIT] Responses of 20 words or fewer are rated at Band 1. [LIMIT] The content is wholly unrelated to the prompt. \
+Any copied rubric must be discounted."""
 
-Band 7 — Good command: addresses all parts of the task, though some ideas could be more fully \
-developed; clear progression, logical paragraphing, some overuse/underuse of cohesive devices; \
-sufficient vocabulary to allow flexibility and precision, some awareness of style, occasional \
-errors in word choice/spelling; a variety of complex structures with good control, some errors \
-that rarely reduce communication.
 
-Band 6 — Competent command: addresses the task though some parts may be underdeveloped or the \
-format imperfect; arranges information coherently with a clear overall progression, cohesive \
-devices used but not always appropriately; adequate vocabulary for the task, some errors in word \
-choice/spelling that don't impede communication; a mix of simple and complex structures, some \
-grammatical errors but meaning is generally clear.
+def _cc(task2: bool) -> str:
+    def p(text: str) -> str:
+        return f" {text}" if task2 else ""
+    return f"""COHERENCE & COHESION
+9: The message can be followed effortlessly. Cohesion is used in such a way that it very rarely attracts attention. Any \
+lapses in coherence or cohesion are minimal. Paragraphing is skilfully managed.
+8: The message can be followed with ease. Information and ideas are logically sequenced, and cohesion is well managed. \
+Occasional lapses in coherence or cohesion may occur. Paragraphing is used sufficiently and appropriately.
+7: Information and ideas are logically organised and there is a clear progression throughout the response. A few \
+lapses may occur. A range of cohesive devices including reference and substitution is used flexibly but with some \
+inaccuracies or some over/under use.{p("Paragraphing is generally used effectively to support overall coherence, and the sequencing of ideas within a paragraph is generally logical.")}
+6: Information and ideas are generally arranged coherently and there is a clear overall progression. Cohesive devices \
+are used to some good effect but cohesion within and/or between sentences may be faulty or mechanical due to misuse, \
+overuse or omission. The use of reference and substitution may lack flexibility or clarity and result in some \
+repetition or error.{p("Paragraphing may not always be logical and/or the central topic may not always be clear.")}
+5: Organisation is evident but is not wholly logical and there may be a lack of overall progression. Nevertheless, \
+there is a sense of underlying coherence to the response. The relationship of ideas can be followed but the sentences \
+are not fluently linked to each other. There may be limited/overuse of cohesive devices with some inaccuracy. The \
+writing may be repetitive due to inadequate and/or inaccurate use of reference and substitution.{p("[LIMIT] Paragraphing may be inadequate or missing.")}
+4: Information and ideas are evident but not arranged coherently, and there is no clear progression within the \
+response. Relationships between ideas can be unclear and/or inadequately marked. There is some use of basic cohesive \
+devices, which may be inaccurate or repetitive. There is inaccurate use or a lack of substitution or \
+referencing.{p("There may be no paragraphing and/or no clear main topic within paragraphs.")}
+3: There is no apparent logical organisation. Ideas are discernible but difficult to relate to each other. Minimal use \
+of sequencers or cohesive devices. There is difficulty in identifying referencing.
+2: There is little relevant message, or [LIMIT] the entire response may be off-topic. There is little evidence of \
+control of organisational features."""
 
-Band 5 — Modest command: generally addresses the task but the format may be inappropriate in \
-places, or the response is repetitive/under-developed; presents information with some \
-organization but lacks overall progression, inadequate/inaccurate use of cohesive devices, may be \
-repetitive; limited vocabulary, noticeable errors that may cause difficulty for the reader; only a \
-limited range of structures, frequent grammatical errors that can cause some difficulty for the \
-reader.
 
-Band 4 — Limited command: fails to fully address the task, may misunderstand parts of it, \
-conclusions may be unclear or unsupported; ideas are not arranged coherently, minimal/inadequate \
-use of cohesive devices; very limited, often inappropriate vocabulary; very limited range of \
-structures, frequent errors that severely impede meaning.
+_LR_GRA = """LEXICAL RESOURCE
+9: Full flexibility and precise use are evident. A wide range of vocabulary is used accurately and appropriately with \
+very natural and sophisticated control of lexical features. Minor errors in spelling and word formation are extremely \
+rare and have minimal impact on communication.
+8: A wide resource is fluently and flexibly used to convey precise meanings. There is skilful use of uncommon and/or \
+idiomatic items when appropriate, despite occasional inaccuracies in word choice and collocation. Occasional errors in \
+spelling and/or word formation may occur, but have minimal impact on communication.
+7: The resource is sufficient to allow some flexibility and precision. There is some ability to use less common and/or \
+idiomatic items. An awareness of style and collocation is evident, though inappropriacies occur. There are only a few \
+errors in spelling and/or word formation, and they do not detract from overall clarity.
+6: The resource is generally adequate and appropriate for the task. The meaning is generally clear in spite of a \
+rather restricted range or a lack of precision in word choice. If the writer is a risk-taker, there will be a wider \
+range of vocabulary used but higher degrees of inaccuracy or inappropriacy. There are some errors in spelling and/or \
+word formation, but these do not impede communication.
+5: The resource is limited but minimally adequate for the task. Simple vocabulary may be used accurately but the range \
+does not permit much variation in expression. There may be frequent lapses in the appropriacy of word choice, and a \
+lack of flexibility is apparent in frequent simplifications and/or repetitions. Errors in spelling and/or word \
+formation may be noticeable and may cause some difficulty for the reader.
+4: The resource is limited and inadequate for or [LIMIT] unrelated to the task. Vocabulary is basic and may be used \
+repetitively. There may be inappropriate use of lexical chunks (e.g. memorised phrases, formulaic language and/or \
+language from the input material). Inappropriate word choice and/or errors in word formation and/or in spelling may \
+impede meaning.
+3: The resource is inadequate (which may be due to the response being significantly underlength). Possible \
+over-dependence on input material or memorised language. Control of word choice and/or spelling is very limited, and \
+errors predominate. These errors may severely impede meaning.
 
-Task 1 (Report) — 'Task Achievement': a clear overview of the main trends/differences/stages; all \
-key features covered accurately with relevant, accurate data comparisons; NO personal opinion \
-(irrelevant for Task 1). Format flexibility matters — line/bar/pie charts, tables, maps, and \
-process diagrams each need different overview language.
+GRAMMATICAL RANGE & ACCURACY
+9: A wide range of structures is used with full flexibility and control. Punctuation and grammar are used \
+appropriately throughout. Minor errors are extremely rare and have minimal impact on communication.
+8: A wide range of structures is flexibly and accurately used. The majority of sentences are error-free, and \
+punctuation is well managed. Occasional, non-systematic errors and inappropriacies occur, but have minimal impact on \
+communication.
+7: A variety of complex structures is used with some flexibility and accuracy. Grammar and punctuation are generally \
+well controlled, and error-free sentences are frequent. A few errors in grammar may persist, but these do not impede \
+communication.
+6: A mix of simple and complex sentence forms is used but flexibility is limited. Examples of more complex structures \
+are not marked by the same level of accuracy as in simple structures. Errors in grammar and punctuation occur, but \
+rarely impede communication.
+5: The range of structures is limited and rather repetitive. Although complex sentences are attempted, they tend to \
+be faulty, and the greatest accuracy is achieved on simple sentences. Grammatical errors may be frequent and cause \
+some difficulty for the reader. Punctuation may be faulty.
+4: A very limited range of structures is used. [LIMIT] Subordinate clauses are rare and simple sentences predominate. \
+Some structures are produced accurately but grammatical errors are frequent and may impede meaning. Punctuation is \
+often faulty or inadequate.
+3: Sentence forms are attempted, but errors in grammar and punctuation predominate (except in memorised phrases or \
+those taken from the input material). This prevents most meaning from coming through. [LIMIT] Length may be \
+insufficient to provide evidence of control of sentence forms."""
 
-Task 2 (Essay) — 'Task Response': fully addresses all parts of the prompt; presents a clear, \
-consistent position throughout; main ideas are extended, supported and justified with relevant \
-examples, not just asserted.
-""".strip()
+
+def band_descriptors(task_type: str) -> str:
+    """The official band descriptors for this task (Academic), with how they are applied."""
+    task2 = task_type != "task1"
+    return ("A script must FULLY fit the positive features of the descriptor at a band to get that band. [LIMIT] marks "
+            "a negative feature that limits the rating to that band or below, whatever else the answer does well. "
+            "Band 0 only for no attempt, another language throughout, or a wholly memorised answer.\n\n"
+            + "\n\n".join((_TR_T2 if task2 else _TA_T1, _cc(task2), _LR_GRA)))
 
 # What is never a mistake, and where each problem belongs - shared by the
 # scorer, the feedback, the missed-errors pass and the mistake filter, so a
@@ -276,7 +379,9 @@ def checklist_text(task_type: str) -> str:
 
 
 def marking_guide() -> str:
-    """The marking guide, its density thresholds from config/writing_marking.json (academic lead)."""
+    """The marking guide, its density thresholds from config/writing_marking.json (academic lead).
+    Item 3 read "benefit of the doubt: give the higher band" until 2026-11-09, against the official
+    descriptors' "a script must fully fit the positive features of the descriptor at a particular level"."""
     d = marking_config.density()
     return f"""MARKING GUIDE - how to find each criterion's band:
 1. List the strengths first, each with a short quote from the answer. Then the weaknesses, each \
@@ -289,12 +394,15 @@ less common vocabulary used precisely (Lexical Resource), a variety of well-buil
 whether it meets Band 9. Otherwise start at Band 7 and check whether it meets Band 8 or falls to 6 or 5. \
 Few errors alone never start a criterion at 8: simple, accurate sentences in everyday words start at 6. \
 Weaknesses may be an empty list - never invent a weakness to fill the list.
-3. Benefit of the doubt: when torn between two bands and the answer shows the key features of the \
-higher one, give the higher band.
+3. The official rule (May 2023 descriptors): a band is given only when the answer FULLY fits the \
+positive features of that band's descriptor, and a [LIMIT] feature caps the criterion at its band. When \
+torn between two bands, check every positive feature of the higher one: all of them shown - the higher \
+band; any one missing - the lower.
 4. Score each criterion independently, on its own evidence. Never lower one criterion because \
 another is weak.
 5. Credit what works: less common vocabulary used well and complex structures used accurately count \
-for the band, not only the absence of errors. Find the band that fits best - don't count mistakes.
+for the band, not only the absence of errors. Find the highest band whose positive features the answer \
+fully shows - don't count mistakes.
 6. Band 9 needs positive evidence, a lower band an honest reason: give 9 only when the strengths show \
 the Band 9 features - Lexical Resource: a wide, natural and precise range of less common words; Grammar: \
 a wide range of structures, almost all error-free; Coherence: cohesion that attracts no attention and \
@@ -311,8 +419,13 @@ Grammar, errors only lower it further. Lexical Resource: everyday words used aga
 number", "went up", "good", "bad") are 5-6 even with no error; some less common words with awareness \
 of collocation 7; a wide, precise and natural range 8-9; clear, less common vocabulary whose meaning is \
 always clear is at least 7. A word that is grammatical but unnatural or imprecise for its meaning \
-("highly irrelevant", "learn good") is a Lexical weakness. Grammar: only simple sentences are 5-6 even \
-when accurate; a mix of simple and complex sentences 6-7; a variety of complex structures used well 7-8.
+("highly irrelevant", "learn good") is a Lexical weakness. Memorised phrases, formulaic templates and \
+language lifted from the question earn no Lexical credit; used inappropriately they are a Band 4 feature. \
+Grammar (the descriptors): simple sentences predominating, with subordinate clauses rare, is a [LIMIT] \
+at 4 even when accurate; a limited, repetitive range whose complex sentences tend to be faulty 5; a mix \
+of simple and complex forms with limited flexibility, the complex ones less accurate, 6; a variety of \
+complex structures with some flexibility, error-free sentences frequent, 7; a wide range used flexibly \
+and accurately, the majority of sentences error-free, 8.
 9. What real examiners do (their comments on real candidates' answers, 2026-11-01):
    - Communication first. A language error costs a band only as far as it gets in the reader's way: "frequent \
 spelling errors that do not impede communication" are still a Band 6 script, "a handful of errors that don't get in \
@@ -326,51 +439,30 @@ list of figures in order, with nothing compared, is about Band 5; one wrong deta
 is a small loss, not a band. A plan's own labels must be used: repeating them is no lack of range. Words copied from \
 the question earn no credit, but are no mistake.
    - Task Response (Task 2): off the question is what sinks a script (a tangential answer 4-4.5, even with clear \
-grammar); a part of the question covered thinly is about 6-6.5. An opinion question needs no counter-argument, and \
+grammar); a part of the question covered thinly is about 6-6.5, but a main part not addressed at all (only the \
+causes of a causes-and-solutions question, one view of a discuss-both-views question, no opinion where one is asked) \
+is the descriptors' [LIMIT]: Task Response 5 at most. An opinion question needs no counter-argument, and \
 missing specific examples are a way to improve, not a fault. No title is needed.
-   - Coherence: linkers opening most sentences read as mechanical, but that costs one band at most (a 7.5 script can do \
-it); a one-sentence paragraph can be a stylistic variant; no paragraphing at all hits this criterion alone.
+   - Coherence: linkers opening most sentences make cohesion mechanical - a Band 6 feature in the descriptors (Band 7 \
+allows only some over/under use); a one-sentence paragraph can be a stylistic variant; no paragraphing at all hits \
+this criterion alone.
    - Length: a few words under the limit is a small loss; a long answer is never a fault.
 10. Coherence is judged by how the answer is organised and linked, never by its error count: basic \
 linkers (First, Second, Also, But, Then) and sentences that follow each other like a list are Coherence \
 6 at most; the same few linkers again and again, or paragraphs without one clear central idea, 5-6; \
 Band 7 needs a clear progression with a range of linking and referencing; Band 8 cohesion that is well \
-managed and never mechanical.
+managed and never mechanical. Reference and substitution count (pronouns, "this", "the former", a \
+synonym for a noun used before): the same nouns repeated where a reference or substitute was needed is a \
+Band 6 feature, Band 5 when it makes the writing repetitive. Task 1: paragraphing counts only from Band 8 \
+("paragraphing is used sufficiently and appropriately") - one long block holding the whole report keeps \
+Coherence at 7 at most.
 
-PLAIN-LANGUAGE BAND GUIDE
-Task Response (Task 2):
-  5 - position unclear or inconsistent; ideas limited or not developed.
-  6 - relevant position and main ideas, but some insufficiently developed or unclear.
-  7 - clear position throughout; main ideas extended and supported (may over-generalise a little).
-  8 - well-developed position; ideas relevant, extended and well supported; occasional lapses.
-  9 - every part fully addressed; a fully developed position; ideas relevant, fully extended and well \
-supported; lapses extremely rare.
-  Support is explanation, reasoning, consequences or an example (a hypothetical one is fine): specific \
-real-world examples are NOT required - never lower Task Response for "few examples" when the ideas are \
-explained and extended.
-Coherence & Cohesion:
-  5 - some organisation, but no clear progression; missing or inadequate paragraphing; repetitive or \
-faulty linking.
-  6 - coherent overall; paragraphing used; linking sometimes mechanical or faulty; some unclear referencing.
-  7 - logical organisation and clear progression; a range of linking and referencing used flexibly, \
-with a few lapses.
-  8 - easy to follow; cohesion well managed; paragraphing sufficient and appropriate.
-  9 - cohesion so natural it attracts no attention; skilful paragraphing; lapses minimal.
-Lexical Resource:
-  5 - limited range; frequent errors that cause some difficulty.
-  6 - adequate range; tries less common words with some errors; meaning clear.
-  7 - enough range for flexibility and precision; some less common items, used with awareness of \
-style and collocation; occasional errors.
-  8 - wide range used fluently; skilful less common or idiomatic items; rare slips.
-  9 - full flexibility and precision; wide, natural, sophisticated vocabulary; rare minor slips only.
-Grammatical Range & Accuracy:
-  5 - limited range; complex sentences attempted but often faulty; frequent errors.
-  6 - a mix of simple and complex forms; errors occur but rarely reduce communication.
-  7 - a variety of complex structures; frequent error-free sentences; good control with a few errors.
-  8 - wide range; the majority of sentences error-free; only occasional non-systematic errors.
-  9 - a wide range used with full flexibility and accuracy; rare minor slips only.
-Band 8 is not the ceiling: an answer that meets the Band 9 description gets 9 - a Band 9 answer may \
-still contain rare minor slips, and it need not be perfect.
+NOTES ON THE DESCRIPTORS (the official text is above; these say how to read it, never instead of it):
+- Task Response support is explanation, reasoning, consequences or an example (a hypothetical one is \
+fine): specific real-world examples are NOT required - never lower Task Response for "few examples" when \
+the ideas are explained and extended.
+- Band 8 is not the ceiling: an answer that fully fits the Band 9 descriptor gets 9 - a Band 9 answer may \
+still contain extremely rare minor errors, and it need not be perfect.
 
 ERROR DENSITY (Grammar and Lexical Resource) - weighted checked mistakes per 100 words, a slip (a typo, \
 a missing full stop, a single article or plural slip) counting {d['slip_weight']:g}:
@@ -380,7 +472,8 @@ a missing full stop, a single article or plural slip) counting {d['slip_weight']
   Band 6: errors in many sentences, meaning clear.
   Band 5: frequent errors that make the reader work.
 Density is half the picture: Band 7 and above also need range - less common vocabulary used well, a \
-variety of complex structures.
+variety of complex structures. Grammar 8 also needs "the majority of sentences error-free" (software \
+counts them for you below, from the CHECKED MISTAKES), Grammar 7 "frequent" error-free sentences.
 
 {NOT_ERRORS}
 
@@ -388,8 +481,12 @@ variety of complex structures.
 
 LENGTH AND PARAGRAPHS (software applies these caps after you): Task 1 - 140 words or more: no \
 penalty; 100-139 words: Task Achievement 6 at most; under 100: 5 at most. Task 2 - 240 words or more: \
-no penalty; 200-239: Task Response 6 at most; under 200: 5 at most. A Task 2 essay with no paragraph \
-breaks: Coherence & Cohesion 5 at most. Apart from these, length is never a reason to lower a band.
+no penalty; 200-239: Task Response 6 at most; under 200: 5 at most. Words copied from the question \
+are not counted (the descriptors: "any copied rubric must be discounted"); 20 words or fewer of the \
+writer's own: Band 1 on every criterion. A Task 2 essay with no paragraph breaks: Coherence & Cohesion 5 \
+at most; a Task 1 report in one block: 7 at most. A Task 1 report on a visual of figures with no figure \
+in it ("no data to support the description"): Task Achievement 5 at most. Grammar with fewer than half \
+of its sentences error-free: 7 at most. Apart from these, length is never a reason to lower a band.
 
 CHECKED MISTAKES: the answer comes with the list of its mistakes, found by one examiner and checked \
 by a second, who removed everything that is not a real error. It is the complete list of real errors: \
@@ -587,8 +684,8 @@ tutor writing a feedback report. {opening}
 
 {_task_instructions(task_type)}
 
-IELTS WRITING BAND DESCRIPTORS (summary):
-{BAND_DESCRIPTORS}
+IELTS WRITING BAND DESCRIPTORS (official, May 2023):
+{band_descriptors(task_type)}
 
 {ESL_WORDING}
 
@@ -690,7 +787,7 @@ def _scoring_system(task_type: str, kind: str | None = None, answer: str = "", q
     parts = [
         "You are a certified IELTS Writing examiner. Score the answer against the IELTS Writing Band "
         f"Descriptors, following the marking guide.\n\n{_task_instructions(task_type)}",
-        f"IELTS WRITING BAND DESCRIPTORS (summary):\n{BAND_DESCRIPTORS}",
+        f"IELTS WRITING BAND DESCRIPTORS (official, May 2023):\n{band_descriptors(task_type)}",
         marking_guide(),
         extra,
         anchors_text(task_type, kind, answer, question, band),
@@ -1101,15 +1198,21 @@ class Scores:
 
 
 def cap_bands(task_type: str, answer_text: str, bands: dict[str, float], notes: dict[str, str],
-              figures_visual: bool = True, overview: str = "clear"):
+              figures_visual: bool = True, overview: str = "clear", question: str = ""):
     """The length and paragraphing policy (marking guide B2, chosen to match
     the books - Volume 2 gives Band 8.0 to a 148-word report): returns
     (bands, notes, the caps applied, report notices). The "no comparisons"
     cap is for visuals of figures only (`figures_visual`): #58, a life
     cycle, had Task Achievement 5 for "figures listed with no comparisons"
-    and not one figure in it."""
+    and not one figure in it. With the `question`, words copied from it are
+    not counted; the official descriptors' limits (2026-11-09) are here too:
+    20 words or fewer, no data in a report on figures, a Task 1 report in one
+    block."""
     bands, notes = dict(bands), dict(notes)
-    words, paragraphs = count_words(answer_text), paragraph_count(answer_text)
+    copied_words = sum(count_words(answer_text[s:e])
+                       for s, e in find_copied_spans(answer_text, question, copy_min_words(task_type))) if question else 0
+    words, paragraphs = count_words(answer_text) - copied_words, paragraph_count(answer_text)
+    data_figures = sum(1 for f in figures(answer_text) if not f["year"]) if task_type == "task1" else 0
     capped, notices = [], []
 
     def cap(key: str, limit: float, note: str) -> None:
@@ -1122,20 +1225,31 @@ def cap_bands(task_type: str, answer_text: str, bands: dict[str, float], notes: 
         cap("TR_or_TA", 5, "No overview of the main features keeps Task Achievement at 5 at most.")
     elif task_type == "task1" and overview == "generic":
         cap("TR_or_TA", 6, "A general overview naming no main feature keeps Task Achievement at 6 at most.")
+    # "Any copied rubric must be discounted" (the official descriptors): the length policy counts the
+    # writer's own words only
+    own = f"{words} words of your own" if copied_words else f"{words} words"
+    if words <= 20:
+        for key in SCORE_KEYS:
+            cap(key, 1, f"Only {own}: 20 words or fewer are rated at Band 1.")
     if task_type == "task1":
         if words < 100:
-            cap("TR_or_TA", 5, f"Only {words} words: under 100 words keeps Task Achievement at 5 at most.")
+            cap("TR_or_TA", 5, f"Only {own}: under 100 words keeps Task Achievement at 5 at most.")
         elif words < 140:
-            cap("TR_or_TA", 6, f"Only {words} words: under 140 words keeps Task Achievement at 6 at most.")
+            cap("TR_or_TA", 6, f"Only {own}: under 140 words keeps Task Achievement at 6 at most.")
         elif words < 150:
-            notices.append(f"Your report has {words} words - no penalty this time, but aim for at least 150.")
+            notices.append(f"Your report has {own} - no penalty this time, but aim for at least 150.")
         if figures_visual and count_comparisons(answer_text) == 0:
             cap("TR_or_TA", 5, "Figures are listed with no comparisons, so Task Achievement is 5 at most.")
+        if figures_visual and data_figures == 0:
+            cap("TR_or_TA", 5, "No figures support the description, so Task Achievement is 5 at most.")
+        if paragraphs <= 1:
+            # Task 1 Coherence 8 needs "paragraphing used sufficiently and appropriately" (the descriptors)
+            cap("CC", 7, "The whole report is one block of text, so Coherence stays at 7 at most.")
     else:
         if words < 200:
-            cap("TR_or_TA", 5, f"Only {words} words: under 200 words keeps Task Response at 5 at most.")
+            cap("TR_or_TA", 5, f"Only {own}: under 200 words keeps Task Response at 5 at most.")
         elif words < 240:
-            cap("TR_or_TA", 6, f"Only {words} words: under 240 words keeps Task Response at 6 at most.")
+            cap("TR_or_TA", 6, f"Only {own}: under 240 words keeps Task Response at 6 at most.")
         if paragraphs <= 1:
             cap("CC", 5, "No paragraph breaks: one block of text keeps Coherence at 5 at most.")
     # "Cohesion attracts no attention" doesn't stand with language at 7 or below (#71: Coherence 9, both 7; the lead: 7-8)
@@ -1223,6 +1337,9 @@ async def _score_once(task_type, prompt_text, answer_text, prompt_images, sheet:
     `checked`, `wide`: the checked mistakes and whether the range is wide -
     a Lexical or Grammar band below 9 needs language_reason."""
     facts = f"COUNTED BY SOFTWARE: {count_words(answer_text)} words, {paragraph_count(answer_text)} paragraph(s)."
+    if checked is not None:
+        free, total = error_free_sentences(answer_text, checked)
+        facts += f" Sentences with no checked grammar or punctuation mistake: {free} of {total}."
     text = f"QUESTION PROMPT:\n{prompt_text}\n\nANSWER:\n{answer_text}\n\n{facts}"
     if evidence:
         text += f"\n\n{evidence}"
@@ -1251,12 +1368,18 @@ async def _score_once(task_type, prompt_text, answer_text, prompt_images, sheet:
             return language_reason(k, weaknesses, answer_text, acceptable, checked, wide)
         return evidenced(weaknesses, answer_text, acceptable)
 
+    # Task 9 "fully satisfies all the requirements" (the descriptors): an 8 is lifted only with the word
+    # minimum, no Task mistake on the checked list and (Task 1) a clear overview - #137, a Band 6.5 map report
+    # with neither layout located, went 8 -> 9 for want of a quoted weakness
+    task_full = count_words(answer_text) >= TASK_MIN_WORDS.get(task_type, 0) \
+        and not any(m.criterion == "TR" for m in (checked or [])) \
+        and (task_type != "task1" or scores.overview == "clear")
     for k in SCORE_KEYS:
         judged = getattr(scores, k)
         if out[k] == 9 and found(k) and reason(k, found(k)):
             logger.info("Score %s 9 -> 8: its checklist found %s", k, found(k))
             out[k] = 8.0
-        elif out[k] == 8 and k != "CC" and (k == "TR_or_TA" or wide or checked is None) and looked(k) \
+        elif out[k] == 8 and k != "CC" and (task_full if k == "TR_or_TA" else wide or checked is None) and looked(k) \
                 and not reason(k, judged.weaknesses + found(k)):
             # only an 8 is lifted: a 6 or 7 whose reason came back unquoted stays (2026-10-29: #60's and
             # #62's Coherence 6-7 -> 9 with "linking is basic and repetitive" as their reason). Never
@@ -1415,6 +1538,31 @@ def grammar_ceiling(answer_text: str, bands: dict[str, float], checked: list | N
     return {**bands, "GRA": 6.0}, [f"GRA {bands['GRA']:g} -> 6 ({density:.1f} per 100 words)"]
 
 
+_SENTENCE_END = re.compile(r"(?<=[.!?])[\"'”’)]*\s+|\n+")
+
+
+def error_free_sentences(answer_text: str, checked: list | None) -> tuple[int, int]:
+    """(sentences with no checked grammar or punctuation mistake, sentences) - the descriptors judge Grammar
+    by them: "the majority of sentences are error-free" (8), "error-free sentences are frequent" (7).
+    A fragment of fewer than three words is no sentence."""
+    sentences = [s for s in _SENTENCE_END.split(canon(answer_text)) if len(s.split()) >= 3]
+    wrongs = [canon(m.wrong).lower().strip(" .,") for m in (checked or []) if m.criterion == "GRA" and m.wrong.strip()]
+    flawed = sum(1 for s in sentences if any(w and w in s.lower() for w in wrongs))
+    return len(sentences) - flawed, len(sentences)
+
+
+def sentence_ceiling(answer_text: str, bands: dict[str, float], checked: list | None) -> tuple[dict[str, float], list[str]]:
+    """Grammar 8 or 9 needs "the majority of sentences error-free" (the official descriptors, 2026-11-09):
+    with half of them or fewer clean, Grammar is 7 at most. Four sentences at least, so a short answer's one
+    slip doesn't decide it."""
+    if checked is None or bands["GRA"] <= 7:
+        return bands, []
+    free, total = error_free_sentences(answer_text, checked)
+    if total < 4 or free * 2 > total:
+        return bands, []
+    return {**bands, "GRA": 7.0}, [f"GRA {bands['GRA']:g} -> 7 (only {free} of {total} sentences error-free)"]
+
+
 COHERENCE_NINE_PARAGRAPHS = {"task1": 3, "task2": 4}
 
 
@@ -1485,6 +1633,8 @@ async def decide_scores(
     if raised:
         logger.info("Band floors (writing %s): %s", task_type, "; ".join(raised))
     medians, lowered = grammar_ceiling(answer_text, medians, checked)
+    medians, fewer = sentence_ceiling(answer_text, medians, checked)
+    lowered += fewer
     if lowered:
         logger.info("Grammar ceiling (writing %s): %s", task_type, "; ".join(lowered))
     medians, lifted = coherence_nine(task_type, answer_text, medians, runs, checked, wide)
@@ -1499,7 +1649,7 @@ async def decide_scores(
             notes[k] = NINE_NOTES[k][task_type] if k == "TR_or_TA" else NINE_NOTES[k]
     bands, notes, capped, notices = cap_bands(task_type, answer_text, medians, notes,
                                               data_visual(prompt_text, visual) if task_type == "task1" else True,
-                                              overview)
+                                              overview, prompt_text)
     if capped:
         logger.info("Score caps (writing %s): %s", task_type, "; ".join(capped))
     return Scores(bands=bands, notes=notes, capped=capped, notices=notices,

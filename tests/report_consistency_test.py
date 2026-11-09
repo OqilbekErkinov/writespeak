@@ -391,7 +391,9 @@ def rulings(page) -> None:
     bands = {"TR_or_TA": 9.0, "CC": 9.0, "LR": 9.0, "GRA": 9.0}
     _, _, capped, _ = writing_grader.cap_bands("task1", "The plant grows. Seeds form. They spread. " * 20, bands,
                                               {}, figures_visual=False)
-    check("a cycle diagram is never capped for 'no comparisons' (#58)", not capped, capped)
+    # Task only: the text is one block, so Coherence has its own cap (Task 1 in one block: 7 at most, 2026-11-09)
+    check("a cycle diagram is never capped for 'no comparisons' (#58)",
+          not any(c.startswith("TR_or_TA") for c in capped), capped)
     _, _, capped, _ = writing_grader.cap_bands("task1", "The figure is 20 percent. It is 30 percent now. " * 15, bands, {})
     check("...a chart with figures and no comparisons still is", capped, capped)
 

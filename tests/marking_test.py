@@ -648,7 +648,9 @@ def fair_marking() -> None:
     full = {"TR_or_TA": 8.0, "CC": 8.0, "LR": 8.0, "GRA": 8.0}
     capped = writing_grader.cap_bands("task1", " ".join(["word"] * 200) + "\n\nmore words here", full, notes, True, "none")
     check("no overview: Task Achievement 5 at most", capped[0]["TR_or_TA"] == 5, capped[2])
-    capped = writing_grader.cap_bands("task1", " ".join(["word"] * 200) + "\n\nmore words here", full, notes, True, "generic")
+    # with a figure in it, so only the overview cap speaks (no figure at all is the "no data" limit, 5)
+    capped = writing_grader.cap_bands("task1", " ".join(["word"] * 200) + " rose to 40%\n\nmore words here", full, notes,
+                                      True, "generic")
     check("a generic overview: 6 at most", capped[0]["TR_or_TA"] == 6, capped[2])
     capped = writing_grader.cap_bands("task2", " ".join(["word"] * 300) + "\n\nmore words here", full, notes, True, "none")
     check("...Task 2 has no overview cap", capped[0]["TR_or_TA"] == 8, capped[2])
@@ -882,6 +884,90 @@ def examiner_rules() -> None:
           "Outdoor courts" not in kept and any("Outdoor courts" in u for u in unreadable), unreadable)
 
 
+def official_descriptors() -> None:
+    """The official band descriptors (May 2023), sent by the user on 2026-11-09: in the prompts close to word
+    for word, "must fully fit", the [LIMIT] features, and what code can apply of them."""
+    g = writing_grader
+    t1, t2 = g.band_descriptors("task1"), g.band_descriptors("task2")
+    check("the scorer and the feedback get the official descriptors of their task",
+          t1 in g._scoring_system("task1", "map") and t2 in g._scoring_system("task2")
+          and t1 in g._system_prompt("task1", None, 0.0, 0.0, None))
+    check("...Task 1: Task Achievement with 'no data' as a limit; Task 2: Task Response with 'incompletely addressed'",
+          "[LIMIT] There may be no data to support the description" in t1 and "TASK RESPONSE" not in t1
+          and "[LIMIT] The main parts of the prompt are incompletely addressed" in t2)
+    check("...paragraphing 'inadequate or missing' limits Coherence in Task 2 only (the Task 1 descriptor has no such line)",
+          "[LIMIT] Paragraphing may be inadequate or missing" in t2 and "inadequate or missing" not in t1)
+    check("...simple sentences predominating limit Grammar at 4",
+          "[LIMIT] Subordinate clauses are rare and simple sentences predominate" in t1)
+    guide = g.marking_guide()
+    check("the guide: 'must fully fit' replaces 'benefit of the doubt - give the higher band'",
+          "FULLY fits" in guide and "Benefit of the doubt" not in guide)
+    check("...and no longer says simple sentences are Grammar 5-6", "only simple sentences are 5-6" not in guide)
+
+    # sentences with a grammar mistake: Grammar 8 needs most of them clean
+    text = ("The figure rose sharply in 2010. Sales was low in 2011. The number of users grew steadily. "
+            "Prices has fallen since then. Both companies expanded quickly. Its share were small.")
+    gra = [NS(criterion="GRA", wrong=w, correct="x", severity="error", unclear=False)
+           for w in ("Sales was low", "Prices has fallen", "Its share were small")]
+    check("error-free sentences counted from the checked grammar mistakes (3 of 6)",
+          g.error_free_sentences(text, gra) == (3, 6), g.error_free_sentences(text, gra))
+    lowered, why = g.sentence_ceiling(text, {"TR_or_TA": 7.0, "CC": 7.0, "LR": 7.0, "GRA": 8.0}, gra)
+    check("...half of them or fewer clean: Grammar 8 -> 7", lowered["GRA"] == 7 and why, why)
+    kept, _ = g.sentence_ceiling(text, {"TR_or_TA": 7.0, "CC": 7.0, "LR": 7.0, "GRA": 8.0}, gra[:2])
+    check("...four of six clean: Grammar 8 stays", kept["GRA"] == 8)
+    check("...a Lexical mistake is not a grammar one",
+          g.error_free_sentences(text, [NS(criterion="LR", wrong="Sales was low", correct="x")]) == (6, 6))
+
+    bands = {"TR_or_TA": 8.0, "CC": 8.0, "LR": 8.0, "GRA": 8.0}
+    tiny, _, why, _ = g.cap_bands("task2", "I agree with this idea because it is good for people.", bands, {})
+    check("20 words or fewer: Band 1 on every criterion", set(tiny.values()) == {1.0}, why)
+    question = ("Some people think that governments should spend more money on public transport than on roads. "
+                "To what extent do you agree or disagree?")
+    own = " ".join(["Cities need better buses and trains for everyone who lives in them."] * 19)  # 228 words
+    essay = question + "\n\n" + own + "\n\n" + own[:60]
+    capped, _, why, _ = g.cap_bands("task2", essay, bands, {}, question=question)
+    check("words copied from the question are not counted ('any copied rubric must be discounted')",
+          capped["TR_or_TA"] == 6 and "of your own" in " ".join(why), why)
+    report = ("The graph shows how sales changed. Sales rose and then fell, while profits stayed higher than costs "
+              "throughout the period. ") * 12
+    capped, _, why, _ = g.cap_bands("task1", report, bands, {}, True)
+    check("Task 1 on a visual of figures with no figure: 'no data to support the description' - Task 5 at most",
+          capped["TR_or_TA"] == 5 and any("No figures" in w for w in why), why)
+    check("...and one block of text: Coherence 7 at most (Task 1 Coherence 8 needs sufficient paragraphing)",
+          capped["CC"] == 7)
+    with_data = report.replace("Sales rose", "Sales rose to 40% in 2010", 1) + "\n\nOverall, sales led."
+    capped, _, _, _ = g.cap_bands("task1", with_data, bands, {}, True)
+    check("...a report with a figure and two paragraphs keeps its bands", capped == bands, capped)
+    capped, _, _, _ = g.cap_bands("task1", report + "\n\nOverall, it changed.", bands, {}, False)
+    check("...a map or a process needs no figures", capped["TR_or_TA"] == 8)
+
+    # Task Achievement 8 -> 9 only with the word minimum, no Task mistake and a clear overview (#137)
+    long_report = ("In 2010 sales rose to 40%, while costs fell to 20%, so the gap widened over the period. " * 12).strip()
+
+    def task_run(overview="clear", checked=None):
+        def item(key):
+            items = g.CHECKLISTS[key]["task1"] if key == "TR_or_TA" else g.CHECKLISTS[key]
+            return schemas.CriterionJudgement(checklist=[schemas.CheckFinding(item=i, found=False, quote="")
+                                                         for i in items], strengths=[], weaknesses=[], band=8, note="n")
+        scoring = schemas.WritingScoring(TR_or_TA=item("TR_or_TA"), CC=item("CC"), LR=item("LR"), GRA=item("GRA"),
+                                         overview=overview)
+
+        async def fake(purpose, max_tokens, messages, response_format, effort=None):
+            return NS(choices=[NS(message=NS(parsed=scoring))])
+        real = g._parse
+        g._parse = fake
+        try:
+            return asyncio.run(g._score_once("task1", "The graph shows sales.", long_report, None, checked=checked))
+        finally:
+            g._parse = real
+
+    check("Task 8 with nothing wrong, a clear overview and enough words: lifted to 9", task_run(checked=[])["TR_or_TA"] == 9)
+    check("...not with a generic overview", task_run("generic", [])["TR_or_TA"] == 8)
+    check("...not with a Task mistake on the checked list",
+          task_run(checked=[NS(criterion="TR", wrong="sales rose to 40%", correct="x", severity="error",
+                               unclear=False, less_common=False)])["TR_or_TA"] == 8)
+
+
 if __name__ == "__main__":
     writing()
     round2()
@@ -889,5 +975,6 @@ if __name__ == "__main__":
     speaking()
     rounding()
     examiner_rules()
+    official_descriptors()
     print(f"\n{len(fails)} failed" if fails else "\nall passed")
     sys.exit(1 if fails else 0)
