@@ -205,6 +205,15 @@ _T: dict[str, dict[str, str]] = {
         "будет неверным.\n\nПроверить его в разделе {section}? Монеты пока не списаны.",
     },
     "writing.btn_switch_section": {"uz": "✅ {section} bo'limida tekshirish", "ru": "✅ Проверить в разделе {section}"},
+    "writing.cut_start": {
+        "uz": "⚠️ Javobingiz so'z yoki gap o'rtasidan boshlanganga o'xshaydi: «{start}…»\n\nNusxa olishda boshi tushib "
+        "qolgan bo'lishi mumkin. Javobni to'liq qayta yuboring yoki matn to'liq bo'lsa, shu holicha tekshiring. "
+        "Hozircha coin olinmadi.",
+        "ru": "⚠️ Похоже, ответ начинается с середины слова или предложения: «{start}…»\n\nВозможно, начало "
+        "потерялось при копировании. Отправьте ответ целиком или, если текст полный, проверьте как есть. Монеты пока "
+        "не списаны.",
+    },
+    "writing.btn_check_as_is": {"uz": "✅ Matn to'liq — tekshirish", "ru": "✅ Текст полный — проверить"},
     "writing.send_chart": {
         "uz": "✅ Savol qabul qilindi.\n\n📊 Endi shu Task 1 ning <b>grafik yoki diagramma rasmini</b> yuboring.\n\n"
         "Task 1 da ball rasmdagi ma'lumotga qarab qo'yiladi: Bandzilla javobingizdagi har bir raqam, "

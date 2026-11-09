@@ -211,10 +211,12 @@ CHECKLISTS = {
     "CC": ["a linker that doesn't fit the logic of what it joins", "a paragraph with two central ideas",
            "mechanical or repetitive linking (the same linker again, a linker opening every sentence)",
            "unclear referencing (this / it / they with no clear antecedent)",
-           "an order of ideas that breaks the progression"],
+           "an order of ideas that breaks the progression",
+           "only basic linkers (First, Second, Also, But, Then) or sentences that follow each other like a list"],
     "LR": ["a wrong word or collocation among the CHECKED MISTAKES", "repetition where range is expected",
-           "a word whose register doesn't fit"],
-    "GRA": ["a grammar error among the CHECKED MISTAKES", "a narrow range of structures"],
+           "a word whose register doesn't fit", "everyday words throughout, few or no less common ones",
+           "a word that is grammatical but unnatural or imprecise for its meaning"],
+    "GRA": ["a grammar error among the CHECKED MISTAKES", "a narrow range of structures (mostly simple sentences)"],
 }
 
 
@@ -240,29 +242,38 @@ def marking_guide() -> str:
     return f"""MARKING GUIDE - how to find each criterion's band:
 1. List the strengths first, each with a short quote from the answer. Then the weaknesses, each \
 with a short quote - real problems of THIS criterion only.
-2. Where to start, from the evidence: if this criterion's weighted checked mistakes are at most \
-{d['start_at_band8_max']:g} per 100 words (Grammar and Lexical Resource: the CHECKED MISTAKES; Task and \
-Coherence: no more than a minor weakness) and the answer shows less common vocabulary or well-built \
-complex structures, start at Band 8 and check whether it meets Band 9. Otherwise start at Band 7 and \
-check whether it meets Band 8 or falls to 6. Weaknesses may be an empty list - never invent a weakness \
-to fill the list.
+2. Where to start, from the evidence: start at Band 8 only when this criterion's weighted checked \
+mistakes are at most {d['start_at_band8_max']:g} per 100 words (Grammar and Lexical Resource: the CHECKED \
+MISTAKES; Task and Coherence: no more than a minor weakness) AND the answer shows this criterion's range - \
+less common vocabulary used precisely (Lexical Resource), a variety of well-built complex structures \
+(Grammar), linking and referencing used flexibly (Coherence), fully extended ideas (Task) - then check \
+whether it meets Band 9. Otherwise start at Band 7 and check whether it meets Band 8 or falls to 6 or 5. \
+Few errors alone never start a criterion at 8: simple, accurate sentences in everyday words start at 6. \
+Weaknesses may be an empty list - never invent a weakness to fill the list.
 3. Benefit of the doubt: when torn between two bands and the answer shows the key features of the \
 higher one, give the higher band.
 4. Score each criterion independently, on its own evidence. Never lower one criterion because \
 another is weak.
 5. Credit what works: less common vocabulary used well and complex structures used accurately count \
 for the band, not only the absence of errors. Find the band that fits best - don't count mistakes.
-6. Below 9 needs evidence: to give a criterion less than 9, its weaknesses must quote the specific \
-text, or name the specific omission (e.g. "the 55-64 group is never described"). "Could be richer", \
-"not fully developed", "needs more range" with no example are not reasons - with no such weakness, \
-give 9. A quote of something listed as ACCEPTABLE AS WRITTEN is no reason either.
+6. Band 9 needs positive evidence, a lower band an honest reason: give 9 only when the strengths show \
+the Band 9 features - Lexical Resource: a wide, natural and precise range of less common words; Grammar: \
+a wide range of structures, almost all error-free; Coherence: cohesion that attracts no attention and \
+skilful paragraphing; Task: every part fully developed. A limited range is a real reason, quoted or \
+not: "mostly simple sentences", "everyday vocabulary", "the same few linkers" lower Grammar, Lexical \
+Resource or Coherence. "Could be richer" or "not fully developed" with nothing behind them are no \
+reason, and neither is a quote of something listed as ACCEPTABLE AS WRITTEN.
 7. Judge, don't count (the academic lead, 2026-10-29): weigh errors by their density per 100 words, \
 their effect on meaning and the range the writer attempts - an error that comes from attempting less \
 common language weighs less than one in a simple structure. A slip is very small: Band 9 allows rare \
 slips.
-8. A wide range with a few slips is Band 8 or 9, never 7. Lexical Resource 6 or below only for a \
-genuinely limited range or words that make the meaning unclear: clear, less common vocabulary whose \
-meaning is always clear is at least 7.
+8. A wide range with a few slips is Band 8 or 9, never 7. Range comes first for Lexical Resource and \
+Grammar, errors only lower it further. Lexical Resource: everyday words used again and again ("the \
+number", "went up", "good", "bad") are 5-6 even with no error; some less common words with awareness \
+of collocation 7; a wide, precise and natural range 8-9; clear, less common vocabulary whose meaning is \
+always clear is at least 7. A word that is grammatical but unnatural or imprecise for its meaning \
+("highly irrelevant", "learn good") is a Lexical weakness. Grammar: only simple sentences are 5-6 even \
+when accurate; a mix of simple and complex sentences 6-7; a variety of complex structures used well 7-8.
 9. What real examiners do (their comments on real candidates' answers, 2026-11-01):
    - Communication first. A language error costs a band only as far as it gets in the reader's way: "frequent \
 spelling errors that do not impede communication" are still a Band 6 script, "a handful of errors that don't get in \
@@ -281,6 +292,11 @@ missing specific examples are a way to improve, not a fault. No title is needed.
    - Coherence: linkers opening most sentences read as mechanical, but that costs one band at most (a 7.5 script can do \
 it); a one-sentence paragraph can be a stylistic variant; no paragraphing at all hits this criterion alone.
    - Length: a few words under the limit is a small loss; a long answer is never a fault.
+10. Coherence is judged by how the answer is organised and linked, never by its error count: basic \
+linkers (First, Second, Also, But, Then) and sentences that follow each other like a list are Coherence \
+6 at most; the same few linkers again and again, or paragraphs without one clear central idea, 5-6; \
+Band 7 needs a clear progression with a range of linking and referencing; Band 8 cohesion that is well \
+managed and never mechanical.
 
 PLAIN-LANGUAGE BAND GUIDE
 Task Response (Task 2):
@@ -632,12 +648,14 @@ be determined.
 
 VERIFY_SYSTEM = f"""You are a senior IELTS Writing examiner double-checking a colleague's list of \
 mistakes in a student's essay or report. Ask ONE question of every item: is this actually wrong in \
-standard British or American written English? Then give its kind and the ONE criterion it belongs to.
+standard British or American written English - ungrammatical, or a word or collocation an educated \
+reader finds wrong, unnatural or imprecise for its meaning? Then give its kind and the ONE criterion it belongs to.
 
 kind (the academic lead's classes, 2026-10-29):
 - error: wrong, or it makes the meaning unclear - "it should be noticed", "provided" used to mean \
-"because", "this turn of events are", "people doesn't"; collocation errors, wrong-meaning or \
-overstated words, verb-pattern errors, linking that doesn't fit the logic, a conclusion that \
+"because", "this turn of events are", "people doesn't"; collocation errors and words an educated \
+reader finds unnatural or imprecise for the meaning ("highly irrelevant" for "increasingly", "commuting \
+charges" for "costs", "learn good", "have good and bad"), wrong-meaning or overstated words, verb-pattern errors, linking that doesn't fit the logic, a conclusion that \
 contradicts the body;
 - slip: wrong, but a one-off small mistake the writer clearly controls elsewhere in the text - a \
 missing full stop, "Overtime" for "Over time", "feeling of loneliness" for "feelings", a single article \
@@ -656,8 +674,8 @@ precise ("services are accessible at night" for "open", "eating regimes", "a pos
 adjective intensified in its common, clear sense). A near-synonym in a familiar pattern that a reader \
 understands at once is an alternative, not a miscollocation (the academic lead's rulings: "a positive \
 tendency", "at certain parts of the day", "sleep regimes", "certain people's freedoms", "shops are \
-available"): call a collocation an error only when an educated native reader would find it wrong, not \
-when another word is merely more frequent. It is no mistake: it never counts;
+available"): call a collocation an error when an educated native reader would find it wrong or \
+unnatural, not when another word is merely more frequent. It is no mistake: it never counts;
 - not_a_mistake: correct as written and the suggestion is no better; or the correction CHANGES WHAT \
 THE STUDENT MEANT, or does NOT FIT BACK into the sentence (put it in place of the wrong part and read \
 the sentence: no doubled or missing words); or you are not sure it is wrong - the student gets the \
@@ -681,7 +699,7 @@ things).
 
 An error needs a reason: ungrammatical, the wrong meaning, or it confuses the reader. "Another phrase is more \
 common" is an alternative, always, and so is a synonym swapped in with no grammar changed - unless the student's \
-word means something else. A phrase the essay uses well is not a mistake because you would write it otherwise. \
+word means something else or sounds unnatural there (basis: meaning). A phrase the essay uses well is not a mistake because you would write it otherwise. \
 basis says which reason it is; less_common says whether it is in less common language the writer attempted, which \
 weighs less than a mistake in basic language.
 
@@ -967,8 +985,10 @@ _OMISSION = re.compile(r"\b(omit\w*|omission|missing|leaves? out|left out|not (?
 _QUOTED = re.compile(r"[\"“«']([^\"”»']{2,120})[\"”»']")
 
 
-_RANGE_LIMIT = re.compile(r"\b(repeat\w*|repetit\w*|overus\w*|limited|narrow|"
-                          r"(?:simple|basic) (?:structures?|sentences?|vocabulary|words?|range))\b", re.IGNORECASE)
+_RANGE_LIMIT = re.compile(r"\b(repeat\w*|repetit\w*|overus\w*|limited|narrow|everyday|mostly simple|"
+                          r"(?:simple|basic) (?:structures?|sentences?|sentence patterns?|vocabulary|words?|range|"
+                          r"linkers?|linking)|few (?:complex|less common)|lacks? (?:range|variety|complex)|"
+                          r"wider range|could be wider)\b", re.IGNORECASE)
 
 
 def _real_quotes(weakness: str, low: str, fine: list[str]) -> list[str]:
@@ -997,14 +1017,16 @@ def evidenced(weaknesses: list[str], answer_text: str, acceptable: list[str] = (
 def language_reason(key: str, weaknesses: list[str], answer_text: str, acceptable: list[str], checked: list,
                     wide: bool) -> bool:
     """Is a Lexical Resource or Grammar band below 9 justified (the academic
-    lead, 2026-10-31)? By a quoted range limitation, or by the classified
+    lead, 2026-10-31)? By a range limitation, quoted or not (the teachers, 2026-11-09: "range of
+    complex structures is limited" was no reason, and a 128-word report of simple sentences came out
+    Grammar 9), or by the classified
     list: at least 2 distinct real errors; one isolated error only when the
     range isn't wide or the meaning unclear; slips only past "rare" (the Band
     9 density). A phrase nobody flagged is no reason (#74: "had the upper
     hand" called a register lapse)."""
     low = canon(answer_text).lower()
     fine = [canon(a).lower().strip(" .,") for a in acceptable if a.strip()]
-    if any(_RANGE_LIMIT.search(w) and _real_quotes(w, low, fine) for w in weaknesses):
+    if any(_RANGE_LIMIT.search(w) for w in weaknesses):
         return True
     mine = [m for m in checked if m.criterion == key]
     errors = [m for m in mine if getattr(m, "severity", "error") != "slip"]
@@ -1033,7 +1055,7 @@ async def _score_once(task_type, prompt_text, answer_text, prompt_images, sheet:
         text += f"\n\n{evidence}"
     messages = [
         {"role": "system", "content": _scoring_system(task_type, kind, answer_text, prompt_text,
-                                                      estimated_band(answer_text, checked))},
+                                                      estimated_band(answer_text, checked, wide))},
         {"role": "user", "content": _with_images(text, prompt_images, task_type == "task1", _judged(sheet))},
     ]
     response = await _parse("score", SCORE_MAX_TOKENS, messages, WritingScoring,
@@ -1061,16 +1083,19 @@ async def _score_once(task_type, prompt_text, answer_text, prompt_images, sheet:
         if out[k] == 9 and found(k) and reason(k, found(k)):
             logger.info("Score %s 9 -> 8: its checklist found %s", k, found(k))
             out[k] = 8.0
-        elif out[k] == 8 and looked(k) and not reason(k, judged.weaknesses + found(k)):
+        elif out[k] == 8 and k != "CC" and (k == "TR_or_TA" or wide or checked is None) and looked(k) \
+                and not reason(k, judged.weaknesses + found(k)):
             # only an 8 is lifted: a 6 or 7 whose reason came back unquoted stays (2026-10-29: #60's and
-            # #62's Coherence 6-7 -> 9 with "linking is basic and repetitive" as their reason)
+            # #62's Coherence 6-7 -> 9 with "linking is basic and repetitive" as their reason). Never
+            # Coherence, and Lexical/Grammar only with a wide range shown (the teachers, 2026-11-09: a
+            # 128-word report of simple sentences came out Coherence 9 and Grammar 9)
             logger.info("Score %s %g -> 9: no quoted weakness or named omission, checklist clear (%s)", k, out[k],
                         judged.weaknesses)
             out[k] = 9.0
     if checked is not None:
         # three 9s and one lower: Lexical or Grammar must show the errors behind it, or it is a 9 too
         for k in ("LR", "GRA"):
-            if out[k] < 9 and looked(k) and all(out[o] == 9 for o in SCORE_KEYS if o != k) \
+            if out[k] < 9 and wide and looked(k) and all(out[o] == 9 for o in SCORE_KEYS if o != k) \
                     and not reason(k, getattr(scores, k).weaknesses + found(k)):
                 logger.info("Score %s %g -> 9: the other three are 9 and no error justifies it", k, out[k])
                 out[k] = 9.0
@@ -1090,16 +1115,19 @@ def _weight(m, slip: float, less_common: float) -> float:
     return less_common if getattr(m, "less_common", False) else 1.0
 
 
-def estimated_band(answer_text: str, checked: list | None) -> float | None:
+def estimated_band(answer_text: str, checked: list | None, wide: bool = True) -> float | None:
     """Where the checked mistakes point, by the density guide - it only picks
-    the official samples a scoring run sees, never a band."""
+    the official samples a scoring run sees, never a band. Without a wide
+    range at most 7: few errors in simple language is no Band 8 (the teachers,
+    2026-11-09)."""
     if checked is None:
         return None
     d = marking_config.density()
     half = d["less_common_weight"]
     errors = sum(_weight(m, d["slip_weight"], half) for m in checked if m.criterion in ("LR", "GRA"))
     density = errors * 100 / max(count_words(answer_text), 1) / 2  # two criteria
-    return 8.0 if density <= d["band8_max"] else 7.0 if density <= d["band7_max"] else 6.0 if density <= 5 else 5.0
+    band = 8.0 if density <= d["band8_max"] else 7.0 if density <= d["band7_max"] else 6.0 if density <= 5 else 5.0
+    return band if wide else min(band, 7.0)
 
 
 def shown_strong(answer_text: str, strong: list[str], checked: list | None) -> list[str]:

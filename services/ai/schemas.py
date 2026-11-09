@@ -554,9 +554,10 @@ class Verdicts(BaseModel):
 
 
 MistakeBasis = Literal["grammar", "meaning", "clarity", "spelling", "punctuation", "style"]
-MISTAKE_BASIS = ("Why it is wrong: grammar (ungrammatical), meaning (the word means something else, or a wrong fixed "
-                 "phrase), clarity (it confuses the reader), spelling, punctuation, or style (another phrase is only "
-                 "more common or more natural). style is always an alternative, never an error or a slip.")
+MISTAKE_BASIS = ("Why it is wrong: grammar (ungrammatical), meaning (the word means something else, a wrong fixed "
+                 "phrase, or a word or collocation an educated reader finds unnatural for its meaning), clarity (it "
+                 "confuses the reader), spelling, punctuation, or style (another phrase is only more common, and the "
+                 "student's is natural too). style is always an alternative, never an error or a slip.")
 LESS_COMMON = ("True when the mistake is in less common vocabulary or a complex structure the candidate attempted; "
                "false when it is in basic language.")
 

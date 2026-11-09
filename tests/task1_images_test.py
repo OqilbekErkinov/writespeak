@@ -738,10 +738,68 @@ async def wrong_section_flow() -> None:
     check("F6 ...a Task 2 question in Task 2 goes straight on", await state.get_state() == WritingStates.awaiting_answer.state)
 
 
+async def cut_start_flow() -> None:
+    """An answer whose start was lost in copying ("e youngest people...", 2026-11-07): the student is asked before
+    anything is marked; the button, or the same text again, goes on."""
+    from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.base import StorageKey
+    from aiogram.fsm.storage.memory import MemoryStorage
+
+    from bot.handlers import writing
+    from bot.keyboards.writing_task_kb import CB_CHECK_AS_IS
+    from bot.states.writing_states import WritingStates
+
+    said: list[tuple[str, object]] = []
+    graded: list[str] = []
+
+    async def answer(text, reply_markup=None, **kw):
+        said.append((text, reply_markup))
+
+    async def grade(message, state, lang):
+        graded.append((await state.get_data())["answer_text"])
+
+    async def nothing(*a, **kw):
+        return None
+
+    message = NS(answer=answer, chat=NS(id=1))
+    state = FSMContext(storage=MemoryStorage(), key=StorageKey(bot_id=1, chat_id=1, user_id=1))
+    cut = "e youngest people had the highest figures. There was a big gap. In 2010, 72% used the internet."
+    real_grade, real_strip = writing._run_grading, writing.strip_buttons
+    writing._run_grading, writing.strip_buttons = grade, nothing
+    try:
+        await state.set_state(WritingStates.awaiting_answer)
+        await state.update_data(task_type="task1", answer_text=cut, answer_source="text")
+        await writing._advance(message, state, "answer", "uz")
+        buttons = [b.callback_data for row in said[-1][1].inline_keyboard for b in row] if said else []
+        check("a cut answer: the student is asked, nothing marked yet",
+              not graded and "e youngest people" in said[-1][0] and CB_CHECK_AS_IS in buttons, said)
+        await writing.check_as_is(NS(answer=nothing, message=message, from_user=NS(id=1)), state, "uz")
+        check("...the button marks it as it is", graded == [cut], graded)
+
+        graded.clear()
+        said.clear()
+        await state.set_state(WritingStates.awaiting_answer)
+        await state.update_data(_cut_warned=None)
+        await writing._advance(message, state, "answer", "uz")
+        await writing._advance(message, state, "answer", "uz")
+        check("...the same text sent again is marked", graded == [cut] and len(said) == 1, (graded, said))
+
+        graded.clear()
+        said.clear()
+        whole = "The y" + cut
+        await state.set_state(WritingStates.awaiting_answer)
+        await state.update_data(answer_text=whole)
+        await writing._advance(message, state, "answer", "uz")
+        check("...a whole answer goes straight on", graded == [whole] and not said, (graded, said))
+    finally:
+        writing._run_grading, writing.strip_buttons = real_grade, real_strip
+
+
 async def main() -> int:
     part1_pictures()
     await part1_reading()
     await wrong_section_flow()
+    await cut_start_flow()
     if "--pictures-only" not in sys.argv:
         await part2_bot()
     print("FAILURES:", fails or "none")

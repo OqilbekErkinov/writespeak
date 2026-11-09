@@ -163,6 +163,21 @@ def clean_pasted(text: str) -> tuple[str, bool]:
     return "\n".join(paragraphs), removed
 
 
+_SENTENCE_STARTS = re.compile(r"(?:^|[.!?]\s+|\n\s*)([A-Za-z])")
+
+
+def starts_mid_word(text: str) -> bool:
+    """Does a typed answer start mid-word or mid-sentence - "e youngest people
+    had...", "sitors in all the years." (two teachers' tests, 2026-11-07: the
+    start lost in copying)? A writer who never uses capitals is left alone:
+    only a lower-case start in a text whose other sentences start with one."""
+    s = text.lstrip(" \t\n\"'“‘(")
+    if not s[:1].isalpha() or not s[:1].islower():
+        return False
+    later = _SENTENCE_STARTS.findall(s)[1:]
+    return len(later) >= 2 and sum(c.isupper() for c in later) >= 0.8 * len(later)
+
+
 def count_words(text: str) -> int:
     return len(COUNT_RE.findall(text))
 

@@ -51,6 +51,8 @@ EN: dict[str, str] = {
     "writing.send_answer": "✅ Got it.\n\n✏️ Now send your answer (at least {min_words} words).",
     "writing.wrong_section": "⚠️ This looks like a <b>{section}</b> question, but you are in the other section. Marked against the wrong criteria, the band would be wrong.\n\nMark it in the {section} section? No coins have been taken.",
     "writing.btn_switch_section": "✅ Mark it in {section}",
+    "writing.cut_start": "⚠️ Your answer seems to start mid-word or mid-sentence: «{start}…»\n\nThe beginning may have been lost when copying. Send the whole answer again, or check it as it is if the text is complete. No coins have been taken.",
+    "writing.btn_check_as_is": "✅ It's complete — check it",
     "writing.send_chart": "✅ Question received.\n\n📊 Now send the <b>chart or diagram image</b> for this Task 1.\n\nIn Task 1 the band depends on the data in the image: Bandzilla checks every number, comparison and the overview in your answer against it. Without the image, only the text is checked.",
     "writing.chart_photo_only": "📊 At this step, send the chart image — a photo or an image file. If you don't have it, tap «➡️ Continue without the image».",
     "writing.btn_no_chart": "➡️ Continue without the image",

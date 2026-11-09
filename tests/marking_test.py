@@ -290,7 +290,8 @@ def round2() -> None:
 
     check("a 9 whose checklist found a problem (a quoted illogical linker) is an 8",
           run(judged(9, found=("Taking this into account",)))["CC"] == 8)
-    check("an 8 with no quoted reason, checklist answered and clear, is a 9", run(judged(8))["CC"] == 9)
+    check("Coherence 8 is never lifted to 9 (the teachers, 2026-11-09: a 128-word report of simple sentences got 9)",
+          run(judged(8))["CC"] == 8)
     check("...but an 8 whose checklist was never run stays 8 ('didn't look' is no 9)",
           run(judged(8, looked=False))["CC"] == 8)
     check("a 6 whose reason came back unquoted is never lifted to 9 (#60, #62: Coherence 6 -> 9)",
@@ -367,6 +368,22 @@ def round2() -> None:
           not writing_grader.language_reason("LR", ['Minor register lapse: "had the upper hand"'], text74, [], [], True))
     check("...a quoted range limitation is", writing_grader.language_reason(
         "LR", ['"predominated" is repeated'], text74, [], [], True))
+    check("...and so is one with no quote (#121: 'Range of complex structures is limited overall' was lifted to 9)",
+          writing_grader.language_reason("GRA", ["Range of complex structures is limited overall"], text74, [], [], True)
+          and writing_grader.language_reason("GRA", ["Range could be wider; sentence patterns are mostly simple"],
+                                             text74, [], [], True)
+          and writing_grader.language_reason("LR", ["Everyday vocabulary throughout"], text74, [], [], True))
+    from services.ai import mistake_rules
+    plain = " ".join(["word"] * 200)
+    check("few errors in simple language: the samples shown are picked around Band 7 at most, not 8",
+          writing_grader.estimated_band(plain, [], wide=False) == 7.0 and writing_grader.estimated_band(plain, []) == 8.0)
+    check("a verb or noun form is grammar, never a synonym swap (#123 'go' -> 'went', #124 'study' -> 'studies')",
+          not mistake_rules.synonym_swap("the number go down", "the number went down")
+          and not mistake_rules.synonym_swap("my friend study online", "my friend studies online")
+          and not mistake_rules.synonym_swap("This number grow", "This number grew")
+          and mistake_rules.synonym_swap("are provided with", "are equipped with"))
+    check("...so the filter keeps it an error", mistake_rules.final_kind("the number go down", "the number went down",
+                                                                       "error", "GRA")[0] == "error")
     agree = NS(wrong="people doesn’t use", correct="people don't use", criterion="GRA", severity="slip")
     writing_grader.small_slips([agree])
     check("a verb's agreement the filter called a slip is an error (T9: 'people doesn't')",
@@ -493,6 +510,14 @@ def fair_marking() -> None:
     t1 = "The graph below gives information about jobs. Summarise the information by selecting and reporting the main features."
     check("F6 a Task 2 question in Task 1 is told", essay_marking.wrong_section("task1", t2) == "task2")
     check("...a Task 1 question in Task 2 too", essay_marking.wrong_section("task2", t1) == "task1")
+    cut = essay_marking.starts_mid_word
+    check("an answer that starts mid-word is noticed (#121 'e youngest people', #122 'sitors in all the years')",
+          cut("e youngest people had the highest figures. There was a gap. In 2010, 72% used it.")
+          and cut("sitors in all the years. Italy was second. Spain had the lowest figure."))
+    check("...a whole answer, or one written all in lower case, is left alone",
+          not cut("The youngest people had the highest figures. There was a gap. In 2010, 72% used it.")
+          and not cut("the youngest people had the highest figures. there was a gap. in 2010, 72% used it.")
+          and not cut("“The chart shows two groups. One rose. The other fell."))
     check("...the right section is left alone", essay_marking.wrong_section("task1", t1) is None
           and essay_marking.wrong_section("task2", t2) is None)
     check("...a chart question on advantages stays Task 1", essay_marking.wrong_section(

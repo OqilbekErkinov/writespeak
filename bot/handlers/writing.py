@@ -41,7 +41,9 @@ from bot.keyboards.practice_kb import CB_BACK_TO_LIST_PREFIX, after_result_kb
 from bot.keyboards.share_kb import share_card_kb
 from bot.keyboards.writing_task_kb import (
     CB_NO_CHART,
+    CB_CHECK_AS_IS,
     CB_SWITCH_SECTION,
+    cut_start_kb,
     wrong_section_kb,
     CB_TASK1,
     CB_TASK2,
@@ -62,7 +64,7 @@ from db import crud
 from db.database import get_session
 from db.models import SourceType
 from services.ai import chart_keys, marking_config, usage
-from services.ai.essay_marking import PASTE_NOTICE, canon, clean_pasted, wrong_section
+from services.ai.essay_marking import PASTE_NOTICE, canon, clean_pasted, starts_mid_word, wrong_section
 from services.ai.openai_client import is_image_error
 from services.ai.sample_bank import build_model_answer, needs_from_feedback
 from services.ai.schemas import VocabularyItem
@@ -258,8 +260,30 @@ async def _advance(message: Message, state: FSMContext, field: str, lang: str) -
             return
         await _ask_for_answer(message, state, data, lang)
     else:
+        data = await state.get_data()
+        text = data.get("answer_text", "")
+        if data.get("answer_source") == SourceType.text.value and starts_mid_word(text) \
+                and data.get("_cut_warned") != text[:200]:
+            # "e youngest people had..." - the start lost in copying (two teachers' tests, 2026-11-07):
+            # the same text again, or the button, goes on
+            await state.update_data(_cut_warned=text[:200])
+            await message.answer(t("writing.cut_start", lang, start=html.escape(text[:40].strip(), quote=False)),
+                                 reply_markup=cut_start_kb(lang, _back_target(data, "answer")))
+            return
         await state.set_state(WritingStates.processing)
         await _run_grading(message, state, lang)
+
+
+@router.callback_query(WritingStates.awaiting_answer, F.data == CB_CHECK_AS_IS)
+async def check_as_is(callback: CallbackQuery, state: FSMContext, lang: str) -> None:
+    """The answer that seemed to start mid-word is complete: mark it as it is."""
+    await callback.answer()
+    await strip_buttons(callback.message)
+    data = await state.get_data()
+    if not data.get("answer_text") or data.get("_cut_warned") != data["answer_text"][:200]:
+        return
+    await state.set_state(WritingStates.processing)
+    await _run_grading(callback.message, state, lang)
 
 
 async def _ask_for_answer(message: Message, state: FSMContext, data: dict, lang: str) -> None:

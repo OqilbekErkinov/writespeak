@@ -139,6 +139,30 @@ _FUNCTION_WORDS = {
 }
 
 
+# Irregular forms: "go" -> "went" is a verb form, grammar - never a synonym swap (#123, 2026-11-07)
+_IRREGULAR = [set(forms.split("/")) for forms in (
+    "become/became", "begin/began/begun", "break/broke/broken", "bring/brought", "build/built", "buy/bought",
+    "catch/caught", "choose/chose/chosen", "come/came", "draw/drew/drawn", "drink/drank/drunk",
+    "drive/drove/driven", "eat/ate/eaten", "fall/fell/fallen", "feel/felt", "fight/fought", "find/found",
+    "fly/flew/flown", "forget/forgot/forgotten", "get/got/gotten", "give/gave/given", "go/goes/went/gone",
+    "grow/grew/grown", "hear/heard", "hold/held", "keep/kept", "know/knew/known", "lead/led", "leave/left",
+    "lose/lost", "make/made", "mean/meant", "meet/met", "pay/paid", "rise/rose/risen", "run/ran", "say/said",
+    "see/saw/seen", "seek/sought", "sell/sold", "send/sent", "show/showed/shown", "shrink/shrank/shrunk",
+    "sink/sank/sunk", "sit/sat", "speak/spoke/spoken", "spend/spent", "stand/stood", "take/took/taken",
+    "teach/taught", "tell/told", "think/thought", "understand/understood", "win/won", "write/wrote/written",
+    "child/children", "man/men", "woman/women", "person/people", "good/well/better/best", "bad/worse/worst")]
+
+
+def _forms_of_one_word(a: str, b: str) -> bool:
+    """Two forms of one word - "study"/"studies", "like"/"likes", "go"/"went":
+    the correction changes grammar, not the word."""
+    a, b = a.lower(), b.lower()
+    if any(a in forms and b in forms for forms in _IRREGULAR):
+        return True
+    shared = next((i for i, (x, y) in enumerate(zip(a, b)) if x != y), min(len(a), len(b)))
+    return shared >= 2 and shared >= min(4, min(len(a), len(b)) - 1)
+
+
 def synonym_swap(wrong: str, correct: str) -> bool:
     """Does the correction only swap a content word or two for others, with no
     grammar changed ("are provided with" -> "are equipped with")? A spelling
@@ -149,6 +173,8 @@ def synonym_swap(wrong: str, correct: str) -> bool:
     out, put, _ = edits[0]
     if not out or not put or len(out) > 3 or len(put) > 3 or set(out + put) & _FUNCTION_WORDS:
         return False
+    if any(_forms_of_one_word(a, b) for a, b in zip(out, put)):
+        return False  # "the number go down", "my friend study online" were shown as no mistake (#123, #124)
     return difflib.SequenceMatcher(None, " ".join(out), " ".join(put), autojunk=False).ratio() < 0.7
 
 

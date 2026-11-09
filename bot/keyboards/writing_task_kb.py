@@ -8,6 +8,7 @@ CB_TASK2 = "writing:task2"
 CB_WRITING_MENU = "writing:menu"  # back to the Task 1/Task 2 picker
 CB_NO_CHART = "writing:no_chart"  # a typed Task 1 question checked without its chart
 CB_SWITCH_SECTION = "writing:switch_section"  # the question belongs to the other Task: mark it there
+CB_CHECK_AS_IS = "writing:check_as_is"  # the answer seems to start mid-word, but it is complete
 
 TASK_CALLBACKS = {"task1": CB_TASK1, "task2": CB_TASK2}
 
@@ -30,6 +31,16 @@ def wrong_section_kb(lang: str, section: str, back_callback: str) -> InlineKeybo
         inline_keyboard=[
             [InlineKeyboardButton(text=t("writing.btn_switch_section", lang, section=section),
                                   callback_data=CB_SWITCH_SECTION)],
+            [back_button(lang, back_callback)],
+        ]
+    )
+
+
+def cut_start_kb(lang: str, back_callback: str) -> InlineKeyboardMarkup:
+    """Under "your answer seems to start mid-word": check it as it is, or back."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=t("writing.btn_check_as_is", lang), callback_data=CB_CHECK_AS_IS)],
             [back_button(lang, back_callback)],
         ]
     )
