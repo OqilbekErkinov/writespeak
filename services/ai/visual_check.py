@@ -472,12 +472,26 @@ def _loosely(label: str, text: str) -> bool:
     return any(_said(_stem(w), text) for w in words) if words else _named(label, text)
 
 
+_HEDGES = re.compile(r"\b(?:about|around|approximately|roughly|nearly|almost|just|slightly|marginally|a\s+little|"
+                     r"a\s+bit|over|under|above|below|more\s+than|less\s+than|close\s+to|some|exactly|precisely|"
+                     r"well)\b", re.IGNORECASE)
+
+
+def _hedge_only(wrong: str, correct: str) -> bool:
+    """Does a correction change only the words around a figure that say how
+    exact it is ("slightly above 80%" -> "around 80%")?"""
+    def bare(t: str) -> str:
+        return re.sub(r"\s+", " ", _key(_HEDGES.sub(" ", t)))
+    return _key(wrong) != _key(correct) and bare(wrong) == bare(correct)
+
+
 def protected_mistake(wrong: str, correct: str, why: str, reading: dict | None, question: str,
                       unchecked: set[str]) -> bool:
     """A Task (data) mistake code never keeps (the academic lead, 2026-10-27):
     it is about a figure the sheet can't check (`unchecked`: near an
     UNCERTAIN figure or set aside by a focused re-read); it "corrects" figures
-    the sheet confirms; or it is about a category with an UNCERTAIN figure
+    the sheet confirms, or only the hedge around a figure that is on the sheet
+    ("slightly above 80%" -> "around 80%"); or it is about a category with an UNCERTAIN figure
     (#56: two look-alike legend patterns). A figure two readings agree is
     wrong ("confirmed_wrong") is never protected."""
     if not reading:
@@ -492,6 +506,11 @@ def protected_mistake(wrong: str, correct: str, why: str, reading: dict | None, 
     statuses = ["raw" if f["text"] in agreed else match_figure(f, reading, question) for f in figs]
     if figs and all(s in ("raw", "derived", "label") for s in statuses):
         if {f["value"] for f in figures(correct)} - {f["value"] for f in figs}:
+            return True
+        # only the hedge changes, and the figure itself is on the sheet: a reader's rounding (#128:
+        # "at slightly above 80%" for 80% and 83% -> "at around 80%" cost a Band 9 report its Task 9)
+        if _hedge_only(wrong, correct) and all(
+                match_figure({**f, "approx": False}, reading, question) in ("raw", "derived") for f in figs):
             return True
     text = _key(f"{wrong} {correct} {why}")
     for b in reading.get("blocks", []):

@@ -47,6 +47,42 @@ def only_adds(wrong: str, correct: str) -> bool:
     return any(b[i:i + len(a)] == a for i in range(len(b) - len(a) + 1))
 
 
+# "the majority / a share / a proportion of" + a plural noun: the verb agrees with
+# the people ("the overwhelming share of people from all countries prefer", #128).
+# "the number of", "the percentage of" and "the proportion of" name the figure
+# itself and take a singular verb, so they stay the filter's to judge.
+_QUANTITY_OF = re.compile(
+    r"\b(?:(?:the|a|an)\s+(?:[\w-]+\s+){0,2}?(?:majority|minority|share|bulk|lot|half|third|quarter|fraction)"
+    r"|(?:a|an)\s+(?:[\w-]+\s+){0,2}?(?:proportion|number|percentage))\s+of\s+(?P<rest>(?:[\w'-]+\s+){1,8}?)$")
+_PEOPLE = {"people", "children", "men", "women", "police", "staff", "youth", "elderly", "cattle"}
+_NOT_PLURAL = {"this", "his", "its", "was", "has", "is", "us", "thus", "plus", "bus", "gas", "news", "series",
+               "species", "politics", "economics", "physics", "mathematics", "less", "unless", "across", "as", "yes"}
+_TO_SINGULAR = {("are", "is"), ("were", "was"), ("have", "has"), ("do", "does")}
+
+
+def notional_agreement(wrong: str, correct: str) -> bool:
+    """Does the correction only turn a plural verb singular after "the
+    majority of people", "a large share of students" and the like? The verb
+    agrees with the people there, so it is right as written (#128: "the
+    overwhelming share of people from all countries prefer" flagged, a Band 9
+    report's Grammar 9 -> 7). The words just before the verb must be a plural
+    noun ("people", "countries"), so "a lot of people use car" -> "cars" stays."""
+    a, b = _tokens(wrong), _tokens(correct)
+    ops = [op for op in difflib.SequenceMatcher(None, a, b, autojunk=False).get_opcodes() if op[0] != "equal"]
+    if len(ops) != 1 or ops[0][0] != "replace" or ops[0][2] - ops[0][1] != 1 or ops[0][4] - ops[0][3] != 1:
+        return False
+    i, j = ops[0][1], ops[0][3]
+    verb, singular = a[i], b[j]
+    if singular not in (verb + "s", verb + "es") and (verb, singular) not in _TO_SINGULAR:
+        return False
+    found = _QUANTITY_OF.search(" ".join(a[:i]) + " ")
+    if not found:
+        return False
+    last = found.group("rest").split()[-1]
+    return last in _PEOPLE or (len(last) > 3 and last.endswith("s") and not last.endswith("ss")
+                               and last not in _NOT_PLURAL)
+
+
 def only_adds_comma(wrong: str, correct: str) -> bool:
     """Does the correction only add commas ("First of all money" -> "First of
     all, money")? An examiner passes over that: a Band 7 script of a test book
@@ -327,6 +363,8 @@ def final_kind(wrong: str, correct: str, kind: str, criterion: str, basis: str =
         return "not_a_mistake", "British and American spelling are both right"
     if only_adds_comma(wrong, correct):
         return "not_a_mistake", "only a comma added: an examiner passes over it"
+    if notional_agreement(wrong, correct):
+        return "not_a_mistake", "a plural verb after 'the majority / a share of' + a plural noun agrees with the people"
     if ruled := lead_accepted(wrong, correct):
         return "alternative", f"the academic lead accepted {ruled!r}"
     if real_mistake(wrong):

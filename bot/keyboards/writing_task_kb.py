@@ -9,6 +9,8 @@ CB_WRITING_MENU = "writing:menu"  # back to the Task 1/Task 2 picker
 CB_NO_CHART = "writing:no_chart"  # a typed Task 1 question checked without its chart
 CB_SWITCH_SECTION = "writing:switch_section"  # the question belongs to the other Task: mark it there
 CB_CHECK_AS_IS = "writing:check_as_is"  # the answer seems to start mid-word, but it is complete
+CB_RECHECK_NEW = "writing:recheck_new"  # an essay sent before (admins, testers): mark it again
+CB_RECHECK_OLD = "writing:recheck_old"  # ...or send its saved report
 
 TASK_CALLBACKS = {"task1": CB_TASK1, "task2": CB_TASK2}
 
@@ -42,6 +44,16 @@ def cut_start_kb(lang: str, back_callback: str) -> InlineKeyboardMarkup:
         inline_keyboard=[
             [InlineKeyboardButton(text=t("writing.btn_check_as_is", lang), callback_data=CB_CHECK_AS_IS)],
             [back_button(lang, back_callback)],
+        ]
+    )
+
+
+def recheck_kb(lang: str) -> InlineKeyboardMarkup:
+    """Under "this essay was checked before - check it again?" (admins and testers only)."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=t("writing.btn_recheck_new", lang), callback_data=CB_RECHECK_NEW)],
+            [InlineKeyboardButton(text=t("writing.btn_recheck_old", lang), callback_data=CB_RECHECK_OLD)],
         ]
     )
 

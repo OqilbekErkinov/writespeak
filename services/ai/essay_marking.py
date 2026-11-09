@@ -448,12 +448,46 @@ def _flexible(phrase: str) -> str:
     return r"\s+".join("".join(char(ch) for ch in word) for word in phrase.split())
 
 
-def strength_html(text: str, phrases: list[str], goods: list[str]) -> str:
+def _without_quotes_of(s: str, flagged: list[str]) -> str:
+    """The (escaped) praise without its quotations of phrases marked as
+    mistakes (#126 praised "which was lower than the other two countries",
+    its mistake 2): a quotation goes with the "and" or comma joining it to
+    the next; a sentence whose only quotation that was goes whole."""
+    def drop(m: re.Match) -> str:
+        # a full stop the model put inside the closing quote stays when the sentence ends there
+        return "" if m.groupdict().get("c") else m.group("p") if m.group("p") in (".", "!", "?") else ""
+
+    out = []
+    for sentence in re.split(r"(?:(?<=[.!?])|(?<=[.!?][”\"]))\s+(?=[A-Z“\"])", s):
+        hit = False
+        for phrase in flagged:
+            quote = rf"[“\"]?{_flexible(_esc(phrase))}(?P<p>[.,;:!?]?)[”\"]?"
+            for pattern in (rf"(?:\s*,\s*(?:and\s+)?|\s+(?:and|or)\s+){quote}",
+                            rf"{quote}(?P<c>\s*,\s*|\s+(?:and|or)\s+)?"):
+                sentence, n = re.subn(pattern, drop, sentence, count=1, flags=re.IGNORECASE)
+                if n:
+                    hit = True
+                    break
+        if not hit:
+            out.append(sentence)
+        elif re.search(r"[“\"]", sentence):  # another quotation is left: the sentence stays without this one
+            out.append(re.sub(r"\s+([.,;:!?])", r"\1", re.sub(r"\s{2,}", " ", sentence)).strip())
+    return " ".join(x for x in out if x)
+
+
+def strength_html(text: str, phrases: list[str], goods: list[str], flagged: list[str] | tuple = ()) -> str:
     """The praise with the validated phrases in bold quotes. Any other
     quotation loses its quote marks - "What you did well" only ever quotes
     the green strong phrases (validation rule 8); if it quotes none of
-    them, the first two are named."""
+    them, the first two are named. A quoted phrase marked as a mistake
+    (`flagged`) is left out of the praise."""
     s = _esc(text.strip())
+    if flagged:
+        s = _without_quotes_of(s, list(flagged))
+        if not s and goods:
+            return "Phrases like " + " and ".join(f"<b>“{_esc(g)}”</b>" for g in goods[:2]) + " are strong points here."
+        if not s:
+            s = _esc(text.strip())
     shown = 0
     for phrase in phrases:
         # a full stop or comma the model put inside the closing quote goes after it
@@ -774,6 +808,9 @@ def fits(line: str, about: str) -> bool:
 
 
 TASK_MIN_WORDS = {"task1": 150, "task2": 250}
+# a priority that is already about the length: "Write at least 250 words", "Reach the word count"
+_ABOUT_LENGTH = re.compile(r"\b\d{3}\b[\s-]*words?\b|\bword (?:count|minimum|limit)\b|\bunder-?length\b|"
+                           r"\btoo short\b|\b(?:essay|answer|report) length\b", re.IGNORECASE)
 
 
 def task_first(fb: WritingFeedback, bands: dict[str, float], words: int, task_type: str) -> tuple[WritingFeedback, list[str]]:
@@ -782,19 +819,28 @@ def task_first(fb: WritingFeedback, bands: dict[str, float], words: int, task_ty
     "Hyphenate age ranges" as priority 01). Under the task's word minimum, or
     with Task Achievement / Response as the lowest band, the Task priorities
     lead; under the minimum with none, a tip about the length comes first.
-    Checklist lines follow their priority's new number."""
-    if task_type != "task1":  # the ruling was on Task 1 reports
+    Task 2 keeps its order (the ruling was on Task 1 reports), but under 250
+    words with no priority on the length, the length tip comes first (#127:
+    205 words, and the report never said Task 2 needs 250). Checklist lines
+    follow their priority's new number."""
+    if task_type not in TASK_MIN_WORDS:
         return fb, []
     priorities = list(fb.priorities[:PRIORITY_COUNT])
-    minimum = TASK_MIN_WORDS.get(task_type, 0)
+    minimum = TASK_MIN_WORDS[task_type]
     short = words < minimum
-    lowest = bands["TR_or_TA"] <= min(bands[k] for k in SCORE_KEYS if k != "TR_or_TA")
-    if not (short or lowest):
-        return fb, []
-    order = sorted(range(len(priorities)), key=lambda i: (0 if "TR" in priorities[i].criteria else 1, i))
+    if task_type == "task1":
+        lowest = bands["TR_or_TA"] <= min(bands[k] for k in SCORE_KEYS if k != "TR_or_TA")
+        if not (short or lowest):
+            return fb, []
+        order = sorted(range(len(priorities)), key=lambda i: (0 if "TR" in priorities[i].criteria else 1, i))
+        needs_tip = short and not any("TR" in p.criteria for p in priorities)
+    else:
+        if not short or any(_ABOUT_LENGTH.search(f"{p.title} {p.rule}") for p in priorities):
+            return fb, []
+        order, needs_tip = list(range(len(priorities))), True
     new = [priorities[i] for i in order]
     notes = []
-    if short and not any("TR" in p.criteria for p in new):
+    if needs_tip:
         from services.ai.schemas import Priority
 
         new.insert(0, Priority(
@@ -818,7 +864,8 @@ def task_first(fb: WritingFeedback, bands: dict[str, float], words: int, task_ty
             checklist.append(item.model_copy(update={"ref": f"Priority {numbers[int(ref.group(1))]:02d}"}))
         else:
             notes.append(f"checklist line dropped with its priority: {item.text!r}")
-    notes.append("Task priorities first: " + ", ".join(repr(p.title) for p in new))
+    if task_type == "task1":
+        notes.append("Task priorities first: " + ", ".join(repr(p.title) for p in new))
     return fb.model_copy(update={"priorities": new, "checklist": checklist}), notes
 
 
@@ -920,6 +967,7 @@ def build_report(
     # phrase quoted in "What you did well" that is in the essay and free of
     # mistakes is green (#41-#43's second quoted phrase was not); then the
     # model's other strong phrases, up to MAX_GOOD_HIGHLIGHTS in all.
+    on_mistakes = []  # praised phrases that are marked as mistakes: the praise leaves them out (#126)
     if marked:
         wrongs = [canon(m.wrong).lower() for m in mistakes]
         good = []
@@ -931,12 +979,17 @@ def build_report(
             if loc is None:
                 notes.append(f"quoted strength {core!r} is not in the essay")
                 continue
-            if _overlaps(*loc, marks + good) or any(w and w in canon(core).lower() for w in wrongs):
+            # a mistake inside it as whole words: #121's mistake "e" (-> "The") is inside nearly every phrase as a letter
+            if _overlaps(*loc, marks) or any(_inside(w, canon(core).lower()) for w in wrongs):
+                on_mistakes.append(core)
+                notes.append(f"praise of a marked phrase left out: {core!r}")
+                continue
+            if _overlaps(*loc, good):
                 continue
             good.append(_Mark(*loc, "good"))
         for span in (s for s in alignment.spans if s.type == "good"):
             text = canon(original[span.start : span.end]).lower()
-            if _overlaps(span.start, span.end, marks + good) or any(w and w in text for w in wrongs):
+            if _overlaps(span.start, span.end, marks + good) or any(_inside(w, text) for w in wrongs):
                 continue
             if len(good) < MAX_GOOD_HIGHLIGHTS:
                 good.append(_Mark(span.start, span.end, "good"))
@@ -1075,7 +1128,7 @@ def build_report(
             "fixes": len(mistakes),
             "strong": sum(k.kind == "good" for k in marks),
         },
-        strength_html=strength_html(fb.strength.text, phrases, goods),
+        strength_html=strength_html(fb.strength.text, phrases, goods, on_mistakes),
         priorities=priorities,
         essay_paragraphs=render_essay(original, marks),
         essay_marked=marked,

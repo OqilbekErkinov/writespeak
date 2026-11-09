@@ -8,4 +8,5 @@ class WritingStates(StatesGroup):
     awaiting_chart = State()  # Task 1 typed as text: its chart/diagram picture
     awaiting_answer = State()
     confirming_answer = State()
+    confirming_recheck = State()  # an essay sent before (admins, testers): mark it again or send its report?
     processing = State()

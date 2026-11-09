@@ -33,8 +33,10 @@ def check(name: str, ok, detail="") -> None:
         fails.append(name)
 
 
+# past Task 2's 250 words, so these reports get no length tip (2026-11-09); the length has its own checks
+PAD = " Online banking also saves time for busy workers every single day." * 25
 ESSAY = ("Many people believe that the internet has changed our lives. Others' views differ greatly. People who "
-         "lives in cities enjoys faster services. There has been a renewed interest in reading.")
+         "lives in cities enjoys faster services. There has been a renewed interest in reading." + PAD)
 
 
 def seg(kind, text, mistake_id=None, fix=None):
@@ -65,7 +67,7 @@ def feedback(priorities, checklist, quoted, strength_text):
             seg("error", "enjoys", 2, "enjoy"),
             seg("text", " faster services. There has been "),
             seg("error", "a renewed interest", 3, "renewed interest"),
-            seg("text", " in reading."),
+            seg("text", " in reading." + PAD),
         ]],
         criterion_notes=schemas.CriterionNotes(TR_or_TA="a", CC="b", LR="c", GRA="d"),
         strength=schemas.Strength(text=strength_text, quoted_phrases=quoted),
@@ -125,6 +127,29 @@ def main() -> int:
           report.strength_html)
     check("strength: a one-word phrase is not found inside another word",
           not essay_marking._inside("art", "start here"))
+    praised = fb.model_copy(update={"strength": schemas.Strength(
+        text="You use “Others’ views” and “who lives in cities” well.", quoted_phrases=["Others' views", "who lives in cities"])})
+    report2 = essay_marking.build_report(
+        "task2", "Some people think the internet has improved our lives. Discuss.", ESSAY, praised,
+        bands={"TR_or_TA": 6, "CC": 6, "LR": 6, "GRA": 6}, dropped={3})
+    check("strength: a praised phrase on a marked mistake is left out of the praise (#126)",
+          "who lives" not in report2.strength_html and "<b>“Others’ views”</b> well." in report2.strength_html
+          and any("praise of a marked phrase" in n for n in report2.notes), (report2.strength_html, report2.notes))
+    cut_text = " youngest people had the highest figures in both years." + PAD
+    cut = schemas.WritingFeedback(
+        mistakes=[schemas.Mistake(id=1, wrong="e", correct="The", why="A cut word.", criterion="GRA", unclear=False,
+                                  if_you_meant=None)],
+        essay=[[seg("error", "e", 1, "The"), seg("text", cut_text)]],
+        criterion_notes=schemas.CriterionNotes(TR_or_TA="a", CC="b", LR="c", GRA="d"),
+        strength=schemas.Strength(text="You write “had the highest figures” clearly.",
+                                  quoted_phrases=["had the highest figures"]),
+        priorities=[], vocabulary=[schemas.VocabEntry(term=f"t{i}", meaning="m", example="e") for i in range(10)],
+        checklist=[])
+    report3 = essay_marking.build_report("task1", "The bar chart shows internet use.", "e" + cut_text, cut,
+                                         bands={"TR_or_TA": 6, "CC": 6, "LR": 6, "GRA": 6})
+    check("strength: a one-letter mistake ('e' -> 'The', #121) is no mistake inside every praised phrase",
+          '<span class="good">had the highest figures</span>' in "".join(report3.essay_paragraphs)
+          and "<b>“had the highest figures”</b>" in report3.strength_html, (report3.strength_html, report3.notes))
 
     # B1: fewer than 3 priorities is not a problem; 0 is allowed.
     none = feedback([], [("My verbs agree.", "Mistake 1")] * 5, ["greatly"], "You write \"greatly\".")
@@ -226,6 +251,48 @@ def acceptance_60_62() -> None:
           and first.checklist[0].ref == "Priority 02", first.priorities)
     same, _ = task_first(fb, {"TR_or_TA": 8.0, "CC": 7.0, "LR": 7.0, "GRA": 7.0}, 180, "task1")
     check("...a long enough report whose Task band is not the lowest keeps the order", same is fb)
+    essay = feedback([priority("fix", "Plural -s and agreement", "my friend study", "my friend studies", [1]),
+                      priority("fix", "Articles and prepositions", "go school", "go to school", [2]),
+                      priority("tip", "Develop reasons with examples", "", "For instance, I saved an hour.", [], ("TR",))],
+                     [("I add -s.", "Priority 01"), ("I use articles.", "Priority 02"), ("I give examples.", "Priority 03")],
+                     [], "x")
+    bands2 = {"TR_or_TA": 6.0, "CC": 6.0, "LR": 5.0, "GRA": 5.0}
+    first, notes = task_first(essay, bands2, 205, "task2")
+    check("Task 2 under 250 words: the length tip comes first, the rest keep their order (#127, 205 words)",
+          [p.title for p in first.priorities] == ["Write at least 250 words", "Plural -s and agreement",
+                                                  "Articles and prepositions"]
+          and "205 words" in first.priorities[0].rule
+          and [c.ref for c in first.checklist] == ["Priority 02", "Priority 03"], (first.priorities, first.checklist, notes))
+    check("...Task 2 with 250 words or more is left alone", task_first(essay, bands2, 260, "task2")[0] is essay)
+    told = essay.model_copy(update={"priorities": [essay.priorities[0].model_copy(
+        update={"title": "Reach the word count", "rule": "Write 250 words or more."})] + essay.priorities[1:]})
+    check("...and so is one whose priority is already the length", task_first(told, bands2, 205, "task2")[0] is told)
+    varied = essay.model_copy(update={"priorities": [essay.priorities[0].model_copy(
+        update={"title": "Vary sentence length", "rule": "Mix short and long sentences."})] + essay.priorities[1:]})
+    check("...but 'Vary sentence length' is no length tip",
+          task_first(varied, bands2, 205, "task2")[0].priorities[0].title == "Write at least 250 words")
+
+    # #126: "What you did well" quoted "which was lower than the other two countries", its mistake 2
+    flagged = ["which was lower than the other two countries"]
+    praise = ("Your data language is clear, especially in “reached around 89 million in 2018” and “which was lower "
+              "than the other two countries”. These choices make comparisons easy to follow.")
+    out = essay_marking.strength_html(praise, ["reached around 89 million in 2018"], ["reached around 89 million in 2018"],
+                                      flagged)
+    check("strength: a praised phrase that is a mistake leaves the praise, with its 'and' (#126)",
+          out == "Your data language is clear, especially in <b>“reached around 89 million in 2018”</b>. "
+                 "These choices make comparisons easy to follow.", out)
+    first_one = essay_marking.strength_html(
+        "I like “which was lower than the other two countries.” and “reached around 89 million in 2018”.",
+        ["reached around 89 million in 2018"], ["reached around 89 million in 2018"], flagged)
+    check("...first in the list too", first_one == "I like <b>“reached around 89 million in 2018”</b>.", first_one)
+    alone = essay_marking.strength_html("Good. You write “which was lower than the other two countries.” Keep going.",
+                                        [], ["went up slowly"], flagged)
+    check("...a sentence whose only quote it was goes whole", alone.startswith("Good. Keep going.")
+          and "lower than" not in alone, alone)
+    only = essay_marking.strength_html("You write “which was lower than the other two countries”.", [],
+                                       ["went up slowly"], flagged)
+    check("...and with nothing left, the green phrases are named",
+          only == "Phrases like <b>“went up slowly”</b> are strong points here.", only)
 
     leisure = {"blocks": [{"visual_type": "line", "title": "", "units": "%", "time_points": [], "axis_labels": [],
                            "legend": [], "map_features": [], "overall": "", "process": None, "bars_drawn": [],
@@ -258,6 +325,51 @@ def acceptance_60_62() -> None:
                             ("Columbia overtook Washington in 1970.", True)):
         check(f"comparison {'caught' if wrong else 'kept'}: {sentence}",
               bool(comparison_claims(sentence, oregon)) == wrong)
+
+    # #128: a pie (country of birth) and a table (cities / rural areas) - five true sentences of the model
+    # answer were rejected against the pie, where New Zealand is 3%
+    def cells(rows):
+        return [{"series": s, "point": p, "value": float(v), "text": "", "printed": True, "precision": 0.0,
+                 "status": "verified", "note": ""} for s, p, v in rows]
+
+    base = {"units": "%", "time_points": [], "axis_labels": [], "legend": [], "map_features": [], "overall": "",
+            "process": None, "bars_drawn": []}
+    births = {"Australia": 73, "UK": 7, "New Zealand": 3, "China": 2, "Netherlands": 1, "Other": 14}
+    homes = {"UK": (89, 11), "Australia": (83, 17), "China": (99, 1), "New Zealand": (80, 20), "Netherlands": (90, 10)}
+    australia = {"blocks": [
+        {**base, "visual_type": "pie", "title": "Country of birth of people living in Australia",
+         "values": cells((s, "", v) for s, v in births.items())},
+        {**base, "visual_type": "table", "title": "Where people live in Australia",
+         "values": cells([(s, "Cities", c) for s, (c, _) in homes.items()]
+                         + [(s, "Rural areas", r) for s, (_, r) in homes.items()])}]}
+    for sentence, wrong in (
+            ("The next largest single country is the UK at 7%, followed by New Zealand at 3%.", False),
+            ("New Zealanders are 80% in cities and 20% in rural areas, the highest rural proportion.", False),
+            ("Australia therefore outnumbers the Netherlands by a factor of 73 (73% versus 1%).", False),
+            ("China had the highest concentration in cities, at 99%, leaving 1% in rural areas.", False),
+            ("New Zealanders had the lowest urban proportion, at 80%, and the highest rural share, at 20%.", False),
+            ("Australians form the largest group, at 73%.", False),
+            ("The UK had the highest rural share, at 11%.", True),
+            ("The UK had the largest share of the population, at 7%.", True)):
+        check(f"pie + table (#128) comparison {'caught' if wrong else 'kept'}: {sentence}",
+              bool(comparison_claims(sentence, australia)) == wrong)
+    pie = {"blocks": australia["blocks"][:1]}
+    check("on a pie, 'outnumbers' is being ahead: right for the bigger slice",
+          not comparison_claims("Australia outnumbers the Netherlands.", pie))
+    check("...and caught for the smaller one", bool(comparison_claims("The Netherlands outnumbers Australia.", pie)))
+    check("...'surpassed' on a timeline is still overtaking: always ahead is no overtaking",
+          bool(comparison_claims("Washington surpassed Columbia in 1970.", oregon)))
+
+    # #128: "at slightly above 80%" (New Zealand 80%, Australia 83%) -> "at around 80%" is a reader's rounding
+    from services.ai.visual_check import protected_mistake
+    q128 = "The table and pie chart give information about the population in Australia."
+    check("a Task correction of the hedge only, around a figure on the sheet, is set aside (#128)",
+          protected_mistake("at slightly above 80%.", "at around 80%.", "New Zealand is exactly 80%.", australia,
+                            q128, set()))
+    check("...not when the figure itself is off the sheet ('just over 75%')",
+          not protected_mistake("at just over 75%", "at around 75%", "x", australia, q128, set()))
+    check("...nor a wrong figure ('The UK makes up 17%' -> '7%')",
+          not protected_mistake("The UK makes up 17%", "The UK makes up 7%", "x", australia, q128, set()))
 
 
 def rulings(page) -> None:

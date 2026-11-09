@@ -294,6 +294,10 @@ def round2() -> None:
           run(judged(8))["CC"] == 8)
     check("...but an 8 whose checklist was never run stays 8 ('didn't look' is no 9)",
           run(judged(8, looked=False))["CC"] == 8)
+    check("...a clear 8 is marked for coherence_nine (#128), one never looked at is not",
+          run(judged(8))["_cc_clear"] and not run(judged(8, looked=False))["_cc_clear"])
+    check("...nor one with a quoted weakness",
+          not run(judged(8, weak=['"Taking this into account" follows nothing']))["_cc_clear"])
     check("a 6 whose reason came back unquoted is never lifted to 9 (#60, #62: Coherence 6 -> 9)",
           run(judged(6, weak=["Linking is basic and repetitive"]))["CC"] == 6)
     check("a quote shortened with '...' still counts as a quote",
@@ -351,6 +355,53 @@ def round2() -> None:
     check("...slips alone never reach it: no band lost for small slips", same == votes and not why, why)
     same, why = writing_grader.grammar_ceiling(text300, votes, None)
     check("...without a checked list nothing changes", same == votes and not why, why)
+
+    # #128: a Band 9 report (227 words, 3 paragraphs) came out Coherence 8 in both runs, no weakness quoted
+    report128 = "\n\n".join(" ".join(["word"] * n) for n in (80, 70, 77))
+    strong128 = {"TR_or_TA": 8.0, "CC": 8.0, "LR": 9.0, "GRA": 8.0}
+    clear = [{"_cc_clear": True}, {"_cc_clear": True}]
+    one_gra = [NS(wrong="the percentage lag", correct="the percentage lags", criterion="GRA", severity="error")]
+    nine = lambda *a, **k: writing_grader.coherence_nine(*a, **k)[0]["CC"]  # noqa: E731
+    check("a full, strong report with Coherence 8 and no weakness quoted is Coherence 9 (#128)",
+          nine("task1", report128, strong128, clear, one_gra, True) == 9)
+    check("...not with Grammar 7 (Task, Lexical and Grammar must all be 8+)",
+          nine("task1", report128, {**strong128, "GRA": 7.0}, clear, one_gra, True) == 8)
+    check("...not under the word minimum (#121: 126 words, Coherence 9 before 5e8092d)",
+          nine("task1", "\n\n".join(" ".join(["word"] * 42) for _ in range(3)), strong128, clear, one_gra, True) == 8)
+    check("...not in two paragraphs", nine("task1", "word " * 120 + "\n\n" + "word " * 107, strong128, clear,
+                                           one_gra, True) == 8)
+    check("...not with a Coherence error on the checked list",
+          nine("task1", report128, strong128, clear, one_gra + [NS(wrong="Moreover", correct="However",
+                                                                   criterion="CC", severity="error")], True) == 8)
+    check("...not when most runs quoted a weakness",
+          nine("task1", report128, strong128, [{"_cc_clear": True}, {"_cc_clear": False}], one_gra, True) == 8)
+    check("...not without a wide range shown", nine("task1", report128, strong128, clear, one_gra, False) == 8)
+    check("...a Task 2 essay needs 4 paragraphs",
+          nine("task2", "\n\n".join(" ".join(["word"] * 90) for _ in range(3)), strong128, clear, one_gra, True) == 8
+          and nine("task2", "\n\n".join(" ".join(["word"] * 70) for _ in range(4)), strong128, clear, one_gra,
+                   True) == 9)
+    check("...and a Coherence 7 is never lifted", nine("task1", report128, {**strong128, "CC": 7.0}, clear, one_gra,
+                                                       True) == 7)
+
+    # #128: notional agreement - "the overwhelming share of people ... prefer" is right as written
+    from services.ai.mistake_rules import notional_agreement
+    for w, c, right in (
+            ("the overwhelming share of people from all countries prefer",
+             "the overwhelming share of people from all countries prefers", True),
+            ("the majority of students are", "the majority of students is", True),
+            ("a large proportion of children have", "a large proportion of children has", True),
+            ("the percentage of people from other nations, especially the Netherlands, lag",
+             "the percentage of people from other nations, especially the Netherlands, lags", False),
+            ("the number of cars are", "the number of cars is", False),
+            ("a lot of people use car", "a lot of people use cars", False),
+            ("the majority of the population prefer", "the majority of the population prefers", False),
+            ("people doesn't", "people don't", False)):
+        check(f"notional agreement {'accepted' if right else 'left to the filter'}: {w!r}",
+              notional_agreement(w, c) == right)
+    check("...and the filter's 'error' on it becomes not_a_mistake by code",
+          writing_grader.final_kind("the overwhelming share of people from all countries prefer",
+                                    "the overwhelming share of people from all countries prefers", "error",
+                                    "GRA")[0] == "not_a_mistake")
     # the academic lead's 2026-10-30 reports #72-#74
     pct = err("at only 13% men and 9% women", "at only 13% for men and 9% for women")
     writing_grader.small_slips([pct])
@@ -419,6 +470,41 @@ def round2() -> None:
     check("a tip whose data claim the chart doesn't bear out goes, with its checklist line (#105)",
           [p.title for p in kept.priorities] == ["Name the extremes"]
           and [c.ref for c in kept.checklist] == ["Priority 01"], (kept.priorities, kept.checklist))
+    q125 ="The bar chart shows the percentage of people in four age groups who used the internet in 2010 and 2020."
+    internet = {"blocks": [{"visual_type": "bar", "title": "", "units": "%", "time_points": [], "axis_labels": [],
+                            "legend": [], "map_features": [], "overall": "", "process": None, "bars_drawn": [],
+                            "values": [{"series": y, "point": g, "value": v, "text": "", "printed": True,
+                                        "precision": 0.0, "status": "verified", "note": ""}
+                                       for g, row in (("16–24", (72, 93)), ("25–44", (58, 85)), ("45–64", (36, 67)),
+                                                      ("65+", (14, 40)))
+                                       for y, v in zip(("2010", "2020"), row)]}]}
+    length = fb.model_copy(update={"priorities": [schemas.Priority(
+        type="tip", title="Meet the 150-word minimum", rule="Your report has 126 words: add 24 more words.",
+        example_wrong="", example_right="Write at least 150 words; say that all four groups rose.", criteria=["TR"],
+        mistake_ids=[])], "checklist": []})
+    real = lambda t: "; ".join(sample_bank.example_problems(t, q125, internet))  # noqa: E731
+    check("a word count is no data claim: the 150-word tip stays (#125, 126 words, lost it for its '150')",
+          real("Write at least 150 words.") != ""
+          and [p.title for p in writing_grader.true_tips(length, real)[0].priorities] == ["Meet the 150-word minimum"])
+    wrong = length.model_copy(update={"priorities": [length.priorities[0].model_copy(
+        update={"example_right": "Write at least 150 words; the 65+ group reached 45% in 2020."})]})
+    check("...a wrong figure in the same tip still sends it", not writing_grader.true_tips(wrong, real)[0].priorities)
+    words205 = " ".join(["word"] * 100) + "\n\n" + " ".join(["word"] * 105)
+    _, notes2, _, _ = writing_grader.cap_bands("task2", words205, {"TR_or_TA": 6.0, "CC": 6.0, "LR": 5.0, "GRA": 5.0},
+                                               {"TR_or_TA": "Both views and a clear stance."})
+    check("a short Task 2 essay's Task note gives the count and the minimum, cap or no cap (#127, 205 words)",
+          notes2["TR_or_TA"] == "Both views and a clear stance (205 words: aim for 250+).", notes2)
+    words126 = " ".join(["word"] * 60) + "\n\n" + " ".join(["word"] * 66)
+    _, notes1, _, _ = writing_grader.cap_bands("task1", words126, {"TR_or_TA": 6.0, "CC": 7.0, "LR": 6.0, "GRA": 6.0},
+                                               {"TR_or_TA": "Overview limited."}, False)
+    check("...a short Task 1 report's too (#125, 126 words)", notes1["TR_or_TA"] == "Overview limited (126 words: aim for 150+).",
+          notes1)
+    _, notes3, _, _ = writing_grader.cap_bands("task2", " ".join(["word"] * 150) + "\n\n" + " ".join(["word"] * 150),
+                                               {"TR_or_TA": 6.0, "CC": 6.0, "LR": 5.0, "GRA": 5.0}, {"TR_or_TA": "Fine."})
+    check("...a long enough one keeps its note", notes3["TR_or_TA"] == "Fine.", notes3)
+    _, notes4, _, _ = writing_grader.cap_bands("task2", " ".join(["word"] * 190) + "\n\nend",
+                                               {"TR_or_TA": 7.0, "CC": 6.0, "LR": 5.0, "GRA": 5.0}, {"TR_or_TA": "Fine."})
+    check("...and a capped one gets the count once", notes4["TR_or_TA"].count("191 words") == 1, notes4)
 
 
 def fair_marking() -> None:

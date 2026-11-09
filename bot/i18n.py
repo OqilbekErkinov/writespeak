@@ -269,6 +269,16 @@ _T: dict[str, dict[str, str]] = {
         "ru": "♻️ Это тот же текст, что и в эссе #{number}, поэтому я отправил сохранённый отчёт (coin "
         "не списаны). Балл: <b>{band}</b>",
     },
+    "writing.recheck_ask": {
+        "uz": "♻️ Bu matn avval yuborilgan va tekshirilgan: #{number} insho, ball <b>{band}</b>.\n\n"
+        "Qaytadan tekshiraymi? Yangi tekshiruv baholashning hozirgi versiyasi bilan qilinadi.\n\n"
+        "<i>Bu tanlov faqat adminlar va testerlarga ko'rinadi.</i>",
+        "ru": "♻️ Этот текст уже отправлялся и был проверен: эссе #{number}, балл <b>{band}</b>.\n\n"
+        "Проверить заново? Новая проверка пройдёт по текущей версии оценивания.\n\n"
+        "<i>Этот выбор видят только админы и тестеры.</i>",
+    },
+    "writing.btn_recheck_new": {"uz": "🔄 Ha, qaytadan tekshir", "ru": "🔄 Да, проверить заново"},
+    "writing.btn_recheck_old": {"uz": "📄 Yo'q, eski hisobotni yubor", "ru": "📄 Нет, прислать старый отчёт"},
     # --- Speaking (bot/handlers/speaking.py) ---
     "speaking.choose_part": {
         "uz": "Qaysi qismini tekshirmoqchisiz?",

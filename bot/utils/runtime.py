@@ -49,6 +49,13 @@ async def window_on() -> bool:
     return bool(await testers())
 
 
+async def may_recheck(user_id: int) -> bool:
+    """Admins and the test window's testers may have an essay sent before
+    marked again (2026-11-09: to see a marking change on the same text);
+    everyone else gets the saved report."""
+    return user_id in settings.admin_ids or user_id in await testers()
+
+
 async def checks_paused_for(user_id: int) -> bool:
     """True during a test window for everyone but its testers and the admins."""
     allowed = await testers()

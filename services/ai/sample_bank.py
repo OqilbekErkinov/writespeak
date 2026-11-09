@@ -852,8 +852,11 @@ _BIGGEST = re.compile(
     r"(?:most|fastest|furthest|sharpest|steepest)\b", re.IGNORECASE)
 _OVERTOOK = re.compile(r"\b(?:overt(?:ook|akes?|aking|aken)|surpass(?:ed|es|ing)?|outstrip(?:ped|s|ping)?|"
                        r"outnumber(?:ed|s|ing)?)\b", re.IGNORECASE)
+_AHEAD = re.compile(r"surpass(?:ed|es|ing)?|outstrip(?:ped|s|ping)?|outnumber(?:ed|s|ing)?", re.IGNORECASE)
 _TOP = re.compile(r"\b(?:the\s+)?(?P<rank>highest|lowest|largest|smallest|biggest|most\s+popular|least\s+popular)\b",
                   re.IGNORECASE)
+# "the next largest", "the second highest": a rank below the top, not the top
+_ORDINAL = re.compile(r"\b(?:next|second|third|fourth|fifth)[\s-]+(?:the\s+)?$", re.IGNORECASE)
 _OWN_TOP = re.compile(r"\b(?:its|their|his|her)\s+(?:\w+\s+)?(?:highest|lowest|largest|smallest|biggest)\b|"
                       r"\b(?:highest|lowest)\s+(?:point|level|peak|figure|value)\s+(?:of|in)\s+(?:its|their)\b",
                       re.IGNORECASE)
@@ -887,33 +890,46 @@ def comparison_claims(text: str, visual: dict | None) -> list[str]:
     fall (between the sentence's two years, else the first and last points,
     by amount or by share - true by either counts), one category overtaking
     another, and the highest or lowest (at every point when it "remained" so,
-    else at the sentence's year)."""
+    else at the sentence's year). With several visuals (a pie and a table), a
+    sentence is wrong only when none of them bears it out; "the next largest"
+    is no claim to the top; "outnumbers" on a visual without a timeline is
+    being ahead, not overtaking."""
     if not visual:
         return []
     from services.ai.schemas import SheetBlock
     from services.ai.visual_check import _YEAR_IN
-    from services.ai.visual_features import INF, _Grid
+    from services.ai.visual_features import INF, _Grid, _time_like
 
     grids = []
     for block in visual.get("blocks", []):
         try:
-            grid = _Grid(SheetBlock.model_validate(block))
+            sheet_block = SheetBlock.model_validate(block)
+            grid = _Grid(sheet_block)
         except Exception:
             continue
         if len(grid.series) >= 2:
-            grids.append(grid)
+            grids.append((grid, _time_like(sheet_block, grid)))
     out = []
     for sentence in re.split(r"(?<=[.!?])\s+", text):
-        wrong = False
-        for grid in grids:
+        verdicts = []  # per visual: "wrong", "right" or None (nothing it can check)
+        for grid, timeline in grids:
             def cell(s, p):
                 c = grid.loose.get((s, p))
                 return None if c is None or c[1] == INF else c
+
+            def leads(who, p, high) -> bool | None:
+                mine = cell(who, p) if who else None
+                if not mine:
+                    return None
+                return not any(o != who and (other := cell(o, p)) and (
+                    other[0] - mine[0] if high else mine[0] - other[0]) > max(0.5, mine[1] + other[1])
+                    for o in grid.series)
 
             mentions = _mentions(sentence, set(grid.series))
             years = [y for y in _YEAR_IN.findall(sentence) if y in grid.points]
             if not mentions:
                 continue
+            wrong = checked = False
             found = _BIGGEST.search(sentence)
             if found and len(grid.points) >= 2:
                 rise = re.fullmatch(_RISE, (found.group("noun") or found.group("verb")).lower()) is not None
@@ -925,6 +941,7 @@ def comparison_claims(text: str, visual: dict | None) -> list[str]:
                     if a and b:
                         change[s_] = (b[0] - a[0], a[1] + b[1], (b[0] - a[0]) / a[0] if a[0] else None)
                 if who in change:
+                    checked = True
                     sign = 1 if rise else -1
                     mine, slack, share = change[who]
                     by_amount = all(sign * mine >= sign * c - (slack + sl) for o, (c, sl, _) in change.items() if o != who)
@@ -938,24 +955,33 @@ def comparison_claims(text: str, visual: dict | None) -> list[str]:
                 if first and second and first != second:
                     gaps = [(a[0] - b[0], a[1] + b[1]) for p in grid.points
                             if (a := cell(first, p)) and (b := cell(second, p))]
-                    if gaps and (all(g > sl for g, sl in gaps) or all(g < -sl for g, sl in gaps)):
-                        wrong = True  # always ahead, or never caught up: no overtaking
+                    if gaps:
+                        checked = True
+                        if _AHEAD.fullmatch(found.group(0)) and not timeline:
+                            # "Australia outnumbers the Netherlands" on a pie or a table of groups is
+                            # being ahead, not overtaking (#128): wrong only when it never is
+                            wrong |= all(g < -sl for g, sl in gaps)
+                        elif all(g > sl for g, sl in gaps) or all(g < -sl for g, sl in gaps):
+                            wrong = True  # always ahead, or never caught up: no overtaking
             found = _TOP.search(sentence)
-            if found and not _OWN_TOP.search(sentence):
+            if found and not _OWN_TOP.search(sentence) and not _ORDINAL.search(sentence[:found.start()]):
                 who = _nearest(mentions, found.start())
                 high = found.group("rank").lower().split()[0] in ("highest", "largest", "biggest", "most")
                 points = grid.points if _ALWAYS.search(sentence) else years or (
                     grid.points if len(grid.points) == 1 else [])
                 for p in points:
-                    mine = cell(who, p) if who else None
-                    if not mine:
-                        continue
-                    for o in grid.series:
-                        other = cell(o, p)
-                        if o != who and other and (other[0] - mine[0] if high else mine[0] - other[0]) > \
-                                max(0.5, mine[1] + other[1]):
-                            wrong = True
-        if wrong:
+                    led = leads(who, p, high)
+                    if led is not None:
+                        checked = True
+                        wrong |= not led
+                if not points and not timeline and any(leads(who, p, high) for p in grid.points):
+                    # a table of groups ("cities", "rural areas") with none named by the code: the
+                    # highest in one of them backs the sentence, never makes it wrong
+                    checked = True
+            verdicts.append("wrong" if wrong else "right" if checked else None)
+        # on a pie and a table together, a sentence is about one of them: wrong only when none bears it
+        # out (#128: New Zealand's 20% is the highest rural share, but only 3% of the pie)
+        if "wrong" in verdicts and "right" not in verdicts:
             out.append(sentence.strip()[:200])
     return out
 

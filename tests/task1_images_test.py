@@ -795,11 +795,130 @@ async def cut_start_flow() -> None:
         writing._run_grading, writing.strip_buttons = real_grade, real_strip
 
 
+async def recheck_flow() -> None:
+    """An essay sent before (2026-11-09): an admin or tester is asked whether to mark it again - yes marks it anew
+    (past the kept result), no sends the saved report; everyone else gets the saved report, as before."""
+    import tempfile
+
+    from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.base import StorageKey
+    from aiogram.fsm.storage.memory import MemoryStorage
+
+    from bot.handlers import writing
+    from bot.i18n import t
+    from bot.keyboards.writing_task_kb import CB_RECHECK_NEW, CB_RECHECK_OLD
+    from bot.states.writing_states import WritingStates
+
+    class Started(Exception):
+        """The new check began: "grading in progress" was sent."""
+
+    said: list[tuple[str, object]] = []
+    documents: list[str] = []
+    started = t("writing.grading_in_progress", "uz")
+
+    async def answer(text, reply_markup=None, **kw):
+        said.append((text, reply_markup))
+        if text == started:
+            raise Started
+
+    async def answer_document(document, caption="", **kw):
+        documents.append(caption)
+
+    async def nothing(*a, **kw):
+        return None
+
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
+        f.write(b"%PDF-1.4 saved report")
+    essay = "Some people think that museums should be free. " * 30
+    same = NS(id=77, answer_text=essay, feedback_pdf_path=f.name, overall_band=7.5, task_type="task2")
+
+    async def repeat_of(user_id, task_type, answer_text):
+        return same, same, {77: 4}
+
+    allowed = {"value": True}
+
+    async def may_recheck(user_id):
+        return allowed["value"]
+
+    message = NS(answer=answer, answer_document=answer_document, chat=NS(id=1, full_name="T"), bot=None)
+    real = (writing._repeat_of, writing.runtime.may_recheck, writing.strip_buttons, writing.crm_events.check_repeated)
+    writing._repeat_of, writing.runtime.may_recheck, writing.strip_buttons = repeat_of, may_recheck, nothing
+    writing.crm_events.check_repeated = nothing
+
+    async def fresh_state():
+        state = FSMContext(storage=MemoryStorage(), key=StorageKey(bot_id=1, chat_id=1, user_id=1))
+        await state.set_state(WritingStates.processing)
+        await state.update_data(task_type="task2", prompt_text="Q?", answer_text=essay, answer_source="text")
+        return state
+
+    try:
+        state = await fresh_state()
+        await writing._run_grading(message, state, "uz")
+        buttons = [b.callback_data for row in said[-1][1].inline_keyboard for b in row] if said else []
+        check("recheck: an admin or tester sending an essay checked before is asked first, nothing sent or marked",
+              await state.get_state() == WritingStates.confirming_recheck.state and "#4" in said[-1][0]
+              and buttons == [CB_RECHECK_NEW, CB_RECHECK_OLD] and not documents, (said, documents))
+        try:
+            await writing.recheck_choice(NS(answer=nothing, message=message, data=CB_RECHECK_NEW), state, "uz")
+            began = False
+        except Started:
+            began = True
+        check("...'yes' marks it anew", began and not documents, (said[-1][0], documents))
+
+        said.clear()
+        state = await fresh_state()
+        await writing._run_grading(message, state, "uz")
+        await writing.recheck_choice(NS(answer=nothing, message=message, data=CB_RECHECK_OLD), state, "uz")
+        check("...'no' sends the saved report, nothing marked",
+              len(documents) == 1 and "#4" in documents[0] and started not in [s for s, _ in said], (documents, said))
+
+        said.clear()
+        documents.clear()
+        allowed["value"] = False
+        state = await fresh_state()
+        await writing._run_grading(message, state, "uz")
+        check("...an ordinary student gets the saved report at once, unasked",
+              len(documents) == 1 and not any(s.startswith("♻️ Bu matn avval") for s, _ in said), (documents, said))
+    finally:
+        writing._repeat_of, writing.runtime.may_recheck, writing.strip_buttons, writing.crm_events.check_repeated = real
+        os.unlink(f.name)
+
+    # the kept result is passed over when asked to mark again
+    from services.ai import result_cache, writing_grader
+
+    asked: list[str] = []
+
+    async def cache_get(key):
+        asked.append(key)
+        return (None, None, None, "KEPT REPORT")
+
+    class Marking(Exception):
+        """Marking began."""
+
+    async def feedback_call(*a, **kw):
+        raise Marking
+
+    real_get, real_feedback = result_cache.get, writing_grader._feedback_call
+    result_cache.get, writing_grader._feedback_call = cache_get, feedback_call
+    try:
+        kept = await writing_grader.grade_writing("task2", "Q?", essay)
+        try:
+            await writing_grader.grade_writing("task2", "Q?", essay, fresh=True)
+            marked = False
+        except Marking:
+            marked = True
+        check("...grade_writing gives the kept result, but with fresh=True marks the text anew",
+              kept == "KEPT REPORT" and marked and len(asked) == 1, (kept, marked, asked))
+    finally:
+        result_cache.get, writing_grader._feedback_call = real_get, real_feedback
+
+
 async def main() -> int:
     part1_pictures()
     await part1_reading()
     await wrong_section_flow()
     await cut_start_flow()
+    await recheck_flow()
     if "--pictures-only" not in sys.argv:
         await part2_bot()
     print("FAILURES:", fails or "none")

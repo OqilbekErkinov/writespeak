@@ -177,7 +177,8 @@ NOT_ERRORS = """NOT ERRORS - never count or list these: style preferences and va
 spelling and usage, "volunteers of art" vs "art volunteers", "hold influence over", "a renewed \
 interest in", "drawbacks to", "see a rise", "foods" meaning kinds of food, "others'" with the noun \
 left out, "was least popular", "a chart-high / chart-low of", "bear parallels to/with", "reach \
-parity", "buck the trend", a plainer word that is still correct, an optional comma); a paraphrase of a \
+parity", "buck the trend", a plainer word that is still correct, an optional comma, a plural verb after \
+"the majority / a share / a proportion of" + a plural noun - "the majority of people prefer"); a paraphrase of a \
 chart's label ("age at death" for "life expectancy", "proximity to home" for "close to parental \
 home"); a word or phrase the question itself uses; a proper name as its owner writes it ("Malala \
 Fund"); the writer's own grouping of steps or categories ("in the final stage" of the writer's own \
@@ -689,7 +690,10 @@ thrived"); an idiom used in its usual sense ("plant the seed of"); "develop thei
 per country); a fixed expression that keeps its present form in a past account ("the former had an edge \
 when it comes to other workers", "as far as pay is concerned") - no tense shift; a plural verb after \
 "X along with / coupled with / together with Y" (the academic lead accepted "The automotive industry along \
-with the smartphone market are both a testament"). When one flagged stretch holds a single real error, only that error counts ("the football" \
+with the smartphone market are both a testament"); a plural verb after "the majority / a share / a \
+proportion / a number of" + a plural noun, which agrees with the people ("the overwhelming share of people \
+from all countries prefer" - only "the number of" and "the percentage of" naming the figure take a singular \
+verb). When one flagged stretch holds a single real error, only that error counts ("the football" \
 -> "football" - the correct words around it are not wrong). These are never an error or a slip: a style preference or valid variant (a \
 demonstrative for an article, a near-synonym, "ranging from X to Y", a plainer word, an optional comma, \
 British vs American usage); the QUESTION'S OWN WORDS; a PROPER NAME as its owner writes it ("Malala \
@@ -962,8 +966,6 @@ def cap_bands(task_type: str, answer_text: str, bands: dict[str, float], notes: 
             cap("TR_or_TA", 6, f"Only {words} words: under 140 words keeps Task Achievement at 6 at most.")
         elif words < 150:
             notices.append(f"Your report has {words} words - no penalty this time, but aim for at least 150.")
-            if notes.get("TR_or_TA"):
-                notes["TR_or_TA"] = f"{notes['TR_or_TA'].rstrip('. ')} ({words} words: aim for 150+)."
         if figures_visual and count_comparisons(answer_text) == 0:
             cap("TR_or_TA", 5, "Figures are listed with no comparisons, so Task Achievement is 5 at most.")
     else:
@@ -976,6 +978,11 @@ def cap_bands(task_type: str, answer_text: str, bands: dict[str, float], notes: 
     # "Cohesion attracts no attention" doesn't stand with language at 7 or below (#71: Coherence 9, both 7; the lead: 7-8)
     if max(bands["LR"], bands["GRA"]) <= 7:
         cap("CC", 8, "Language errors draw some attention, so Coherence stays at 8 at most.")
+    # Under the word minimum the Task note says so, cap or no cap (2026-11-09: #127, a 205-word
+    # essay at Task Response 6 - the cap's own limit - was never told Task 2 needs 250 words)
+    minimum = TASK_MIN_WORDS.get(task_type, 0)
+    if words < minimum and notes.get("TR_or_TA") and f"{words} words" not in notes["TR_or_TA"]:
+        notes["TR_or_TA"] = f"{notes['TR_or_TA'].rstrip('. ')} ({words} words: aim for {minimum}+)."
     return bands, notes, capped, notices
 
 
@@ -1100,6 +1107,9 @@ async def _score_once(task_type, prompt_text, answer_text, prompt_images, sheet:
                 logger.info("Score %s %g -> 9: the other three are 9 and no error justifies it", k, out[k])
                 out[k] = 9.0
     out["_notes"] = {k: getattr(scores, k).note.strip() for k in SCORE_KEYS}
+    # a Coherence 8 with its checklist run and no quoted weakness: coherence_nine() may make it a 9
+    out["_cc_clear"] = out["CC"] == 8 and looked("CC") and not evidenced(
+        scores.CC.weaknesses + found("CC"), answer_text, acceptable)
     return out
 
 
@@ -1239,6 +1249,33 @@ def grammar_ceiling(answer_text: str, bands: dict[str, float], checked: list | N
     return {**bands, "GRA": 6.0}, [f"GRA {bands['GRA']:g} -> 6 ({density:.1f} per 100 words)"]
 
 
+COHERENCE_NINE_PARAGRAPHS = {"task1": 3, "task2": 4}
+
+
+def coherence_nine(task_type: str, answer_text: str, bands: dict[str, float], runs: list[dict],
+                   checked: list | None, wide: bool) -> tuple[dict[str, float], list[str]]:
+    """Coherence 8 -> 9 for a strong, full answer only (2026-11-09, #128: a
+    Band 9 report came out Coherence 8 in both runs - "easy to follow
+    throughout", no weakness - once 5e8092d stopped every Coherence lift).
+    All of: the task's word minimum and a full paragraph plan (Task 1: 3,
+    Task 2: 4), a wide range shown, no Coherence error on the checked list,
+    most runs with no quoted Coherence weakness, and Task, Lexical and Grammar
+    at 8 or more after the floors. The teachers' cases stay out: #121 (126
+    words, Task 6) and #119 (Task 6) came out Coherence 9 before 5e8092d."""
+    if bands.get("CC") != 8 or checked is None or not wide or not runs:
+        return bands, []
+    if count_words(answer_text) < TASK_MIN_WORDS.get(task_type, 0) \
+            or paragraph_count(answer_text) < COHERENCE_NINE_PARAGRAPHS.get(task_type, 3):
+        return bands, []
+    if any(m.criterion == "CC" and getattr(m, "severity", "error") != "slip" for m in checked):
+        return bands, []
+    if any(bands[k] < 8 for k in SCORE_KEYS if k != "CC"):
+        return bands, []
+    if sum(bool(r.get("_cc_clear")) for r in runs) * 2 <= len(runs):
+        return bands, []
+    return {**bands, "CC": 9.0}, ["CC 8 -> 9 (a full, strong answer; no Coherence weakness quoted)"]
+
+
 FLOOR_NOTES = {"LR": "Wide, precise vocabulary; only minor slips.", "GRA": "Wide range of structures; only minor slips."}
 NINE_NOTES = {"TR_or_TA": {"task1": "Clear overview; every key feature covered precisely.",
                            "task2": "Every part answered; ideas fully developed and supported."},
@@ -1284,10 +1321,14 @@ async def decide_scores(
     medians, lowered = grammar_ceiling(answer_text, medians, checked)
     if lowered:
         logger.info("Grammar ceiling (writing %s): %s", task_type, "; ".join(lowered))
+    medians, lifted = coherence_nine(task_type, answer_text, medians, runs, checked, wide)
+    if lifted:
+        logger.info("Coherence (writing %s): %s", task_type, "; ".join(lifted))
     notes = {}
     for k in SCORE_KEYS:
+        nine = (NINE_NOTES[k][task_type] if k == "TR_or_TA" else NINE_NOTES[k]) if medians[k] >= 9 else ""
         notes[k] = next((r["_notes"][k] for r in runs if whole_band(r[k]) == medians[k] and r["_notes"].get(k)),
-                        FLOOR_NOTES.get(k, ""))
+                        FLOOR_NOTES.get(k) or nine)
         if medians[k] >= 9 and _CRITICISM.search(notes[k]):  # "grouping could be sharper" under a 9
             notes[k] = NINE_NOTES[k][task_type] if k == "TR_or_TA" else NINE_NOTES[k]
     bands, notes, capped, notices = cap_bands(task_type, answer_text, medians, notes,
@@ -1337,6 +1378,7 @@ async def grade_writing(
     visual: dict | None = None,
     text_source: str = "text",
     marks_only: bool = False,
+    fresh: bool = False,
 ):
     """`prompt_images` - (bytes, mime) pairs of the Task 1 chart/diagram, so
     the grader can check the student's figures and overview against the
@@ -1350,7 +1392,9 @@ async def grade_writing(
     artefacts are ignored only in a photo or a PDF. The same text gets the
     same result (services/ai/result_cache.py). `marks_only`: for calibration
     (scripts/marks_check.py) - the marks and the bands, no vocabulary,
-    priorities or report: returns MarksOnly.
+    priorities or report: returns MarksOnly. `fresh`: marked anew even when
+    this version marked the same text before (an admin or tester asked to
+    check it again); the new result replaces the kept one.
 
     Mistakes first (the owner's rule, 2026-10-22: #38's Grammar still came
     out 6 with the bands decided first): the feedback lists the mistakes, the
@@ -1366,7 +1410,7 @@ async def grade_writing(
     if footers and PASTE_NOTICE not in (notices or []):
         notices = (notices or []) + [PASTE_NOTICE]
     cache_key = result_cache.key(task_type, prompt_text, answer_text, bool(prompt_images), text_source)
-    cached = None if marks_only else await result_cache.get(cache_key)
+    cached = None if marks_only or fresh else await result_cache.get(cache_key)
     if cached is not None:
         bands, overall, kept_feedback, report = cached
         logger.info("Writing %s: this text was already marked by this version - the same result", task_type)
@@ -1506,6 +1550,7 @@ async def grade_writing(
                 for m in feedback.mistakes if checkable(m) and m.id not in auto], words),
         find_missed(),
     )
+    unfiltered_missed = missed
     missed = [x for x in missed if not question_word(x) and not data_protected(x) and not scan_noise(x)]
     missed_verdicts, _ = await verify(
         [(k, "essay", x.wrong, x.correct, x.why, x.criterion, correction_note(x))
@@ -1564,9 +1609,14 @@ async def grade_writing(
     for note in small_slips(checked):
         logger.info("Severity by its correction: %s", note)
     strong = [seg.text.strip() for paragraph in feedback.essay for seg in paragraph if seg.type == "good"]
+    # a data "mistake" code set aside (a figure the sheet confirms or can't check, a reader's rounding)
+    # is no reason for a lower Task band either (#128: "slightly above 80%")
+    set_aside = [m.wrong for m in feedback.mistakes if m.id in auto and data_protected(m)] \
+        + [x.wrong for x in unfiltered_missed if data_protected(x)]
     scores = await decide_scores(task_type, prompt_text, answer_text, prompt_images, sheet,
                                  mistake_evidence(answer_text, checked, strong, alternatives), visual,
-                                 checked=checked, strong=strong, acceptable=[a["wrong"] for a in alternatives])
+                                 checked=checked, strong=strong,
+                                 acceptable=[a["wrong"] for a in alternatives] + set_aside)
     if marks_only:
         return MarksOnly(scores.bands, scores.overall, scores.runs, scores.capped, flags,
                          shown_strong(answer_text, strong, checked))
@@ -1595,13 +1645,17 @@ async def grade_writing(
     return report
 
 
+_WORD_COUNT = re.compile(r"\b\d+(?:\s*[-–]\s*\d+)?(?:\s+more)?[\s-]*words?\b", re.IGNORECASE)
+
+
 def true_tips(feedback: WritingFeedback, check) -> tuple[WritingFeedback, list[str]]:
     """Task 1: a next-band tip whose rule or example makes a data claim the
     sheet doesn't bear out goes (#105: "Germany was about a half" - the
     student's one-third was right), with its checklist lines; the rest are
-    numbered again."""
+    numbered again. A word count is no data claim (#125: "Meet the 150-word
+    minimum" went for its 150, under a 126-word report)."""
     bad = {i for i, p in enumerate(feedback.priorities[:3], 1)
-           if p.type == "tip" and check(f"{p.rule} {p.example_right}")}
+           if p.type == "tip" and check(_WORD_COUNT.sub("", f"{p.rule} {p.example_right}"))}
     if not bad:
         return feedback, []
     notes = [f"tip {i} dropped - its data claim disagrees with the chart: {feedback.priorities[i - 1].title!r}"

@@ -42,8 +42,11 @@ from bot.keyboards.share_kb import share_card_kb
 from bot.keyboards.writing_task_kb import (
     CB_NO_CHART,
     CB_CHECK_AS_IS,
+    CB_RECHECK_NEW,
+    CB_RECHECK_OLD,
     CB_SWITCH_SECTION,
     cut_start_kb,
+    recheck_kb,
     wrong_section_kb,
     CB_TASK1,
     CB_TASK2,
@@ -53,7 +56,7 @@ from bot.keyboards.writing_task_kb import (
     writing_task_kb,
 )
 from bot.states.writing_states import WritingStates
-from bot.utils import crm_events, stickers
+from bot.utils import crm_events, runtime, stickers
 from bot.utils.input_extraction import read_images, read_text_input
 from bot.utils.messages import show_screen, strip_buttons
 from bot.utils.mock_test_flow import record_mock_test_part
@@ -286,6 +289,20 @@ async def check_as_is(callback: CallbackQuery, state: FSMContext, lang: str) -> 
     await _run_grading(callback.message, state, lang)
 
 
+@router.callback_query(WritingStates.confirming_recheck, F.data.in_({CB_RECHECK_NEW, CB_RECHECK_OLD}))
+async def recheck_choice(callback: CallbackQuery, state: FSMContext, lang: str) -> None:
+    """An admin or tester sent an essay checked before: mark it again, or
+    get its saved report."""
+    await callback.answer()
+    await strip_buttons(callback.message)
+    data = await state.get_data()
+    if not data.get("answer_text") or data.get("repeat_of") is None:
+        return
+    await state.update_data(repeat_choice={"id": data["repeat_of"], "new": callback.data == CB_RECHECK_NEW})
+    await state.set_state(WritingStates.processing)
+    await _run_grading(callback.message, state, lang)
+
+
 async def _ask_for_answer(message: Message, state: FSMContext, data: dict, lang: str) -> None:
     await state.set_state(WritingStates.awaiting_answer)
     await message.answer(
@@ -386,6 +403,21 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
     test_run = bool(data.get("test_run"))
     same, similar, numbers = (None, None, {}) if test_run else \
         await _repeat_of(user_id, data["task_type"], data["answer_text"])
+    # Admins and testers are asked first: mark it again (to see a marking change) or send the saved report.
+    # Everyone else gets the saved report, as before.
+    choice = data.get("repeat_choice") or {}
+    fresh = same is not None and choice.get("id") == same.id and bool(choice.get("new"))
+    if fresh:
+        logger.info("Writing resubmission by user %s: same text as submission %s, marked again on request",
+                    user_id, same.id)
+        same = None
+    elif same is not None and same.feedback_pdf_path and Path(same.feedback_pdf_path).exists() \
+            and choice.get("id") != same.id and not data.get("mock_session_id") and await runtime.may_recheck(user_id):
+        await state.update_data(repeat_of=same.id)
+        await state.set_state(WritingStates.confirming_recheck)
+        await message.answer(t("writing.recheck_ask", lang, number=numbers[same.id], band=same.overall_band),
+                             reply_markup=recheck_kb(lang))
+        return
     if same is not None and same.feedback_pdf_path and Path(same.feedback_pdf_path).exists():
         logger.info("Writing resubmission by user %s: same text as submission %s", user_id, same.id)
         await message.answer_document(
@@ -466,6 +498,7 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
                     notices=notices,
                     visual=visual_data,
                     text_source=data.get("answer_source") or "text",
+                    fresh=fresh,
                 )
             except BaseException:
                 if answer_task is not None:
