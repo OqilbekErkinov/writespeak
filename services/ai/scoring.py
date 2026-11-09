@@ -93,11 +93,18 @@ def median_bands(runs: list[dict[str, float]], keys: tuple[str, ...]) -> dict[st
     return {k: whole_band(statistics.median_low(whole_band(r[k]) for r in runs)) for k in keys}
 
 
+def spread(results: list[dict[str, float]], key: str) -> float:
+    """How far apart the runs' whole bands for `key` are."""
+    bands = [whole_band(r[key]) for r in results]
+    return max(bands) - min(bands) if bands else 0.0
+
+
 async def median_of_runs(
     score_once: Callable[[], Awaitable[dict[str, float]]],
     keys: tuple[str, ...],
     runs: int = SCORE_RUNS,
     label: str = "",
+    steady: tuple[str, int] | None = None,
 ) -> tuple[dict[str, float], list[dict[str, float]]]:
     """Returns (the per-criterion median of `runs` scoring calls, every run
     that succeeded). Two calls run first, in parallel; when they give the same
@@ -111,6 +118,12 @@ async def median_of_runs(
     agreed = len(good) == 2 and all(whole_band(good[0][k]) == whole_band(good[1][k]) for k in keys)
     if not agreed and runs > first:
         results += await asyncio.gather(*(score_once() for _ in range(runs - first)), return_exceptions=True)
+        good = [r for r in results if not isinstance(r, BaseException)]
+    if steady is not None and len(results) < steady[1] and spread(good, steady[0]) >= 2:
+        # `steady` = (key, runs): a criterion whose runs land two bands apart or more gets more runs, up to
+        # that many - the same Task 1 report came out Task 6, 8 and 7 in three runs (2026-11-09)
+        results += await asyncio.gather(*(score_once() for _ in range(steady[1] - len(results))),
+                                        return_exceptions=True)
         good = [r for r in results if not isinstance(r, BaseException)]
     for r in results:
         if isinstance(r, BaseException):

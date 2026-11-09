@@ -419,7 +419,10 @@ Grammar, errors only lower it further. Lexical Resource: everyday words used aga
 number", "went up", "good", "bad") are 5-6 even with no error; some less common words with awareness \
 of collocation 7; a wide, precise and natural range 8-9; clear, less common vocabulary whose meaning is \
 always clear is at least 7. A word that is grammatical but unnatural or imprecise for its meaning \
-("highly irrelevant", "learn good") is a Lexical weakness. Memorised phrases, formulaic templates and \
+("highly irrelevant", "learn good") is a Lexical weakness - but a word choice or collocation that is \
+off while its meaning stays clear is what the descriptors expect even at 7 ("inappropriacies occur") and 8 \
+("occasional inaccuracies in word choice and collocation"): a few of them never take a good range below 7 \
+(the CHECKED MISTAKES mark them "word choice off, meaning clear"; they weigh half). Memorised phrases, formulaic templates and \
 language lifted from the question earn no Lexical credit; used inappropriately they are a Band 4 feature. \
 Grammar (the descriptors): simple sentences predominating, with subordinate clauses rare, is a [LIMIT] \
 at 4 even when accurate; a limited, repetitive range whose complex sentences tend to be faulty 5; a mix \
@@ -907,7 +910,10 @@ verified figures clearly contradict the student. A year printed on the axis, or 
 last labelled years, is never a TR mistake. A trend ("fell", "stayed stable") is wrong only when the \
 change between its two figures is larger than both their ±ranges together and goes the other way. A \
 claim about the writer's own grouping ("in the final stage" of the writer's own three stages) is never \
-a data error: only a wrong step order or a missing step is. A data correction must agree with the sheet: when an item \
+a data error: only a wrong step order or a missing step is. On a map, what the student says about a feature whose place \
+or change the sheet marks UNCERTAIN is never a mistake, and a claim about a feature's size or shape ("larger", \
+"extended") is a mistake only when the sheet's own detail says the opposite - "present" or "retained" says nothing \
+about size. A data correction must agree with the sheet: when an item \
 carries a CORRECTION CHECK (its correction's figures are not on the sheet), either give fixed_correct - \
 the correction rewritten with the sheet's figures for the same series - or not_a_mistake. With no DATA \
 SHEET and no visual, a mistake about a figure is not_a_mistake (nothing to check it against).
@@ -1403,9 +1409,13 @@ _EVIDENCE_NAMES = (("GRA", "Grammar (GRA)"), ("LR", "Vocabulary (LR)"), ("CC", "
                    ("TR", "Task (TR)"))
 
 
+CLEAR_CHOICE = "clear_choice"  # a checked mistake's less_common: a word choice or collocation off, its meaning clear
+
+
 def _weight(m, slip: float, less_common: float) -> float:
     """What a checked mistake counts for in the density: an error 1, in less
-    common language less, a slip least."""
+    common language (or a word choice off with its meaning clear) less, a
+    slip least."""
     if getattr(m, "severity", "error") == "slip":
         return slip
     return less_common if getattr(m, "less_common", False) else 1.0
@@ -1461,8 +1471,9 @@ def mistake_evidence(answer_text: str, mistakes: list, strong: list[str], altern
         errors = [m for m in mine if getattr(m, "severity", "error") != "slip"]
         half = marking_config.density()["less_common_weight"]
         weighted = (sum(_weight(m, weight, half) for m in errors) + len(slips) * weight) * 100 / words
-        listed = "; ".join([f"«{m.wrong}» -> «{m.correct}»" + (" (less common language)" if getattr(
-            m, "less_common", False) else "") for m in errors[:12]]
+        listed = "; ".join([f"«{m.wrong}» -> «{m.correct}»" + (
+            " (word choice off, meaning clear)" if getattr(m, "less_common", False) == CLEAR_CHOICE
+            else " (less common language)" if getattr(m, "less_common", False) else "") for m in errors[:12]]
                            + [f"«{m.wrong}» -> «{m.correct}» (slip{', ' + str(n) + ' times' if n > 1 else ''})"
                               for m, n in slips[:6]])
         lines.append(f"- {name}: {len(errors)} errors, {len(slips)} slips = {weighted:.1f} weighted per 100 words: "
@@ -1500,8 +1511,10 @@ def floors(task_type: str, answer_text: str, bands: dict[str, float], checked: l
         half = marking_config.density()["less_common_weight"]
         slips = distinct_slips([m for m in mine if m not in errors])
         density = (sum(_weight(m, weight, half) for m in errors) + len(slips) * weight) * 100 / words
-        # Lexical: every word-choice and spelling mistake counts here, errors and slips alike
-        vocabulary_ok = key != "LR" or (len(errors) + len(slips)) * 100 / words <= f["clear_vocabulary_max_per_100"]
+        # Lexical: every word-choice and spelling mistake counts here, errors and slips alike - a word choice
+        # off with its meaning clear as half of one (the descriptors allow "inappropriacies" at Lexical 7)
+        counted = sum(half if getattr(m, "less_common", False) == CLEAR_CHOICE else 1 for m in errors) + len(slips)
+        vocabulary_ok = key != "LR" or counted * 100 / words <= f["clear_vocabulary_max_per_100"]
         least, why = (f["slips_only_min"], "only slips") if not errors and vocabulary_ok else (0, "")
         clear = not any(getattr(m, "unclear", False) for m in mine)
         # Grammar only: on Lexical Resource it lifted a real Band 6 script from 7 to 8 (2026-11-01)
@@ -1561,6 +1574,7 @@ def sentence_ceiling(answer_text: str, bands: dict[str, float], checked: list | 
 
 
 COHERENCE_NINE_PARAGRAPHS = {"task1": 3, "task2": 4}
+TASK_STEADY_RUNS = 5  # Task runs two bands apart or more: up to this many runs in all (median_of_runs)
 
 
 def coherence_nine(task_type: str, answer_text: str, bands: dict[str, float], runs: list[dict],
@@ -1622,6 +1636,7 @@ async def decide_scores(
         lambda: _score_once(task_type, prompt_text, answer_text, prompt_images, sheet, evidence, kind, acceptable,
                             checked, wide),
         SCORE_KEYS, label=f"writing {task_type}",
+        steady=("TR_or_TA", TASK_STEADY_RUNS),
     )
     votes = Counter(r.get("_overview", "clear") for r in runs)
     overview = "none" if votes["none"] * 2 > len(runs) else \
@@ -1816,6 +1831,11 @@ async def grade_writing(
         keeps only its sheet-checked rewrite."""
         kind, crit, reason, fixed, basis, less_common = verdict
         less_common = less_common or basis == "spelling"  # a misspelling rarely gets in the reader's way
+        if not less_common and crit == "LR" and basis == "meaning" and not getattr(item, "unclear", False):
+            # an inaccuracy in word choice or collocation whose meaning is clear: the descriptors allow
+            # "occasional inaccuracies in word choice and collocation" at Lexical 8 and "inappropriacies" at 7
+            # (2026-11-09: Band 7-9 scripts went to Lexical 6-8 on three or four such flags)
+            less_common = CLEAR_CHOICE
         said = kind
         kind, decided = final_kind(item.wrong, item.correct, kind, crit, basis)
         if decided:

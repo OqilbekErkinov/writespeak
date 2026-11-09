@@ -134,7 +134,9 @@ printed, otherwise its position against the scale, gridline by gridline.
 
 # Added after the sheet wherever a student's report is judged (scores, feedback,
 # missed-errors pass) - the same rules everywhere, so the same figure is never
-# right in one part of the report and wrong in another.
+# right in one part of the report and wrong in another. The map size line: a paid run
+# on 2026-11-09 marked "the gym is going to be larger" wrong (the sheet: gym "retained")
+# though the plan shows it extended.
 JUDGE_RULES = """HOW TO JUDGE THE STUDENT'S FIGURES - by the DATA SHEET and the DATA CHECK (when \
 given, software already compared every figure of the report with the sheet: a figure it found is \
 correct), never by a new reading of the image:
@@ -145,6 +147,9 @@ over" is fine);
 - an UNCERTAIN figure, or one the sheet can't read: never count the student's figure as a mistake;
 - a map feature whose place or change the sheet marks UNCERTAIN: never count what the student says \
 about it (where it is, whether it changed) as a mistake;
+- a map feature's size or shape ("larger", "smaller", "extended", "longer"): the sheet notes places and \
+states, not sizes - "present", "retained" or "unchanged position" says nothing about size, so such a claim \
+is a mistake only when the sheet's own detail says the opposite;
 - a year printed on the axis, or between the first and last labelled years, is never a TR mistake;
 - rankings, equal values, trends and the overview: a mistake only when the verified figures \
 contradict them (e.g. "boys lead" where the sheet shows them equal); a trend ("fell", "stayed \

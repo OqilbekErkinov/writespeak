@@ -976,6 +976,48 @@ def official_descriptors() -> None:
                                unclear=False, less_common=False)])["TR_or_TA"] == 8)
 
 
+def paid_run_fixes() -> None:
+    """After the paid run of 2026-11-09: a word choice off with its meaning clear weighs half; Task runs far
+    apart get more runs; a map's sizes are not judged by "retained"."""
+    from services.ai import scoring
+    from services.ai.visual_reading import JUDGE_RULES
+
+    g = writing_grader
+    d = marking_config.density()
+    clear = NS(criterion="LR", severity="error", less_common=g.CLEAR_CHOICE, unclear=False, wrong="a", correct="b")
+    plain = NS(criterion="LR", severity="error", less_common=False, unclear=False, wrong="c", correct="d")
+    check("a word choice off with its meaning clear weighs half (the descriptors: 'occasional inaccuracies in word "
+          "choice and collocation' at Lexical 8)",
+          g._weight(clear, d["slip_weight"], d["less_common_weight"]) == d["less_common_weight"]
+          and g._weight(plain, d["slip_weight"], d["less_common_weight"]) == 1.0)
+    essay = " ".join(["The city invested heavily in modern public transport for its residents."] * 30)
+    evidence = g.mistake_evidence(essay, [NS(**{**vars(clear), "wrong": "invested heavily", "correct": "spent much"})],
+                                  [], [])
+    check("...the scorer sees it marked so", "word choice off, meaning clear" in evidence, evidence)
+    strong = ["invested heavily", "modern public transport", "its residents"]
+    four = [NS(criterion="LR", severity="error", less_common=g.CLEAR_CHOICE, unclear=False, wrong=f"w{i}",
+               correct=f"c{i}") for i in range(4)]
+    raised, why = g.floors("task2", essay, {"TR_or_TA": 7.0, "CC": 7.0, "LR": 6.0, "GRA": 7.0}, four, strong)
+    check("...four of them in 360 words keep the clear-vocabulary floor (Lexical 7); four plain errors don't",
+          raised["LR"] == 7 and g.floors("task2", essay, {"TR_or_TA": 7.0, "CC": 7.0, "LR": 6.0, "GRA": 7.0},
+                                         [NS(**{**vars(m), "less_common": False}) for m in four], strong)[0]["LR"] == 6,
+          why)
+
+    def runs_for(values):
+        it = iter(values)
+
+        async def once():
+            return {"TR_or_TA": float(next(it)), "CC": 7.0, "LR": 7.0, "GRA": 7.0}
+        medians, good = asyncio.run(scoring.median_of_runs(once, g.SCORE_KEYS, steady=("TR_or_TA", 5)))
+        return medians["TR_or_TA"], len(good)
+
+    check("Task runs 6, 8, 7 (two bands apart): two more runs, the median of five", runs_for([6, 8, 7, 7, 7]) == (7, 5))
+    check("...runs 6, 7, 7: no more", runs_for([6, 7, 7]) == (7, 3))
+    check("...two agreeing runs: no third", runs_for([8, 8]) == (8, 2))
+    check("a map's size claims: 'retained' says nothing about size - in the judge rules and the filter",
+          "says nothing about size" in JUDGE_RULES and "says nothing" in g.VERIFY_SYSTEM)
+
+
 if __name__ == "__main__":
     writing()
     round2()
@@ -984,5 +1026,6 @@ if __name__ == "__main__":
     rounding()
     examiner_rules()
     official_descriptors()
+    paid_run_fixes()
     print(f"\n{len(fails)} failed" if fails else "\nall passed")
     sys.exit(1 if fails else 0)
