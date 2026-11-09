@@ -143,6 +143,8 @@ over" is fine);
 - a figure read off the scale (±N): ANY figure within ±N is correct ("around 40%" for 41 ±2) - never \
 "correct" a reasonable reading into another reading;
 - an UNCERTAIN figure, or one the sheet can't read: never count the student's figure as a mistake;
+- a map feature whose place or change the sheet marks UNCERTAIN: never count what the student says \
+about it (where it is, whether it changed) as a mistake;
 - a year printed on the axis, or between the first and last labelled years, is never a TR mistake;
 - rankings, equal values, trends and the overview: a mistake only when the verified figures \
 contradict them (e.g. "boys lead" where the sheet shows them equal); a trend ("fell", "stayed \
@@ -158,7 +160,8 @@ A mistake about the data has criterion TR, and its `correct` gives the sheet's f
 # Added after the sheet where the model answer is written and checked.
 ANSWER_RULES = """Use ONLY the verified figures on this DATA SHEET: a printed figure as printed; one \
 read off the scale with "about" or "around" - never more precise than the sheet; leave out every \
-UNCERTAIN figure and what the sheet can't read; never rank figures the sheet shows as equal."""
+UNCERTAIN figure and what the sheet can't read - on a map, never say where a feature is, or whether it \
+changed, when the sheet marks that UNCERTAIN; never rank figures the sheet shows as equal."""
 
 
 class ChartImageRejected(Exception):
@@ -816,7 +819,38 @@ def _merge_values(x: VisualBlock, y: VisualBlock, pooled: bool = False) -> list[
     return out
 
 
+_INSIDE = re.compile(r"\b(inside|within|indoors?|interior|enclosed|in the (?:main |new |extended )?building)\b", re.I)
+_OUTSIDE = re.compile(r"\b(outside|outdoors?|open[- ]air|exterior|beyond the building)\b", re.I)
+_SIDES = {"north": "north", "northern": "north", "top": "north", "upper": "north",
+          "south": "south", "southern": "south", "bottom": "south", "lower": "south",
+          "east": "east", "eastern": "east", "right": "east", "west": "west", "western": "west", "left": "west"}
+_OPPOSITE = (("north", "south"), ("east", "west"))
+
+
+def _sides(text: str) -> set[str]:
+    return {_SIDES[w] for w in re.findall(r"[a-z]+", text.lower()) if w in _SIDES}
+
+
+def place_conflict(a: str, b: str) -> str:
+    """Why two reads' descriptions of one map feature's place can't both be true ("" when they can): one
+    puts it inside the building and the other outside (#138's leisure pool "outside the main building",
+    inside the outer wall on the plan), or on opposite sides (north / south, east / west)."""
+    ins = [bool(_INSIDE.search(t)) and not _OUTSIDE.search(t) for t in (a, b)]
+    outs = [bool(_OUTSIDE.search(t)) and not _INSIDE.search(t) for t in (a, b)]
+    if (ins[0] and outs[1]) or (outs[0] and ins[1]):
+        return "inside or outside the building"
+    sa, sb = _sides(a), _sides(b)
+    for p, q in _OPPOSITE:
+        if (p in sa and q in sb and q not in sa and p not in sb) or (q in sa and p in sb and p not in sa and q not in sb):
+            return f"{p} or {q}"
+    return ""
+
+
 def _merge_map(x: VisualBlock, y: VisualBlock, unreadable: list[str]):
+    """The features both reads see. A feature both reads see at every date, one calling it changed and
+    the other not, is kept as there, its change uncertain (#137's gym was dropped for that, so "opposite
+    the gym" could not be checked); one they place differently keeps its place as UNCERTAIN, never a
+    reason to mark the student wrong."""
     names = _match_labels([f.name for f in x.map_features], [f.name for f in y.map_features])
     other = {f.name: f for f in y.map_features}
     kept = []
@@ -825,9 +859,23 @@ def _merge_map(x: VisualBlock, y: VisualBlock, unreadable: list[str]):
         if g is None:
             unreadable.append(f"Map: {f.name} - seen by one read only")
             continue
-        if [s.status for s in f.states] != [s.status for s in g.states]:
-            unreadable.append(f"Map: {f.name} - the reads disagree on what changed")
-            continue
+        sa, sb = [s.status for s in f.states], [s.status for s in g.states]
+        if sa != sb:
+            if len(sa) != len(sb) or any((p == "absent") != (q == "absent") for p, q in zip(sa, sb)):
+                unreadable.append(f"Map: {f.name} - the reads disagree on what changed")
+                continue
+            f = f.model_copy(update={"states": [
+                s if s.status == t.status else s.model_copy(update={
+                    "status": "present", "detail": "; ".join(d for d in (s.detail, "UNCERTAIN whether it changed")
+                                                             if d)})
+                for s, t in zip(f.states, g.states)]})
+        # the places only: a state's detail speaks of what replaced it ("replaced by an indoor pool")
+        why = place_conflict(f.location, g.location)
+        if why:
+            unreadable.append(f"Map: {f.name} - the reads disagree on where it is ({why})")
+            f = f.model_copy(update={
+                "location": f"UNCERTAIN - the reads disagree ({why}): never mark the student's placing of it wrong",
+                "states": [s.model_copy(update={"detail": ""}) for s in f.states]})
         kept.append(f)
     return kept
 

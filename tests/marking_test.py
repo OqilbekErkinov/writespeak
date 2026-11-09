@@ -773,11 +773,121 @@ def rounding() -> None:
           mock == {"writing": 6.0, "speaking": 6.5, "overall": 6.5}, mock)
 
 
+def examiner_rules() -> None:
+    """2026-11-09: the books' lessons reach the finder and the filter; the filter votes; a map's places are
+    compared between the two reads; each kind of visual has its examiners' needs."""
+    from services.ai import visual_reading
+    from services.ai.schemas import MapFeature, MapFeatureState, VisualBlock
+
+    g = writing_grader
+    system = g._system_prompt("task1", None, 0.0, 0.0, None)
+    check("the finder, the missed-errors pass and the filter all get what real examiners count",
+          g.EXAMINER_PRACTICE in system and g.EXAMINER_PRACTICE in g._missed_prompt("task2")
+          and g.EXAMINER_PRACTICE in g.VERIFY_SYSTEM)
+    check("...and it says a plain or overused correct word is no mistake",
+          "never one mistake for each use" in g.EXAMINER_PRACTICE and "upgrade idea at most" in g.EXAMINER_PRACTICE)
+
+    # voting
+    err = ("error", "LR", "r1", None, "meaning", False)
+    slip = ("slip", "GRA", "r2", None, "grammar", False)
+    alt = ("alternative", "LR", "r3", None, "meaning", False)
+    no = ("not_a_mistake", "LR", "r4", None, "meaning", False)
+    check("vote: two of three say error -> error", g.vote([err, no, err])[0] == "error")
+    check("...error, slip, no -> counted, but a slip (no majority for error)", g.vote([err, slip, no])[0] == "slip")
+    check("...one of three -> not counted (an alternative stays an upgrade idea)", g.vote([err, alt, alt])[0] == "alternative")
+    check("...a 1-1 tie is the student's benefit of the doubt", g.vote([err, no])[0] == "not_a_mistake")
+    check("...two agreeing runs need no third", not g.disputed([err, err]) and g.disputed([err, no])
+          and g.disputed([err, slip]) and g.disputed([err, None]) and not g.disputed([alt, no]))
+
+    calls = []
+
+    async def fake_verify(source, items, vocabulary=None):
+        calls.append(([i[0] for i in items], bool(vocabulary)))
+        run = len(calls)
+        out = {}
+        for i in items:
+            if i[0] == 1:
+                out[1] = err  # every run: an error
+            elif i[0] == 2:
+                out[2] = err if run == 1 else no  # split: the third run decides
+            else:
+                out[3] = no
+        return out, ({0: (None, None)} if vocabulary else {})
+
+    real = g._verify_call
+    g._verify_call = fake_verify
+    try:
+        items = [(k, "essay", f"w{k}", f"c{k}", "why", "LR", "") for k in (1, 2, 3)]
+        verdicts, words = asyncio.run(g._voted_verify("SRC", items, [(0, "t", "m", "e", "")]))
+    finally:
+        g._verify_call = real
+    check("voted filter: two runs, the vocabulary in the first only, a third on the split item only",
+          calls == [([1, 2, 3], True), ([1, 2, 3], False), ([2], False)], calls)
+    check("...the unanimous error stays, the split one goes by the third run, the vocabulary comes back",
+          verdicts[1][0] == "error" and verdicts[2][0] == "not_a_mistake" and verdicts[3][0] == "not_a_mistake"
+          and words == {0: (None, None)}, verdicts)
+
+    # #137: the scorer named an omission, but its wording had an adverb in between - Task 8 went to 9
+    check("an omission with an adverb in between is a reason ('not explicitly highlighted', 'does not explicitly note')",
+          g.evidenced(["Retention of the central core is implied but not explicitly highlighted as a key feature."], "x")
+          and g.evidenced(["Does not explicitly note retained central facilities (pool, seating)"], "x"))
+    check("...'not fully developed' with nothing behind it still is none", not g.evidenced(["not fully developed"], "x"))
+
+    # what each kind of visual needs
+    check("a map's needs: both layouts, where things are, a summary of the main changes",
+          all(w in g.kind_needs("map") for w in ("earlier layout", "WHERE", "summary of the main changes")))
+    check("...a process: stages in the overview; a bar chart: categories and change over time; unknown: nothing",
+          "main stages" in g.kind_needs("cycle") and "CATEGORIES" in g.kind_needs("bar")
+          and "OVER TIME" in g.kind_needs("bar") and g.kind_needs(None) == "")
+    check("...the scorer sees them for its kind and runs the checklist item for them",
+          g.kind_needs("map") in g._scoring_system("task1", "map")
+          and any("WHAT THIS KIND OF VISUAL NEEDS" in i for i in g.CHECKLISTS["TR_or_TA"]["task1"]))
+
+    # a map's places, compared between the two reads
+    check("place conflict: inside vs outside the building (#138's leisure pool)",
+          visual_reading.place_conflict("far west within the extended building",
+                                        "north-west of site, outside main building") != "")
+    check("...north vs south is one; the same side in other words is none",
+          visual_reading.place_conflict("north side of the site", "bottom of the plan") != ""
+          and visual_reading.place_conflict("immediately north of the entrance, centre-south of building",
+                                            "south-central, main entrance") == ""
+          and visual_reading.place_conflict("far east side, north of the new changing room",
+                                            "far east side, top-right") == "")
+
+    def feature(name, place, *states):
+        return MapFeature(name=name, location=place,
+                          states=[MapFeatureState(time=t, status=s, detail=d) for t, s, d in states])
+
+    def block(*features):
+        return VisualBlock(visual_type="map", title="", units="", time_points=["now", "plan"], axis_labels=[],
+                           legend=[], data=[], map_features=list(features), overall="", process=None, bars_drawn=[])
+
+    a = block(feature("Gym", "north side", ("now", "present", ""), ("plan", "changed", "larger")),
+              feature("Leisure pool", "far west within the extended building", ("now", "absent", ""),
+                      ("plan", "present", "new pool")),
+              feature("Outdoor courts", "west of the building", ("now", "present", ""), ("plan", "absent", "")))
+    b = block(feature("Gym", "north side", ("now", "present", ""), ("plan", "present", "")),
+              feature("Leisure pool", "north-west of site, outside main building", ("now", "absent", ""),
+                      ("plan", "present", "occupies the corner outside")),
+              feature("Outdoor courts", "west of the building", ("now", "present", ""), ("plan", "present", "")))
+    unreadable: list[str] = []
+    kept = {f.name: f for f in visual_reading._merge_map(a, b, unreadable)}
+    check("merge: a feature both reads see at both dates stays, its change UNCERTAIN (#137's gym was dropped)",
+          "Gym" in kept and "UNCERTAIN" in kept["Gym"].states[1].detail and kept["Gym"].states[1].status == "present",
+          kept.get("Gym"))
+    check("...a feature placed inside by one read and outside by the other: its place UNCERTAIN, its details gone",
+          "Leisure pool" in kept and kept["Leisure pool"].location.startswith("UNCERTAIN")
+          and all(s.detail == "" for s in kept["Leisure pool"].states), kept.get("Leisure pool"))
+    check("...present vs absent is still a disagreement: left out, and said so",
+          "Outdoor courts" not in kept and any("Outdoor courts" in u for u in unreadable), unreadable)
+
+
 if __name__ == "__main__":
     writing()
     round2()
     fair_marking()
     speaking()
     rounding()
+    examiner_rules()
     print(f"\n{len(fails)} failed" if fails else "\nall passed")
     sys.exit(1 if fails else 0)

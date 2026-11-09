@@ -199,13 +199,51 @@ logic -> CC; content, task coverage and data -> TR (Task Achievement/Response). 
 never lowers Task Achievement/Response - "were quite passive" in a report is a word-choice (LR) \
 issue, not a Task one."""
 
+# What real examiners count as a mistake - general rules drawn from every examiner's comment in the
+# calibration books (the official Cambridge samples' comments, books 13-18, and the commented Band
+# 6.5-8.5 collection), 2026-11-09: the user's aim is that the finder and the filter learn what a
+# mistake is from the books, not from one essay at a time. The finder, the missed-errors pass and
+# the filter all get it; the scorer has the band-level part in its guide (item 9).
+EXAMINER_PRACTICE = """WHAT REAL EXAMINERS COUNT AS A MISTAKE (their comments on dozens of marked answers, Band 5 to \
+9) - apply these rules to every answer:
+An ERROR is a form that is wrong in standard English, or a word that gives the wrong or an unclear meaning. \
+The kinds examiners name again and again:
+- spelling ("acomodate", "biuldings"); word formation ("substantially growth" for substantial growth, \
+"slightly" for slight, "approximate" for approximately);
+- agreement and verb forms ("almost all the country have", "people who pushes", a missing third-person -s, \
+"get harvested" for is harvested, "after separated" for after separating, "it is can be");
+- tense against the time the visual or the plan shows (present forms for 2017-2018 data; past forms for \
+changes planned for the future);
+- reference ("This two features"); countable forms ("less problems"); a preposition in a fixed pattern; \
+articles used inconsistently; a missing capital letter in a name; an incomplete sentence; a missing full stop;
+- a word whose meaning is wrong for the context ("overed by" for overtaken by, "object" for objective, \
+"spent rates" for expenditure), or so vague that the meaning is lost ("stuff and things").
+In a Task 1 report, a figure the visual contradicts, or a map or process described wrongly (a feature in the \
+wrong place or state, a wrong or missing step), is a Task error.
+NOT AN ERROR - examiners name these as ways to improve, never as mistakes:
+- a correct word that is plain, general or simple ("buy", "popular", "have fun"), a correct linker that is \
+formal or formulaic ("Moreover", "Furthermore", "Finally"), a correct sentence pattern used often: a point \
+about the criterion's range, an upgrade idea at most;
+- a correct word or structure used too often ("features", "going to" for every plan): one range point for \
+that criterion, never one mistake for each use;
+- the writer's own sound structure (one-sided or two-sided, no introduction in Task 1, the opinion in its \
+own paragraph) and an idea that could be developed further: Task points, never language mistakes.
+HOW MUCH IT WEIGHS: an error that does not get in the reader's way still counts, but weighs little ("a \
+spelling error ... does not cause any difficulty for the reader"; one misspelling the writer gets right \
+elsewhere is "probably a slip"). Band 6-6.5 scripts have many errors and are still clear, Band 7-7.5 keep \
+"occasional" or "a few" errors, Band 8 rare ones. Never invent mistakes in a strong answer to fill a list, \
+and never let a real error pass because the answer is strong.
+WHEN UNSURE: if you can't name the rule of standard English the words break, or the wrong meaning they \
+give, it is not an error - at most an upgrade idea."""
+
 # What a scorer looks for on each criterion before it may give 9 (the academic lead, 2026-10-29: #71's
 # Coherence 9 though "Taking this into account" followed nothing and one paragraph held two central ideas)
 CHECKLISTS = {
     "TR_or_TA": {
         "task1": ["no clear overview of the main trends or differences", "a key feature left out",
                   "a figure or comparison the DATA SHEET contradicts", "details listed without comparisons",
-                  "information, explanations or opinions the visual doesn't show"],
+                  "information, explanations or opinions the visual doesn't show",
+                  "a need of this kind of visual (WHAT THIS KIND OF VISUAL NEEDS) not met"],
         "task2": ["a part of the question not answered", "a position that is unclear or changes",
                   "a main idea stated but not extended or supported", "an idea off the question"],
     },
@@ -415,6 +453,51 @@ order that differs from the sheet's; approximate figures within the reading prec
 minor detail; no conclusion when there is an overview (Task 1 needs none); anything based on an \
 UNCERTAIN figure."""
 
+# What examiners ask of each kind of Task 1 visual - drawn from every examiner's comment on that kind in
+# the calibration books, never from one essay (2026-11-09; maps: four official samples at 5.5-6.5 and two
+# commented reports at 7.5-8; processes: two official at 5.5-6 and three commented at 6.5-8; graphs and
+# charts: eight official at 5-7.5 and about a dozen commented at 7.5-8.5).
+_KIND_NEEDS = {
+    "map": "A MAP (two dates, or now and a plan): an overview naming the main changes (what is added, removed and "
+           "kept, how the site grows); BOTH maps described - the earlier layout too, not only the changes; WHERE the "
+           "main features are or will be (north, south, next to, opposite, in place of), so the reader can picture "
+           "the layout; every feature in its right place and state; verb forms that fit each map's time (future "
+           "forms for a plan, past forms for a past map). Examiners hold a map report at Task Achievement 6 or below "
+           "when it has no summary of the main changes, leaves out the earlier layout, or doesn't say where things "
+           "are (\"could be improved by adding a brief description of the centre as it is at present\", \"the reader "
+           "cannot know where ... will be located\", \"adding a summary of the main changes\"); a feature described "
+           "wrongly lowers it further. A Band 7.5-8 map report describes one map and then the other, with accurate "
+           "spatial references.",
+    "process": "A PROCESS OR CYCLE: an overview that groups the steps into the main stages (not only the first and "
+               "last step); every main stage, in order; nothing the diagram doesn't show; the diagram's own labels "
+               "may be used. Examiners hold it at Task Achievement 6 or below when the overview gives only the start "
+               "and end points or there is no summary of the main stages, and lower it for irrelevant detail. A "
+               "Band 8 process report groups the steps into stages, a paragraph each.",
+    "trend": "A GRAPH OR CHART OVER TIME: an overview of the main trends (rises and falls, the highest and lowest, what "
+             "changed most) - not a sentence that only says things changed; the key figures with their periods, the "
+             "peaks, low points and fluctuations; comparisons between the series; tenses that fit the time shown. No "
+             "overview, or one that names no trend: Task Achievement 5-6; figures listed in order with nothing "
+             "compared: about 5.",
+    "static": "A CHART OR TABLE OF CATEGORIES: an overview of the main differences (the largest and smallest, the clear "
+              "contrasts and exceptions); categories grouped and compared, not listed one by one; accurate figures. "
+              "No overview, or figures listed with nothing compared: about Task Achievement 5.",
+    "mixed": "SEVERAL VISUALS: the key features of each one, compared, and an overview that brings them together; "
+             "one visual covered thinly keeps Task Achievement below 8 (\"key features in the table could be more "
+             "fully extended\").",
+}
+_NEEDS_OF_KIND = {"map": ("map",), "process": ("process",), "cycle": ("process",), "line": ("trend",),
+                  "bar": ("static", "trend"), "table": ("static", "trend"), "pie": ("static", "trend"),
+                  "mixed": ("mixed", "trend", "static")}
+
+
+def kind_needs(kind: str | None) -> str:
+    """What examiners ask of this kind of Task 1 visual ("" when the kind is unknown)."""
+    parts = [_KIND_NEEDS[k] for k in _NEEDS_OF_KIND.get(kind or "", ())]
+    if not parts:
+        return ""
+    return ("WHAT THIS KIND OF VISUAL NEEDS (from real examiners' comments on reports of this kind; a chart of "
+            "categories that also shows change over time needs both):\n" + "\n".join(f"- {p}" for p in parts))
+
 # Every Bandzilla user is an ESL learner: that softens the feedback's
 # WORDING only - the bands come from the scoring runs.
 ESL_WORDING = """
@@ -529,6 +612,7 @@ something that is already correct, and never a "fix" that changes what the stude
 whole sentence before flagging: a verb may correctly continue an earlier verb phrase, a negative or \
 future form may be right as it stands.
    - {NOT_ERRORS}
+   - {EXAMINER_PRACTICE}
    - If you can't tell what the student meant: unclear=true, say in `why` that the meaning is \
 unclear, put the most likely meaning in if_you_meant (short, English) and the fix for that meaning \
 in `correct`. Otherwise unclear=false and if_you_meant=null.
@@ -595,7 +679,7 @@ def _scoring_system(task_type: str, kind: str | None = None, answer: str = "", q
             "Before you score Task Achievement, read the DATA SHEET (or, without one, the visual) and its key "
             "features, then the report's overview, its comparisons and its figures."
         )
-        extra = "\n\n".join(x for x in (TA_GUIDE, patterns_text()) if x)
+        extra = "\n\n".join(x for x in (TA_GUIDE, kind_needs(kind), patterns_text()) if x)
     else:
         check = (
             "Before you score Task Response, check: does the answer do exactly what the question asks (all of "
@@ -636,6 +720,7 @@ Rules:
 8-9 usually has 0-2 missed mistakes; an empty list is a normal, good result. Return only errors you are \
 certain an examiner would penalise.
 - {NOT_ERRORS}
+- {EXAMINER_PRACTICE}
 - wrong: copied exactly from the {piece}, a few words up to one clause, long enough to occur only \
 once. correct: that part corrected, keeping the student's meaning; put in place of `wrong`, the \
 sentence must read correctly (no "that that").
@@ -700,6 +785,8 @@ British vs American usage); the QUESTION'S OWN WORDS; a PROPER NAME as its owner
 Fund"); an expression whose CONNOTATION matches the writer's intent ("fraught with" before harmful \
 things).
 {NOT_ERRORS}
+
+{EXAMINER_PRACTICE}
 
 An error needs a reason: ungrammatical, the wrong meaning, or it confuses the reader. "Another phrase is more \
 common" is an alternative, always, and so is a synonym swapped in with no grammar changed - unless the student's \
@@ -767,6 +854,78 @@ async def _verify_call(source_text: str, items: list[tuple],
                 for v in parsed.verdicts}
     words = {v.index: ((v.meaning or "").strip() or None, (v.example or "").strip() or None)
              for v in parsed.vocabulary}
+    return verdicts, words
+
+
+# Voting (the user's go-ahead, 2026-11-09): one filter run decided every mistake, so the same essay sent twice
+# came back with different lists (#137: "appear" twice an error, #138: not listed). Now two runs judge every
+# item, and a third only the items they disagree on; an item counts when most runs say error or slip.
+VERIFY_VOTES = 3
+_COUNTED = ("error", "slip")
+
+
+def _vote_class(verdict) -> str:
+    return verdict[0] if verdict[0] in _COUNTED else "no"
+
+
+def disputed(given: list) -> bool:
+    """Do the runs disagree on an item (a missing verdict, counted or not, error or slip)?"""
+    return any(g is None for g in given) or len({_vote_class(g) for g in given}) > 1
+
+
+def vote(given: list[tuple]) -> tuple:
+    """One verdict from several runs' verdicts (kind, criterion, reason, fixed, basis, less_common): it
+    counts only when most runs say error or slip - a tie is the student's benefit of the doubt; it is an
+    error only when most runs say error, else a slip. The criterion is the counted runs' most common one."""
+    n = len(given)
+    counted = [g for g in given if g[0] in _COUNTED]
+    if len(counted) * 2 > n:
+        kind = "error" if sum(g[0] == "error" for g in counted) * 2 > n else "slip"
+        crits = [g[1] for g in counted]
+        crit = max(dict.fromkeys(crits), key=crits.count)  # the first among equals
+        pool = [g for g in counted if g[0] == kind] or counted
+        rep = next((g for g in pool if g[1] == crit), pool[0])
+        return (kind, crit) + tuple(rep[2:])
+    rest = [g for g in given if g[0] not in _COUNTED]
+    kinds = [g[0] for g in rest]
+    kind = max(dict.fromkeys(kinds), key=kinds.count)
+    return next(g for g in rest if g[0] == kind)
+
+
+async def _voted_verify(source_text: str, items: list[tuple],
+                        vocabulary: list[tuple[int, str, str, str, str]] | None = None,
+                        runs: int = VERIFY_VOTES) -> tuple[dict, dict]:
+    """_verify_call by vote: two runs in parallel (the vocabulary only in the first), a third on the items
+    they disagree on. Same return as _verify_call."""
+    if not items or runs < 2:
+        return await _verify_call(source_text, items, vocabulary)
+    first = await asyncio.gather(_verify_call(source_text, items, vocabulary), _verify_call(source_text, items),
+                                 return_exceptions=True)
+    good = [r for r in first if not isinstance(r, BaseException)]
+    if not good:
+        raise first[0]
+    for r in first:
+        if isinstance(r, BaseException):
+            logger.warning("A verification run failed: %r", r)
+    words = first[0][1] if not isinstance(first[0], BaseException) else {}
+    results = [r[0] for r in good]
+    if runs >= 3 and len(results) == 2:
+        split = [it for it in items if disputed([res.get(it[0]) for res in results])]
+        if split:
+            try:
+                results.append((await _verify_call(source_text, split))[0])
+            except Exception:
+                logger.exception("The deciding verification run failed - a split item gets the benefit of the doubt")
+    verdicts, notes = {}, []
+    for it in items:
+        given = [res[it[0]] for res in results if it[0] in res]
+        if not given:
+            continue
+        verdicts[it[0]] = vote(given)
+        if len(given) > 1 and disputed(given):
+            notes.append(f"{it[0]} «{it[2]}»: {', '.join(g[0] for g in given)} -> {verdicts[it[0]][0]}")
+    if notes:
+        logger.info("Verification votes: %s", "; ".join(notes))
     return verdicts, words
 
 
@@ -868,11 +1027,15 @@ class MarksOnly:
 
 async def _feedback_call(task_type, prompt_text, answer_text, prompt_images, copied, bands,
                          sheet: str = "", notes: dict[str, str] | None = None,
-                         marks_only: bool = False) -> WritingFeedback | None:
+                         marks_only: bool = False, needs: str = "") -> WritingFeedback | None:
     """None when the answer ran past FEEDBACK_MAX_TOKENS. `bands` None: the
-    bands are decided after the mistakes (mistakes first)."""
+    bands are decided after the mistakes (mistakes first). `needs`: what
+    examiners ask of this kind of Task 1 visual (kind_needs), for the Task
+    mistakes and priorities."""
     overall = overall_band(list(bands.values())) if bands else 0.0
     text = f"QUESTION PROMPT:\n{prompt_text}\n\nSTUDENT'S ANSWER:\n{answer_text}{_copied_note(copied)}"
+    if needs:
+        text += f"\n\n{needs}"
     messages = [
         {"role": "system", "content": _system_prompt(task_type, bands, overall, target_band(overall), notes)
          + (MARKS_ONLY if marks_only else "")},
@@ -986,8 +1149,11 @@ def cap_bands(task_type: str, answer_text: str, bands: dict[str, float], notes: 
     return bands, notes, capped, notices
 
 
-_OMISSION = re.compile(r"\b(omit\w*|omission|missing|leaves? out|left out|not (?:mention|cover|describ|includ)\w*|"
-                       r"(?:doesn't|does not|never) (?:mention|cover|describe|include|state|give)\w*|no mention|"
+# an adverb may stand between ("not explicitly highlighted", "does not clearly note" - #137's Task 8 went to 9
+# on both; 2026-11-09)
+_OMITTED_VERBS = r"(?:mention|cover|describ|includ|state|give|note|highlight|specif|address|locat|compar|summari[sz])\w*"
+_OMISSION = re.compile(rf"\b(omit\w*|omission|missing|leaves? out|left out|not (?:\w+ly )?{_OMITTED_VERBS}|"
+                       rf"(?:doesn't|does not|never|fails? to) (?:\w+ly )?{_OMITTED_VERBS}|no mention|"
                        r"absen\w*|lacks?|lacking|no overview|ignor\w*|skips?)\b", re.IGNORECASE)
 _QUOTED = re.compile(r"[\"“«']([^\"”»']{2,120})[\"”»']")
 
@@ -1422,15 +1588,16 @@ async def grade_writing(
         return report
     unchecked = set(unchecked_figures(answer_text, visual, prompt_text)) if visual else set()
     copied = [answer_text[s:e] for s, e in find_copied_spans(answer_text, prompt_text, copy_min_words(task_type))]
+    needs = kind_needs(visual_kind(prompt_text, visual)) if task_type == "task1" else ""
     feedback = await _feedback_call(task_type, prompt_text, answer_text, prompt_images, copied, None, sheet,
-                                    marks_only=marks_only)
+                                    marks_only=marks_only, needs=needs)
     problems = assess(feedback, answer_text) if feedback else ["the answer ran past its token limit"]
     if marks_only and feedback:
         problems = []  # nothing but the marks is used
     if problems:
         logger.warning("Feedback needs another try: %s", "; ".join(problems))
         retry = await _feedback_call(task_type, prompt_text, answer_text, prompt_images, copied, None, sheet,
-                                     marks_only=marks_only)
+                                     marks_only=marks_only, needs=needs)
         if retry is not None:
             retry_problems = assess(retry, answer_text)
             if feedback is None or _rank(retry, retry_problems, answer_text) < _rank(feedback, problems, answer_text):
@@ -1474,7 +1641,7 @@ async def grade_writing(
 
     async def verify(items, vocabulary=None) -> tuple[dict, dict]:
         try:
-            return await _verify_call(source, items, vocabulary)
+            return await _voted_verify(source, items, vocabulary)
         except Exception:
             logger.exception("Verification pass failed - keeping those mistakes")
             return {}, {}
