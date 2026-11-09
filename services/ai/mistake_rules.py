@@ -83,6 +83,28 @@ def notional_agreement(wrong: str, correct: str) -> bool:
                                and last not in _NOT_PLURAL)
 
 
+_SINGULAR_START = {"a", "an", "one", "this", "that", "another", "each", "every"}
+_TO_PLURAL_BE = {("is", "are"), ("was", "were"), ("'s", "are")}
+
+
+def existential_list(wrong: str, correct: str) -> bool:
+    """Does the correction only turn "there is / was" into "there are / were" before a list that starts with
+    a singular noun ("there is going to be a sports shop and a cafe")? The verb agrees with the nearest item
+    there - standard English (2026-11-09: flagged as a Grammar error in two paid runs of one Band 6.5 report).
+    "There is a lot of cars" (no list) stays a mistake."""
+    a, b = _tokens(wrong.replace("’", "'")), _tokens(correct.replace("’", "'"))
+    a = [t for w in a for t in (["there", "'s"] if w == "there's" else [w])]
+    ops = [op for op in difflib.SequenceMatcher(None, a, b, autojunk=False).get_opcodes() if op[0] != "equal"]
+    if len(ops) != 1 or ops[0][0] != "replace" or ops[0][2] - ops[0][1] != 1 or ops[0][4] - ops[0][3] != 1:
+        return False
+    i = ops[0][1]
+    if (a[i], b[ops[0][3]]) not in _TO_PLURAL_BE or i == 0 or a[i - 1] != "there":
+        return False
+    rest = a[i + 1:]
+    first = next((k for k, w in enumerate(rest[:5]) if w in _SINGULAR_START), None)
+    return first is not None and "and" in rest[first + 1:]
+
+
 def only_adds_comma(wrong: str, correct: str) -> bool:
     """Does the correction only add commas ("First of all money" -> "First of
     all, money")? An examiner passes over that: a Band 7 script of a test book
@@ -365,6 +387,8 @@ def final_kind(wrong: str, correct: str, kind: str, criterion: str, basis: str =
         return "not_a_mistake", "only a comma added: an examiner passes over it"
     if notional_agreement(wrong, correct):
         return "not_a_mistake", "a plural verb after 'the majority / a share of' + a plural noun agrees with the people"
+    if existential_list(wrong, correct):
+        return "not_a_mistake", "'there is' before a list starting with a singular noun agrees with the nearest item"
     if ruled := lead_accepted(wrong, correct):
         return "alternative", f"the academic lead accepted {ruled!r}"
     if real_mistake(wrong):

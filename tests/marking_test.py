@@ -1017,6 +1017,26 @@ def paid_run_fixes() -> None:
     check("a map's size claims: 'retained' says nothing about size - in the judge rules and the filter",
           "says nothing about size" in JUDGE_RULES and "says nothing" in g.VERIFY_SYSTEM)
 
+    # ...and by code, the same every time (the prompt line alone didn't hold in the second paid run)
+    from services.ai.mistake_rules import existential_list, final_kind
+    from services.ai.visual_check import protected_mistake
+    check("'there is' before a list starting with a singular noun is right (proximity agreement)",
+          existential_list("there is going to be a sports shop and a cafe",
+                           "there are going to be a sports shop and a cafe")
+          and existential_list("There's a pen and two books", "There are a pen and two books")
+          and final_kind("there was a bank and a school", "there were a bank and a school", "error", "GRA")[0]
+          == "not_a_mistake")
+    check("...'there is a lot of cars' (no list) and 'there is many shops' stay mistakes",
+          not existential_list("there is a lot of cars", "there are a lot of cars")
+          and not existential_list("there is many shops and cafes", "there are many shops and cafes"))
+    map_reading = {"blocks": [{"visual_type": "map", "values": []}]}
+    bar_reading = {"blocks": [{"visual_type": "bar", "values": []}]}
+    check("a map: 'the gym is going to be larger' -> 'retained' is set aside by code",
+          protected_mistake("the gym is going to be larger", "the gym is going to be retained", "", map_reading, "", set()))
+    check("...not a place claim ('opposite the gym'), and not on a chart of figures",
+          not protected_mistake("opposite the gym", "on the east side of the site", "", map_reading, "", set())
+          and not protected_mistake("sales were larger", "sales remained the same", "", bar_reading, "", set()))
+
 
 if __name__ == "__main__":
     writing()

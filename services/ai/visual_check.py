@@ -485,6 +485,22 @@ def _hedge_only(wrong: str, correct: str) -> bool:
     return _key(wrong) != _key(correct) and bare(wrong) == bare(correct)
 
 
+_SIZE = re.compile(r"\b(larger|bigger|smaller|wider|narrower|longer|shorter|enlarged|expand\w*|extend\w*|"
+                   r"grow\w*|shrink\w*|shrunk)\b", re.IGNORECASE)
+_KEPT = re.compile(r"\b(retain\w*|unchanged|remain\w*|stays?|kept|same (?:size|place|position|location|spot))\b",
+                   re.IGNORECASE)
+
+
+def map_size_claim(wrong: str, correct: str, reading: dict) -> bool:
+    """On a map, a claim about a feature's size that the correction turns into "retained" / "unchanged": a
+    sheet notes places and states, not sizes, so it can't say the claim is wrong (2026-11-09: "the gym is
+    going to be larger" was marked wrong in two paid runs - the plan shows the gym extended - though the
+    rule was in the prompt; code decides it the same way every time)."""
+    if not any(b.get("visual_type") == "map" for b in reading.get("blocks", [])):
+        return False
+    return bool(_SIZE.search(wrong)) and bool(_KEPT.search(correct)) and not _SIZE.search(correct)
+
+
 def protected_mistake(wrong: str, correct: str, why: str, reading: dict | None, question: str,
                       unchecked: set[str]) -> bool:
     """A Task (data) mistake code never keeps (the academic lead, 2026-10-27):
@@ -493,9 +509,12 @@ def protected_mistake(wrong: str, correct: str, why: str, reading: dict | None, 
     the sheet confirms, or only the hedge around a figure that is on the sheet
     ("slightly above 80%" -> "around 80%"); or it is about a category with an UNCERTAIN figure
     (#56: two look-alike legend patterns). A figure two readings agree is
-    wrong ("confirmed_wrong") is never protected."""
+    wrong ("confirmed_wrong") is never protected. On a map, a size claim
+    "corrected" into "retained" (map_size_claim)."""
     if not reading:
         return False
+    if map_size_claim(wrong, correct, reading):
+        return True
     figs = figures(wrong)
     if any(f["text"] in set(reading.get("confirmed_wrong") or []) for f in figs):
         # matched again out of its sentence, "rose to 6%" passes as another cell's 6 (#62)
