@@ -446,7 +446,8 @@ missing specific examples are a way to improve, not a fault. No title is needed.
    - Coherence: linkers opening most sentences make cohesion mechanical - a Band 6 feature in the descriptors (Band 7 \
 allows only some over/under use); a one-sentence paragraph can be a stylistic variant; no paragraphing at all hits \
 this criterion alone.
-   - Length: a few words under the limit is a small loss; a long answer is never a fault.
+   - Length: the word count never lowers a band (the report reminds the student of the minimum); a long answer is \
+never a fault.
 10. Coherence is judged by how the answer is organised and linked, never by its error count: basic \
 linkers (First, Second, Also, But, Then) and sentences that follow each other like a list are Coherence \
 6 at most; the same few linkers again and again, or paragraphs without one clear central idea, 5-6; \
@@ -479,11 +480,11 @@ counts them for you below, from the CHECKED MISTAKES), Grammar 7 "frequent" erro
 
 {ONE_CRITERION}
 
-LENGTH AND PARAGRAPHS (software applies these caps after you): Task 1 - 140 words or more: no \
-penalty; 100-139 words: Task Achievement 6 at most; under 100: 5 at most. Task 2 - 240 words or more: \
-no penalty; 200-239: Task Response 6 at most; under 200: 5 at most. Words copied from the question \
-are not counted (the descriptors: "any copied rubric must be discounted"); 20 words or fewer of the \
-writer's own: Band 1 on every criterion. A Task 2 essay with no paragraph breaks: Coherence & Cohesion 5 \
+LENGTH AND PARAGRAPHS (software applies these caps after you): the word count itself never lowers a \
+band - an answer under the word minimum (Task 1: 150, Task 2: 250) is told so in the report, and is \
+judged on what it does (how fully its ideas or key features are developed), never on how many words \
+it has. Words copied from the question are not counted (the descriptors: "any copied rubric must be \
+discounted"); 20 words or fewer of the writer's own: Band 1 on every criterion. A Task 2 essay with no paragraph breaks: Coherence & Cohesion 5 \
 at most; a Task 1 report in one block: 7 at most. A Task 1 report on a visual of figures with no figure \
 in it ("no data to support the description"): Task Achievement 5 at most. Grammar with fewer than half \
 of its sentences error-free: 7 at most. Apart from these, length is never a reason to lower a band.
@@ -736,8 +737,9 @@ anything inside "text" or "good" segments, and don't number anything.
 4. strength - text: 1-2 sentences (40 words at most) on what the {piece} genuinely does well, \
 quoting 1-2 of the phrases you marked "good", word for word, in double quotes; quoted_phrases: \
 those phrases exactly as in the {piece}. No generic praise - this is the only praise in the report.
-5. priorities - 0 to 3, the most important first - a Task problem that holds the band down (under the \
-word minimum, a whole part of the visual or the task left out, no overview) before any language pattern; \
+5. priorities - 0 to 3, the most important first - a Task problem that holds the band down (a whole \
+part of the visual or the task left out, no overview) or an answer under the word minimum (a reminder: \
+no band is lowered for the word count itself) before any language pattern; \
 a typing slip (spaces around a hyphen, a missing space after a full stop) is never a priority. Each is about ONE specific pattern (never a \
 whole category like "grammar"). Give only as many as the answer really needs: a strong answer \
 may have one or none, never a priority made up to reach a number. Each has a title (2-6 words), \
@@ -1225,19 +1227,20 @@ def cap_bands(task_type: str, answer_text: str, bands: dict[str, float], notes: 
         cap("TR_or_TA", 5, "No overview of the main features keeps Task Achievement at 5 at most.")
     elif task_type == "task1" and overview == "generic":
         cap("TR_or_TA", 6, "A general overview naming no main feature keeps Task Achievement at 6 at most.")
-    # "Any copied rubric must be discounted" (the official descriptors): the length policy counts the
-    # writer's own words only
+    # "Any copied rubric must be discounted" (the official descriptors): words copied from the question
+    # are not the writer's own. Under the word minimum the report says so, but no band is lowered for the
+    # word count itself (the user's ruling, 2026-11-09: "kam so'z yozgani uchun ball ayirish kerak emas,
+    # shunchaki eslatma bersa bo'ladi" - the Task 1 <140 / <100 and Task 2 <240 / <200 caps are gone);
+    # only the descriptors' own limit stays, 20 words or fewer -> Band 1
     own = f"{words} words of your own" if copied_words else f"{words} words"
+    minimum = TASK_MIN_WORDS.get(task_type, 0)
     if words <= 20:
         for key in SCORE_KEYS:
             cap(key, 1, f"Only {own}: 20 words or fewer are rated at Band 1.")
+    elif words < minimum:
+        piece = "report" if task_type == "task1" else "essay"
+        notices.append(f"Your {piece} has {own} - no band was lowered for it, but aim for at least {minimum}.")
     if task_type == "task1":
-        if words < 100:
-            cap("TR_or_TA", 5, f"Only {own}: under 100 words keeps Task Achievement at 5 at most.")
-        elif words < 140:
-            cap("TR_or_TA", 6, f"Only {own}: under 140 words keeps Task Achievement at 6 at most.")
-        elif words < 150:
-            notices.append(f"Your report has {own} - no penalty this time, but aim for at least 150.")
         if figures_visual and count_comparisons(answer_text) == 0:
             cap("TR_or_TA", 5, "Figures are listed with no comparisons, so Task Achievement is 5 at most.")
         if figures_visual and data_figures == 0:
@@ -1245,19 +1248,13 @@ def cap_bands(task_type: str, answer_text: str, bands: dict[str, float], notes: 
         if paragraphs <= 1:
             # Task 1 Coherence 8 needs "paragraphing used sufficiently and appropriately" (the descriptors)
             cap("CC", 7, "The whole report is one block of text, so Coherence stays at 7 at most.")
-    else:
-        if words < 200:
-            cap("TR_or_TA", 5, f"Only {own}: under 200 words keeps Task Response at 5 at most.")
-        elif words < 240:
-            cap("TR_or_TA", 6, f"Only {own}: under 240 words keeps Task Response at 6 at most.")
-        if paragraphs <= 1:
-            cap("CC", 5, "No paragraph breaks: one block of text keeps Coherence at 5 at most.")
+    elif paragraphs <= 1:
+        cap("CC", 5, "No paragraph breaks: one block of text keeps Coherence at 5 at most.")
     # "Cohesion attracts no attention" doesn't stand with language at 7 or below (#71: Coherence 9, both 7; the lead: 7-8)
     if max(bands["LR"], bands["GRA"]) <= 7:
         cap("CC", 8, "Language errors draw some attention, so Coherence stays at 8 at most.")
-    # Under the word minimum the Task note says so, cap or no cap (2026-11-09: #127, a 205-word
-    # essay at Task Response 6 - the cap's own limit - was never told Task 2 needs 250 words)
-    minimum = TASK_MIN_WORDS.get(task_type, 0)
+    # Under the word minimum the Task note says so too (2026-11-09: #127, a 205-word essay, was never told
+    # Task 2 needs 250 words)
     if words < minimum and notes.get("TR_or_TA") and f"{words} words" not in notes["TR_or_TA"]:
         notes["TR_or_TA"] = f"{notes['TR_or_TA'].rstrip('. ')} ({words} words: aim for {minimum}+)."
     return bands, notes, capped, notices

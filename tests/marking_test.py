@@ -502,9 +502,16 @@ def round2() -> None:
     _, notes3, _, _ = writing_grader.cap_bands("task2", " ".join(["word"] * 150) + "\n\n" + " ".join(["word"] * 150),
                                                {"TR_or_TA": 6.0, "CC": 6.0, "LR": 5.0, "GRA": 5.0}, {"TR_or_TA": "Fine."})
     check("...a long enough one keeps its note", notes3["TR_or_TA"] == "Fine.", notes3)
-    _, notes4, _, _ = writing_grader.cap_bands("task2", " ".join(["word"] * 190) + "\n\nend",
-                                               {"TR_or_TA": 7.0, "CC": 6.0, "LR": 5.0, "GRA": 5.0}, {"TR_or_TA": "Fine."})
-    check("...and a capped one gets the count once", notes4["TR_or_TA"].count("191 words") == 1, notes4)
+    bands4, notes4, capped4, notices4 = writing_grader.cap_bands(
+        "task2", " ".join(["word"] * 190) + "\n\nend", {"TR_or_TA": 7.0, "CC": 6.0, "LR": 5.0, "GRA": 5.0},
+        {"TR_or_TA": "Fine."})
+    check("...and a 191-word one gets the count once", notes4["TR_or_TA"].count("191 words") == 1, notes4)
+    check("the word count lowers no band, it only gets a reminder (the user's ruling, 2026-11-09)",
+          bands4["TR_or_TA"] == 7 and not capped4 and any("aim for at least 250" in n for n in notices4),
+          (bands4, capped4, notices4))
+    bands1, _, capped1, _ = writing_grader.cap_bands("task1", " ".join(["word"] * 60) + " 40%",
+                                                     {"TR_or_TA": 8.0, "CC": 7.0, "LR": 7.0, "GRA": 7.0}, {}, False)
+    check("...a 61-word Task 1 report too (was: Task 5 at most)", bands1["TR_or_TA"] == 8 and not capped1, capped1)
 
 
 def fair_marking() -> None:
@@ -925,9 +932,10 @@ def official_descriptors() -> None:
                 "To what extent do you agree or disagree?")
     own = " ".join(["Cities need better buses and trains for everyone who lives in them."] * 19)  # 228 words
     essay = question + "\n\n" + own + "\n\n" + own[:60]
-    capped, _, why, _ = g.cap_bands("task2", essay, bands, {}, question=question)
-    check("words copied from the question are not counted ('any copied rubric must be discounted')",
-          capped["TR_or_TA"] == 6 and "of your own" in " ".join(why), why)
+    capped, _, why, said = g.cap_bands("task2", essay, bands, {}, question=question)
+    check("words copied from the question are not counted ('any copied rubric must be discounted'): about 263 "
+          "words, under 250 of the writer's own - a reminder, no band lowered",
+          capped == bands and any("words of your own" in n and "aim for at least 250" in n for n in said), (why, said))
     report = ("The graph shows how sales changed. Sales rose and then fell, while profits stayed higher than costs "
               "throughout the period. ") * 12
     capped, _, why, _ = g.cap_bands("task1", report, bands, {}, True)
