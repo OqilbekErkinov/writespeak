@@ -39,6 +39,7 @@ from bot.utils import crm_events
 from bot.utils.cabinet_auth import cabinet_login_url
 from bot.utils.group_invite import center_invite_link, invite_link
 from bot.utils.messages import show_screen
+from bot.utils.report_names import with_ai_note
 from db import crud
 from db.crud import CRITERIA_LABELS
 from db.database import get_session
@@ -434,7 +435,8 @@ async def send_report(callback: CallbackQuery, lang: str) -> None:
         await callback.answer(t("group.report_unavailable", lang), show_alert=True)
         return
     await callback.answer()
-    await callback.message.answer_document(BufferedInputFile(content, filename=f"Bandzilla_report_{kind}{submission_id}.pdf"))
+    await callback.message.answer_document(BufferedInputFile(content, filename=f"Bandzilla_report_{kind}{submission_id}.pdf"),
+                                           caption=with_ai_note("", lang))
 
 
 @router.callback_query(F.data.startswith(kb.CB_COMMENT_PREFIX))

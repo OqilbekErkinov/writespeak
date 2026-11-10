@@ -74,7 +74,10 @@ table.voc td.exm { color: #3D5149; font-style: italic; }
 table.voc .uz { margin-top: 1mm; font-size: 9pt; color: var(--moss); line-height: 1.35; }
 table.voc .uz span { display: inline-block; font-size: 6.4pt; font-weight: 800; letter-spacing: .6px; color: var(--moss); background: var(--mint-bg); border-radius: 1mm; padding: 0 1.2mm; margin-right: 1.6mm; vertical-align: 1px; }
 
-.disc { margin-top: 10mm; font-size: 8pt; color: var(--faint); text-align: center; }
+/* the AI note at the end of every report (the user, 2026-11-10): the band comes from AI, +-0.5 */
+.ai-note { margin-top: 10mm; background: var(--wash); border-radius: 2mm; padding: 2.6mm 4mm; font-size: 9.2pt; color: #3D5149; text-align: center; page-break-inside: avoid; }
+.ai-note b { color: var(--ink); }
+.disc { margin-top: 3mm; font-size: 8pt; color: var(--faint); text-align: center; }
 
 /* model answer */
 .sample-note { background: var(--mint-soft); color: var(--moss); font-size: 9.4pt; border-radius: 2mm; padding: 2.5mm 4mm; margin-bottom: 3mm; }

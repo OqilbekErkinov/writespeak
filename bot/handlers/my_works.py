@@ -10,7 +10,7 @@ from aiogram.types import BufferedInputFile, CallbackQuery
 from bot.handlers.account import account_home, show_history, show_stats
 from bot.i18n import t
 from bot.keyboards.my_works_kb import CB_DOWNLOAD_PREFIX, CB_HISTORY, CB_MENU, CB_STATS
-from bot.utils.report_names import report_filename
+from bot.utils.report_names import report_filename, with_ai_note
 from db import crud
 from db.database import get_session
 from services.storage.file_storage import read_file
@@ -56,4 +56,5 @@ async def download_report(callback: CallbackQuery, lang: str) -> None:
         return
 
     task_or_part = submission.task_type if sub_type == "writing" else submission.part
-    await callback.message.answer_document(BufferedInputFile(content, filename=report_filename(sub_type, task_or_part)))
+    await callback.message.answer_document(BufferedInputFile(content, filename=report_filename(sub_type, task_or_part)),
+                                           caption=with_ai_note("", lang))

@@ -203,6 +203,7 @@
     "fin.cta": "Открыть бота — бесплатно",
     "fin.qr": "Вы за компьютером? Отсканируйте камерой телефона",
 
+    "foot.ai": "ℹ️ Результаты Bandzilla выставляются с помощью искусственного интеллекта (ИИ) и могут отличаться от балла официального экзамена IELTS примерно на ±0.5.",
     "foot.legal": "IELTS — зарегистрированный товарный знак British Council, IDP: IELTS Australia и Cambridge University Press &amp; Assessment. Bandzilla — независимый сервис и с ними не связан. Официальный результат IELTS выдаёт только экзаменационный центр."
   };
 
@@ -405,6 +406,7 @@
     "fin.cta": "Open the bot — free",
     "fin.qr": "On a computer? Scan with your phone camera",
 
+    "foot.ai": "ℹ️ Bandzilla's bands are given by AI and may differ from an official IELTS exam result by about ±0.5.",
     "foot.legal": "IELTS is a registered trademark of the British Council, IDP: IELTS Australia and Cambridge University Press &amp; Assessment. Bandzilla is an independent service and is not affiliated with them. Only a test centre issues an official IELTS result."
   };
 

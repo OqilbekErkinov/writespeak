@@ -208,6 +208,13 @@ _T: dict[str, dict[str, str]] = {
         "другим ИИ, — мы оцениваем ваш <b>настоящий</b> уровень. Эссе, исправленное ИИ, получит неверный, "
         "завышенный балл, а ваши ошибки останутся незамеченными; на экзамене ИИ не будет.",
     },
+    # Under every report sent (the user, 2026-11-10): the band comes from AI, not from an IELTS examiner
+    "report.ai_note": {
+        "uz": "ℹ️ Natija sun'iy intellekt (AI) yordamida baholangan va rasmiy IELTS imtihonidagi baldan taxminan "
+        "±0.5 ball farq qilishi mumkin.",
+        "ru": "ℹ️ Оценка выставлена с помощью искусственного интеллекта (ИИ) и может отличаться от балла "
+        "официального экзамена IELTS примерно на ±0.5.",
+    },
     "speaking.honest_note": {
         "uz": "🤝 <b>Iltimos, o'zingiz gapiring.</b> ChatGPT yoki boshqa AI yozib bergan javobni o'qimang — biz "
         "sizning <b>haqiqiy</b> nutqingizni baholaymiz. Tayyor matnni o'qisangiz, ball noto'g'ri chiqadi va "

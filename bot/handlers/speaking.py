@@ -89,7 +89,7 @@ from bot.utils.input_extraction import (
 )
 from bot.utils.messages import show_screen, strip_buttons
 from bot.utils.mock_test_flow import record_mock_test_part
-from bot.utils.report_names import report_filename
+from bot.utils.report_names import report_filename, with_ai_note
 from bot.utils import crm_events, stickers
 from bot.utils.coins import speaking_kind
 from bot.utils.quota import check_price, check_quota, free_check_note, payment_of, send_paywall
@@ -428,7 +428,7 @@ async def _send_saved_report(message: Message, state: FSMContext, data: dict, ea
         return False
     await message.answer_document(
         BufferedInputFile(read_file(path), filename=report_filename("speaking", earlier.part)),
-        caption=t("speaking.resubmitted", lang, number=_session_number(earlier), band=earlier.overall_band),
+        caption=with_ai_note(t("speaking.resubmitted", lang, number=_session_number(earlier), band=earlier.overall_band), lang),
         reply_markup=share_card_kb("speaking", earlier.id, lang),
     )
     if data.get("mock_session_id"):
@@ -607,7 +607,7 @@ async def _grade(
     await stickers.send(message.bot, user_id, stickers.for_result(report.overall_band, found))  # the Gotcha moment
     await message.answer_document(
         BufferedInputFile(pdf_bytes, filename=report_filename("speaking", part)),
-        caption=caption,
+        caption=with_ai_note(caption, lang),
         reply_markup=share_card_kb("speaking", submission.id, lang),
     )
     if listen:

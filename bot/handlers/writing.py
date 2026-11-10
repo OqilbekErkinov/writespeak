@@ -60,7 +60,7 @@ from bot.utils import crm_events, runtime, stickers
 from bot.utils.input_extraction import read_images, read_text_input
 from bot.utils.messages import show_screen, strip_buttons
 from bot.utils.mock_test_flow import record_mock_test_part
-from bot.utils.report_names import report_filename
+from bot.utils.report_names import report_filename, with_ai_note
 from bot.utils.coins import writing_kind
 from bot.utils.quota import check_price, check_quota, free_check_note, payment_of, send_paywall
 from db import crud
@@ -424,7 +424,7 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
         logger.info("Writing resubmission by user %s: same text as submission %s", user_id, same.id)
         await message.answer_document(
             BufferedInputFile(read_file(same.feedback_pdf_path), filename=report_filename("writing", same.task_type)),
-            caption=t("writing.resubmitted", lang, number=numbers[same.id], band=same.overall_band),
+            caption=with_ai_note(t("writing.resubmitted", lang, number=numbers[same.id], band=same.overall_band), lang),
             reply_markup=share_card_kb("writing", same.id, lang),
         )
         if data.get("mock_session_id"):
@@ -643,7 +643,7 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
     await stickers.send(message.bot, user_id, stickers.for_result(report.overall_band, found))  # the Gotcha moment
     await message.answer_document(
         BufferedInputFile(pdf_bytes, filename=report_filename("writing", data["task_type"])),
-        caption=caption,
+        caption=with_ai_note(caption, lang),
         reply_markup=share_card_kb("writing", submission.id, lang),
     )
 

@@ -819,6 +819,8 @@ html.menu-open { overflow: hidden; }
 .foot-meta { margin-top: 24px; padding-top: 20px; border-top: 1px solid rgba(255, 255, 255, 0.12); }
 .foot-meta a { color: var(--lime); font-weight: 800; text-decoration: none; }
 .foot-meta a:hover { text-decoration: underline; }
+/* the AI note (the user, 2026-11-10): bands come from AI, about +-0.5 from an official result */
+.foot-ai { margin-top: 18px; max-width: 880px; font-size: 0.9rem; line-height: 1.55; color: rgba(255, 255, 255, 0.88); }
 .legal { margin-top: 16px; max-width: 880px; font-size: 0.8rem; line-height: 1.6; color: rgba(255, 255, 255, 0.66); }
 @media (min-width: 960px) { .site-foot { padding-bottom: 48px; } }
 

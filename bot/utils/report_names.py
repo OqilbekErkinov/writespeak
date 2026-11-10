@@ -15,3 +15,16 @@ def report_filename(module: str, task_or_part) -> str:
     value = getattr(task_or_part, "value", task_or_part)
     label = (WRITING_LABELS if module == "writing" else SPEAKING_LABELS).get(value)
     return f"Bandzilla - {label or module.capitalize()} Feedback.pdf"
+
+
+CAPTION_LIMIT = 1024  # Telegram's document caption limit
+
+
+def with_ai_note(caption: str, lang: str | None) -> str:
+    """A report's caption with the note that the band comes from AI and may differ from an official
+    IELTS result by about ±0.5 (the user, 2026-11-10) - left off only if it would not fit."""
+    from bot.i18n import t
+
+    note = t("report.ai_note", lang)
+    joined = f"{caption}\n\n{note}" if caption else note
+    return joined if len(joined) <= CAPTION_LIMIT else caption
