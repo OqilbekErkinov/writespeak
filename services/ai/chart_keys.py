@@ -177,6 +177,28 @@ def _keyed(key: ChartKey) -> VisualSheet:
     return VisualSheet.model_validate({**key.sheet, "chart_key": key.id})
 
 
+async def _read_before(look: Lookup, practice_question_id: int | None) -> VisualSheet | None:
+    """The sheet this very picture was read into before, by the bot itself (an "auto" key read by this
+    READER_VERSION), or None - the user, 2026-11-10: the same chart read anew for every check cost $0.045 and
+    1.5 minutes, and two reads of one picture could judge the same report differently. It stands for a new
+    read, never for an admin's checked key: chart_key stays 0, so nothing treats it as checked by an
+    examiner; a wrong one an admin corrects on /charts (it is then verified)."""
+    try:
+        async with get_session() as session:
+            autos = await _candidates(session, "auto", look, practice_question_id)
+    except Exception:
+        logger.exception("Auto chart keys could not be looked up - reading the chart")
+        return None
+    for key, bits in autos:
+        sheet = key.sheet or {}
+        if bits <= SAME_PICTURE and sheet.get("reader") == visual_reading.READER_VERSION \
+                and sheet.get("readability") != "unreadable" and sheet.get("blocks"):
+            look.key_id, look.how = key.id, f"read before ({bits} bits apart, auto)"
+            logger.info("Chart key #%d (auto) used: the same picture, read before", key.id)
+            return VisualSheet.model_validate(sheet)
+    return None
+
+
 async def sheet_for(question: str, images: list[tuple[bytes, str]],
                     practice_question_id: int | None = None) -> tuple[VisualSheet | None, Lookup]:
     """The chart's sheet for a check: a verified key's when it is this chart,
@@ -198,6 +220,8 @@ async def sheet_for(question: str, images: list[tuple[bytes, str]],
             look.key_id, look.how = key.id, f"the same picture ({bits} bits apart)"
             logger.info("Chart key #%d used: %s", key.id, look.how)
             return _keyed(key), look
+    if (again := await _read_before(look, practice_question_id)) is not None:
+        return again, look
     if not candidates:
         return await visual_reading.read_visual(question, images), look
     try:
@@ -228,8 +252,12 @@ async def remember(question: str, images: list[tuple[bytes, str]], sheet: Visual
             key = await session.get(ChartKey, look.key_id) if look.key_id else None
             if key is None and sheet is not None and sheet.readability != "unreadable" and sheet.blocks \
                     and len(images) == 1:
-                data = sheet.model_dump()
+                data = {**sheet.model_dump(), "reader": visual_reading.READER_VERSION}
                 for other, bits in await _candidates(session, "auto", look, practice_question_id):
+                    if bits <= SAME_PICTURE and (other.sheet or {}).get("reader") != visual_reading.READER_VERSION:
+                        # read the old way: left as it is (an admin may have edited it), and this reading kept
+                        # as a new key, the one _read_before reuses for this picture
+                        continue
                     same_question = practice_question_id and other.practice_question_id == practice_question_id
                     if bits <= SAME_PICTURE or same_question \
                             or agrees(data["blocks"], other.sheet.get("blocks", []))[0]:

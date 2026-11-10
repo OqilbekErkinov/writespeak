@@ -89,6 +89,7 @@ REFERENCES = 3
 MIN_REFERENCES = 2
 PROFILE_SAMPLES = 8
 GENERATION_ATTEMPTS = 3
+WORD_SLACK = 10  # words either side of WORD_RANGE an answer may have before it is written again
 SELF_CHECK_MARGIN = 0.5
 DEFAULT_BAND = 8.0  # without the student's results
 REUSE_LIMIT = 0.25  # share of the answer's 5-word runs that may come from the student's essay
@@ -755,7 +756,9 @@ async def _write(
         words, copies, names = count_words(full), copied_runs(full, allowed=question), names_in(full)
         reused = reuse_share(full, needs.essay, question) if needs is not None else 0.0
         problems = []
-        if not lo <= words <= hi:
+        # the prompt asks for lo-hi; a few words either side is no reason to write it again (2026-11-10:
+        # 168 and 208 words cost a third attempt each)
+        if not lo - WORD_SLACK <= words <= hi + WORD_SLACK:
             problems.append(f"it has {words} words; it must be {lo}-{hi} words")
         if copies:
             problems.append(f"{copies} word sequence(s) are copied from book samples; rewrite those in your own words")
@@ -1002,8 +1005,11 @@ def data_problems(text: str, question: str, visual: dict | None) -> list[str]:
     from services.ai.visual_check import figures, match_figure
 
     out = []
-    matches = [(f["text"], match_figure(f, visual, question)) for f in figures(text)]
-    misses = [t for t, m in matches if m == "miss"]
+    matches = [(f["text"], match_figure(f, visual, question, neighbours=True)) for f in figures(text)]
+    # a sheet with no figures at all (a process, a map) can't tell a step's number from data: nothing to check
+    # them against (2026-11-10: a process answer's "stage 2", "3", "5" cost three attempts)
+    has_figures = any(b.get("values") for b in visual.get("blocks", []))
+    misses = [t for t, m in matches if m == "miss"] if has_figures else []
     if misses:
         out.append("these figures are not on the DATA SHEET - use only its figures: " + ", ".join(misses[:6]))
     unsure = [t for t, m in matches if m == "raw-uncertain"]
@@ -1386,8 +1392,20 @@ async def build_model_answer(
     log["problems"] = problems
     kept_score = None
     floor = max(band - SELF_CHECK_MARGIN, needs.overall if needs is not None else 0.0)  # never under the student
+    subtype = log.get("subtype") or regex_subtype(question, lib_task)
+    # The self-check score and the reviewer read the first answer at the same time (2026-11-10: one after the
+    # other they took a minute of every report). The decisions are the same as before: a low score gets one
+    # rewrite, and the reviewer's verdict is on the answer that is kept - the first one's verdict is reused
+    # when the first one stays.
+    first = paragraphs
+    score_run, review_run = await asyncio.gather(
+        score_writing(task_type, question, "\n\n".join(paragraphs), prompt_images, sheet),
+        quality_problem(task_type, question, paragraphs, subtype, prompt_images, sheet),
+        return_exceptions=True)
     try:
-        score = await score_writing(task_type, question, "\n\n".join(paragraphs), prompt_images, sheet)
+        if isinstance(score_run, BaseException):
+            raise score_run
+        score = score_run
         kept_score = score
         log["self_check"] = [score]
         if score < floor:
@@ -1407,8 +1425,12 @@ async def build_model_answer(
     except Exception:
         logger.exception("Model answer self-check failed - keeping the answer as written")
     try:
-        subtype = log.get("subtype") or regex_subtype(question, lib_task)
-        problem = await quality_problem(task_type, question, paragraphs, subtype, prompt_images, sheet)
+        if paragraphs is not first:
+            problem = await quality_problem(task_type, question, paragraphs, subtype, prompt_images, sheet)
+        elif isinstance(review_run, BaseException):
+            raise review_run
+        else:
+            problem = review_run
         log["quality"] = problem or "ok"
         if problem:
             note = f"A reviewer rejected a previous version: {problem}. Write it again and fix exactly that."

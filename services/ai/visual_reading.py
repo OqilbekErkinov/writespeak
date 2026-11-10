@@ -162,8 +162,14 @@ mistake; only a wrong step order or a missing step counts;
 to parental home") is good writing, never a mistake.
 A mistake about the data has criterion TR, and its `correct` gives the sheet's figure (e.g. "about 27%")."""
 
+# The version of how a chart is read and its two reads merged: a chart key kept by the bot itself ("auto")
+# is reused for the same picture only when it was read by this version (services/ai/chart_keys.py) - so a
+# change to the reading (2026-11-09: map places compared, a change kept as uncertain) never brings back
+# sheets read the old way. Bump it whenever the reading or the merge changes.
+READER_VERSION = "2026-11-09"
+
 # Added after the sheet where the model answer is written and checked.
-ANSWER_RULES = """Use ONLY the verified figures on this DATA SHEET: a printed figure as printed; one \
+ANSWER_RULES ="""Use ONLY the verified figures on this DATA SHEET: a printed figure as printed; one \
 read off the scale with "about" or "around" - never more precise than the sheet; leave out every \
 UNCERTAIN figure and what the sheet can't read - on a map, never say where a feature is, or whether it \
 changed, when the sheet marks that UNCERTAIN; never rank figures the sheet shows as equal."""

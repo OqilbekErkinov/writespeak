@@ -1038,6 +1038,80 @@ def paid_run_fixes() -> None:
           and not protected_mistake("sales were larger", "sales remained the same", "", bar_reading, "", set()))
 
 
+def speed_fixes() -> None:
+    """2026-11-10, time and money without touching the marking: the model answer's false rejections, its two
+    checks side by side; a student's report is judged exactly as before."""
+    from services.ai.visual_check import figures, match_figure
+
+    vals = [37, 40, 43, 37, 43, 48, 46, 43, 40, 44]
+    line = {"blocks": [{"visual_type": "line", "units": "millions of passengers", "title": "Train passengers",
+                        "values": [{"series": "Passengers (millions)", "point": str(2000 + i), "value": float(v),
+                                    "text": "", "printed": False, "precision": 5.0, "status": "verified", "note": ""}
+                                   for i, v in enumerate(vals)]}], "readability": "clear"}
+    fell = next(f for f in figures("It fell by about 5 million in 2003.") if not f["year"])
+    check("a change named by one year: worked out from the year before for the model answer's check only",
+          match_figure(fell, line, "Train passengers") == "miss"
+          and match_figure(fell, line, "Train passengers", neighbours=True) == "derived")
+    check("...the model answer's data check no longer rejects it",
+          not any("not on the DATA SHEET" in p for p in sample_bank.data_problems(
+              "It fell by about 5 million in 2003.", "Train passengers", line)))
+    process = {"blocks": [{"visual_type": "process", "values": [], "process": {
+        "steps": ["collect", "sort", "crush", "wash", "melt", "shape"], "numbered": True,
+        "stages": [{"name": "collection", "steps": [1, 2]}, {"name": "processing", "steps": [3, 4, 5, 6]}],
+        "kind": "linear", "natural_or_manmade": "man-made"}}], "readability": "clear"}
+    check("a process (no figures on its sheet): step numbers are no data to reject",
+          not any("not on the DATA SHEET" in p for p in sample_bank.data_problems(
+              "At stage 2 the bottles are sorted, and in stages 5 and 7 they are melted.", "How bottles are recycled",
+              process)))
+    check("...a chart's wrong figure still is", any("not on the DATA SHEET" in p for p in sample_bank.data_problems(
+        "It peaked at about 300 million in 2005.", "Train passengers", line)))
+    check("word slack: 168 and 208 words pass for a 170-200 answer, 150 does not",
+          sample_bank.WORD_SLACK == 10 and 170 - 10 <= 168 and 208 <= 200 + 10 and not 170 - 10 <= 150)
+
+    # the self-check score and the reviewer side by side, the same decisions as one after the other
+    order: list[str] = []
+
+    async def run_answer(score_first: float, review_first, review_second=None):
+        writes = iter([["first answer"], ["second answer"], ["third answer"]])
+
+        async def fake_write(*args, **kwargs):
+            order.append("write")
+            return next(writes), [], []
+
+        async def fake_score(task_type, question, text, images=None, sheet=""):
+            order.append(f"score:{text}")
+            await asyncio.sleep(0.01)
+            return score_first if text == "first answer" else 8.5
+
+        async def fake_review(task_type, question, paragraphs, subtype, images=None, sheet=""):
+            order.append(f"review:{paragraphs[0]}")
+            await asyncio.sleep(0.01)
+            return review_first if paragraphs[0] == "first answer" else review_second
+
+        saved = (sample_bank._write, sample_bank.quality_problem, writing_grader.score_writing, sample_bank.load_library)
+        sample_bank._write, sample_bank.quality_problem, writing_grader.score_writing = fake_write, fake_review, fake_score
+        sample_bank.load_library = lambda: []
+        try:
+            return await sample_bank.build_model_answer("task2", "Discuss both views.")
+        finally:
+            sample_bank._write, sample_bank.quality_problem, writing_grader.score_writing, sample_bank.load_library = saved
+
+    order.clear()
+    answer = asyncio.run(run_answer(8.0, None))
+    check("a good first answer: scored and reviewed side by side, kept, nothing written again",
+          answer.paragraphs == ["first answer"] and order == ["write", "score:first answer", "review:first answer"]
+          and answer.log.get("quality") == "ok", order)
+    order.clear()
+    answer = asyncio.run(run_answer(6.0, None, None))
+    check("...scored under the floor: written again, the better one kept and reviewed itself (not the first's verdict)",
+          answer.paragraphs == ["second answer"] and "review:second answer" in order, order)
+    order.clear()
+    answer = asyncio.run(run_answer(8.0, "an overview is missing", None))
+    check("...the reviewer rejects it: written again and kept once the reviewer passes it",
+          answer.paragraphs == ["second answer"] and answer.log.get("quality") == "an overview is missing"
+          and answer.log.get("quality_retry") == "ok", (order, answer.log))
+
+
 if __name__ == "__main__":
     writing()
     round2()
@@ -1047,5 +1121,6 @@ if __name__ == "__main__":
     examiner_rules()
     official_descriptors()
     paid_run_fixes()
+    speed_fixes()
     print(f"\n{len(fails)} failed" if fails else "\nall passed")
     sys.exit(1 if fails else 0)

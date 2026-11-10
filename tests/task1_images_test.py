@@ -549,14 +549,29 @@ async def part2_bot() -> None:
     fake.calls.clear()
     fake.answer = ANSWER + f" (photo question {RUN})"
     calls = await send(text=fake.answer)
-    check("[photo question] analysed with the chart's data sheet", len(document_sent(calls)) == 1
-          and fake.names().count("VisualExtraction") == 2)
+    # the same chart as the [png] check above, so its reading is reused - nothing read (2026-11-10)
+    sub = await last_submission()
+    check("[photo question] analysed with the chart's data sheet - the same picture's earlier reading, nothing read",
+          len(document_sent(calls)) == 1 and fake.names().count("VisualExtraction") == 0
+          and sub.report_data.get("visual", {}).get("blocks", [{}])[0].get("visual_type") == "bar",
+          fake.names())
 
-    # 2. A JPEG chart as a Telegram photo; 3. a WebP file.
+    async def forget_charts():
+        """The bot's own chart keys gone, so the next picture is read as a new chart."""
+        from sqlalchemy import delete
+
+        from db.database import get_session
+        from db.models import ChartKey
+        async with get_session() as session:
+            await session.execute(delete(ChartKey).where(ChartKey.status == "auto"))
+            await session.commit()
+
+    # 2. A JPEG chart as a Telegram photo; 3. a WebP file - read as new charts, to check how they are read.
     for tag, message_kw, mime in (
         ("jpeg", lambda: {"photo": [PhotoSize(file_id="chart_jpg", file_unique_id="uj", width=1100, height=700)]}, "image/jpeg"),
         ("webp", lambda: {"document": doc("chart_webp", chart("WEBP"), "chart.webp", "image/webp")}, "image/webp"),
     ):
+        await forget_charts()
         files["chart_jpg"] = chart("JPEG", quality=90)
         await task1_until_answer(tag)
         await send(**message_kw())
@@ -586,6 +601,7 @@ async def part2_bot() -> None:
               t(key, L) in texts(calls) and await state.get_state() == WritingStates.awaiting_chart.state, texts(calls))
 
     # 5. A picture with no usable chart: asked again, the answer kept, then checked.
+    await forget_charts()
     await task1_until_answer("unreadable")
     await send(document=doc("text_only", chart("PNG"), "question.png", "image/png"))
     fake.readings = [reading("unreadable"), reading("unreadable"), reading("clear"), reading("clear")]
@@ -602,6 +618,7 @@ async def part2_bot() -> None:
           len(document_sent(calls)) == 1 and t("writing.send_answer", L, min_words=150) not in texts(calls))
 
     # 6. OpenAI can't open the picture: asked again; going on without it works.
+    await forget_charts()
     await task1_until_answer("rejected")
     await send(document=doc("chart_png3", chart("PNG"), "chart.png", "image/png"))
     fake.readings = [bad_request("invalid_image_format", "You uploaded an unsupported image.")] * 2
@@ -620,6 +637,7 @@ async def part2_bot() -> None:
           sent and t("writing.chart_not_checked", L) in (sent[0].caption or ""))
 
     # 7. Partly unclear chart: checked, and the student is told.
+    await forget_charts()
     await task1_until_answer("partly")
     await send(document=doc("chart_png4", chart("PNG"), "chart.png", "image/png"))
     fake.readings = [reading("partly_unclear")] * 2
@@ -631,6 +649,7 @@ async def part2_bot() -> None:
 
     # 8. OpenAI fails: every scoring run errors / the feedback comes back empty.
     for tag, setup in (("api-error", "fail_scoring"), ("empty", "feedback_none")):
+        await forget_charts()
         await task1_until_answer(tag)
         await send(document=doc(f"chart_{tag}", chart("PNG"), "chart.png", "image/png"))
         setattr(fake, setup, True)

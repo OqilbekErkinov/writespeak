@@ -163,8 +163,11 @@ async def flow() -> None:
     await chart_keys.remember(QUESTION, images, sheet, look, None, 102)
     async with get_session() as session:
         keys = (await session.execute(select(ChartKey))).scalars().all()
-    check("the same chart again: read (the key isn't checked yet), one more use, no second key",
-          calls["read"] == 2 and len(keys) == 1 and keys[0].uses == 2, [(k.id, k.uses) for k in keys])
+    # 2026-11-10 (the user): the same picture is not read again - the bot's own earlier reading is reused,
+    # as a new read would be (chart_key 0: never treated as checked by an examiner)
+    check("the same picture again: its earlier reading reused (nothing read), one more use, no second key",
+          calls["read"] == 1 and sheet.chart_key == 0 and look.key_id == keys[0].id and len(keys) == 1
+          and keys[0].uses == 2, [(k.id, k.uses) for k in keys])
     key_id = keys[0].id
 
     fixed = {**keys[0].sheet}
@@ -198,6 +201,25 @@ async def flow() -> None:
     check("...and kept as a new auto key; the checked key counts its uses",
           len(keys) == 2 and keys[key_id].uses == 4 and keys[key_id].status == "verified"
           and keys[key_id].last_submission_id == 104, [(k.id, k.status, k.uses) for k in keys.values()])
+
+    # an auto key is reused only when it was read the current way (visual_reading.READER_VERSION)
+    other_id = next(k for k in keys if k != key_id)
+    reads = calls["read"]
+    sheet, look = await chart_keys.sheet_for(QUESTION, other)
+    check("that other picture again: its own earlier reading, nothing read", look.key_id == other_id
+          and calls["read"] == reads and sheet.chart_key == 0, (look, calls))
+    async with get_session() as session:
+        old = await session.get(ChartKey, other_id)
+        old.sheet = {k: v for k, v in old.sheet.items() if k != "reader"}  # as read before 2026-11-10
+        await session.commit()
+    sheet, look = await chart_keys.sheet_for(QUESTION, other)
+    await chart_keys.remember(QUESTION, other, sheet, look, None, 106)
+    async with get_session() as session:
+        keys = {k.id: k for k in (await session.execute(select(ChartKey))).scalars().all()}
+    check("...read the old way: read again, the old key left as it is, the new reading kept as a new key",
+          calls["read"] == reads + 1 and not look.key_id and len(keys) == 3 and "reader" not in keys[other_id].sheet
+          and keys[max(keys)].sheet.get("reader") == visual_reading.READER_VERSION,
+          [(k.id, k.sheet.get("reader")) for k in keys.values()])
 
     # Judging by a checked key: a focused re-read only tells which figure is meant.
     async def misreading(question, imgs, sentence, figure):

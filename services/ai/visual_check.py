@@ -260,9 +260,13 @@ def named_cells(fig: dict, reading: dict | None) -> list[dict]:
     return out
 
 
-def match_figure(fig: dict, reading: dict | None, question: str) -> str:
+def match_figure(fig: dict, reading: dict | None, question: str, neighbours: bool = False) -> str:
     """'raw' | 'raw-uncertain' | 'derived' | 'label' | 'miss' - `reading` is
-    a VisualSheet as a dict (model_dump)."""
+    a VisualSheet as a dict (model_dump). `neighbours`: a change named by one
+    point ("fell by about 5 million in 2003") is also worked out from the points
+    either side of it - for the model answer's own check only (2026-11-10: three
+    attempts rejected for a right "fell by about 5 million in 2003"); a student's
+    report is judged as before."""
     blocks = reading.get("blocks", []) if reading else []
     label_text = " ".join([question] + [
         # an axis's value ticks (0, 20 ... 100) are no labels: "reached 100% in 2004" is a figure to check
@@ -319,6 +323,14 @@ def match_figure(fig: dict, reading: dict | None, question: str) -> str:
         # not just two reads apart): never a mistake (#54's "65+ started at 0%")
         unreadable |= bool(both) and all(_structural(v) for v in both)
         wide = [v for v in vals if v["series"] in series_named or v["point"] in points_named]
+        if neighbours and change and len(points_named) == 1:
+            order = list(dict.fromkeys(v["point"] for v in vals))
+            at = next(iter(points_named))
+            if at in order:
+                k = order.index(at)
+                near = {order[j] for j in (k - 1, k + 1) if 0 <= j < len(order)}
+                wide = wide + [v for v in vals if v["point"] in near and v not in wide
+                               and (not series_named or v["series"] in series_named)]
         pools.append((wide if change and wide else named or vals, bool(named)))
         for v in named or vals:
             for s in _SCALE_TRIES:
