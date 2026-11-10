@@ -72,6 +72,7 @@ from services.ai.openai_client import is_image_error
 from services.ai.sample_bank import build_model_answer, needs_from_feedback
 from services.ai.schemas import VocabularyItem
 from services.ai.visual_reading import ChartImageRejected, judge_ready, sheet_text
+from services.ai.vocab_uz import uzbek_meanings
 from services.ai.writing_grader import grade_writing
 from services.pdf.report_builder import build_progress, build_writing_report_pdf
 from services.storage.file_storage import image_mime, read_file, save_report
@@ -306,7 +307,8 @@ async def recheck_choice(callback: CallbackQuery, state: FSMContext, lang: str) 
 async def _ask_for_answer(message: Message, state: FSMContext, data: dict, lang: str) -> None:
     await state.set_state(WritingStates.awaiting_answer)
     await message.answer(
-        t("writing.send_answer", lang, min_words=MIN_ANSWER_WORDS[data["task_type"]]),
+        t("writing.send_answer", lang, min_words=MIN_ANSWER_WORDS[data["task_type"]])
+        + "\n\n" + t("writing.honest_note", lang),
         reply_markup=back_kb(lang, _back_target(data, "answer")),
     )
 
@@ -504,6 +506,8 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
                 if answer_task is not None:
                     answer_task.cancel()
                 raise
+            # the vocabulary's Uzbek meanings, written beside the model answer (no longer wait)
+            uz_task = asyncio.create_task(uzbek_meanings(report.vocabulary))
             try:
                 if answer_task is None:
                     raise RuntimeError("the feedback never reached the model answer")
@@ -519,6 +523,7 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
                 except Exception:
                     logger.exception("Model answer failed again for user %s - report goes out without it", user_id)
                     answer = None
+            report.vocabulary_uz = await uz_task  # never raises: "" where a meaning is missing
 
         if similar is not None:
             # Nearly the same essay: no "progress" between an essay and itself.

@@ -316,7 +316,7 @@ async def _start_practice_question(
             lang,
             question=html.escape(question.question_text, quote=False),
             min_words=min_words,
-        )
+        ) + "\n\n" + t("writing.honest_note", lang)
         kb = back_kb(lang, f"{CB_BACK_TO_LIST_PREFIX}{question.id}")
         if image_path is None:
             await message.answer(text, reply_markup=kb)

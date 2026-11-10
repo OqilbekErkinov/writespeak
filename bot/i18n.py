@@ -198,6 +198,24 @@ _T: dict[str, dict[str, str]] = {
         "uz": "✅ Qabul qilindi.\n\n✏️ Endi javobingizni yuboring (kamida {min_words} so'z).",
         "ru": "✅ Принято.\n\n✏️ Теперь отправьте свой ответ (минимум {min_words} слов).",
     },
+    # Shown wherever a Writing answer is asked for (the user, 2026-11-10: many students send a ChatGPT-corrected
+    # essay - a Band 5 script comes back as a 7 and the report can't help them)
+    "writing.honest_note": {
+        "uz": "🤝 <b>Iltimos, o'zingiz yozing.</b> ChatGPT yoki boshqa AI yozgan yoki tuzatgan matnni yubormang — "
+        "biz sizning <b>haqiqiy</b> darajangizni baholaymiz. AI tuzatgan insho noto'g'ri, baland ball oladi va "
+        "xatolaringiz ko'rinmay qoladi, imtihonda esa AI bo'lmaydi.",
+        "ru": "🤝 <b>Пожалуйста, пишите сами.</b> Не отправляйте текст, написанный или исправленный ChatGPT или "
+        "другим ИИ, — мы оцениваем ваш <b>настоящий</b> уровень. Эссе, исправленное ИИ, получит неверный, "
+        "завышенный балл, а ваши ошибки останутся незамеченными; на экзамене ИИ не будет.",
+    },
+    "speaking.honest_note": {
+        "uz": "🤝 <b>Iltimos, o'zingiz gapiring.</b> ChatGPT yoki boshqa AI yozib bergan javobni o'qimang — biz "
+        "sizning <b>haqiqiy</b> nutqingizni baholaymiz. Tayyor matnni o'qisangiz, ball noto'g'ri chiqadi va "
+        "xatolaringiz ko'rinmay qoladi, imtihonda esa bunday imkoniyat bo'lmaydi.",
+        "ru": "🤝 <b>Пожалуйста, говорите сами.</b> Не читайте ответ, написанный ChatGPT или другим ИИ, — мы "
+        "оцениваем вашу <b>настоящую</b> речь. Если читать готовый текст, балл будет неверным, а ваши ошибки "
+        "останутся незамеченными; на экзамене такой возможности не будет.",
+    },
     "writing.wrong_section": {
         "uz": "⚠️ Bu savol <b>{section}</b> savoliga o'xshaydi, siz esa boshqa bo'limdasiz. Noto'g'ri mezon bilan "
         "tekshirilsa, ball to'g'ri chiqmaydi.\n\nUni {section} bo'limida tekshiraymi? Hozircha coin olinmadi.",

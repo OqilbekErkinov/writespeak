@@ -300,6 +300,9 @@ async def _ask_current_question(message: Message, state: FSMContext, lang: str) 
         text = t("speaking.part_start", lang, part=PART_NAMES[parts[index]]) + "\n\n" + text
     if index == 0 and data.get("intro"):
         text = f"{data['intro']}\n\n{text}"
+    if index == 0:
+        # before the first answer only, not under every question (the user, 2026-11-10)
+        text += "\n\n" + t("speaking.honest_note", lang)
 
     # Only the current question keeps its buttons.
     if data.get("question_msg_id"):
@@ -663,6 +666,9 @@ async def _start_recording(message: Message, state: FSMContext, lang: str) -> No
     await state.set_state(SpeakingStates.awaiting_recording)
     text = (t("speaking.one_intro", lang, questions=_question_list(data)) if data.get("questions")
             else t("speaking.one_intro_noq", lang))
+    note = "\n\n" + t("speaking.honest_note", lang)
+    if len(text) + len(note) <= 4000:  # a Telegram message holds 4096 characters
+        text += note
     await message.answer(text, reply_markup=back_kb(lang, _back_target(data)))
 
 

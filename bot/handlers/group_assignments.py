@@ -452,7 +452,7 @@ async def do_part(callback: CallbackQuery, state: FSMContext, lang: str) -> None
         text = note + header + "\n\n" + t(
             "practice.writing_question", lang,
             question=_esc(part.prompt_text), min_words="150" if task_type == "task1" else "250",
-        )
+        ) + "\n\n" + t("writing.honest_note", lang)
         markup = kb.back_kb(lang, kb.CB_MY_ASSIGNMENTS)
         if image is None:
             await message.answer(text, reply_markup=markup)

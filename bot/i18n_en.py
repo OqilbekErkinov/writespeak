@@ -49,6 +49,8 @@ EN: dict[str, str] = {
     "confirm.edit": "✏️ Edit",
     "writing.send_correct_text": "Please type and send the correct text:",
     "writing.send_answer": "✅ Got it.\n\n✏️ Now send your answer (at least {min_words} words).",
+    "writing.honest_note": "🤝 <b>Please write it yourself.</b> Don't send a text written or corrected by ChatGPT or another AI — we grade your <b>real</b> level. An AI-corrected essay gets a wrong, inflated band and hides your mistakes, and there is no AI in the exam.",
+    "speaking.honest_note": "🤝 <b>Please speak for yourself.</b> Don't read out an answer written by ChatGPT or another AI — we grade your <b>real</b> speaking. A script read aloud gives a wrong band and hides your mistakes, and the exam won't let you do that.",
     "writing.wrong_section": "⚠️ This looks like a <b>{section}</b> question, but you are in the other section. Marked against the wrong criteria, the band would be wrong.\n\nMark it in the {section} section? No coins have been taken.",
     "writing.btn_switch_section": "✅ Mark it in {section}",
     "writing.cut_start": "⚠️ Your answer seems to start mid-word or mid-sentence: «{start}…»\n\nThe beginning may have been lost when copying. Send the whole answer again, or check it as it is if the text is complete. No coins have been taken.",

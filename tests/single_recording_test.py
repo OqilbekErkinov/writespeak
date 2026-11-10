@@ -566,7 +566,9 @@ async def part2_bot() -> None:
     calls = await press(CB_NO_QUESTIONS)
     check("[examiner] a recording asked for; its questions will be found in it",
           await state.get_state() == SpeakingStates.awaiting_recording.state
-          and texts(calls)[-1] == t("speaking.one_intro_noq", L))
+          and texts(calls)[-1] == t("speaking.one_intro_noq", L) + "\n\n" + t("speaking.honest_note", L))
+    check("[examiner] ...with the note: speak yourself, no AI script (2026-11-10)",
+          t("speaking.honest_note", L) in texts(calls)[-1])
     lines3 = [
         line("Good afternoon. Can you tell me your full name, please?", 0.5, 4.0, "other"),
         line("My name is Aziz Karimov.", 5.0, 7.0, "other"),
@@ -639,7 +641,8 @@ async def part2_bot() -> None:
         await set_language(code)
         await press(CB_PART3)
         calls = await press(CB_NO_QUESTIONS)
-        check(f"[{code}] the texts in the student's language", texts(calls)[-1] == t("speaking.one_intro_noq", code))
+        check(f"[{code}] the texts in the student's language", texts(calls)[-1] == t("speaking.one_intro_noq", code)
+              + "\n\n" + t("speaking.honest_note", code))
     await state.clear()
     await redis().aclose()
 

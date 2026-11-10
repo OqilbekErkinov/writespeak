@@ -156,7 +156,7 @@
 <h2 id="s-voc">Useful vocabulary</h2>
 <div class="sub">Words and phrases {{ "for describing this kind of chart" if report.task_type == "task1" else "for essays on this topic" }}.</div>
 <table class="voc"><thead><tr><th>Word / phrase</th><th>Meaning</th><th>Example</th></tr></thead><tbody>
-{% for v in report.vocabulary %}<tr><td class="term">{{ v.term }}</td><td class="mean">{{ v.meaning }}</td><td class="exm">{{ v.example }}</td></tr>
+{% for v in report.vocabulary %}{% set uz = report.vocabulary_uz[loop.index0] if loop.index0 < report.vocabulary_uz|length else "" %}<tr><td class="term">{{ v.term }}</td><td class="mean">{{ v.meaning }}{% if uz %}<div class="uz"><span>UZ</span>{{ uz }}</div>{% endif %}</td><td class="exm">{{ v.example }}</td></tr>
 {% endfor %}</tbody></table>
 </div>
 

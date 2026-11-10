@@ -497,8 +497,10 @@ async def part2_bot() -> None:
 
     # 1. A PNG chart sent as a file: read once, its figures used everywhere.
     await task1_until_answer("png")
-    await send(document=doc("chart_png", chart("PNG"), "chart.png", "image/png"))
+    asked = await send(document=doc("chart_png", chart("PNG"), "chart.png", "image/png"))
     check("[png] the chart is taken, the answer asked for", await state.get_state() == WritingStates.awaiting_answer.state)
+    check("[png] ...with the note: write it yourself, no AI (2026-11-10)",
+          any(t("writing.honest_note", L) in x for x in texts(asked)), texts(asked)[-1:])
     fake.calls.clear()
     fake.answer = ANSWER + f" (png {RUN})"
     calls = await send(text=fake.answer)
@@ -615,7 +617,8 @@ async def part2_bot() -> None:
           data.get("answer_text") == clean_pasted(fake.answer)[0])
     calls = await send(document=doc("chart_png2", chart("PNG"), "chart.png", "image/png"))
     check("[unreadable] the new chart starts the check at once - no second answer asked",
-          len(document_sent(calls)) == 1 and t("writing.send_answer", L, min_words=150) not in texts(calls))
+          len(document_sent(calls)) == 1
+          and not any(t("writing.send_answer", L, min_words=150) in x for x in texts(calls)))
 
     # 6. OpenAI can't open the picture: asked again; going on without it works.
     await forget_charts()

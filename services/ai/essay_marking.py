@@ -655,6 +655,7 @@ class WritingReport:
     notices: list[str] = field(default_factory=list)  # shown to the student (e.g. the chart wasn't checked)
     upgrades: list[dict] = field(default_factory=list)  # wrong, correct, why_html, tag, tag_cls - never mistakes
     flags: list[dict] = field(default_factory=list)  # every flag with its final class: wrong, correct, class, criterion
+    vocabulary_uz: list[str] = field(default_factory=list)  # each vocabulary item's Uzbek meaning (services/ai/vocab_uz.py)
 
     @property
     def top_band(self) -> bool:

@@ -20,6 +20,7 @@ from services.ai import pronunciation
 from services.ai.speaking_answers import build_model_answers, needs_from_feedback, targets_for
 from services.ai.speaking_grader import Evidence, SessionItem, grade_speaking
 from services.ai.speaking_marking import SpeakingReport
+from services.ai.vocab_uz import uzbek_meanings
 from services.ai.voice import AnswerAudio, VoiceMetrics, analyse_answers, measure, measure_pitch, to_wav16k
 
 logger = logging.getLogger(__name__)
@@ -81,6 +82,8 @@ async def run_check(
         if answers_task is not None:
             answers_task.cancel()
         raise
+    # the vocabulary's Uzbek meanings, written beside the model answers (no longer wait)
+    uz_task = asyncio.create_task(uzbek_meanings(report.vocabulary))
     try:
         if answers_task is None:
             raise RuntimeError("the feedback never reached the model answers")
@@ -92,4 +95,5 @@ async def run_check(
         except Exception:
             logger.exception("Speaking model answers failed again - the report goes out without them")
             answers = []
+    report.vocabulary_uz = await uz_task  # never raises: "" where a meaning is missing
     return SpeakingCheck(report=report, answers=answers, items=items, metrics=metrics)

@@ -458,6 +458,7 @@ class SpeakingReport:
     notes: list[str] = field(default_factory=list)
     notices: list[str] = field(default_factory=list)  # shown to the student (answers split from one recording)
     upgrades: list[dict] = field(default_factory=list)  # acceptable as said, another option only more common
+    vocabulary_uz: list[str] = field(default_factory=list)  # each vocabulary item's Uzbek meaning (services/ai/vocab_uz.py)
 
     @property
     def top_band(self) -> bool:

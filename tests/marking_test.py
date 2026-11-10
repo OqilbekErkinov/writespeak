@@ -1112,6 +1112,42 @@ def speed_fixes() -> None:
           and answer.log.get("quality_retry") == "ok", (order, answer.log))
 
 
+def uzbek_vocabulary() -> None:
+    """2026-11-10 (the user): the vocabulary table's meanings in Uzbek too - one small call, never in the way."""
+    from services.ai import vocab_uz
+
+    items = [schemas.VocabEntry(term="allocate funds", meaning="decide to spend money on something",
+                                example="The city allocated funds to buses."),
+             schemas.VocabEntry(term="commuters", meaning="people who travel to work every day",
+                                example="Commuters prefer fast trains.")]
+    seen = []
+
+    def fake_parse(reply):
+        async def parse(**kwargs):
+            seen.append(kwargs)
+            if isinstance(reply, Exception):
+                raise reply
+            return NS(choices=[NS(message=NS(parsed=vocab_uz.UzMeanings(meanings=reply)))], usage=None)
+        return parse
+
+    real = vocab_uz.client
+    try:
+        vocab_uz.client = NS(beta=NS(chat=NS(completions=NS(parse=fake_parse(["mablag' ajratmoq", "ishga qatnovchilar"])))))
+        got = asyncio.run(vocab_uz.uzbek_meanings(items))
+        check("Uzbek meanings: one per item, in order, from the cheap model",
+              got == ["mablag' ajratmoq", "ishga qatnovchilar"] and seen[-1]["model"] == vocab_uz.settings.openai_model_sample
+              and "allocate funds" in seen[-1]["messages"][1]["content"], (got, seen[-1].get("model")))
+        vocab_uz.client = NS(beta=NS(chat=NS(completions=NS(parse=fake_parse(["faqat bittasi"])))))
+        check("...a count that doesn't match: none shown, never a wrong pairing",
+              asyncio.run(vocab_uz.uzbek_meanings(items)) == ["", ""])
+        vocab_uz.client = NS(beta=NS(chat=NS(completions=NS(parse=fake_parse(RuntimeError("down"))))))
+        check("...the call fails: the table stays in English, nothing raised",
+              asyncio.run(vocab_uz.uzbek_meanings(items)) == ["", ""])
+        check("...no vocabulary: no call", asyncio.run(vocab_uz.uzbek_meanings([])) == [])
+    finally:
+        vocab_uz.client = real
+
+
 if __name__ == "__main__":
     writing()
     round2()
@@ -1122,5 +1158,6 @@ if __name__ == "__main__":
     official_descriptors()
     paid_run_fixes()
     speed_fixes()
+    uzbek_vocabulary()
     print(f"\n{len(fails)} failed" if fails else "\nall passed")
     sys.exit(1 if fails else 0)
