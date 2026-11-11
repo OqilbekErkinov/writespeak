@@ -1584,6 +1584,44 @@ def checklist_and_band9_samples() -> None:
     check("...a Band 8 answer: any writer at 8+, so the closest topic again", eight.author == "Close", eight.author)
 
 
+def per_criterion_range() -> None:
+    """2026-11-12: an unexplained Lexical / Grammar 8 becomes 9 when the run itself found no range item - not only
+    when another call marked 3 strong phrases (#164: no reason at all, held at 8 because 2 were marked that time).
+    A run that finds "a narrow range of structures" or "everyday words throughout" still holds it (the teachers'
+    128-word report of simple sentences)."""
+    g = writing_grader
+    essay = ("Public transport should be free in large cities, because it cuts traffic and pollution. " * 30).strip()
+
+    def run(found_items=(), per_criterion=True):
+        def judgement(k, band):
+            items = g._checklist_items(k, "task2")
+            return schemas.CriterionJudgement(
+                checklist=[schemas.CheckFinding(item=i, found=i in found_items,
+                                                quote="Public transport should be free" if i in found_items else "")
+                           for i in items], strengths=[], weaknesses=[], band=band, note="n")
+        scoring = schemas.WritingScoring(TR_or_TA=judgement("TR_or_TA", 7), CC=judgement("CC", 8),
+                                         LR=judgement("LR", 8), GRA=judgement("GRA", 8))
+
+        async def fake(purpose, max_tokens, messages, response_format, effort=None, model=None):
+            return NS(choices=[NS(message=NS(parsed=scoring))])
+        real, real_flag = g._parse, g.PER_CRITERION_WIDE
+        g._parse, g.PER_CRITERION_WIDE = fake, per_criterion
+        try:
+            return asyncio.run(g._score_once("task2", "Should public transport be free?", essay, None, checked=[],
+                                             wide=False))
+        finally:
+            g._parse, g.PER_CRITERION_WIDE = real, real_flag
+
+    clean = run()
+    check("Lexical and Grammar 8 with no reason and no range item found: 9, though 2 strong phrases (not wide)",
+          clean["LR"] == 9 and clean["GRA"] == 9 and clean["CC"] == 8, clean)
+    narrow = run(found_items=(g.RANGE_ITEMS["GRA"], g.RANGE_ITEMS["LR"]))
+    check("...a run that finds a narrow range of structures / everyday words keeps them at 8",
+          narrow["LR"] == 8 and narrow["GRA"] == 8, narrow)
+    old = run(per_criterion=False)
+    check("...switched off: the strong-phrase count alone decides, as before", old["LR"] == 8 and old["GRA"] == 8, old)
+
+
 def model_answer_bands() -> None:
     """The user's rule (2026-11-12), Writing and Speaking alike: 5.0-6.5 -> a Band 7 model answer, 7.0-7.5 ->
     Band 8, 8.0-9.0 -> Band 9 only."""
@@ -1616,5 +1654,6 @@ if __name__ == "__main__":
     model_answer_bands()
     writing_label_repetition()
     checklist_and_band9_samples()
+    per_criterion_range()
     print(f"\n{len(fails)} failed" if fails else "\nall passed")
     sys.exit(1 if fails else 0)

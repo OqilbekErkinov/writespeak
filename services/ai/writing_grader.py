@@ -376,6 +376,11 @@ class ItemCheck(BaseModel):
 
 
 _STRICT = ConfigDict(extra="forbid")
+# The checklist items that say a range is narrow: a run that answers "not found" to its criterion's item has
+# seen a wide enough range to lift an unexplained 8 (2026-11-12); PER_CRITERION_WIDE switches that on.
+RANGE_ITEMS = {"LR": "everyday words throughout, few or no less common ones",
+               "GRA": "a narrow range of structures (mostly simple sentences)"}
+PER_CRITERION_WIDE = True
 
 
 def _checklist_items(key: str, task_type: str) -> list[str]:
@@ -1464,11 +1469,21 @@ async def _score_once(task_type, prompt_text, answer_text, prompt_images, sheet:
         return [f'"{c.quote}" ({c.item})' for c in getattr(scores, k).checklist if c.found and c.quote.strip()
                 and not (k == "LR" and given and _RANGE_LIMIT.search(c.item) and only_given(c.quote, given))]
 
+    # Whether Lexical Resource / Grammar shows a wide range: the strong phrases the report shows (another call's
+    # count, 3 or more), or - since every checklist item is answered - this run itself finding no range item
+    # ("everyday words throughout", "a narrow range of structures"). #164, a real Band 9 report, had Lexical and
+    # Grammar 8 with no reason at all, held there because the feedback marked 2 strong phrases that time.
+    def range_shown(k: str) -> bool:
+        item = RANGE_ITEMS.get(k)
+        return bool(item) and looked(k) and not any(c.found and c.item == item for c in getattr(scores, k).checklist)
+
+    wide_of = {k: wide or (PER_CRITERION_WIDE and range_shown(k)) for k in SCORE_KEYS}
+
     def reason(k: str, weaknesses: list[str]) -> bool:
         if k == "LR":
             weaknesses = [w for w in weaknesses if not label_repetition(w)]
         if k in ("LR", "GRA") and checked is not None:
-            return language_reason(k, weaknesses, answer_text, acceptable, checked, wide)
+            return language_reason(k, weaknesses, answer_text, acceptable, checked, wide_of[k])
         return evidenced(weaknesses, answer_text, acceptable)
 
     # Task 9 "fully satisfies all the requirements" (the descriptors): an 8 is lifted only with the word
@@ -1479,7 +1494,8 @@ async def _score_once(task_type, prompt_text, answer_text, prompt_images, sheet:
         and (task_type != "task1" or scores.overview == "clear")
     # what each run gave and why, before the lifts - the one place a band's reasons can be read afterwards
     # (2026-11-12: #164, a real Band 9 report, kept Lexical 8 and nothing showed why)
-    logger.info("Writing scoring run (wide range: %s): %s", wide, "; ".join(
+    logger.info("Writing scoring run (wide range: %s; shown by this run: %s): %s", wide,
+                [k for k in ("LR", "GRA") if wide_of[k]], "; ".join(
         f"{k} {out[k]:g}{'' if looked(k) else ' (checklist incomplete)'} {getattr(scores, k).weaknesses} "
         f"found {found(k)}"[:400] for k in SCORE_KEYS))
     for k in SCORE_KEYS:
@@ -1489,7 +1505,7 @@ async def _score_once(task_type, prompt_text, answer_text, prompt_images, sheet:
             out[k] = 8.0
         elif out[k] == 8 and k != "CC" and looked(k) and not reason(k, judged.weaknesses + found(k)) \
                 and ((task_full and not any(w.strip() for w in judged.weaknesses)) if k == "TR_or_TA"
-                     else wide or checked is None):
+                     else wide_of[k] or checked is None):
             # Task: only when the run named no weakness at all (2026-11-11, #153: "depth could be further
             # expanded" and "some points could be probed further" were lifted to Task 9 in all three runs - the
             # teachers' 7.0-7.5 essay came out 8.0; Task 9 is "explored in depth")
@@ -1503,7 +1519,7 @@ async def _score_once(task_type, prompt_text, answer_text, prompt_images, sheet:
     if checked is not None:
         # three 9s and one lower: Lexical or Grammar must show the errors behind it, or it is a 9 too
         for k in ("LR", "GRA"):
-            if out[k] < 9 and wide and looked(k) and all(out[o] == 9 for o in SCORE_KEYS if o != k) \
+            if out[k] < 9 and wide_of[k] and looked(k) and all(out[o] == 9 for o in SCORE_KEYS if o != k) \
                     and not reason(k, getattr(scores, k).weaknesses + found(k)):
                 logger.info("Score %s %g -> 9: the other three are 9 and no error justifies it", k, out[k])
                 out[k] = 9.0
