@@ -64,23 +64,20 @@ def writing_speaking_overall(value: float) -> float:
     return math.floor(float(value) * 2 + 0.5 + 1e-9) / 2
 
 
-AIM_RANGE = (6.0, 8.0)
+# The band a model answer is aimed at, Writing and Speaking alike (the user, 2026-11-12): (least overall, band)
+AIM_STEPS = ((8.0, 9.0), (7.0, 8.0), (0.0, 7.0))
 
 
 def aim_band(overall: float) -> float:
-    """The band a Speaking model answer is aimed at: Band 9 from 8.0 up (the
-    academic lead, 2026-10-27), else one above the student's, kept between
-    AIM_RANGE (candidate-specific samples, 2026-10-14)."""
-    if overall >= 8.0:
-        return 9.0
-    return min(AIM_RANGE[1], max(AIM_RANGE[0], overall + 1.0))
+    """The band a model answer is aimed at (the user's rule, 2026-11-12, for
+    Writing and Speaking): 8.0-9.0 -> Band 9, 7.0-7.5 -> Band 8, below 7.0
+    (5.0-6.5 and anything lower) -> Band 7."""
+    return next(band for least, band in AIM_STEPS if overall >= least)
 
 
 def writing_aim_band(overall: float) -> float:
-    """The band a Writing model answer is aimed at (the user's rule,
-    2026-10-17): always better than the student's own - Band 9 from 8.0 up,
-    Band 8 below that."""
-    return 9.0 if overall >= 8.0 else 8.0
+    """A Writing model answer's band: the same rule as Speaking (aim_band)."""
+    return aim_band(overall)
 
 
 def target_band(overall: float) -> float:

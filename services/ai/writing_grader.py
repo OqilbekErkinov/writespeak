@@ -1289,6 +1289,27 @@ _RANGE_LIMIT = re.compile(r"\b(repeat\w*|repetit\w*|overus\w*|limited|narrow|eve
                           r"wider range|could be wider)\b", re.IGNORECASE)
 
 
+def _stem(word: str) -> str:
+    word = word.lower()
+    return word[:-1] if len(word) > 3 and word.endswith("s") and not word.endswith("ss") else word
+
+
+def given_words(text: str) -> set[str]:
+    """The words a question and its data sheet give (titles, categories, units) - stemmed."""
+    return {_stem(w) for w in re.findall(r"[A-Za-z]+", text) if len(w) > 2}
+
+
+_INNER_QUOTE = re.compile(r"[\"“«]([^\"”»]{1,60})[\"”»]")
+
+
+def only_given(text: str, given: set[str]) -> bool:
+    """Does a remark quote only words the question or the visual gives? Its quoted terms, or all its words
+    when nothing is quoted (then meta words like "frequent" make it False - the remark stands)."""
+    terms = _INNER_QUOTE.findall(text) or [text]
+    words = [_stem(w) for t in terms for w in re.findall(r"[A-Za-z]+", t) if len(w) > 2]
+    return bool(words) and all(w in given for w in words)
+
+
 def _real_quotes(weakness: str, low: str, fine: list[str]) -> list[str]:
     """The words a weakness quotes that are in the answer and not found acceptable."""
     out = []
@@ -1370,11 +1391,22 @@ async def _score_once(task_type, prompt_text, answer_text, prompt_images, sheet:
     def looked(k: str) -> bool:
         return len(getattr(scores, k).checklist) >= len(CHECKLISTS[k][task_type] if k == "TR_or_TA" else CHECKLISTS[k])
 
+    # A Task 1 report has to name what the visual measures: repeating its own terms ("route", "passengers"
+    # in a table of route kilometres and passengers) is no lack of range (2026-11-12, #164 - a real Band 9
+    # report held at Lexical 8 for "system(s)", "route", "passengers")
+    given = given_words(prompt_text + "\n" + sheet) if task_type == "task1" else set()
+
+    def label_repetition(text: str) -> bool:
+        return bool(given) and _RANGE_LIMIT.search(text) is not None and only_given(text, given)
+
     def found(k: str) -> list[str]:
         # with the item's words: "a narrow range of structures" tells what the quote shows
-        return [f'"{c.quote}" ({c.item})' for c in getattr(scores, k).checklist if c.found and c.quote.strip()]
+        return [f'"{c.quote}" ({c.item})' for c in getattr(scores, k).checklist if c.found and c.quote.strip()
+                and not (k == "LR" and given and _RANGE_LIMIT.search(c.item) and only_given(c.quote, given))]
 
     def reason(k: str, weaknesses: list[str]) -> bool:
+        if k == "LR":
+            weaknesses = [w for w in weaknesses if not label_repetition(w)]
         if k in ("LR", "GRA") and checked is not None:
             return language_reason(k, weaknesses, answer_text, acceptable, checked, wide)
         return evidenced(weaknesses, answer_text, acceptable)
@@ -1385,6 +1417,11 @@ async def _score_once(task_type, prompt_text, answer_text, prompt_images, sheet:
     task_full = count_words(answer_text) >= TASK_MIN_WORDS.get(task_type, 0) \
         and not any(m.criterion == "TR" for m in (checked or [])) \
         and (task_type != "task1" or scores.overview == "clear")
+    # what each run gave and why, before the lifts - the one place a band's reasons can be read afterwards
+    # (2026-11-12: #164, a real Band 9 report, kept Lexical 8 and nothing showed why)
+    logger.info("Writing scoring run (wide range: %s): %s", wide, "; ".join(
+        f"{k} {out[k]:g}{'' if looked(k) else ' (checklist incomplete)'} {getattr(scores, k).weaknesses} "
+        f"found {found(k)}"[:400] for k in SCORE_KEYS))
     for k in SCORE_KEYS:
         judged = getattr(scores, k)
         if out[k] == 9 and found(k) and reason(k, found(k)):

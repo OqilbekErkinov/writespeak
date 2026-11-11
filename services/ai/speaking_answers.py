@@ -5,8 +5,8 @@ answers, 2026-10-14).
 Every answer is a separate, complete answer to the student's OWN question,
 written to teach their weaknesses - not a rewrite of what they said:
 
-  * it is aimed above the student (aim_band: Band 9 from 8.0 up, else
-    overall + 1 from 6.0 to 8.0), labelled as an approximate AI example,
+  * it is aimed above the student (aim_band: Band 9 from 8.0 up, Band 8 for
+    7.0-7.5, Band 7 below - the user's rule, 2026-11-12), labelled as an approximate AI example,
     never as an official band;
   * a phrase is used once in the whole report (the academic lead,
     2026-10-27: "stand on their own two feet" was in five answers): never the

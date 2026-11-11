@@ -1472,6 +1472,69 @@ def speaking_azure_and_slips() -> None:
           and "several separate ideas are not required" in speaking_grader._scoring_system("part3", False))
 
 
+def writing_label_repetition() -> None:
+    """2026-11-12, #164 (a real Band 9 table report, Lexical 8): repeating the visual's own terms ("route",
+    "passengers" in a table of route kilometres and passengers) is no lack of range in Task 1."""
+    g = writing_grader
+    prompt = "The table below gives information about the underground railway systems in six cities."
+    sheet = "Table: Date opened | Kilometres of route | Passengers per year (in millions). London, Paris, Tokyo."
+    report = ("The table compares six underground systems. London has 394 kilometres of route and Tokyo serves "
+              "the most passengers, while the newest system, in Los Angeles, carries far fewer passengers. ") * 4
+    given = g.given_words(prompt + "\n" + sheet)
+    check("the visual's terms are given words", {"route", "passenger", "system"} <= given)
+    check("...a remark quoting only them is about the task's own terms",
+          g.only_given('Frequent reuse of high-frequency items: "system(s)", "route", "passengers"', given)
+          and not g.only_given('"rose", "fell"', given) and not g.only_given("frequent reuse of words", given))
+
+    def run(task, lr_quote, lr_weak=()):
+        items = {"TR_or_TA": g.CHECKLISTS["TR_or_TA"][task], "CC": g.CHECKLISTS["CC"], "LR": g.CHECKLISTS["LR"],
+                 "GRA": g.CHECKLISTS["GRA"]}
+
+        def judgement(k, band):
+            checklist = [schemas.CheckFinding(item=i, found=(k == "LR" and i.startswith("repetition")),
+                                              quote=lr_quote if (k == "LR" and i.startswith("repetition")) else "")
+                         for i in items[k]]
+            return schemas.CriterionJudgement(checklist=checklist, strengths=[], band=band, note="n",
+                                              weaknesses=list(lr_weak) if k == "LR" else [])
+        scoring = schemas.WritingScoring(TR_or_TA=judgement("TR_or_TA", 9), CC=judgement("CC", 9),
+                                         LR=judgement("LR", 8), GRA=judgement("GRA", 9), overview="clear")
+
+        async def fake(purpose, max_tokens, messages, response_format, effort=None, model=None):
+            return NS(choices=[NS(message=NS(parsed=scoring))])
+        real = g._parse
+        g._parse = fake
+        try:
+            return asyncio.run(g._score_once(task, prompt, report, None, sheet if task == "task1" else "",
+                                             checked=[], wide=True))
+        finally:
+            g._parse = real
+
+    labels = run("task1", 'Frequent reuse of high-frequency items: "system(s)", "route", "passengers"')
+    check("Task 1: Lexical 8 held only by repeating the table's own terms is a 9", labels["LR"] == 9, labels)
+    words = run("task1", '"compares", "serves", "carries"')
+    check("...repetition of the writer's own words still holds it at 8", words["LR"] == 8, words)
+    weak = run("task1", "", ['Some reliance on common nouns like "system" and "route" - repetition'])
+    check("...a weakness about the labels' repetition is no reason either", weak["LR"] == 9, weak)
+    task2 = run("task2", '"system", "route", "passengers"')
+    check("...never in Task 2 (the question's words copied instead of paraphrased is a real limitation)",
+          task2["LR"] == 8, task2)
+
+
+def model_answer_bands() -> None:
+    """The user's rule (2026-11-12), Writing and Speaking alike: 5.0-6.5 -> a Band 7 model answer, 7.0-7.5 ->
+    Band 8, 8.0-9.0 -> Band 9 only."""
+    from services.ai.sample_bank import Needs as WritingNeeds
+    from services.ai.scoring import aim_band, writing_aim_band
+    from services.ai.speaking_answers import Needs as SpeakingNeeds
+
+    want = {4.0: 7.0, 5.0: 7.0, 5.5: 7.0, 6.0: 7.0, 6.5: 7.0, 7.0: 8.0, 7.5: 8.0, 8.0: 9.0, 8.5: 9.0, 9.0: 9.0}
+    got = {o: aim_band(o) for o in want}
+    check("model answers: 5.0-6.5 -> 7.0, 7.0-7.5 -> 8.0, 8.0-9.0 -> 9.0", got == want, got)
+    check("...Writing and Speaking alike", all(writing_aim_band(o) == b for o, b in want.items())
+          and WritingNeeds(overall=6.0, bands={}, priorities=[]).aim == 7.0
+          and SpeakingNeeds(overall=7.5, bands={}, priorities=[]).aim == 8.0)
+
+
 if __name__ == "__main__":
     writing()
     round2()
@@ -1486,5 +1549,7 @@ if __name__ == "__main__":
     essay_in_the_question()
     short_speaking_samples()
     speaking_azure_and_slips()
+    model_answer_bands()
+    writing_label_repetition()
     print(f"\n{len(fails)} failed" if fails else "\nall passed")
     sys.exit(1 if fails else 0)

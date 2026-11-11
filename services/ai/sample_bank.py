@@ -26,8 +26,9 @@ For each report:
      question) - written for THIS student's results (candidate-specific
      samples, 2026-10-16): it starts once the feedback is final
      (writing_grader's on_feedback), is aimed above the student
-     (scoring.writing_aim_band: Band 9 from 8.0 up, Band 8 below - the user's
-     rule, 2026-10-17; shown as "Aimed at" and "AI example") and demonstrates
+     (scoring.aim_band: Band 9 from 8.0 up, Band 8 for 7.0-7.5, Band 7
+     below - the user's rule, 2026-11-12; shown as "Aimed at" and "AI
+     example") and demonstrates
      their priorities (Task
      Response: every part answered, ideas developed; Coherence: paragraphing,
      topic sentences, referencing; Lexical: precise collocations, not rare
@@ -602,10 +603,12 @@ def _task_rules(task_type: str) -> str:
             "This is Academic Writing Task 1: paraphrase the question, give a clear overview of the "
             "main trends, differences or stages, then select and compare the key features with "
             "accurate figures. Use ONLY the data shown in the question and the visual, reported "
-            "accurately - with a DATA SHEET, only its VERIFIED figures, never an UNCERTAIN one - and give no "
-            "personal opinion. A category whose figure is UNCERTAIN is still described, in words and without a "
-            "number (\"well above the others\", \"slightly higher\"); the answer never says that a figure is "
-            "missing, not given, not shown, unclear or verified - it reads as a writer's report. A gap narrowed or "
+            "accurately - with a DATA SHEET, only the figures it confirms, never one it marks UNCERTAIN - and "
+            "give no personal opinion. A category whose figure is marked UNCERTAIN is still described, in words "
+            "and without a number (\"well above the others\", \"slightly higher\"); the answer never mentions the "
+            "sheet, its checks or a figure being missing, unclear or uncertain - it reads as a writer's report "
+            "(2026-11-12: the instruction's own word \"verified\" turned up in answers and cost re-writes). A gap "
+            "narrowed or "
             "widened only when the sheet's first and last figures show it. For a process or a cycle, describe the stages in natural language, as a writer "
             "would (\"the bamboo is first planted in spring and harvested in autumn\"): never copy the diagram's "
             "labels in Title Case (\"running from Plant bamboo plants (Spring) to Finished clothing products\") "
