@@ -8,6 +8,8 @@ message, with a fake Telegram connection so nothing reaches Telegram:
 cases.json: [{"name", "kind": "task1" | "task2" | "speaking", ...}]
   task1:    "prompt_text", "answer_text", "chart": path
   task2:    "prompt_text", "answer_text"
+  both:     "answer_source": "photo" | "file" (optional) - the answer's text replayed as the student
+            confirmed it from that source (no OCR again)
   speaking: "part": "part3", "questions": [...], "audio": path (one recording),
             "user": id (optional), "exclude_anchor": id (a recording that is
             itself a scoring anchor is scored without it)
@@ -72,8 +74,8 @@ async def run(cases: list[dict], out: Path, uid: int) -> None:
     real_wverify, real_sverify, real_corr = (writing_grader._verify_call, speaking_grader.verify_call,
                                             speaking_marking.self_correction)
 
-    async def wverify(source_text, items, vocabulary=None):
-        verdicts, words = await real_wverify(source_text, items, vocabulary)
+    async def wverify(source_text, items, vocabulary=None, model=None):
+        verdicts, words = await real_wverify(source_text, items, vocabulary, model=model)
         for i, _, wrong, correct, _why, crit, _note in items:
             kind, crit2, reason, *_ = verdicts.get(i, ("error", crit, "no verdict", None))
             flags.append({"wrong": wrong, "correct": correct, "class": kind, "criterion": crit2, "reason": reason})
@@ -180,7 +182,14 @@ async def run(cases: list[dict], out: Path, uid: int) -> None:
                 print("   the bot did not ask for the answer:", texts(session.calls[-4:]), flush=True)
                 continue
             await state.update_data(test_run=True)  # a test submission: no coins, no progress, no word bank
-            calls = await send(sender, text=case["answer_text"])
+            if case.get("answer_source", "text") != "text":
+                # a photo/file answer replayed as the student confirmed its text: same source, no OCR again
+                await state.update_data(answer_candidate_text=case["answer_text"], answer_file_path=None,
+                                        answer_source=case["answer_source"], _confirm_field="answer")
+                await state.set_state(WritingStates.confirming_answer)
+                calls = await press(sender, CB_CONFIRM)
+            else:
+                calls = await send(sender, text=case["answer_text"])
             table = WritingSubmission
         else:
             part_cb = next(cb for cb, part in PART_CALLBACKS.items() if part == case.get("part", "part3"))
@@ -222,6 +231,8 @@ async def run(cases: list[dict], out: Path, uid: int) -> None:
             "criterion_notes": {c["key"]: c["note"] for c in report.criteria},
             "progress": captured.get("progress"),
             "cost": (data.get("cost") or {}).get("total_usd"),
+            "cost_by": (data.get("cost") or {}).get("by_purpose"),
+            "seconds": data.get("seconds"),
         }
         if kind == "speaking":
             result["model_answers"] = [{"label": a["label"], "alternative": a.get("alternative"), "words": a["words"],
