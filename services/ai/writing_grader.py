@@ -1383,8 +1383,12 @@ async def _score_once(task_type, prompt_text, answer_text, prompt_images, sheet:
         if out[k] == 9 and found(k) and reason(k, found(k)):
             logger.info("Score %s 9 -> 8: its checklist found %s", k, found(k))
             out[k] = 8.0
-        elif out[k] == 8 and k != "CC" and (task_full if k == "TR_or_TA" else wide or checked is None) and looked(k) \
-                and not reason(k, judged.weaknesses + found(k)):
+        elif out[k] == 8 and k != "CC" and looked(k) and not reason(k, judged.weaknesses + found(k)) \
+                and ((task_full and not any(w.strip() for w in judged.weaknesses)) if k == "TR_or_TA"
+                     else wide or checked is None):
+            # Task: only when the run named no weakness at all (2026-11-11, #153: "depth could be further
+            # expanded" and "some points could be probed further" were lifted to Task 9 in all three runs - the
+            # teachers' 7.0-7.5 essay came out 8.0; Task 9 is "explored in depth")
             # only an 8 is lifted: a 6 or 7 whose reason came back unquoted stays (2026-10-29: #60's and
             # #62's Coherence 6-7 -> 9 with "linking is basic and repetitive" as their reason). Never
             # Coherence, and Lexical/Grammar only with a wide range shown (the teachers, 2026-11-09: a

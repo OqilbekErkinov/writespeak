@@ -952,11 +952,12 @@ def official_descriptors() -> None:
     # Task Achievement 8 -> 9 only with the word minimum, no Task mistake and a clear overview (#137)
     long_report = ("In 2010 sales rose to 40%, while costs fell to 20%, so the gap widened over the period. " * 12).strip()
 
-    def task_run(overview="clear", checked=None):
+    def task_run(overview="clear", checked=None, weak=()):
         def item(key):
             items = g.CHECKLISTS[key]["task1"] if key == "TR_or_TA" else g.CHECKLISTS[key]
             return schemas.CriterionJudgement(checklist=[schemas.CheckFinding(item=i, found=False, quote="")
-                                                         for i in items], strengths=[], weaknesses=[], band=8, note="n")
+                                                         for i in items], strengths=[],
+                                              weaknesses=list(weak) if key == "TR_or_TA" else [], band=8, note="n")
         scoring = schemas.WritingScoring(TR_or_TA=item("TR_or_TA"), CC=item("CC"), LR=item("LR"), GRA=item("GRA"),
                                          overview=overview)
 
@@ -974,6 +975,9 @@ def official_descriptors() -> None:
     check("...not with a Task mistake on the checked list",
           task_run(checked=[NS(criterion="TR", wrong="sales rose to 40%", correct="x", severity="error",
                                unclear=False, less_common=False)])["TR_or_TA"] == 8)
+    check("...not when the run names a weakness, quoted or not (#153: 'depth could be further expanded' -> Task 9)",
+          task_run(checked=[], weak=["Depth could be further expanded (e.g., consumer choice) but coverage is "
+                                     "sufficient for the task."])["TR_or_TA"] == 8)
 
 
 def paid_run_fixes() -> None:
