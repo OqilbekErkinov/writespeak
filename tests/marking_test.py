@@ -1369,6 +1369,59 @@ def short_speaking_samples() -> None:
     check("...nor a full-test price", "Part 1+2+3" not in price_list("uz") and "{full}" not in price_list("ru"))
 
 
+def speaking_azure_and_slips() -> None:
+    """2026-11-11: Pronunciation from Azure's scores, calibrated on the teachers' six checks; a Lexical /
+    Grammar band whose only reasons are slips is at least 8 (#42's Grammar 7 for "the age" - the teachers: 9)."""
+    from services.ai.pronunciation import Assessment
+    from services.ai.speaking_grader import Evidence, SessionItem, measured_pronunciation
+    from services.ai.voice import VoiceMetrics
+
+    def az(accuracy, prosody):
+        return Assessment(seconds=30, accuracy=accuracy, fluency=85, completeness=97, prosody=prosody, pron=85,
+                          words=[])
+
+    # the teachers' Pronunciation for #38-43 and Azure's (accuracy, prosody) on the same answers
+    measured = [(az(93, 78), 6), (az(94, 79), 6), (az(93, 73), 5), (az(93, 80), 6), (az(99, 86), 8), (az(99, 88), 8)]
+    got = [measured_pronunciation(a) for a, _ in measured]
+    check("Azure's scores give the teachers' Pronunciation on all six checks", got == [b for _, b in measured], got)
+    check("...without prosody, accuracy alone", measured_pronunciation(az(99, None)) == 9.0)
+
+    text = "I think the biggest one is probably the age, and older people prefer the prevalent genres."
+    items = [SessionItem(qid="Q1", part="part3", question="What films do people like?", audio=_audio(text))]
+    metrics = VoiceMetrics(speaking_seconds=8, words=16, wpm=120, fillers=0, filler_types=[], long_pauses=0,
+                           mid_sentence_pauses=0, longest_pause=None, longest_pause_answer=None)
+    slip = NS(wrong="the age", correct="age", criterion="LR", severity="slip", unclear=False)
+    error = NS(wrong="prefer the prevalent", correct="prefer prevalent", criterion="GRA", severity="error",
+               unclear=False)
+
+    def run(weaknesses, checked, pron=None):
+        async def call(purpose, max_tokens, messages, response_format, model=None):
+            seven = schemas.SpeakingJudgement(strengths=[], weaknesses=weaknesses, band=7, note="n")
+            return NS(choices=[NS(message=NS(parsed=schemas.SpeakingScoring(FC=seven, LR=seven, GRA=seven, P=7)))])
+        real = speaking_grader.parse_call
+        speaking_grader.parse_call = call
+        try:
+            return asyncio.run(speaking_grader.score_session("part3", items, Evidence(metrics, pron, None),
+                                                             checked=checked))[0]
+        finally:
+            speaking_grader.parse_call = real
+
+    only_slip = run(['Article slip: "the age" instead of "age"'], [slip])
+    check("Grammar / Lexis 7 whose only reason is a slip: 8 (Fluency untouched)",
+          only_slip["GRA"] == 8 and only_slip["LR"] == 8 and only_slip["FC"] == 7, only_slip)
+    with_error = run(['Article slip: "the age" instead of "age"'], [slip, error])
+    check("...a checked Grammar error keeps Grammar 7", with_error["GRA"] == 7 and with_error["LR"] == 8, with_error)
+    unquoted = run(['Limited range of complex structures'], [slip])
+    check("...an unquoted range limitation stands", unquoted["GRA"] == 7 and unquoted["LR"] == 7, unquoted)
+    more = run(['"the age" and "older people prefer" are weak'], [slip])
+    check("...a quote of more than the slip stands", more["GRA"] == 7, more)
+    measured_p = run([], [], pron=az(99, 86))
+    check("measured Pronunciation is Azure's calibrated band, not the runs' 7", measured_p["P"] == 8, measured_p)
+    check("the scoring guide: fillers are never lexical repetition; one developed view is a developed Part 3 answer",
+          "never count them as lexical repetition" in speaking_grader._scoring_system("part3", False)
+          and "several separate ideas are not required" in speaking_grader._scoring_system("part3", False))
+
+
 if __name__ == "__main__":
     writing()
     round2()
@@ -1382,5 +1435,6 @@ if __name__ == "__main__":
     uzbek_vocabulary()
     essay_in_the_question()
     short_speaking_samples()
+    speaking_azure_and_slips()
     print(f"\n{len(fails)} failed" if fails else "\nall passed")
     sys.exit(1 if fails else 0)

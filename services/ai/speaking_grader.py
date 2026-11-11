@@ -176,7 +176,8 @@ PART_NOTES = {
     "card, covering its points. Score sustained, organised speech; a talk well under a minute limits "
     "Fluency & Coherence.",
     "part3": "This is Speaking PART 3: abstract discussion questions. Good answers develop, justify "
-    "and compare ideas, not just describe personal experience.",
+    "and compare ideas, not just describe personal experience. One view developed with reasons or examples "
+    "is a developed answer - several separate ideas are not required.",
     "full": "This is a FULL Speaking test: Part 1 (short answers on familiar topics), Part 2 (a 1-2 "
     "minute long turn on a cue card) and Part 3 (abstract discussion). Score the whole performance.",
 }
@@ -287,8 +288,9 @@ def evidence_text(items: list[SessionItem], ev: Evidence, for_scoring: bool = Fa
             f"- accuracy {p.accuracy:.0f}, fluency {p.fluency:.0f}, completeness {p.completeness:.0f}"
             + (f", prosody (stress, intonation, rhythm) {p.prosody:.0f}" if p.prosody is not None else "") + ".",
             "- lowest-scoring words: " + (", ".join(f"{w.word} {w.accuracy:.0f}" for w in low) or "none") + ".",
-            "As a rough guide only: accuracy and prosody in the 90s fit band 8-9, the 80s band 7, the 70s "
-            "band 6, the 60s band 5, lower band 4 - weigh it together with the descriptors.",
+            "As a guide (calibrated on teachers' bands): accuracy 98+ with prosody 85+ fits band 8-9; "
+            "accuracy 93-94 with prosody 76-81 band 6; prosody in the low 70s band 5 - the Pronunciation band "
+            "itself is set from these scores by software.",
         ]
     else:
         lines.append("PRONUNCIATION IS NOT MEASURED this time: software sets its band from the other three "
@@ -299,7 +301,7 @@ def evidence_text(items: list[SessionItem], ev: Evidence, for_scoring: bool = Fa
 SPOKEN_FLUENCY = """HOW EXAMINERS HEAR SPEECH:
 - Fillers and discourse markers (um, uh, you know, I mean, basically, so, well, like, right, actually) \
 are part of natural, fluent speech at every band, Band 9 included. Never lower Fluency & Coherence \
-for how many there are.
+for how many there are, and never count them as lexical repetition or vague wording either.
 - A pause at the start of an answer, between sentences or before a new idea is thinking about \
 content - never a fault. Only hesitation in the middle of a sentence while searching for a word or a \
 grammatical form counts against Fluency.
@@ -352,6 +354,25 @@ SHORT_LENGTH = {
     "part3": "in Part 3 a view supported by a reason, an example or a contrast is developed; an idea stated "
              "but not explained, justified or supported is undeveloped",
 }
+
+
+_P_BANDS = {"prosody": [[90, 9], [85, 8], [82, 7], [76, 6], [70, 5], [0, 4]],
+            "accuracy": [[98, 9], [96, 8], [94, 7], [90, 6], [85, 5], [0, 4]]}
+
+
+def measured_pronunciation(pron: Assessment) -> float:
+    """The Pronunciation band from Azure's scores (config "pronunciation_bands", calibrated on the
+    teachers' bands 2026-11-11): the lower of the prosody band and the accuracy band."""
+    table = {**_P_BANDS, **{k: v for k, v in (speaking_config().get("pronunciation_bands") or {}).items()
+                            if k in _P_BANDS}}
+
+    def band(score: float, steps: list) -> float:
+        return float(next((b for least, b in steps if score >= least), steps[-1][1]))
+
+    found = [band(pron.accuracy, table["accuracy"])]
+    if pron.prosody is not None:
+        found.append(band(pron.prosody, table["prosody"]))
+    return min(found)
 
 
 def short_scoring_on() -> bool:
@@ -640,7 +661,7 @@ async def parse_call(purpose: str, max_tokens: int, messages: list[dict], respon
 
 
 async def score_session(part: str, items: list[SessionItem], ev: Evidence, evidence: str = "",
-                        acceptable: list[str] = ()) -> tuple[dict[str, float], dict[str, str]]:
+                        acceptable: list[str] = (), checked: list = ()) -> tuple[dict[str, float], dict[str, str]]:
     """(the median of SCORE_RUNS scoring runs, whole bands {"FC", "LR",
     "GRA", "P"}; each band's note, from a run that gave it). `evidence`: the
     checked mistakes (mistake_evidence); `acceptable`: what was found
@@ -651,6 +672,19 @@ async def score_session(part: str, items: list[SessionItem], ev: Evidence, evide
 
     spoken = " ".join(item.audio.text for item in items)
     low = canon(spoken).lower()
+    slipped = [canon(m.wrong).lower().strip(" .,") for m in checked if m.severity == "slip"]
+
+    def slips_only(weaknesses: list[str], key: str) -> bool:
+        """Every reason given quotes only slips, and the criterion has no checked error: the descriptors'
+        9 allows slips ("precise and accurate apart from slips"), so a slip never holds it below 8
+        (2026-11-11: #42's Grammar 7 for "the age" said twice - the teachers gave it 9)."""
+        if not weaknesses or not slipped or any(m.criterion == key and m.severity != "slip" for m in checked):
+            return False
+        for w in weaknesses:
+            quotes = _real_quotes(w, low, [])
+            if not quotes or not all(any(q in s or s in q for s in slipped) for q in quotes):
+                return False  # an unquoted reason (a range limitation) or a quote of more than a slip stands
+        return True
     # in the user message: the system prompt stays the cached prefix
     short = short_sample_note(part, items) if short_scoring_on() else ""
     messages = [
@@ -672,6 +706,9 @@ async def score_session(part: str, items: list[SessionItem], ev: Evidence, evide
         for k in ("FC", "LR", "GRA"):
             j = getattr(parsed, k)
             out[k] = whole_band(j.band)
+            if k != "FC" and out[k] < 8 and slips_only(j.weaknesses, k):
+                logger.info("Speaking %s %g -> 8: its only reasons are slips (%s)", k, out[k], j.weaknesses)
+                out[k] = 8.0
             if out[k] == 8 and not evidenced(j.weaknesses, spoken, acceptable):  # only an 8, as in Writing
                 # Lexical Resource / Grammar 9 needs what 9 is - idiomatic, precise language; a wide range of
                 # structures - quoted from the answers, not only no weakness quoted (2026-11-11: with little to
@@ -688,6 +725,12 @@ async def score_session(part: str, items: list[SessionItem], ev: Evidence, evide
     bands, runs = await median_of_runs(once, SCORE_KEYS, label=f"speaking {part}")
     if ev.pron is None:  # not measured: never a band lowered without evidence
         bands["P"] = whole_band((bands["FC"] + bands["LR"] + bands["GRA"]) / 3)
+    else:  # measured: the calibrated band from Azure's scores, not the runs' reading of them
+        measured = measured_pronunciation(ev.pron)
+        if measured != bands["P"]:
+            logger.info("Speaking Pronunciation %g -> %g (Azure accuracy %.0f, prosody %s)", bands["P"], measured,
+                        ev.pron.accuracy, "-" if ev.pron.prosody is None else f"{ev.pron.prosody:.0f}")
+        bands["P"] = measured
     notes = {k: next((r["_notes"][k] for r in runs if whole_band(r[k]) == bands[k] and r["_notes"].get(k)), "")
              for k in ("FC", "LR", "GRA")}
     return bands, notes
@@ -952,7 +995,7 @@ async def grade_speaking(part: str, items: list[SessionItem], ev: Evidence, prac
     strong = [seg.text.strip() for answer in feedback.answers for seg in answer.segments if seg.type == "good"]
     scores, notes = await score_session(part, items, ev, mistake_evidence(items, checked, alternatives,
                                                                           self_corrected, strong),
-                                        [a["wrong"] for a in alternatives] + self_corrected)
+                                        [a["wrong"] for a in alternatives] + self_corrected, checked)
     scores, raised = speaking_floors(items, scores, checked, strong)
     if raised:
         logger.info("Band floors (speaking %s): %s", part, "; ".join(raised))

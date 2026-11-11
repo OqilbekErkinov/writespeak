@@ -11,6 +11,11 @@
     "_scoring_rules": "true: the scoring runs are told brevity is no Lexical Resource or Grammar reason, and the mistake density is counted over at least 'words' words. Switched OFF 2026-11-11 after the teachers' six checks: it lifted #38 6.5 -> 8.0 and #39 7.0 -> 9.0 (the teachers: 6.5 and 7.0) - with little to quote, the weakness lists came back empty and 8 became 9. The official 9.0 recording's single answers did rise (85 words 6.5 -> 8.0). Measure on the teachers' checks before switching it on again.",
     "_no_floor": "Tried and dropped the same day: a no-mistake floor of 8 for a short sample lifted a basic answer ('It is fun. We eat good food.', rightly Lexical 5 / Grammar 5) to 7.0 - no mistake is not a wide range."
   },
+  "pronunciation_bands": {
+    "_about": "Pronunciation from Azure's measurement (services/ai/pronunciation.py): the lower of the prosody band and the accuracy band, each the first [least score, band] it reaches; accuracy alone when prosody isn't returned. Calibrated 2026-11-11 on the teachers' six checks (#38-43, Pronunciation 6, 6, 5, 6, 8, 8): their 8s had accuracy 99 and prosody 86-88, their 6s accuracy 93-94 and prosody 78-80, their 5 prosody 73 - 6 of 6 match. The old guide ('the 90s fit 8-9, the 80s 7') was a band too high in the middle. Re-check with more teacher-marked checks.",
+    "prosody": [[90, 9], [85, 8], [82, 7], [76, 6], [70, 5], [0, 4]],
+    "accuracy": [[98, 9], [96, 8], [94, 7], [90, 6], [85, 5], [0, 4]]
+  },
   "anchors": {
     "_about": "Recordings with their OFFICIAL IELTS Speaking band shown to every scoring run (transcripts in data/calibration/speaking_anchors.json). real9-p3-travel: a candidate with an official 9.0 (Speaking 9.0), Part 3, six travel questions - added by the academic lead on 2026-10-27.",
     "ids": ["real9-p3-travel"],
