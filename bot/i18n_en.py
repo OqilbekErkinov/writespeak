@@ -50,6 +50,7 @@ EN: dict[str, str] = {
     "writing.send_correct_text": "Please type and send the correct text:",
     "writing.send_answer": "✅ Got it.\n\n✏️ Now send your answer (at least {min_words} words).",
     "report.ai_note": "ℹ️ This band was given by AI and may differ from an official IELTS exam result by about ±0.5.",
+    "speaking.short_sample": "📏 This band comes from a short answer ({words} words), so it is approximate. For a more accurate band, say more in one check: Part 1 — 4–5 questions, Part 2 — 1–2 minutes, Part 3 — 3–4 questions.",
     "writing.honest_note":"🤝 <b>Please write it yourself.</b> Don't send a text written or corrected by ChatGPT or another AI — we grade your <b>real</b> level. An AI-corrected essay gets a wrong, inflated band and hides your mistakes, and there is no AI in the exam.",
     "speaking.honest_note": "🤝 <b>Please speak for yourself.</b> Don't read out an answer written by ChatGPT or another AI — we grade your <b>real</b> speaking. A script read aloud gives a wrong band and hides your mistakes, and the exam won't let you do that.",
     "writing.wrong_section": "⚠️ This looks like a <b>{section}</b> question, but you are in the other section. Marked against the wrong criteria, the band would be wrong.\n\nMark it in the {section} section? No coins have been taken.",

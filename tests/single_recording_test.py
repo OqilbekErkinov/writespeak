@@ -469,8 +469,10 @@ async def part2_bot() -> None:
           all(6.5 < a.duration < 9.5 for a in g["audios"]), [round(a.duration, 1) for a in g["audios"]])
     check("[one] the gaps between answers are no pauses", sum(len(a.pauses) for a in g["audios"]) == 0,
           [[round(p.seconds, 1) for p in a.pauses] for a in g["audios"]])
-    check("[one] the report says the answers were split from one recording",
-          g["report"].notices == [one.NOTICE_ONE_RECORDING], g["report"].notices)
+    check("[one] the report says the answers were split from one recording (and, short, that the band is "
+          "approximate - 2026-11-11)", g["report"].notices[0] == one.NOTICE_ONE_RECORDING
+          and all(n.startswith("This band comes from a short answer") for n in g["report"].notices[1:]),
+          g["report"].notices)
     sub = await last_submission()
     meta = (sub.report_data or {}).get("one_recording") or {}
     check("[one] saved: the split, the pieces, the questions as sent, the whole recording as audio",
@@ -509,7 +511,8 @@ async def part2_bot() -> None:
           len(documents(calls)) == 1 and [q["text"] for q in g["questions"]] == [p1[0], p1[1], p1[3]],
           [q["text"] for q in g["questions"]])
     check("[missing] the report names the question with no answer",
-          g["report"].notices[1:] == [one.NOTICE_NO_ANSWER.format(question=p1[2])], g["report"].notices)
+          [n for n in g["report"].notices[1:] if not n.startswith("This band comes from a short answer")]
+          == [one.NOTICE_NO_ANSWER.format(question=p1[2])], g["report"].notices)
 
     # 5. An uncertain split corrected with the student's own times.
     graded.clear()

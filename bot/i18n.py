@@ -215,6 +215,12 @@ _T: dict[str, dict[str, str]] = {
         "ru": "ℹ️ Оценка выставлена с помощью искусственного интеллекта (ИИ) и может отличаться от балла "
         "официального экзамена IELTS примерно на ±0.5.",
     },
+    "speaking.short_sample": {
+        "uz": "📏 Bu baho qisqa javob asosida ({words} so'z) — taxminiy. Aniqroq baho uchun bitta tekshiruvda "
+        "ko'proq gapiring: Part 1 — 4–5 savol, Part 2 — 1–2 daqiqa, Part 3 — 3–4 savol.",
+        "ru": "📏 Оценка по короткому ответу ({words} слов) — приблизительная. Для более точной оценки говорите "
+        "больше за одну проверку: Part 1 — 4–5 вопросов, Part 2 — 1–2 минуты, Part 3 — 3–4 вопроса.",
+    },
     "speaking.honest_note": {
         "uz": "🤝 <b>Iltimos, o'zingiz gapiring.</b> ChatGPT yoki boshqa AI yozib bergan javobni o'qimang — biz "
         "sizning <b>haqiqiy</b> nutqingizni baholaymiz. Tayyor matnni o'qisangiz, ball noto'g'ri chiqadi va "

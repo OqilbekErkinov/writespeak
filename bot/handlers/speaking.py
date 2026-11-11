@@ -102,6 +102,7 @@ from services.ai import single_recording as one, tts, usage
 from services.ai.essay_marking import canon
 from services.ai.schemas import VocabularyItem
 from services.ai.speaking_check import run_check
+from services.ai.speaking_grader import SHORT_SAMPLE_NOTICE, short_sample_size
 from services.ai.speaking_marking import PART_NAMES, build_progress
 from services.ai.transcription import concat_mp3, ensure_mp3
 from services.ai.voice import to_wav16k, wav_seconds
@@ -484,7 +485,8 @@ async def _grade(
                 transcribed=transcribed,
             )
         report = check.report
-        report.notices = list(notices)
+        short_words = short_sample_size(part, check.items)  # one short answer: the band is approximate
+        report.notices = list(notices) + ([SHORT_SAMPLE_NOTICE.format(words=short_words)] if short_words else [])
         transcripts = [item.audio.text for item in check.items]
         repeat = _find_resubmission(sessions, audio_hash, transcripts)
         progress = build_progress(
@@ -585,6 +587,8 @@ async def _grade(
                else t("writing.done_caption_clean", lang, band=report.overall_band))
     if new_words:
         caption += "\n" + t("vocab.added_after_check", lang, count=new_words)
+    if short_words:
+        caption += "\n\n" + t("speaking.short_sample", lang, words=short_words)
     await processing_msg.delete()
     await stickers.send(message.bot, user_id, stickers.for_result(report.overall_band, found))  # the Gotcha moment
     await message.answer_document(

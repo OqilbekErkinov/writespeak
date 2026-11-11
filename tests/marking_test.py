@@ -1299,6 +1299,15 @@ def short_speaking_samples() -> None:
     check("...no mistakes below 9: the next band comes from the priorities",
           "No mistakes that need fixing" in rendered[1] and "Your next band comes from the priorities" in rendered[1])
 
+    check("a short sample's report says the band is approximate (the user, 2026-11-11)",
+          speaking_grader.short_sample_size("part3", short) == words
+          and speaking_grader.short_sample_size("part3", long) is None
+          and speaking_grader.short_sample_size("full", short) is None
+          and f"({words} words), so it is approximate" in speaking_grader.SHORT_SAMPLE_NOTICE.format(words=words))
+    from bot.i18n import t
+    check("...and so does the bot's message, in every language",
+          all(f"{words} " in t("speaking.short_sample", lang, words=words) and "Part 3" in
+              t("speaking.short_sample", lang, words=words) for lang in ("uz", "ru", "en")))
     from bot.keyboards.speaking_part_kb import CB_FULL_TEST, speaking_part_kb
     datas = [b.callback_data for row in speaking_part_kb("uz").inline_keyboard for b in row]
     check("the Speaking menu has no Full test button any more", CB_FULL_TEST not in datas, datas)

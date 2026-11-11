@@ -311,6 +311,18 @@ SHORT_LENGTH = {
 }
 
 
+def short_sample_size(part: str, items: list[SessionItem]) -> int | None:
+    """The spoken words of a short sample (a one-question check), None for a long one or a full test -
+    its report says the band is approximate (the user, 2026-11-11)."""
+    words = sum(item.audio.word_count for item in items if not item.audio.no_speech)
+    return words if part != "full" and 0 < words < short_sample_words() else None
+
+
+SHORT_SAMPLE_NOTICE = ("This band comes from a short answer ({words} words), so it is approximate. For a more "
+                       "accurate band, say more in one check: Part 1 - 4-5 questions, Part 2 - 1-2 minutes, "
+                       "Part 3 - 3-4 questions.")
+
+
 def short_sample_note(part: str, items: list[SessionItem]) -> str:
     """The scoring runs' note for a short sample (a one-question check), "" otherwise."""
     spoken = [item for item in items if not item.audio.no_speech]
