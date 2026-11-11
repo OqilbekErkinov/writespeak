@@ -360,6 +360,36 @@ def acceptance_60_62() -> None:
     check("...'surpassed' on a timeline is still overtaking: always ahead is no overtaking",
           bool(comparison_claims("Washington surpassed Columbia in 1970.", oregon)))
 
+    # 2026-11-11: true sentences of model answers rejected - the claim read against another clause's category
+    # or year (#146), and "the biggest fall" read as the biggest level (#148)
+    clinics = {"blocks": [{**base, "visual_type": "line", "title": "Patients at four clinics", "units": "patients per week", "time_points": [
+        "2010", "2012", "2014", "2016"], "values": cells(
+        (s, p, v) for s, row in (("Birth control", (240, 280, 180, 240)), ("Eye", (85, 150, 250, 355)),
+                                 ("Diabetic", (65, 90, 90, 180)), ("Dental", (95, 60, 110, 125)))
+        for p, v in zip(("2010", "2012", "2014", "2016"), row))}]}
+    spending = {"blocks": [{**base, "visual_type": "bar", "title": "Weekly spending by families", "units": "% of weekly income", "values": cells(
+        (y, c, v) for c, (a, b) in (("Food", (35, 17)), ("Housing", (10, 19)), ("Clothing and footwear", (10, 5)),
+                                    ("Transport", (8, 14)), ("Leisure", (9, 22)))
+        for y, v in (("1968", a), ("2018", b)))}]}
+    for sentence, visual, wrong in (
+            ("Overall, the eye clinic showed the steepest rise while birth control ended near its 2010 level.",
+             clinics, False),
+            ("Birth control finished close to its 2010 level; by 2016 the eye clinic had the largest weekly total.",
+             clinics, False),
+            ("Overall, the dental clinic showed the steepest rise while birth control ended near its 2010 level.",
+             clinics, True),
+            ("Birth control finished close to its 2010 level; by 2016 the dental clinic had the largest total.",
+             clinics, True),
+            ("Families spent about 35% on food in 1968 but about 17% in 2018, the biggest fall of 18 points.",
+             spending, False),
+            ("Spending on housing in 1968 and 2018 saw the biggest fall.", spending, True),
+            ("In 2018, food had the largest share.", spending, True)):
+        check(f"comparison by its own clause (2026-11-11) {'caught' if wrong else 'kept'}: {sentence[:60]}",
+              bool(comparison_claims(sentence, visual)) == wrong, comparison_claims(sentence, visual))
+    from services.ai.schemas import SheetBlock
+    check("...the test visuals are valid sheets (else nothing is checked at all)",
+          all(SheetBlock.model_validate(b) for v in (clinics, spending) for b in v["blocks"]))
+
     # #128: "at slightly above 80%" (New Zealand 80%, Australia 83%) -> "at around 80%" is a reader's rounding
     from services.ai.visual_check import protected_mistake
     q128 = "The table and pie chart give information about the population in Australia."

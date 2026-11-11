@@ -810,7 +810,7 @@ def examiner_rules() -> None:
 
     calls = []
 
-    async def fake_verify(source, items, vocabulary=None):
+    async def fake_verify(source, items, vocabulary=None, model=None):
         calls.append(([i[0] for i in items], bool(vocabulary)))
         run = len(calls)
         out = {}

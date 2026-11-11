@@ -880,6 +880,22 @@ def _mentions(sentence: str, labels: set[str]) -> list[tuple[int, str]]:
     return sorted(out)
 
 
+# where one claim of a sentence ends and another begins ("the eye clinic rose most WHILE birth control ...")
+_CLAUSE_BREAK = re.compile(r";|\b(?:while|whereas|but|although|though|whilst)\b", re.IGNORECASE)
+# a rank word that names a change, not a level: "the biggest fall", "the largest increase"
+_CHANGE_AFTER = re.compile(r"\s+(?:[\w-]+\s+)?(?:rise|increase|growth|gain|jump|surge|climb|upturn|fall|decrease|decline|"
+                           r"drop|reduction|dip|slump|change|shift)s?\b", re.IGNORECASE)
+
+
+def _clause(sentence: str, at: int) -> tuple[int, int]:
+    """The (start, end) of the clause of `sentence` holding character `at`."""
+    cuts = [0] + [m.start() for m in _CLAUSE_BREAK.finditer(sentence)] + [len(sentence)]
+    for a, b in zip(cuts, cuts[1:]):
+        if a <= at < b:
+            return a, b
+    return 0, len(sentence)
+
+
 def _nearest(mentions: list[tuple[int, str]], at: int, before: bool | None = None) -> str | None:
     pool = [(abs(pos - at), label) for pos, label in mentions
             if before is None or (pos < at if before else pos > at)]
@@ -933,11 +949,21 @@ def comparison_claims(text: str, visual: dict | None) -> list[str]:
             if not mentions:
                 continue
             wrong = checked = False
+            def scoped(at: int) -> tuple[str | None, list[str]]:
+                """The category and years of the clause holding `at` (2026-11-11: "the eye clinic showed the
+                steepest rise while birth control ended near its 2010 level" was read as birth control's rise,
+                and "...its 2010 level; by 2016 the eye clinic had the largest total" as the largest in 2010)."""
+                a, b = _clause(sentence, at)
+                own = [(pos, label) for pos, label in mentions if a <= pos < b]
+                clause_years = [y for y in _YEAR_IN.findall(sentence[a:b]) if y in grid.points]
+                return _nearest(own or mentions, at), clause_years
+
             found = _BIGGEST.search(sentence)
             if found and len(grid.points) >= 2:
                 rise = re.fullmatch(_RISE, (found.group("noun") or found.group("verb")).lower()) is not None
-                who = _nearest(mentions, found.start())
-                p0, p1 = (years[0], years[-1]) if len(set(years)) >= 2 else (grid.points[0], grid.points[-1])
+                who, clause_years = scoped(found.start())
+                span = clause_years if len(set(clause_years)) >= 2 else years
+                p0, p1 = (span[0], span[-1]) if len(set(span)) >= 2 else (grid.points[0], grid.points[-1])
                 change = {}
                 for s_ in grid.series:
                     a, b = cell(s_, p0), cell(s_, p1)
@@ -967,10 +993,12 @@ def comparison_claims(text: str, visual: dict | None) -> list[str]:
                         elif all(g > sl for g, sl in gaps) or all(g < -sl for g, sl in gaps):
                             wrong = True  # always ahead, or never caught up: no overtaking
             found = _TOP.search(sentence)
+            if found and _CHANGE_AFTER.match(sentence[found.end():]):
+                found = None  # "the biggest fall": a change, checked above - not the biggest level (#148's food)
             if found and not _OWN_TOP.search(sentence) and not _ORDINAL.search(sentence[:found.start()]):
-                who = _nearest(mentions, found.start())
+                who, clause_years = scoped(found.start())
                 high = found.group("rank").lower().split()[0] in ("highest", "largest", "biggest", "most")
-                points = grid.points if _ALWAYS.search(sentence) else years or (
+                points = grid.points if _ALWAYS.search(sentence) else clause_years or (
                     grid.points if len(grid.points) == 1 else [])
                 for p in points:
                     led = leads(who, p, high)

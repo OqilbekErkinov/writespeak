@@ -931,7 +931,8 @@ Judge each item on its own; give a short reason. Return a verdict for every id."
 
 
 async def _verify_call(source_text: str, items: list[tuple],
-                       vocabulary: list[tuple[int, str, str, str, str]] | None = None) -> tuple[dict, dict]:
+                       vocabulary: list[tuple[int, str, str, str, str]] | None = None,
+                       model: str | None = None) -> tuple[dict, dict]:
     """`items`: (id, where, wrong, correct, why, criterion, correction check or "");
     `vocabulary`: (index, term, meaning, example, check or ""). Returns
     ({id: (kind, criterion, reason, fixed_correct, basis, less_common)} - items
@@ -951,8 +952,8 @@ async def _verify_call(source_text: str, items: list[tuple],
         {"role": "system", "content": VERIFY_SYSTEM},
         {"role": "user", "content": text},
     ]
-    response = await _parse("verify", VERIFY_MAX_TOKENS, messages, WritingVerdicts,
-                            effort=settings.openai_verify_reasoning_effort)
+    response = await _parse("verify" if model is None else "verify_second", VERIFY_MAX_TOKENS, messages,
+                            WritingVerdicts, effort=settings.openai_verify_reasoning_effort, model=model)
     parsed = response.choices[0].message.parsed
     if not parsed:
         return {}, {}
@@ -967,6 +968,10 @@ async def _verify_call(source_text: str, items: list[tuple],
 # came back with different lists (#137: "appear" twice an error, #138: not listed). Now two runs judge every
 # item, and a third only the items they disagree on; an item counts when most runs say error or slip.
 VERIFY_VOTES = 3
+MISSED_ID_BASE = 1000  # the missed-errors pass's finds in the one filter set: ids from here (the first pass: 1, 2, ...)
+# The second vote's model (2026-11-11, cost): None - gpt-5 like the first. Set from the measured agreement
+# with gpt-5's own second vote (see the commit); the deciding third vote is always gpt-5.
+VERIFY_SECOND_MODEL: str | None = None
 _COUNTED = ("error", "slip")
 
 
@@ -1005,7 +1010,8 @@ async def _voted_verify(source_text: str, items: list[tuple],
     they disagree on. Same return as _verify_call."""
     if not items or runs < 2:
         return await _verify_call(source_text, items, vocabulary)
-    first = await asyncio.gather(_verify_call(source_text, items, vocabulary), _verify_call(source_text, items),
+    first = await asyncio.gather(_verify_call(source_text, items, vocabulary),
+                                 _verify_call(source_text, items, model=VERIFY_SECOND_MODEL),
                                  return_exceptions=True)
     good = [r for r in first if not isinstance(r, BaseException)]
     if not good:
@@ -1093,13 +1099,14 @@ def _copied_note(copied: list[str]) -> str:
     )
 
 
-async def _parse(purpose: str, max_tokens: int, messages: list[dict], response_format, effort: str | None = None):
-    """A gpt-5 call at the grading reasoning effort (or `effort`) with an
+async def _parse(purpose: str, max_tokens: int, messages: list[dict], response_format, effort: str | None = None,
+                 model: str | None = None):
+    """A gpt-5 call (or `model`) at the grading reasoning effort (or `effort`) with an
     output-token limit. A call cut off at the limit raises
     openai.LengthFinishReasonError; its cost is logged all the same."""
     try:
         response = await parse_flex(  # the Flex tier, the default as a fallback (openai_client)
-            model=settings.openai_model_grading,
+            model=model or settings.openai_model_grading,
             messages=messages,
             response_format=response_format,
             max_completion_tokens=max_tokens,
@@ -1850,7 +1857,8 @@ async def grade_writing(
                 reason = f"Acceptable as written; «{item.correct}» is only a more common option."
         keep, correct = kind in ("error", "slip"), item.correct
         flags.append({"wrong": item.wrong, "correct": item.correct, "class": kind, "criterion": crit,
-                      "reason": reason, "less_common": less_common})
+                      "reason": reason, "less_common": less_common,
+                      "source": "missed" if label.startswith("missed") else "first"})
         if kind == "alternative" and crit != "TR":
             alternatives.append({"wrong": item.wrong, "correct": item.correct, "why": reason, "criterion": crit})
         if not keep:
@@ -1884,16 +1892,19 @@ async def grade_writing(
                         "check, or a trace of scanning (%r)", m.id, m.wrong)
             flags.append({"wrong": m.wrong, "correct": m.correct, "class": "not_a_mistake", "criterion": m.criterion,
                           "reason": "set aside by code", "less_common": False})
-    (verdicts, fixes), missed = await asyncio.gather(
-        verify([(m.id, "essay", m.wrong, m.correct, m.why, m.criterion, correction_note(m))
-                for m in feedback.mistakes if checkable(m) and m.id not in auto], words),
-        find_missed(),
-    )
+    # The first pass's mistakes and the missed-errors pass's finds go to the filter together, as one voted set
+    # (2026-11-11, cost: two sets meant two to three more calls, each with its own fixed share of reasoning);
+    # the missed finds' ids are offset so the two lists never share one.
+    missed = await find_missed()
     unfiltered_missed = missed
     missed = [x for x in missed if not question_word(x) and not data_protected(x) and not scan_noise(x)]
-    missed_verdicts, _ = await verify(
-        [(k, "essay", x.wrong, x.correct, x.why, x.criterion, correction_note(x))
-         for k, x in enumerate(missed) if checkable(x)])
+    all_verdicts, fixes = await verify(
+        [(m.id, "essay", m.wrong, m.correct, m.why, m.criterion, correction_note(m))
+         for m in feedback.mistakes if checkable(m) and m.id not in auto]
+        + [(MISSED_ID_BASE + k, "essay", x.wrong, x.correct, x.why, x.criterion, correction_note(x))
+           for k, x in enumerate(missed) if checkable(x)], words)
+    verdicts = {i: v for i, v in all_verdicts.items() if i < MISSED_ID_BASE}
+    missed_verdicts = {i - MISSED_ID_BASE: v for i, v in all_verdicts.items() if i >= MISSED_ID_BASE}
     feedback = _vocabulary_fixed(feedback, fixes, example_check)
 
     dropped, retag, severity, rewritten, less = set(auto), {}, {}, {}, {}
