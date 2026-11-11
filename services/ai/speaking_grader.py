@@ -50,7 +50,7 @@ from services.ai import usage
 from services.ai.openai_client import parse_flex
 from services.ai.pronunciation import Assessment
 from services.ai import marking_config
-from services.ai.mistake_rules import final_kind
+from services.ai.mistake_rules import distinct_slips, final_kind, small_slips
 from services.ai.schemas import SpeakingFeedback, SpeakingMissedMistakes, SpeakingScoring, SpeakingVerdicts
 from services.ai.scoring import LENIENCY_NOTE, median_of_runs, whole_band
 from services.ai.voice import CONFIDENCE_LIMIT, AnswerAudio, Pitch, VoiceMetrics
@@ -64,6 +64,7 @@ FEEDBACK_MAX_TOKENS_SHORT = 12000
 MISSED_MAX_TOKENS = 8000
 VERIFY_MAX_TOKENS = 8000
 SCORE_MAX_TOKENS = 4000
+NINE_STRENGTHS = 2  # quoted strengths a Lexical Resource / Grammar 8 needs to become a 9 (2026-11-11)
 SCORE_KEYS = ("FC", "LR", "GRA", "P")
 CONFIG = Path(__file__).resolve().parents[2] / "config" / "speaking_marking.json"
 P_NOT_MEASURED = "Not measured this time: set to the average of your other three bands."
@@ -124,6 +125,48 @@ occasional lack of clarity; understood without much effort.
 5: All the positive features of band 4 and some, not all, of band 6.
 4: Limited range; frequent lapses in rhythm; limited control of intonation and stress; frequent \
 mispronunciation causes lack of clarity; some effort needed to understand."""
+
+# The band ladders the user sent (2026-11-11): each band's key features and their impact on the listener.
+DECISION_LADDER = """\
+DECIDING EACH BAND - the descriptors' key features and their impact on the listener. Give the HIGHEST band \
+whose positive features the answers show, then check the impact on the listener. Errors decide between \
+neighbouring bands only as the lines say ("mostly accurate" is 8, "with errors" is 7); their number alone \
+never does.
+LEXICAL RESOURCE
+9: flexible and precise in all contexts, accurate, idiomatic language - meaning very clear on any topic.
+8: flexible and precise in all contexts, idiomatic language, mostly accurate - meaning very clear on any topic.
+7: some less common or idiomatic language, but with errors - meaning made clear despite the errors.
+6: enough language to talk at length and to paraphrase, errors possible - meaning clear despite \
+inappropriacies, some repetition.
+5: enough for familiar and unfamiliar topics, with errors, less able to paraphrase - meaning lost at times, \
+more repetitive.
+4: limited to familiar topics, frequent errors and repetition - not always easily understood.
+GRAMMATICAL RANGE & ACCURACY
+9: a wide range, precise and accurate apart from slips - complex ideas explained accurately, easily understood.
+8: a wide range, precise and almost always error-free - complex ideas explained accurately.
+7: a variety of structures, frequently error-free - ideas easily understood despite any errors.
+6: a mix of basic and some complex language, errors in the complex structures - mostly understood, little \
+variety.
+5: some complex structures attempted, errors more frequent - meaning not always clear, repetitive.
+4: frequent errors, repetitive structures, complex ones rare - short, repetitive responses.
+FLUENCY & COHERENCE
+9: no difficulty speaking at length on any topic - very easily understood.
+8: no difficulty speaking at length, occasional hesitation - very easily understood.
+7: able to speak at length on unfamiliar topics, some hesitation at times to find language - easily understood.
+6: struggles at times when speaking at length on unfamiliar topics - mostly understood, meaning lost at times \
+in longer responses.
+5: struggles to speak about unfamiliar topics - not always easily understood.
+4: struggles to speak at length - not always easily understood."""
+PRONUNCIATION_LADDER = """
+PRONUNCIATION
+9: a full range of features throughout - precise and subtle meaning, no effort to understand.
+8: a wide range of features used flexibly - easy to understand throughout despite occasional problems.
+7: some good use of intonation, rhythm and stress - easily understood though there are some problems.
+6: intonation and stress sometimes used well, some problems with individual sounds - mostly understood with \
+little effort, meaning lost at times.
+5: a limited range of features, some problems with rhythm, chunking and individual sounds - not always easily \
+understood, effort needed at times.
+4: a limited range, frequent problems with rhythm, chunking and sounds - frequently unclear."""
 
 PART_NOTES = {
     "part1": "This is Speaking PART 1: short questions about familiar topics. Good answers are direct "
@@ -385,6 +428,8 @@ against the IELTS Speaking Band Descriptors below.
 IELTS SPEAKING BAND DESCRIPTORS (summary):
 {BAND_DESCRIPTORS}
 
+{DECISION_LADDER}{PRONUNCIATION_LADDER if has_pron else ""}
+
 {SPOKEN_FLUENCY}
 
 {LENIENCY_NOTE}
@@ -601,9 +646,11 @@ async def score_session(part: str, items: list[SessionItem], ev: Evidence, evide
     checked mistakes (mistake_evidence); `acceptable`: what was found
     acceptable as said - quoting it is no reason for a band. An 8 whose
     weaknesses quote nothing real is a 9."""
-    from services.ai.writing_grader import evidenced  # the same rule as Writing's
+    from services.ai.essay_marking import canon
+    from services.ai.writing_grader import _real_quotes, evidenced  # the same rules as Writing's
 
     spoken = " ".join(item.audio.text for item in items)
+    low = canon(spoken).lower()
     # in the user message: the system prompt stays the cached prefix
     short = short_sample_note(part, items) if short_scoring_on() else ""
     messages = [
@@ -626,8 +673,15 @@ async def score_session(part: str, items: list[SessionItem], ev: Evidence, evide
             j = getattr(parsed, k)
             out[k] = whole_band(j.band)
             if out[k] == 8 and not evidenced(j.weaknesses, spoken, acceptable):  # only an 8, as in Writing
-                logger.info("Speaking %s %g -> 9: no quoted weakness (%s)", k, out[k], j.weaknesses)
-                out[k] = 9.0
+                # Lexical Resource / Grammar 9 needs what 9 is - idiomatic, precise language; a wide range of
+                # structures - quoted from the answers, not only no weakness quoted (2026-11-11: with little to
+                # quote, empty weakness lists lifted 6.5-7.0 speakers' short answers to 9)
+                shown = sum(bool(_real_quotes(s, low, [])) for s in j.strengths)
+                if k != "FC" and shown < NINE_STRENGTHS:
+                    logger.info("Speaking %s stays 8: no quoted weakness, but %d quoted strength(s)", k, shown)
+                else:
+                    logger.info("Speaking %s %g -> 9: no quoted weakness (%s)", k, out[k], j.weaknesses)
+                    out[k] = 9.0
             out["_notes"][k] = j.note.strip()
         return out
 
@@ -657,11 +711,12 @@ def mistake_evidence(items: list[SessionItem], checked: list, alternatives: list
         if not mine:
             lines.append(f"- {name}: none.")
             continue
-        slips = [m for m in mine if m.severity == "slip"]
+        slips = distinct_slips([m for m in mine if m.severity == "slip"])  # the same slip again counts once
         errors = [m for m in mine if m.severity != "slip"]
         density = (len(errors) + len(slips) * weight) * 100 / per
         listed = "; ".join([f"«{m.wrong}» -> «{m.correct}»" for m in errors[:10]]
-                           + [f"«{m.wrong}» -> «{m.correct}» (slip)" for m in slips[:6]])
+                           + [f"«{m.wrong}» -> «{m.correct}» (slip{', ' + str(n) + ' times' if n > 1 else ''})"
+                              for m, n in slips[:6]])
         lines.append(f"- {name}: {len(errors)} errors, {len(slips)} slips = {density:.1f} weighted per 100 words: "
                      f"{listed}")
     if alternatives:
@@ -890,6 +945,10 @@ async def grade_speaking(part: str, items: list[SessionItem], ev: Evidence, prac
             checked.append(SimpleNamespace(wrong=m.wrong, correct=m.correct, criterion=m.criterion, severity=kind,
                                            unclear=m.unclear))
 
+    # Writing's rules for slips (the academic lead, 2026-10-29), Speaking too since 2026-11-11: a correction of
+    # only an article, a full stop or a noun's number is a slip; the same slip again counts once (#42 "the age")
+    for note in small_slips(checked):
+        logger.info("Speaking severity by its correction: %s", note)
     strong = [seg.text.strip() for answer in feedback.answers for seg in answer.segments if seg.type == "good"]
     scores, notes = await score_session(part, items, ev, mistake_evidence(items, checked, alternatives,
                                                                           self_corrected, strong),

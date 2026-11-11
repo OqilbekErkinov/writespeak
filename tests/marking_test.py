@@ -185,7 +185,9 @@ def speaking() -> None:
         elif name == "SpeakingScoring":
             seen["scoring"] = text
             judged = schemas.SpeakingJudgement(strengths=['"broaden their horizons"'], weaknesses=[], band=9, note="n")
-            gra = schemas.SpeakingJudgement(strengths=[], band=8, note="Minor slips.",
+            gra = schemas.SpeakingJudgement(strengths=['"Older people may prefer comfortable trips, while younger '
+                                                       'travellers broaden"', '"both groups benefit immensely"'],
+                                            band=8, note="Minor slips.",
                                             weaknesses=['"There are so many, there\'s so much" - agreement'])
             parsed = schemas.SpeakingScoring(FC=judged, LR=judged, GRA=gra, P=9)
         else:
@@ -1237,6 +1239,42 @@ def short_speaking_samples() -> None:
     check("...the note: the linking counts for Fluency; brief but complete is never marked down; a supported "
           "view is developed", "the linking" in note and "never marked down for being brief" in note
           and "supported by a reason" in note)
+
+    # 9 needs what 9 is: an 8 with no quoted weakness becomes 9 only with 2 quoted strengths (LR / GRA)
+    def nine_run(strengths):
+        async def call(purpose, max_tokens, messages, response_format, model=None):
+            eight = schemas.SpeakingJudgement(strengths=strengths, weaknesses=[], band=8, note="n")
+            return NS(choices=[NS(message=NS(parsed=schemas.SpeakingScoring(FC=eight, LR=eight, GRA=eight, P=8)))])
+        return call
+
+    m9 = VoiceMetrics(speaking_seconds=20, words=words, wpm=130, fillers=0, filler_types=[], long_pauses=0,
+                      mid_sentence_pauses=0, longest_pause=None, longest_pause_answer=None)
+    real = speaking_grader.parse_call
+    try:
+        speaking_grader.parse_call = nine_run(['"negatively affect sleeping patterns"'])
+        one_quote, _ = asyncio.run(speaking_grader.score_session("part3", short, Evidence(m9, None, None)))
+        speaking_grader.parse_call = nine_run(['"negatively affect sleeping patterns"', '"which delays sleep"'])
+        two_quotes, _ = asyncio.run(speaking_grader.score_session("part3", short, Evidence(m9, None, None)))
+        speaking_grader.parse_call = nine_run(['"varied vocabulary"', '"good grammar"'])  # quotes not said
+        unsaid, _ = asyncio.run(speaking_grader.score_session("part3", short, Evidence(m9, None, None)))
+    finally:
+        speaking_grader.parse_call = real
+    check("8 with no quoted weakness and one quoted strength: Lexical Resource and Grammar stay 8, Fluency is 9",
+          one_quote["LR"] == 8 and one_quote["GRA"] == 8 and one_quote["FC"] == 9, one_quote)
+    check("...with two strengths quoted from the answer: 9", two_quotes["LR"] == 9 and two_quotes["GRA"] == 9,
+          two_quotes)
+    check("...'quotes' the speaker never said are no evidence", unsaid["LR"] == 8 and unsaid["GRA"] == 8, unsaid)
+
+    from services.ai.mistake_rules import small_slips
+    age = [NS(wrong="the age", correct="age", criterion="GRA", severity="error", unclear=False) for _ in range(2)]
+    small_slips(age)
+    ev_age = speaking_grader.mistake_evidence(short, age, [], [], [])
+    check("Writing's slip rules in Speaking: an article-only correction is a slip, the same slip twice counts once",
+          all(m.severity == "slip" for m in age) and "0 errors, 1 slips" in ev_age and "2 times" in ev_age, ev_age)
+    check("the scoring prompt carries the band ladders (impact on the listener); Pronunciation's only when measured",
+          "DECIDING EACH BAND" in speaking_grader._scoring_system("part1", False)
+          and "PRONUNCIATION\n9: a full range" not in speaking_grader._scoring_system("part1", False)
+          and "PRONUNCIATION\n9: a full range" in speaking_grader._scoring_system("part1", True))
 
     caps, scored = [], []
 
