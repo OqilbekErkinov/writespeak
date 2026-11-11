@@ -58,6 +58,9 @@ from services.ai.voice import CONFIDENCE_LIMIT, AnswerAudio, Pitch, VoiceMetrics
 logger = logging.getLogger(__name__)
 
 FEEDBACK_MAX_TOKENS = 24000
+# a short sample's feedback (#35-#43: 2.7-4.9k output tokens) - a runaway (2026-11-11: 24k on an 85-word
+# answer, $0.12 and minutes) is cut at half and retried sooner
+FEEDBACK_MAX_TOKENS_SHORT = 12000
 MISSED_MAX_TOKENS = 8000
 VERIFY_MAX_TOKENS = 8000
 SCORE_MAX_TOKENS = 4000
@@ -282,6 +285,41 @@ def _load_json(path: Path):
 
 def speaking_config() -> dict:
     return _load_json(CONFIG) or {}
+
+
+def short_sample_words() -> int:
+    """Under this many spoken words a check is a short sample (config "short_sample")."""
+    return int((speaking_config().get("short_sample") or {}).get("words", 150))
+
+
+SHORT_SAMPLE_NOTE = """SHORT SAMPLE: {answers} - {words} words, {seconds} of speech - far less than a full \
+test. Score the language that WAS produced as you would score the same language in a full test: precise, \
+natural and less common words and complex structures used correctly are evidence of range, and a short \
+answer that has them can be Band 8-9 for Lexical Resource and Grammar. Never lower Lexical Resource or \
+Grammar because a short answer could not show more vocabulary or more structures - "brief", "limited" or \
+"narrow range", "few complex forms" are no reasons for those two criteria; only quoted errors, or basic and \
+repeated language where precise words were needed, are. Fluency & Coherence is judged as its descriptors \
+say - hesitation while searching for language, repetition, self-correction, coherence, and the linking: \
+flexible discourse markers and connectives, or simple and repetitive ones ("and", "because", "also", "so", \
+sentence after sentence). Fillers and pauses between ideas are natural. Length counts only as the part \
+asks - {length} - and an answer complete for its part is never marked down for being brief."""
+SHORT_LENGTH = {
+    "part1": "in Part 1 a direct answer extended with a reason or an example (2-4 sentences) is complete",
+    "part2": "a Part 2 talk well under a minute is short",
+    "part3": "in Part 3 a view supported by a reason, an example or a contrast is developed; an idea stated "
+             "but not explained, justified or supported is undeveloped",
+}
+
+
+def short_sample_note(part: str, items: list[SessionItem]) -> str:
+    """The scoring runs' note for a short sample (a one-question check), "" otherwise."""
+    spoken = [item for item in items if not item.audio.no_speech]
+    words = sum(item.audio.word_count for item in spoken)
+    if part == "full" or not spoken or words >= short_sample_words():
+        return ""
+    seconds = sum(item.audio.speaking_seconds for item in spoken)
+    return SHORT_SAMPLE_NOTE.format(answers="one answer" if len(spoken) == 1 else f"{len(spoken)} answers",
+                                    words=words, seconds=_fmt_seconds(seconds), length=SHORT_LENGTH[part])
 
 
 def lead_accepted(wrong: str) -> str | None:
@@ -547,11 +585,12 @@ async def score_session(part: str, items: list[SessionItem], ev: Evidence, evide
     from services.ai.writing_grader import evidenced  # the same rule as Writing's
 
     spoken = " ".join(item.audio.text for item in items)
+    short = short_sample_note(part, items)  # in the user message: the system prompt stays the cached prefix
     messages = [
         {"role": "system", "content": _scoring_system(part, ev.pron is not None)},
         {"role": "user", "content": f"{answers_text(items, mark_uncertain=True, mark_pauses=True)}\n\n"
                                     f"{evidence_text(items, ev, for_scoring=True)}"
-                                    + (f"\n\n{evidence}" if evidence else "")},
+                                    + (f"\n\n{evidence}" if evidence else "") + (f"\n\n{short}" if short else "")},
     ]
 
     async def once() -> dict:
@@ -560,6 +599,9 @@ async def score_session(part: str, items: list[SessionItem], ev: Evidence, evide
         if parsed is None:
             raise RuntimeError("Scoring returned nothing")
         out: dict = {"P": float(parsed.P), "_notes": {}}
+        # what each run gave and why - the one place a band's reasons can be read afterwards (2026-11-11)
+        logger.info("Speaking scoring run: %s", "; ".join(
+            f"{k} {getattr(parsed, k).band} {getattr(parsed, k).weaknesses}"[:400] for k in ("FC", "LR", "GRA")))
         for k in ("FC", "LR", "GRA"):
             j = getattr(parsed, k)
             out[k] = whole_band(j.band)
@@ -583,9 +625,13 @@ def mistake_evidence(items: list[SessionItem], checked: list, alternatives: list
     spoken words (a slip counting slip_weight, as in Writing), what was
     acceptable as said, the self-corrections taken out, the strong phrases."""
     words = max(sum(item.audio.word_count for item in items), 1)
+    # a short sample's density over at least short_sample_words(): one slip in a 45-word answer was 2.2 per
+    # 100 words, the same slip in a full test 0.15 (2026-11-11)
+    per = max(words, short_sample_words())
     weight = marking_config.density()["slip_weight"]
-    lines = [f"CHECKED MISTAKES (errors and slips only; the complete list). The answers have {words} words; "
-             f"a slip counts {weight:g}."]
+    lines = [f"CHECKED MISTAKES (errors and slips only; the complete list). The answers have {words} words"
+             + (f" - a short sample, so the density below is counted over {per} words: one slip does not decide "
+                f"a band" if per > words else "") + f"; a slip counts {weight:g}."]
     for key, name in (("GRA", "Grammar (GRA)"), ("LR", "Vocabulary (LR)"), ("FLU", "Fluency (FC)")):
         mine = [m for m in checked if m.criterion == key]
         if not mine:
@@ -593,7 +639,7 @@ def mistake_evidence(items: list[SessionItem], checked: list, alternatives: list
             continue
         slips = [m for m in mine if m.severity == "slip"]
         errors = [m for m in mine if m.severity != "slip"]
-        density = (len(errors) + len(slips) * weight) * 100 / words
+        density = (len(errors) + len(slips) * weight) * 100 / per
         listed = "; ".join([f"«{m.wrong}» -> «{m.correct}»" for m in errors[:10]]
                            + [f"«{m.wrong}» -> «{m.correct}» (slip)" for m in slips[:6]])
         lines.append(f"- {name}: {len(errors)} errors, {len(slips)} slips = {density:.1f} weighted per 100 words: "
@@ -615,10 +661,13 @@ def speaking_floors(items: list[SessionItem], bands: dict[str, float], checked: 
     writing_marking.json "floors", the academic lead 2026-10-29), for answers
     of 150 words or more: a wide range and only slips - at least 8; Lexical
     Resource with a wide range, nothing unclear and errors under the Band 7
-    density - at least 7. Never Fluency or Pronunciation."""
+    density - at least 7. Never Fluency or Pronunciation. A short sample
+    (short_sample_words()) has no floor: with no mistake its range can still be
+    basic (2026-11-11: "It is fun. We eat good food." - Lexical 5, Grammar 5,
+    rightly; a no-mistake floor of 8 made it 7.0)."""
     f = marking_config.floors()
     words = sum(item.audio.word_count for item in items)
-    if words < 150 or len(strong) < f["wide_range_phrases"]:
+    if words < short_sample_words() or len(strong) < f["wide_range_phrases"]:
         return bands, []
     out, raised = dict(bands), []
     weight = marking_config.density()["slip_weight"]
@@ -672,10 +721,12 @@ async def feedback_call(part: str, items: list[SessionItem], ev: Evidence) -> Sp
         {"role": "system", "content": _feedback_system(part, ev.pron is not None)},
         {"role": "user", "content": text},
     ]
+    words = sum(item.audio.word_count for item in items)
+    cap = FEEDBACK_MAX_TOKENS_SHORT if words < short_sample_words() else FEEDBACK_MAX_TOKENS
     try:
-        response = await parse_call("feedback", FEEDBACK_MAX_TOKENS, messages, SpeakingFeedback)
+        response = await parse_call("feedback", cap, messages, SpeakingFeedback)
     except openai.LengthFinishReasonError:
-        logger.warning("Speaking feedback ran past %d output tokens - cut off", FEEDBACK_MAX_TOKENS)
+        logger.warning("Speaking feedback ran past %d output tokens - cut off", cap)
         return None
     result = response.choices[0].message.parsed
     if result is None:

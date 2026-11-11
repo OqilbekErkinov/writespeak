@@ -802,12 +802,17 @@ def build_report(
         cards.append(card)
 
     mistake_rows = []
+    first_of: dict[tuple[str, str], int] = {}  # the same wrong -> right said again: explained once (#42 "the age")
     for m in mistakes:
         tag, tag_cls = TAGS.get(m.criterion, TAGS["GRA"])
+        key = (canon(m.wrong).lower().strip(" .,"), canon(m.correct or "").lower().strip(" .,"))
+        same_as = first_of.get(key) if not m.unclear else None
+        if same_as is None and not m.unclear:
+            first_of[key] = m.n
         mistake_rows.append({
             "n": m.n, "q": items[m.q].qid, "wrong": m.wrong, "correct": m.correct, "why": m.why,
             "why_html": inline_format(m.why), "criterion": m.criterion, "tag": tag, "tag_cls": tag_cls,
-            "unclear": m.unclear, "if_you_meant": m.if_you_meant,
+            "unclear": m.unclear, "if_you_meant": m.if_you_meant, "same_as": same_as,
         })
 
     upgrade_rows, seen_up = [], set()

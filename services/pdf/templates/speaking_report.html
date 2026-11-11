@@ -222,11 +222,11 @@ table.intt td.sv { width: 66mm; padding-right: 4mm; }
 {% else %}
 <div class="mist"><div class="num">{{ m.n }}</div><div class="body">
   <div class="fix"><span class="qn-l">{{ m.q }}</span><span class="w">{{ m.wrong }}</span>{% if m.correct %} → <span class="r">{{ m.correct }}</span>{% endif %}</div>
-  <div class="why">{{ m.why_html|safe }}</div>
+  <div class="why">{% if m.same_as %}The same mistake as {{ m.same_as }}, said again.{% else %}{{ m.why_html|safe }}{% endif %}</div>
 </div><div class="side"><span class="tag {{ m.tag_cls }}">{{ m.tag }}</span></div></div>
 {% endif %}
 {% else %}
-<div class="nomist">✓ No mistakes that need fixing were found in your answers.</div>
+<div class="nomist">✓ No mistakes that need fixing were found in your answers.{% if not report.top_band %} Your next band comes from the priorities on page 1, not from fixing mistakes.{% endif %}</div>
 {% endfor %}
 {% if report.upgrades %}
 <div class="upg-box">

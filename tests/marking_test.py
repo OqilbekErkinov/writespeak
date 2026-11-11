@@ -708,7 +708,7 @@ def fair_marking() -> None:
     long_essay2 = " ".join(["Cities grow fast and many people move there."] * 30)
     judged = schemas.CriterionJudgement(checklist=[], strengths=[], weaknesses=[], band=6, note="n")
 
-    async def fake_parse(purpose, max_tokens, messages, response_format, effort=None):
+    async def fake_parse(purpose, max_tokens, messages, response_format, effort=None, model=None):
         asked.append((purpose, messages[0]["content"], messages[1]["content"]))
         if response_format is schemas.WritingFeedback:
             parsed = schemas.WritingFeedback(
@@ -1187,6 +1187,125 @@ def essay_in_the_question() -> None:
           len(spans) == 1 and "Do the advantages outweigh" in (question + "\n\n" + body)[spans[0][0]:spans[0][1]], spans)
 
 
+def short_speaking_samples() -> None:
+    """2026-11-11 (the teachers): one-question Speaking checks gave 8.5-9 speakers 6.0-7.0 - the official 9.0
+    recording's answers alone came out 8.0 (156 words), 6.5 (85) and 6.0 (53), with no mistake at all."""
+    from services.ai import speaking_marking
+    from services.ai.speaking_grader import Evidence, SessionItem
+    from services.ai.voice import VoiceMetrics
+
+    short_text = ("Modern lifestyles negatively affect sleeping patterns in several ways. People often use "
+                  "smartphones late at night, which delays sleep. As a result, many people develop irregular "
+                  "sleeping habits.")
+    short = [SessionItem(qid="Q1", part="part3", question="How do lifestyles affect sleep?", audio=_audio(short_text))]
+    long_text = " ".join([short_text] * 6)
+    long = [SessionItem(qid="Q1", part="part3", question="How do lifestyles affect sleep?", audio=_audio(long_text))]
+    words = short[0].audio.word_count
+    note = speaking_grader.short_sample_note("part3", short)
+    check("a one-answer check is a short sample: its scoring runs are told so",
+          note.startswith("SHORT SAMPLE: one answer") and f"{words} words" in note and "Part 3" in note, note[:80])
+    check("...brevity is no Lexical Resource or Grammar reason", "Never lower Lexical Resource or Grammar" in note)
+    check("...Part 1: 2-4 sentences is a complete answer",
+          "2-4 sentences" in speaking_grader.short_sample_note("part1", [SessionItem(
+              qid="Q1", part="part1", question="Do you sleep well?", audio=_audio(short_text))]))
+    check("...not for 150 words or more, nor a full test",
+          speaking_grader.short_sample_note("part3", long) == "" and speaking_grader.short_sample_note("full", short) == "")
+
+    error = NS(wrong="a family time", correct="family time", criterion="LR", severity="error", unclear=False)
+    ev_short = speaking_grader.mistake_evidence(short, [error], [], [], [])
+    ev_long = speaking_grader.mistake_evidence(long, [error], [], [], [])
+    check("one mistake in a short answer: density over 150 words, not 2+ per 100 words",
+          "counted over 150 words" in ev_short and "= 0.7 weighted per 100 words" in ev_short, ev_short)
+    check("...a long sample keeps its own word count", "short sample" not in ev_long
+          and f"= {100 / long[0].audio.word_count:.1f} weighted" in ev_long, ev_long)
+
+    bands = {"FC": 7.0, "LR": 5.0, "GRA": 5.0, "P": 6.0}
+    strong = ["visit new places", "good food", "with my family", "new places"]
+    floored, raised = speaking_grader.speaking_floors(short, bands, [], strong)
+    check("short sample: no band floor - no mistake is not a wide range ('It is fun. We eat good food.' stays 5)",
+          floored == bands and not raised, (floored, raised))
+    check("...the note: the linking counts for Fluency; brief but complete is never marked down; a supported "
+          "view is developed", "the linking" in note and "never marked down for being brief" in note
+          and "supported by a reason" in note)
+
+    caps, scored = [], []
+
+    async def fake_call(purpose, max_tokens, messages, response_format, model=None):
+        name = response_format.__name__
+        if name == "SpeakingFeedback":
+            caps.append(max_tokens)
+            return NS(choices=[NS(message=NS(parsed=None))])
+        scored.append(messages[-1]["content"])
+        judged = schemas.SpeakingJudgement(strengths=[], weaknesses=[], band=9, note="n")
+        return NS(choices=[NS(message=NS(parsed=schemas.SpeakingScoring(FC=judged, LR=judged, GRA=judged, P=9)))])
+
+    metrics = VoiceMetrics(speaking_seconds=20, words=words, wpm=130, fillers=0, filler_types=[], long_pauses=0,
+                           mid_sentence_pauses=0, longest_pause=None, longest_pause_answer=None)
+    real = speaking_grader.parse_call
+    speaking_grader.parse_call = fake_call
+    try:
+        for items in (short, long):
+            try:
+                asyncio.run(speaking_grader.feedback_call("part3", items, Evidence(metrics, None, None)))
+            except RuntimeError:
+                pass  # the fake feedback parses to nothing
+        asyncio.run(speaking_grader.score_session("part3", short, Evidence(metrics, None, None)))
+    finally:
+        speaking_grader.parse_call = real
+    check("a short sample's feedback is capped at 12k output tokens (a runaway costs half), a long one at 24k",
+          caps == [speaking_grader.FEEDBACK_MAX_TOKENS_SHORT, speaking_grader.FEEDBACK_MAX_TOKENS], caps)
+    check("...and the scoring message carries the short-sample note", scored and "SHORT SAMPLE" in scored[0])
+
+    # the report: the same mistake said twice is explained once (#42 "the age"); no mistakes below 9 points on
+    text = "The biggest one is probably the age. It really depends on the age most of the time."
+    items = [SessionItem(qid="Q1", part="part3", question="What films do people like?", audio=_audio(text))]
+
+    def fb(mistakes):
+        return schemas.SpeakingFeedback(
+            answers=[schemas.AnswerMarking(id="Q1", segments=[schemas.AnswerSegment(type="text", text=text, fix=None,
+                                                                                    mistake_id=None)])],
+            mistakes=mistakes, criterion_notes=schemas.SpeakingCriterionNotes(FC="x", LR="x", GRA="x", P="x"),
+            strength=schemas.Strength(text="Clear.", quoted_phrases=[]), priorities=[], vocabulary_topic="films",
+            vocabulary=[schemas.VocabEntry(term=f"w{i}", meaning="m", example="e") for i in range(10)],
+            checklist=[], cue_coverage=[])
+
+    age = [schemas.SpeakingMistake(id=i, question="Q1", wrong="the age", correct="age", why="No article.",
+                                   criterion="GRA", unclear=False, if_you_meant=None) for i in (1, 2)]
+    scores = {"FC": 8.0, "LR": 8.0, "GRA": 7.0, "P": 8.0}
+    m2 = VoiceMetrics(speaking_seconds=8, words=16, wpm=120, fillers=0, filler_types=[], long_pauses=0,
+                      mid_sentence_pauses=0, longest_pause=None, longest_pause_answer=None)
+    report = speaking_marking.build_report("part3", items, fb(age), [], set(), set(), scores, m2, None, None)
+    rows = [(m["n"], m["same_as"]) for m in report.mistakes]
+    check("the same mistake said twice: the second is 'the same as' the first", rows == [(1, None), (2, 1)], rows)
+
+    clean = speaking_marking.build_report("part3", items, fb([]), [], set(), set(), scores, m2, None, None)
+    try:
+        from services.pdf import report_builder
+        from services.ai.speaking_marking import build_progress
+    except Exception:
+        print("(no WeasyPrint here - the speaking PDF is rendered in the bot image)")
+        return
+    rendered, real_html = [], report_builder.HTML
+    report_builder.HTML = lambda string, base_url=None: (rendered.append(string), real_html(string=string,
+                                                                                            base_url=base_url))[1]
+    try:
+        for r in (report, clean):
+            progress = build_progress("part3", r.overall_band, m2, None, r.priorities, None)
+            report_builder.build_speaking_report_pdf(r, [], progress, "Test", False)
+    finally:
+        report_builder.HTML = real_html
+    check("speaking PDF: a repeated mistake says 'the same mistake as 1'",
+          "The same mistake as 1, said again." in rendered[0], len(rendered))
+    check("...no mistakes below 9: the next band comes from the priorities",
+          "No mistakes that need fixing" in rendered[1] and "Your next band comes from the priorities" in rendered[1])
+
+    from bot.keyboards.speaking_part_kb import CB_FULL_TEST, speaking_part_kb
+    datas = [b.callback_data for row in speaking_part_kb("uz").inline_keyboard for b in row]
+    check("the Speaking menu has no Full test button any more", CB_FULL_TEST not in datas, datas)
+    from bot.utils.quota import price_list
+    check("...nor a full-test price", "Part 1+2+3" not in price_list("uz") and "{full}" not in price_list("ru"))
+
+
 if __name__ == "__main__":
     writing()
     round2()
@@ -1199,5 +1318,6 @@ if __name__ == "__main__":
     speed_fixes()
     uzbek_vocabulary()
     essay_in_the_question()
+    short_speaking_samples()
     print(f"\n{len(fails)} failed" if fails else "\nall passed")
     sys.exit(1 if fails else 0)

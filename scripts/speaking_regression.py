@@ -11,6 +11,8 @@ that is also an anchor is graded WITHOUT itself as an anchor (leave one
 out), so the test shows what the rules do, not the anchor read back.
 
     python scripts/speaking_regression.py [--only real9-p3-travel] [--budget 0.4]
+    python scripts/speaking_regression.py --single [--answers 1,3] [--budget 0.4]
+        (every answer marked on its own, as the bot's one-question checks are)
 
 Also writes data/calibration/speaking_anchors.json from the cases with an
 official band (--anchors-only to do just that, no API calls).
@@ -83,6 +85,61 @@ async def grade(case: dict) -> dict:
     return {"report": report, "answers": check.answers, "pdf": str(out)}
 
 
+async def grade_single(case: dict, i: int):
+    """Answer `i` of a case marked on its own, as a one-question check (the
+    bot's single-question Part 1 / Part 3 checks, 2026-11-11): marks only, no
+    model answers or PDF. -> SpeakingReport."""
+    from services.ai import single_recording as one
+    from services.ai.speaking_check import build_items
+    from services.ai.speaking_grader import Evidence, grade_speaking
+    from services.ai.voice import analyse_answers, measure, measure_pitch, to_wav16k
+
+    rec = one.Recording.from_json(json.loads((CASES / case["id"] / "recording.json").read_text(encoding="utf-8")))
+    joined = one.join_wavs([await to_wav16k(case["audio"].read_bytes(), case["audio"].name)])
+    spans = [tuple(s) for s in case["split"][i]]
+    wav = await to_wav16k(one.cut(joined, spans), f"q{i + 1}.wav")
+    question = [{"part": case["part"], "text": case["questions"][i]}]
+    audios = await analyse_answers([wav], [question[0]["text"]], [one.answer_audio(rec, spans)])
+    items = build_items(question, audios)
+    pitch = await asyncio.to_thread(measure_pitch, [wav])
+    return await grade_speaking(case["part"], items, Evidence(measure(audios), None, pitch))
+
+
+async def run_single(cases: list[dict], expect: dict, budget: Budget) -> None:
+    """--single: every answer of a case as its own one-question check, against
+    the case's official band ("single_min": the least each answer may get)."""
+    from services.ai import speaking_grader, usage
+
+    passed = []
+    for case in cases:
+        speaking_grader.EXCLUDED_ANCHORS = {case["id"]}  # never graded against itself
+        least = expect[case["id"]].get("single_min")
+        got = []
+        for i, spans in enumerate(case["split"]):
+            if not spans or budget.spent >= budget.limit:
+                continue
+            with usage.track(f"speaking single {case['id']} Q{i + 1}") as calls:
+                r = await grade_single(case, i)
+            cost = budget.add(calls)
+            bands = {c["key"]: c["band"] for c in r.criteria}
+            got.append(r.overall_band)
+            words = r.cards[0]["meta"] if r.cards else ""
+            print(f"\n--- {case['id']} Q{i + 1} alone ({words}; official {case.get('band')}): overall {r.overall_band} "
+                  f"({', '.join(f'{k} {v:g}' for k, v in bands.items())})  ${cost:.3f}")
+            for c in r.criteria[:3]:
+                print(f"   {c['name']}: {c['note']}")
+            print("   mistakes: " + ("; ".join(f"[{m['criterion']}] {m['wrong']} -> {m['correct']}" for m in r.mistakes)
+                                      or "none"))
+            if least is not None:
+                ok = r.overall_band >= least
+                passed.append(ok)
+                print(f"   {'PASS' if ok else 'FAIL'}  at least {least:g}")
+        if got:
+            print(f"\n=== {case['id']}: {len(got)} answers alone, mean {sum(got) / len(got):.2f}, "
+                  f"lowest {min(got)}, highest {max(got)}")
+    print(f"\n{sum(passed)}/{len(passed)} answers at their least; spent ${budget.spent:.2f}")
+
+
 async def main(args) -> None:
     from services.ai import speaking_grader, usage
     from services.ai.scoring import whole_band
@@ -97,6 +154,13 @@ async def main(args) -> None:
               if not k.startswith("_") and k != "review"}
     cases = [c for c in cases if c["id"] in expect and (not args.only or c["id"] in args.only.split(","))]
     budget = Budget(args.budget)
+    if args.single:
+        if args.answers:  # e.g. "1,3,5": only these answers
+            keep = {int(x) - 1 for x in args.answers.split(",")}
+            for c in cases:
+                c["split"] = [s if k in keep else [] for k, s in enumerate(c["split"])]
+        await run_single(cases, expect, budget)
+        return
     passed = []
     for case in cases:
         # never graded against itself - unless asked (--with-anchor: the anchor read back)
@@ -145,4 +209,7 @@ if __name__ == "__main__":
     ap.add_argument("--anchors-only", action="store_true", help="only write speaking_anchors.json")
     ap.add_argument("--with-anchor", action="store_true",
                     help="grade a case with itself as an anchor (shows the anchor works; not a fair test)")
+    ap.add_argument("--single", action="store_true",
+                    help="mark every answer of a case on its own, as a one-question check (marks only)")
+    ap.add_argument("--answers", help="with --single: only these answers, e.g. 1,3,5")
     asyncio.run(main(ap.parse_args()))
