@@ -12,7 +12,9 @@ cases.json: [{"name", "kind": "task1" | "task2" | "speaking", ...}]
             confirmed it from that source (no OCR again)
   speaking: "part": "part3", "questions": [...], "audio": path (one recording),
             "user": id (optional), "exclude_anchor": id (a recording that is
-            itself a scoring anchor is scored without it)
+            itself a scoring anchor is scored without it),
+            "questions_in_recording": true (the examiner asks them in the
+            recording - "questions" is then left unsent)
 Each check is saved as a test submission (is_test): no coins, never a
 "previous essay/session" on the progress page, no word bank entries, no
 chart key use, no admins' card. Writes every report's PDF and
@@ -43,7 +45,8 @@ async def run(cases: list[dict], out: Path, uid: int) -> None:
     import bot.handlers.speaking as speaking
     import bot.handlers.writing as writing
     from bot.keyboards.confirm_kb import CB_CONFIRM
-    from bot.keyboards.speaking_part_kb import CB_MODE_ONE, CB_REC_FINISH, CB_SPLIT_OK, PART_CALLBACKS
+    from bot.keyboards.speaking_part_kb import (CB_MODE_ONE, CB_NO_QUESTIONS, CB_REC_FINISH, CB_SPLIT_OK,
+                                               PART_CALLBACKS)
     from bot.keyboards.writing_task_kb import CB_TASK1, CB_TASK2
     from bot.main import build_dispatcher
     from bot.states.speaking_states import SpeakingStates
@@ -195,11 +198,14 @@ async def run(cases: list[dict], out: Path, uid: int) -> None:
             part_cb = next(cb for cb, part in PART_CALLBACKS.items() if part == case.get("part", "part3"))
             await press(sender, part_cb)
             await state.update_data(test_run=True)
-            await send(sender, text="\n".join(case["questions"]))
-            if await state.get_state() == SpeakingStates.confirming_question.state:
-                await press(sender, CB_CONFIRM)
-            if await state.get_state() == SpeakingStates.choosing_mode.state:
-                await press(sender, CB_MODE_ONE)
+            if case.get("questions_in_recording"):  # the examiner's voice asks them in the recording
+                await press(sender, CB_NO_QUESTIONS)
+            else:
+                await send(sender, text="\n".join(case["questions"]))
+                if await state.get_state() == SpeakingStates.confirming_question.state:
+                    await press(sender, CB_CONFIRM)
+                if await state.get_state() == SpeakingStates.choosing_mode.state:
+                    await press(sender, CB_MODE_ONE)
             await send(sender, document=document(case["audio"], "audio/mpeg"))
             await state.update_data(test_run=True)
             calls = await press(sender, CB_REC_FINISH)

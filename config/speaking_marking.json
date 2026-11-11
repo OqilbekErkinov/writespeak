@@ -5,8 +5,10 @@
     "phrases": ["daily lifestyles", "much more free"]
   },
   "short_sample": {
-    "_about": "2026-11-11: one-question checks (20-40 s, 40-90 words) came out 6.0-7.0 for 8.5-9 speakers. Under this many spoken words the mistake density is counted over this many words (one slip in 45 words was 2.2 per 100 words, a full test's 0.15), and the scoring runs are told that a short answer can't show more range: brevity is never a Lexical Resource or Grammar reason.",
+    "_about": "2026-11-11: one-question checks (20-40 s, 40-90 words) came out 6.0-7.0 for 8.5-9 speakers. Under this many spoken words a check is a short sample: its report says the band is approximate and its feedback is capped at 12k tokens.",
     "words": 150,
+    "scoring_rules": false,
+    "_scoring_rules": "true: the scoring runs are told brevity is no Lexical Resource or Grammar reason, and the mistake density is counted over at least 'words' words. Switched OFF 2026-11-11 after the teachers' six checks: it lifted #38 6.5 -> 8.0 and #39 7.0 -> 9.0 (the teachers: 6.5 and 7.0) - with little to quote, the weakness lists came back empty and 8 became 9. The official 9.0 recording's single answers did rise (85 words 6.5 -> 8.0). Measure on the teachers' checks before switching it on again.",
     "_no_floor": "Tried and dropped the same day: a no-mistake floor of 8 for a short sample lifted a basic answer ('It is fun. We eat good food.', rightly Lexical 5 / Grammar 5) to 7.0 - no mistake is not a wide range."
   },
   "anchors": {

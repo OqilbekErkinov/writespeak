@@ -1212,11 +1212,21 @@ def short_speaking_samples() -> None:
           speaking_grader.short_sample_note("part3", long) == "" and speaking_grader.short_sample_note("full", short) == "")
 
     error = NS(wrong="a family time", correct="family time", criterion="LR", severity="error", unclear=False)
-    ev_short = speaking_grader.mistake_evidence(short, [error], [], [], [])
-    ev_long = speaking_grader.mistake_evidence(long, [error], [], [], [])
-    check("one mistake in a short answer: density over 150 words, not 2+ per 100 words",
+    check("the short-sample scoring rules are OFF (2026-11-11: they lifted the teachers' 6.5 and 7.0 checks to "
+          "8.0 and 9.0)", not speaking_grader.short_scoring_on())
+    ev_off = speaking_grader.mistake_evidence(short, [error], [], [], [])
+    check("...off: a short answer's density is over its own words, as before",
+          "short sample" not in ev_off and f"= {100 / words:.1f} weighted" in ev_off, ev_off)
+    real_config = speaking_grader.speaking_config
+    speaking_grader.speaking_config = lambda: {**real_config(), "short_sample": {"words": 150, "scoring_rules": True}}
+    try:
+        ev_short = speaking_grader.mistake_evidence(short, [error], [], [], [])
+        ev_long = speaking_grader.mistake_evidence(long, [error], [], [], [])
+    finally:
+        speaking_grader.speaking_config = real_config
+    check("...on: one mistake in a short answer - density over 150 words, not 2+ per 100 words",
           "counted over 150 words" in ev_short and "= 0.7 weighted per 100 words" in ev_short, ev_short)
-    check("...a long sample keeps its own word count", "short sample" not in ev_long
+    check("...on: a long sample keeps its own word count", "short sample" not in ev_long
           and f"= {100 / long[0].audio.word_count:.1f} weighted" in ev_long, ev_long)
 
     bands = {"FC": 7.0, "LR": 5.0, "GRA": 5.0, "P": 6.0}
@@ -1250,11 +1260,17 @@ def short_speaking_samples() -> None:
             except RuntimeError:
                 pass  # the fake feedback parses to nothing
         asyncio.run(speaking_grader.score_session("part3", short, Evidence(metrics, None, None)))
+        speaking_grader.speaking_config = lambda: {**real_config(), "short_sample": {"words": 150,
+                                                                                     "scoring_rules": True}}
+        asyncio.run(speaking_grader.score_session("part3", short, Evidence(metrics, None, None)))
     finally:
         speaking_grader.parse_call = real
+        speaking_grader.speaking_config = real_config
     check("a short sample's feedback is capped at 12k output tokens (a runaway costs half), a long one at 24k",
           caps == [speaking_grader.FEEDBACK_MAX_TOKENS_SHORT, speaking_grader.FEEDBACK_MAX_TOKENS], caps)
-    check("...and the scoring message carries the short-sample note", scored and "SHORT SAMPLE" in scored[0])
+    check("...the scoring message has no short-sample note while the rules are off, and has it when on",
+          len(scored) >= 2 and "SHORT SAMPLE" not in scored[0] and "SHORT SAMPLE" in scored[-1],
+          [("SHORT SAMPLE" in s) for s in scored])
 
     # the report: the same mistake said twice is explained once (#42 "the age"); no mistakes below 9 points on
     text = "The biggest one is probably the age. It really depends on the age most of the time."

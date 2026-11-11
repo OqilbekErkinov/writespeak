@@ -311,6 +311,13 @@ SHORT_LENGTH = {
 }
 
 
+def short_scoring_on() -> bool:
+    """The short-sample scoring rules (the scoring runs' note and the density over at least
+    short_sample_words()) - config "short_sample.scoring_rules", off since 2026-11-11: on the teachers'
+    six checks they lifted 6.5-7.0 speakers to 8.0-9.0."""
+    return bool((speaking_config().get("short_sample") or {}).get("scoring_rules", False))
+
+
 def short_sample_size(part: str, items: list[SessionItem]) -> int | None:
     """The spoken words of a short sample (a one-question check), None for a long one or a full test -
     its report says the band is approximate (the user, 2026-11-11)."""
@@ -597,7 +604,8 @@ async def score_session(part: str, items: list[SessionItem], ev: Evidence, evide
     from services.ai.writing_grader import evidenced  # the same rule as Writing's
 
     spoken = " ".join(item.audio.text for item in items)
-    short = short_sample_note(part, items)  # in the user message: the system prompt stays the cached prefix
+    # in the user message: the system prompt stays the cached prefix
+    short = short_sample_note(part, items) if short_scoring_on() else ""
     messages = [
         {"role": "system", "content": _scoring_system(part, ev.pron is not None)},
         {"role": "user", "content": f"{answers_text(items, mark_uncertain=True, mark_pauses=True)}\n\n"
@@ -639,7 +647,7 @@ def mistake_evidence(items: list[SessionItem], checked: list, alternatives: list
     words = max(sum(item.audio.word_count for item in items), 1)
     # a short sample's density over at least short_sample_words(): one slip in a 45-word answer was 2.2 per
     # 100 words, the same slip in a full test 0.15 (2026-11-11)
-    per = max(words, short_sample_words())
+    per = max(words, short_sample_words()) if short_scoring_on() else words
     weight = marking_config.density()["slip_weight"]
     lines = [f"CHECKED MISTAKES (errors and slips only; the complete list). The answers have {words} words"
              + (f" - a short sample, so the density below is counted over {per} words: one slip does not decide "
