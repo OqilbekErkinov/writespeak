@@ -6,7 +6,6 @@ already-open AsyncSession so callers control the transaction boundary via
 """
 from __future__ import annotations
 
-import random
 import secrets
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
@@ -2050,30 +2049,6 @@ async def pick_practice_question(
     if exclude_ids:
         stmt = stmt.where(PracticeQuestion.id.not_in(exclude_ids))
     return (await session.execute(stmt.order_by(func.random()).limit(1))).scalar_one_or_none()
-
-
-async def pick_full_test(session: AsyncSession) -> tuple[PracticeQuestion, PracticeQuestion, PracticeQuestion] | None:
-    """A random Part 1 topic and a random Part 2 cue card with its own Part 3
-    discussion questions - in the channel the Part 3 post comes right after
-    its cue card (services/practice_import/speaking.py), so its source_ref is
-    the card's plus one. None if the bank has no such pair yet."""
-    part1 = await pick_practice_question(session, PracticeModule.speaking_part1)
-    cards = (await session.execute(
-        select(PracticeQuestion).where(PracticeQuestion.module == PracticeModule.speaking_part2)
-    )).scalars().all()
-    follow_ups = (await session.execute(
-        select(PracticeQuestion).where(PracticeQuestion.module == PracticeModule.speaking_part3)
-    )).scalars().all()
-    by_ref = {(q.source, q.source_ref): q for q in follow_ups if q.source_ref and q.source_ref.isdigit()}
-    pairs = [
-        (card, by_ref[(card.source, str(int(card.source_ref) + 1))])
-        for card in cards
-        if card.source_ref and card.source_ref.isdigit() and (card.source, str(int(card.source_ref) + 1)) in by_ref
-    ]
-    if part1 is None or not pairs:
-        return None
-    card, follow_up = random.choice(pairs)
-    return part1, card, follow_up
 
 
 async def create_assignment(

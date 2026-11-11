@@ -1,4 +1,4 @@
-"""Speaking module: Part 1 / Part 2 / Part 3 / Full test.
+"""Speaking module: Part 1 / Part 2 / Part 3.
 
 Flow: pick part -> send question/s (any format, like Writing) -> [confirm if
 needed] -> the bot asks the questions ONE AT A TIME like a real examiner
@@ -18,9 +18,10 @@ services/ai/single_recording.py splits it into answers (shown to the student
 first when the split is uncertain) for the same grading. Practice, group
 assignments and mock tests stay question by question.
 
-A Full test takes a Part 1 topic, a cue card and its Part 3 questions from
-the bank and is graded as one report with a Speaking band; it costs the
-"speaking_full" coins (bot/utils/coins.py), less than the three parts apart.
+The Full test (a Part 1 topic, a cue card and its Part 3 questions in one
+report) was taken out of the menu on 2026-11-11: no student ever chose it.
+The grading still handles part "full"; an old Full test button opens the
+part menu.
 
 Grading is services/ai/speaking_check.py (voice analysis, scores, feedback,
 model answers); this module adds Telegram and the database: the student's
@@ -111,7 +112,6 @@ logger = logging.getLogger(__name__)
 router = Router(name="speaking")
 
 PART_TO_CALLBACK = {part: cb for cb, part in PART_CALLBACKS.items()}
-FULL_TEST_QUESTIONS = 5  # Part 1 and Part 3 questions asked in a full test, each
 RESUBMISSION_SIMILARITY = 0.9
 
 # Serializes one user's answer handling, so several voice messages sent in
@@ -153,31 +153,13 @@ async def choose_part(callback: CallbackQuery, state: FSMContext, lang: str) -> 
 
 
 @router.callback_query(F.data == CB_FULL_TEST)
-async def choose_full_test(callback: CallbackQuery, state: FSMContext, lang: str) -> None:
-    """Part 1 topic + cue card + its Part 3 questions, from the bank."""
+async def full_test_retired(callback: CallbackQuery, state: FSMContext, lang: str) -> None:
+    """The Full test was taken out of the menu (2026-11-11: never used - every
+    Speaking check was one part, and the mock test asks Part 1-3 in turn).
+    A Full test button left in an old message opens the part menu."""
     await callback.answer()
-    quota = await check_quota(callback.from_user.id, "speaking_full")
-    if not quota.allowed:
-        await send_paywall(callback.message, lang, quota)
-        return
-    async with get_session() as session:
-        picked = await crud.pick_full_test(session)
-    if picked is None:
-        await callback.message.answer(t("speaking.full_no_questions", lang))
-        return
-    part1, card, follow_up = picked
-    p1 = split_questions(part1.question_text, "part1")[:FULL_TEST_QUESTIONS]
-    p3 = split_questions(follow_up.question_text, "part3")[:FULL_TEST_QUESTIONS]
-
     await state.clear()
-    await state.update_data(
-        part="full", spend_credit=quota.spend_credit, payer_id=quota.payer_id,
-        questions=[*p1, card.question_text, *p3],
-        question_parts=["part1"] * len(p1) + ["part2"] + ["part3"] * len(p3),
-        q_index=0, answers=[], intro=None,
-    )
-    await show_screen(callback, free_check_note(quota, lang) + t("speaking.full_intro", lang), None)
-    await _choose_mode(callback.message, state, lang)
+    await show_screen(callback, t("speaking.choose_part", lang), speaking_part_kb(lang))
 
 
 @router.message(SpeakingStates.awaiting_question, ~F.text.in_(MENU_BUTTON_TEXTS))

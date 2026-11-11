@@ -120,7 +120,6 @@ def price_list(lang: str) -> str:
         s1=check_coins("speaking_part1"),
         s2=check_coins("speaking_part2"),
         s3=check_coins("speaking_part3"),
-        full=check_coins("speaking_full"),
         coin=format_som(settings.coin_price),
     )
 

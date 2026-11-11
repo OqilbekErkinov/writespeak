@@ -74,8 +74,8 @@ _T: dict[str, dict[str, str]] = {
         "ru": "⚠️ <b>Недостаточно coin.</b> Выберите пакет coin (в большом дешевле):",
     },
     "quota.price_list": {
-        "uz": "🟡 <b>Tekshiruv narxlari:</b>\n✍️ Writing Task 1 — <b>{w1} coin</b> · Task 2 — <b>{w2} coin</b>\n🎙 Speaking Part 1 — <b>{s1} coin</b> · Part 2 — <b>{s2} coin</b> · Part 3 — <b>{s3} coin</b>\n🎯 To'liq Speaking (Part 1+2+3) — <b>{full} coin</b>\n<i>1 coin = {coin} so'm, katta paketlarda arzonroq. Coinning muddati tugamaydi.</i>",
-        "ru": "🟡 <b>Цены проверок:</b>\n✍️ Writing Task 1 — <b>{w1} coin</b> · Task 2 — <b>{w2} coin</b>\n🎙 Speaking Part 1 — <b>{s1} coin</b> · Part 2 — <b>{s2} coin</b> · Part 3 — <b>{s3} coin</b>\n🎯 Полный Speaking (Part 1+2+3) — <b>{full} coin</b>\n<i>1 coin = {coin} сум, в больших пакетах дешевле. Coin не сгорают.</i>",
+        "uz": "🟡 <b>Tekshiruv narxlari:</b>\n✍️ Writing Task 1 — <b>{w1} coin</b> · Task 2 — <b>{w2} coin</b>\n🎙 Speaking Part 1 — <b>{s1} coin</b> · Part 2 — <b>{s2} coin</b> · Part 3 — <b>{s3} coin</b>\n<i>1 coin = {coin} so'm, katta paketlarda arzonroq. Coinning muddati tugamaydi.</i>",
+        "ru": "🟡 <b>Цены проверок:</b>\n✍️ Writing Task 1 — <b>{w1} coin</b> · Task 2 — <b>{w2} coin</b>\n🎙 Speaking Part 1 — <b>{s1} coin</b> · Part 2 — <b>{s2} coin</b> · Part 3 — <b>{s3} coin</b>\n<i>1 coin = {coin} сум, в больших пакетах дешевле. Coin не сгорают.</i>",
     },
     "quota.price_note": {
         "uz": "🟡 Bu tekshiruv — <b>{price} coin</b>. Hisobot tayyor bo'lganda yechiladi, balansingizda <b>{left} coin</b> qoladi.",
@@ -338,20 +338,6 @@ _T: dict[str, dict[str, str]] = {
     "speaking.audio_only": {
         "uz": "🎙 Iltimos, javobingizni ovozli xabar, video-xabar yoki audio fayl qilib yuboring.",
         "ru": "🎙 Пожалуйста, отправьте ответ голосовым, видео-сообщением или аудиофайлом.",
-    },
-    # Full test (Part 1 + 2 + 3 in one report)
-    "speaking.btn_full_test": {"uz": "🎯 Full test (Part 1–3)", "ru": "🎯 Full test (Part 1–3)"},
-    "speaking.full_intro": {
-        "uz": "🎯 <b>Speaking Full test</b>\n\nImtihondagidek: Part 1 (qisqa savollar), Part 2 (cue card, "
-        "1–2 daqiqa gapirasiz) va Part 3 (muhokama). Har bir savolga ovozli xabar bilan javob bering — "
-        "oxirida bitta umumiy hisobot va <b>Speaking band</b> chiqadi.",
-        "ru": "🎯 <b>Speaking Full test</b>\n\nКак на экзамене: Part 1 (короткие вопросы), Part 2 (cue card, "
-        "говорите 1–2 минуты) и Part 3 (дискуссия). Отвечайте на каждый вопрос голосовым — в конце "
-        "будет один общий отчёт и <b>Speaking band</b>.",
-    },
-    "speaking.full_no_questions": {
-        "uz": "Hozircha Full test uchun savollar bazasi tayyor emas. Birozdan so'ng urinib ko'ring.",
-        "ru": "База вопросов для Full test пока не готова. Попробуйте чуть позже.",
     },
     "speaking.part_start": {
         "uz": "— <b>{part}</b> —",
