@@ -1417,6 +1417,56 @@ def speaking_azure_and_slips() -> None:
     check("...a quote of more than the slip stands", more["GRA"] == 7, more)
     measured_p = run([], [], pron=az(99, 86))
     check("measured Pronunciation is Azure's calibrated band, not the runs' 7", measured_p["P"] == 8, measured_p)
+    # Azure down: the check goes on (estimated band), the admins' group hears of it (the user, 2026-11-11)
+    import io
+    import logging
+    import wave
+
+    import httpx
+
+    from services.ai import pronunciation
+
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(16000)
+        w.writeframes(b"\x00\x00" * 16000)
+    clip = (buf.getvalue(), [NS(text="hello", start=0.1, end=0.4), NS(text="world", start=0.5, end=0.9)], 1.0)
+    records: list = []
+    catch = logging.Handler()
+    catch.emit = records.append
+    log = logging.getLogger("services.ai.pronunciation")
+    log.addHandler(catch)
+    real_client, real_conf, real_endpoint = httpx.AsyncClient, pronunciation.configured, pronunciation._endpoint
+
+    def azure_answers(response):
+        httpx.AsyncClient = lambda **kw: real_client(transport=httpx.MockTransport(lambda request: response), **kw)
+        records.clear()
+        return asyncio.run(pronunciation.assess_answers([clip]))
+
+    try:
+        pronunciation.configured = lambda: True
+        pronunciation._endpoint = lambda: "https://eastus.stt.speech.microsoft.com/v1"
+        dead = azure_answers(httpx.Response(401, json={"error": "denied"}))
+        errors = [r for r in records if r.levelno >= logging.ERROR]
+        check("Azure refusing the key: no assessment (the band is estimated), and an ERROR for the group",
+              dead is None and len(errors) == 1 and errors[0].getMessage().startswith(
+                  "Azure Pronunciation is not working (HTTP 401: the key is wrong"), [r.getMessage() for r in records])
+        from bot.utils.crm import error_card
+        card = error_card(errors[0], 0, None) if errors else ""
+        check("...the group's card heads it with 🚨 Azure (Pronunciation) ishlamayapti", "🚨 <b>Azure (Pronunciation) "
+              "ishlamayapti!</b>" in card and "HTTP 401" in card, card[:200])
+        azure_answers(httpx.Response(429, json={"error": "quota"}))
+        check("...a used-up monthly limit says so", any("HTTP 429: too many requests, or the free tier's monthly "
+                                                         "limit" in r.getMessage() for r in records))
+        nothing = azure_answers(httpx.Response(200, json={"RecognitionStatus": "NoMatch"}))
+        check("...no speech recognised is no outage: no ERROR", nothing is None
+              and not any(r.levelno >= logging.ERROR for r in records), [r.getMessage() for r in records])
+    finally:
+        httpx.AsyncClient, pronunciation.configured, pronunciation._endpoint = real_client, real_conf, real_endpoint
+        log.removeHandler(catch)
+
     check("the scoring guide: fillers are never lexical repetition; one developed view is a developed Part 3 answer",
           "never count them as lexical repetition" in speaking_grader._scoring_system("part3", False)
           and "several separate ideas are not required" in speaking_grader._scoring_system("part3", False))

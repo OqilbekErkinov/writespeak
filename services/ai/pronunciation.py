@@ -204,10 +204,36 @@ def combine(clips: list[Assessment]) -> Assessment:
     )
 
 
+# Logged as ERROR, so the admins' group's ⚠️ topic gets them (bot/utils/crm.py, which heads the first with 🚨):
+# the check goes on with an estimated Pronunciation band, but the team must know Azure stopped (the user,
+# 2026-11-11). A "no speech recognised" answer is no outage - that stays a warning.
+AZURE_DOWN = "Azure Pronunciation is not working (%s) - this check's Pronunciation band is estimated, not measured"
+AZURE_PARTLY = "Azure Pronunciation failed on %d of %d answers (%s) - measured on the rest"
+_HINTS = {
+    401: "the key is wrong or was regenerated",
+    403: "the key is wrong, or the free tier's monthly limit is used up",
+    429: "too many requests, or the free tier's monthly limit is used up",
+}
+
+
+def failure_reason(error: BaseException) -> str:
+    """What went wrong, in a few words for the admins' group (never the key)."""
+    if isinstance(error, httpx.HTTPStatusError):
+        code = error.response.status_code
+        hint = _HINTS.get(code) or ("Azure's side" if code >= 500 else "")
+        return f"HTTP {code}" + (f": {hint}" if hint else "")
+    if isinstance(error, httpx.TimeoutException):
+        return f"no answer within {TIMEOUT} s"
+    if isinstance(error, httpx.TransportError):
+        return f"Azure unreachable: {type(error).__name__}"
+    return repr(error)[:200]
+
+
 async def assess_answers(answers: list[tuple[bytes, list, float]]) -> Assessment | None:
     """`answers`: (16 kHz mono WAV, transcript words, duration) per answer.
     None when Azure isn't configured or nothing could be assessed - the
-    report then falls back to an estimated Pronunciation band."""
+    report then falls back to an estimated Pronunciation band. A failure of
+    Azure itself is logged as an ERROR (the admins' group hears of it)."""
     if not configured():
         return None
     sem = asyncio.Semaphore(CONCURRENCY)
@@ -217,15 +243,19 @@ async def assess_answers(answers: list[tuple[bytes, list, float]]) -> Assessment
                 *(_assess_clip(http, sem, wav, words, duration) for wav, words, duration in answers),
                 return_exceptions=True,
             )
-    except Exception:
-        logger.exception("Azure pronunciation assessment failed")
+    except Exception as e:
+        logger.error(AZURE_DOWN, failure_reason(e), exc_info=True)
         return None
-    good = []
+    good, failed = [], []
     for clip in clips:
         if isinstance(clip, BaseException):
-            logger.warning("Azure assessment of one answer failed: %r", clip)
+            failed.append(clip)
         elif clip is not None:
             good.append(clip)
+    if failed and not good:
+        logger.error(AZURE_DOWN, failure_reason(failed[0]))
+    elif failed:
+        logger.error(AZURE_PARTLY, len(failed), len(clips), failure_reason(failed[0]))
     if not good:
         return None
     result = combine(good)

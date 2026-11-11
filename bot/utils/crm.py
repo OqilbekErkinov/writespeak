@@ -493,6 +493,10 @@ def error_card(record: logging.LogRecord, again: int, exc: str | None) -> str:
     if "insufficient_quota" in f"{message}\n{exc or ''}":
         lines.append("🚨 <b>OpenAI balansi tugadi!</b> Tekshiruvlar ishlamayapti - platform.openai.com da "
                      "balansni to'ldiring.\n")
+    if message.startswith("Azure Pronunciation is not working"):  # services/ai/pronunciation.py
+        lines.append("🚨 <b>Azure (Pronunciation) ishlamayapti!</b> Speaking tekshiruvlari davom etyapti, lekin "
+                     "talaffuz o'lchanmayapti - Pronunciation bandi taxminiy qo'yilmoqda. portal.azure.com da "
+                     "kalit, oylik limit va to'lovni tekshiring (sababi pastda).\n")
     icon = "❌" if record.levelno >= logging.ERROR else "⚠️"
     when = datetime.fromtimestamp(record.created, TZ).strftime("%d.%m %H:%M:%S")
     lines.append(f"{icon} <b>{record.levelname}</b> · <code>{html.escape(record.name)}</code> · {when}")
