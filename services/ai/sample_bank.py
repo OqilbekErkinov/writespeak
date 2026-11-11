@@ -464,10 +464,14 @@ class Choice:
 
 
 def choose_writer(
-    question: str, task_type: str, subtype: str, q_vec: np.ndarray, library: list[LibrarySample], seed: int = 0
+    question: str, task_type: str, subtype: str, q_vec: np.ndarray, library: list[LibrarySample], seed: int = 0,
+    aim: float | None = None,
 ) -> Choice:
     """The single best writer for this question - see the module docstring.
-    `seed` picks between writers that are level on every count."""
+    `seed` picks between writers that are level on every count. `aim`: the
+    model answer's band - a writer with samples at that band or above comes
+    first, and those samples are the references (the user, 2026-11-12: Band
+    9 answers from Band 9 samples)."""
     same_task = [s for s in library if s.task_type == task_type and s.embedding is not None]
     totals = Counter(s.author for s in library)
     rows = []
@@ -485,6 +489,7 @@ def choose_writer(
                 "topic": round(sims[closest.id], 3),
                 "closest_sample": closest.id,
                 "samples": totals[author],
+                "at_band": sum(bool(s.band) and s.band >= aim for s in usable) if aim else 0,
                 "_mine": mine,
                 "_usable": usable,
                 "_sims": sims,
@@ -492,12 +497,20 @@ def choose_writer(
         )
     if not rows:
         raise LookupError(f"No writer has {MIN_REFERENCES}+ {task_type} samples")
-    eligible = [r for r in rows if r["same_subtype"]] or rows
+    same = [r for r in rows if r["same_subtype"]]
+    eligible = same or rows
+    rule = ("same subtype, then closest topic, then more samples" if same
+            else "no writer has this subtype: closest topic, then more samples")
+    if aim:  # a writer with samples at the aimed band first - of the same subtype if there is one
+        at_band = [r for r in eligible if r["at_band"]] or [r for r in rows if r["at_band"]]
+        if at_band:
+            eligible, rule = at_band, f"samples at Band {aim:g}+ first, then {rule}"
     top = max((r["topic"], r["samples"]) for r in eligible)
     level = [r for r in eligible if (r["topic"], r["samples"]) == top]
     best = level[seed % len(level)]
     sims = best["_sims"]
-    references = sorted(best["_usable"], key=lambda s: (s.subtype != subtype, -sims[s.id]))[:REFERENCES]
+    below = (lambda s: not (s.band and s.band >= aim)) if aim else (lambda s: False)
+    references = sorted(best["_usable"], key=lambda s: (below(s), s.subtype != subtype, -sims[s.id]))[:REFERENCES]
     band = writer_band(best["_mine"])
     public = lambda r: {k: v for k, v in r.items() if not k.startswith("_")}
     ranked = sorted(rows, key=lambda r: (r["same_subtype"] > 0, r["topic"], r["samples"]), reverse=True)
@@ -507,8 +520,8 @@ def choose_writer(
         band=band,
         log={
             "subtype": subtype,
-            "rule": "same subtype, then closest topic, then more samples"
-            if eligible is not rows else "no writer has this subtype: closest topic, then more samples",
+            "rule": rule,
+            "aim": aim,
             "chosen": best["author"],
             "band": band,
             "reference_ids": [s.id for s in references],
@@ -1394,7 +1407,8 @@ async def build_model_answer(
             (subtype, topic), (q_vec,) = await asyncio.gather(
                 label_question(question, lib_task, prompt_images=prompt_images), embed_texts([question])
             )
-            choice = choose_writer(question, lib_task, subtype, np.asarray(q_vec, dtype=float), library, seed)
+            choice = choose_writer(question, lib_task, subtype, np.asarray(q_vec, dtype=float), library, seed,
+                                   aim=aim)
             own = [s for s in library if s.author == choice.author and s.task_type == lib_task]
             profile = await get_style_profile(choice.author, lib_task, own)
             references = choice.references  # the writer lends the style; the level stays the student's aim

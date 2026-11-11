@@ -60,9 +60,11 @@ import difflib
 import logging
 import re
 from dataclasses import dataclass, field
+from functools import lru_cache
 from types import SimpleNamespace
 
 import openai
+from pydantic import BaseModel, ConfigDict, Field, create_model
 
 from bot.config import settings
 from services.ai import usage
@@ -86,7 +88,8 @@ from services.ai.essay_marking import (
     paragraph_count,
 )
 from services.ai.openai_client import parse_flex
-from services.ai.schemas import Mistake, MissedMistake, MissedMistakes, WritingFeedback, WritingScoring, WritingVerdicts
+from services.ai.schemas import (CheckFinding, CriterionJudgement, Mistake, MissedMistake, MissedMistakes,
+                                 WritingFeedback, WritingScoring, WritingVerdicts)
 from services.ai.scoring import median_of_runs, overall_band, target_band, whole_band
 from services.ai import marking_config
 from services.ai.visual_reading import JUDGE_RULES
@@ -361,6 +364,62 @@ CHECKLISTS = {
            "a word that is grammatical but unnatural or imprecise for its meaning"],
     "GRA": ["a grammar error among the CHECKED MISTAKES", "a narrow range of structures (mostly simple sentences)"],
 }
+
+
+class ItemCheck(BaseModel):
+    # "additionalProperties": false in its schema - OpenAI's strict mode demands it of an object it inlines
+    # (a field with its own description), and the SDK adds it only to the shared definitions
+    model_config = ConfigDict(extra="forbid")
+
+    found: bool = Field(description="True when the answer has this problem.")
+    quote: str = Field(description="When found: the words of the answer that show it, copied exactly; else ''.")
+
+
+_STRICT = ConfigDict(extra="forbid")
+
+
+def _checklist_items(key: str, task_type: str) -> list[str]:
+    return CHECKLISTS[key][task_type] if key == "TR_or_TA" else CHECKLISTS[key]
+
+
+@lru_cache(maxsize=None)
+def scoring_schema(task_type: str) -> type[BaseModel]:
+    """The scoring run's answer with one required field per checklist item (2026-11-12: a run returned 4 of
+    Lexical Resource's 5 items, so its 8 could not become the 9 it was - #164). Read back into
+    WritingScoring by _as_scoring."""
+    def judgement(key: str) -> type[BaseModel]:
+        items = _checklist_items(key, task_type)
+        checklist = create_model(f"Checklist{key}", __config__=_STRICT, **{
+            f"item{i + 1}": (ItemCheck, Field(description=item)) for i, item in enumerate(items)})
+        base = CriterionJudgement.model_fields
+        return create_model(
+            f"Judgement{key}", __config__=_STRICT,
+            checklist=(checklist, Field(description="Every item of this criterion's CHECKLIST, answered.")),
+            strengths=(list[str], Field(description=base["strengths"].description)),
+            weaknesses=(list[str], Field(description=base["weaknesses"].description)),
+            band=(int, Field(description=base["band"].description)),
+            note=(str, Field(description=base["note"].description)))
+
+    fields = WritingScoring.model_fields
+    return create_model(
+        "WritingScoring", __config__=_STRICT,
+        **{key: (judgement(key), Field(description=fields[key].description)) for key in SCORE_KEYS},
+        overview=(fields["overview"].annotation, Field(default="clear", description=fields["overview"].description)))
+
+
+def _as_scoring(parsed, task_type: str) -> WritingScoring:
+    """A scoring_schema answer as WritingScoring: each checklist a list with the items' own words."""
+    if isinstance(parsed, WritingScoring):
+        return parsed
+    out = {}
+    for key in SCORE_KEYS:
+        j = getattr(parsed, key)
+        out[key] = CriterionJudgement(
+            checklist=[CheckFinding(item=item, found=getattr(j.checklist, f"item{i + 1}").found,
+                                    quote=getattr(j.checklist, f"item{i + 1}").quote)
+                       for i, item in enumerate(_checklist_items(key, task_type))],
+            strengths=j.strengths, weaknesses=j.weaknesses, band=j.band, note=j.note)
+    return WritingScoring(**out, overview=parsed.overview)
 
 
 def checklist_text(task_type: str) -> str:
@@ -1380,11 +1439,12 @@ async def _score_once(task_type, prompt_text, answer_text, prompt_images, sheet:
                                                       estimated_band(answer_text, checked, wide))},
         {"role": "user", "content": _with_images(text, prompt_images, task_type == "task1", _judged(sheet))},
     ]
-    response = await _parse("score", SCORE_MAX_TOKENS, messages, WritingScoring,
+    response = await _parse("score", SCORE_MAX_TOKENS, messages, scoring_schema(task_type),
                             effort=settings.openai_scoring_reasoning_effort)
     scores = response.choices[0].message.parsed
     if scores is None:
         raise RuntimeError("Scoring model returned no parsable result")
+    scores = _as_scoring(scores, task_type)
     out: dict = {k: whole_band(getattr(scores, k).band) for k in SCORE_KEYS}
     out["_overview"] = scores.overview if task_type == "task1" else "clear"
 

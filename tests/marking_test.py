@@ -1520,6 +1520,70 @@ def writing_label_repetition() -> None:
           task2["LR"] == 8, task2)
 
 
+def checklist_and_band9_samples() -> None:
+    """2026-11-12: every checklist item is a required field (a run returned 4 of Lexical's 5 items and #164's 8
+    could not become 9); Band 9 model answers take Band 9 samples as their references."""
+    import numpy as np
+
+    from services.ai.sample_bank import LibrarySample, choose_writer
+
+    g = writing_grader
+    schema = g.scoring_schema("task1")
+    lr_fields = list(schema.model_fields["LR"].annotation.model_fields["checklist"].annotation.model_fields)
+    check("the scoring answer has one required field per checklist item",
+          lr_fields == [f"item{i + 1}" for i in range(len(g.CHECKLISTS["LR"]))]
+          and len(schema.model_fields["TR_or_TA"].annotation.model_fields["checklist"].annotation.model_fields)
+          == len(g.CHECKLISTS["TR_or_TA"]["task1"]), lr_fields)
+    check("...named WritingScoring, as the calls know it", schema.__name__ == "WritingScoring")
+    from openai.lib._pydantic import to_strict_json_schema
+
+    loose = []
+
+    def walk(node, path="$"):
+        if isinstance(node, dict):
+            if "properties" in node and node.get("additionalProperties") is not False:
+                loose.append(path)
+            for k, v in node.items():
+                walk(v, f"{path}.{k}")
+        elif isinstance(node, list):
+            for i, v in enumerate(node):
+                walk(v, f"{path}[{i}]")
+    for task in ("task1", "task2"):
+        walk(to_strict_json_schema(g.scoring_schema(task)), task)
+    check("...every object in its strict schema says additionalProperties: false (OpenAI refused it otherwise, "
+          "2026-11-12)", not loose, loose[:4])
+
+    def crit(key):
+        items = g._checklist_items(key, "task1")
+        return {"checklist": {f"item{i + 1}": {"found": i == 1 and key == "LR", "quote": "route" if i == 1 and
+                                               key == "LR" else ""} for i in range(len(items))},
+                "strengths": [], "weaknesses": [], "band": 8, "note": "n"}
+    parsed = schema.model_validate({k: crit(k) for k in ("TR_or_TA", "CC", "LR", "GRA")} | {"overview": "clear"})
+    scoring = g._as_scoring(parsed, "task1")
+    lr = scoring.LR.checklist
+    check("...read back as the checklist list with the items' own words, every item answered",
+          [c.item for c in lr] == g.CHECKLISTS["LR"] and lr[1].found and lr[1].quote == "route"
+          and all(len(getattr(scoring, k).checklist) == len(g._checklist_items(k, "task1"))
+                  for k in ("TR_or_TA", "CC", "LR", "GRA")), [c.item for c in lr])
+    check("...an answer already in the old form passes through", g._as_scoring(scoring, "task1") is scoring)
+
+    def sample(i, author, band, vec):
+        return LibrarySample(id=f"s{i}", author=author, book="b", task_type="task2", subtype="opinion",
+                             topic="t", question=f"Question {i} about something?", band=band, word_count=300,
+                             text="x", embedding=np.asarray(vec, dtype=float))
+    library = [sample(1, "Close", 8.5, [1, 0]), sample(2, "Close", 8.5, [0.9, 0.1]), sample(3, "Close", 8.5, [1, 0.1]),
+               sample(4, "Nine", 9.0, [0.2, 1]), sample(5, "Nine", 9.0, [0.3, 1]), sample(6, "Nine", 8.0, [0.9, 0.2])]
+    q = np.asarray([1, 0], dtype=float)
+    plain = choose_writer("A new question?", "task2", "opinion", q, library)
+    nine = choose_writer("A new question?", "task2", "opinion", q, library, aim=9.0)
+    eight = choose_writer("A new question?", "task2", "opinion", q, library, aim=8.0)
+    check("without an aim: the closest topic's writer", plain.author == "Close", plain.author)
+    check("a Band 9 answer: the writer with Band 9 samples, those samples first",
+          nine.author == "Nine" and [s.band for s in nine.references[:2]] == [9.0, 9.0], (nine.author,
+                                                                                          [s.id for s in nine.references]))
+    check("...a Band 8 answer: any writer at 8+, so the closest topic again", eight.author == "Close", eight.author)
+
+
 def model_answer_bands() -> None:
     """The user's rule (2026-11-12), Writing and Speaking alike: 5.0-6.5 -> a Band 7 model answer, 7.0-7.5 ->
     Band 8, 8.0-9.0 -> Band 9 only."""
@@ -1551,5 +1615,6 @@ if __name__ == "__main__":
     speaking_azure_and_slips()
     model_answer_bands()
     writing_label_repetition()
+    checklist_and_band9_samples()
     print(f"\n{len(fails)} failed" if fails else "\nall passed")
     sys.exit(1 if fails else 0)
