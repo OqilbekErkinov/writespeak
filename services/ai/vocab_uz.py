@@ -43,8 +43,10 @@ async def uzbek_meanings(items) -> list[str]:
             model=settings.openai_model_sample,
             messages=[{"role": "system", "content": SYSTEM}, {"role": "user", "content": listed}],
             response_format=UzMeanings,
-            reasoning_effort="low",
             max_completion_tokens=MAX_TOKENS,
+            # Sent as extra_body: openai 1.57 has no reasoning_effort argument (2026-11-10: as an argument it
+            # raised a TypeError on every report, and no table got its Uzbek meanings)
+            extra_body={"reasoning_effort": "low"},
         )
         usage.record("vocab_uz", response)
         parsed = response.choices[0].message.parsed

@@ -1130,9 +1130,26 @@ def uzbek_vocabulary() -> None:
             return NS(choices=[NS(message=NS(parsed=vocab_uz.UzMeanings(meanings=reply)))], usage=None)
         return parse
 
+    # every argument the call uses must be one the installed SDK accepts (2026-11-10: reasoning_effort as an
+    # argument raised a TypeError on every report - the fake below took any keyword)
+    import inspect
+
+    from openai.resources.beta.chat.completions import AsyncCompletions
+
+    accepted = set(inspect.signature(AsyncCompletions.parse).parameters)
+
+    def strict(parse):
+        async def call(**kwargs):
+            unknown = set(kwargs) - accepted
+            if unknown:
+                raise TypeError(f"unexpected keyword argument(s) {sorted(unknown)}")
+            return await parse(**kwargs)
+        return call
+
     real = vocab_uz.client
     try:
-        vocab_uz.client = NS(beta=NS(chat=NS(completions=NS(parse=fake_parse(["mablag' ajratmoq", "ishga qatnovchilar"])))))
+        vocab_uz.client = NS(beta=NS(chat=NS(completions=NS(parse=strict(fake_parse(
+            ["mablag' ajratmoq", "ishga qatnovchilar"]))))))
         got = asyncio.run(vocab_uz.uzbek_meanings(items))
         check("Uzbek meanings: one per item, in order, from the cheap model",
               got == ["mablag' ajratmoq", "ishga qatnovchilar"] and seen[-1]["model"] == vocab_uz.settings.openai_model_sample
@@ -1148,6 +1165,24 @@ def uzbek_vocabulary() -> None:
         vocab_uz.client = real
 
 
+def essay_in_the_question() -> None:
+    """#152 (2026-11-10): the student sent the essay with the question, so every word of the answer was
+    'copied from the question' - '0 words of your own', Band 1 on every criterion. That is an input mix-up,
+    not copying."""
+    g = writing_grader
+    question = "Many countries import food from other countries.\n\nDo the advantages outweigh the disadvantages?"
+    body = " ".join(["Importing food gives people a wider choice and keeps prices stable all year round."] * 20)
+    both = question + "\n\n" + body
+    bands = {"TR_or_TA": 8.0, "CC": 8.0, "LR": 8.0, "GRA": 8.0}
+    check("the question holding the whole essay: nothing counts as copied", essay_marking.rubric_spans(
+        both, both, essay_marking.copy_min_words("task2")) == [])
+    capped, _, why, _ = g.cap_bands("task2", both, bands, {}, question=both)
+    check("...so no Band 1 for it (#152)", capped == bands, why)
+    spans = essay_marking.rubric_spans(question + "\n\n" + body, question, essay_marking.copy_min_words("task2"))
+    check("a real copy of the question at the start: still found and not counted",
+          len(spans) == 1 and "Do the advantages outweigh" in (question + "\n\n" + body)[spans[0][0]:spans[0][1]], spans)
+
+
 if __name__ == "__main__":
     writing()
     round2()
@@ -1159,5 +1194,6 @@ if __name__ == "__main__":
     paid_run_fixes()
     speed_fixes()
     uzbek_vocabulary()
+    essay_in_the_question()
     print(f"\n{len(fails)} failed" if fails else "\nall passed")
     sys.exit(1 if fails else 0)

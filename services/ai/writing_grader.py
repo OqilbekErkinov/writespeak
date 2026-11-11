@@ -81,6 +81,7 @@ from services.ai.essay_marking import (
     drop_priorities,
     copy_min_words,
     find_copied_spans,
+    rubric_spans,
     without_priorities,
     paragraph_count,
 )
@@ -1218,7 +1219,7 @@ def cap_bands(task_type: str, answer_text: str, bands: dict[str, float], notes: 
     block."""
     bands, notes = dict(bands), dict(notes)
     copied_words = sum(count_words(answer_text[s:e])
-                       for s, e in find_copied_spans(answer_text, question, copy_min_words(task_type))) if question else 0
+                       for s, e in rubric_spans(answer_text, question, copy_min_words(task_type))) if question else 0
     words, paragraphs = count_words(answer_text) - copied_words, paragraph_count(answer_text)
     data_figures = sum(1 for f in figures(answer_text) if not f["year"]) if task_type == "task1" else 0
     capped, notices = [], []
@@ -1749,7 +1750,7 @@ async def grade_writing(
                 logger.exception("on_feedback failed")
         return report
     unchecked = set(unchecked_figures(answer_text, visual, prompt_text)) if visual else set()
-    copied = [answer_text[s:e] for s, e in find_copied_spans(answer_text, prompt_text, copy_min_words(task_type))]
+    copied = [answer_text[s:e] for s, e in rubric_spans(answer_text, prompt_text, copy_min_words(task_type))]
     needs = kind_needs(visual_kind(prompt_text, visual)) if task_type == "task1" else ""
     feedback = await _feedback_call(task_type, prompt_text, answer_text, prompt_images, copied, None, sheet,
                                     marks_only=marks_only, needs=needs)

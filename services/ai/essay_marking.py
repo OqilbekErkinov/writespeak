@@ -224,6 +224,18 @@ def find_copied_spans(essay: str, question: str, min_words: int = COPY_MIN_WORDS
     return spans
 
 
+RUBRIC_SHARE_MAX = 0.5  # copied from the "question" beyond this share of the essay: the question holds the essay
+
+
+def rubric_spans(essay: str, question: str, min_words: int = COPY_MIN_WORDS) -> list[tuple[int, int]]:
+    """find_copied_spans, but none when they cover half the essay or more: then the student sent the
+    essay with the question (2026-11-10, #152: the question step held the whole essay, every word counted as
+    copied from it, "0 words of your own" and Band 1) - an input mix-up, not copying."""
+    spans = find_copied_spans(essay, question, min_words)
+    copied = sum(count_words(essay[s:e]) for s, e in spans)
+    return [] if copied >= RUBRIC_SHARE_MAX * max(count_words(essay), 1) else spans
+
+
 # --- Locating text in the original ------------------------------------------------------------
 
 
@@ -911,7 +923,7 @@ def build_report(
 
     # Text copied from the question: grey, with its own Task mistake.
     marks: list[_Mark] = []
-    for start, end in find_copied_spans(original, question, copy_min_words(task_type)):
+    for start, end in rubric_spans(original, question, copy_min_words(task_type)):
         text = original[start:end]
         free = [m for m in mistakes if not m.copy]
         i = _copy_mistake_index(text, free)
