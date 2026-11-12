@@ -1622,6 +1622,97 @@ def per_criterion_range() -> None:
     check("...switched off: the strong-phrase count alone decides, as before", old["LR"] == 8 and old["GRA"] == 8, old)
 
 
+def task2_and_speaking_20261112() -> None:
+    """2026-11-12: #166 (the teachers' 6.5-7.0 Task 2 essay) had Task Response 8 in three runs whose own reasons
+    were Band 7's; #67 (a wide, idiomatic Part 2 talk) had Lexical 7 for two word choices off with their meaning
+    clear; Part 2 model answers last at least 1:30."""
+    from services.ai import speaking_answers
+    from services.ai.speaking_grader import SessionItem
+
+    g = writing_grader
+    for reason in ("Benefits of hard work are acknowledged but not developed",
+                   'One claim is overstrong without support: "cancer"', "One support is over-generalised",
+                   '"they often work" (a main idea stated but not extended or supported)'):
+        check(f"Task Response: a Band 7 reason - {reason[:40]}", g.band7_development([reason]))
+    for reason in ("Depth could be further expanded", "Some points could be probed further",
+                   "The conclusion is brief"):
+        check(f"...a mild remark is no Band 7 reason - {reason}", not g.band7_development([reason]))
+
+    essay = ("Some people work harder than others because they need money, and hard work brings rewards. " * 30)
+
+    def run(task, weak):
+        def judgement(k, band):
+            items = g._checklist_items(k, task)
+            return schemas.CriterionJudgement(checklist=[schemas.CheckFinding(item=i, found=False, quote="")
+                                                         for i in items], strengths=[], band=band, note="n",
+                                              weaknesses=list(weak) if k == "TR_or_TA" else [])
+        scoring = schemas.WritingScoring(TR_or_TA=judgement("TR_or_TA", 8), CC=judgement("CC", 8),
+                                         LR=judgement("LR", 7), GRA=judgement("GRA", 8))
+
+        async def fake(purpose, max_tokens, messages, response_format, effort=None, model=None):
+            return NS(choices=[NS(message=NS(parsed=scoring))])
+        real = g._parse
+        g._parse = fake
+        try:
+            return asyncio.run(g._score_once(task, "Why do some people work harder?", essay, None, checked=[],
+                                             wide=True))
+        finally:
+            g._parse = real
+
+    check("Task 2: Task Response 8 whose own reason is Band 7's is 7 (#166)",
+          run("task2", ["Benefits are acknowledged but not developed"])["TR_or_TA"] == 7)
+    check("...a mild remark keeps the 8", run("task2", ["Depth could be further expanded"])["TR_or_TA"] == 8)
+    check("...never Task 1 (it works well, the user: don't touch it)",
+          run("task1", ["Benefits are acknowledged but not developed"])["TR_or_TA"] == 8)
+
+    talk = "I am a history buff and the pyramids mesmerize me. " * 25
+    items = [SessionItem(qid="Q1", part="part2", question="Describe a historical period", audio=_audio(talk))]
+    clear = NS(wrong="relive that experience", correct="witness it firsthand", criterion="LR", severity="error",
+               unclear=False, clear_choice=True)
+    evidence = speaking_grader.mistake_evidence(items, [clear], [], [], [])
+    check("Speaking: a word choice off with its meaning clear weighs half and says so (#67)",
+          "(word choice off, meaning clear)" in evidence and "1 errors" in evidence, evidence)
+    check("...the scoring guide: it is one of Band 8's occasional inaccuracies",
+          "occasional inaccuracies\" Band 8 allows" in speaking_grader._scoring_system("part2", False))
+
+    check("Part 2 model answers last at least 1:30 (215+ words at 140 a minute)",
+          speaking_answers.PART2_MIN_WORDS >= 210
+          and speaking_answers.LENGTH_BOUNDS["part2"][0] == speaking_answers.PART2_MIN_WORDS
+          and round(speaking_answers.PART2_MIN_WORDS / speaking_answers.WORDS_PER_MINUTE * 60) >= 90)
+    target = NS(part="part2", student_answer="I like history. " * 50)  # 150 words of their own
+    lo, hi = speaking_answers.length_for(target)
+    check("...even when the student's own talk was short", lo >= speaking_answers.PART2_MIN_WORDS, (lo, hi))
+
+
+def task1_labels_and_close_reads() -> None:
+    """2026-11-12, #169 (a Band 9 report marked 7.5): the chart's own unit "per 1000-population" was four grammar
+    errors, and two figures read off the scale as the same (21 and 23 both snapped to "about 22.5") made "a slight
+    increase in all six groups" a Task mistake."""
+    from services.ai.visual_reading import JUDGE_RULES
+
+    g = writing_grader
+    visual = {"blocks": [{
+        "title": "Attendances per 1000-population by age group, December 2016 vs December 2017",
+        "units": "Attendances per 1000-population", "axis_labels": ["0", "20", "40"], "time_points": [],
+        "legend": [{"label": "December 2016"}, {"label": "December 2017"}],
+        "values": [{"series": "December 2016", "point": "5-15"}, {"series": "December 2017", "point": "75+"}]}]}
+    labels = g.visual_label_text(visual)
+    check("Task 1: the visual's labels are its title, unit, axes, legend and categories",
+          all(x in labels for x in ("Attendances per 1000-population", "December 2016", "75+", "20")), labels)
+    check("...the chart's own unit, copied as printed, is no wording error (#169)",
+          g.copies_visual_label("per 1000-population", labels)
+          and g.copies_visual_label("Per 1000-Population.", labels))
+    check("...whole words only: one word short of the label is still an error",
+          not g.copies_visual_label("per 1000-populatio", labels)
+          and not g.copies_visual_label("attendance per 1000", labels))
+    check("...a few letters are no label", not g.copies_visual_label("per", labels))
+    check("...no visual, no labels", not g.copies_visual_label("per 1000-population", ""))
+    rule = " ".join(JUDGE_RULES.split())
+    check("the judge: two figures read off the scale as the same are too close to tell apart, not equal",
+          "too close to tell apart, not equal" in rule and "PRINTS them equal" in rule
+          and "is never a mistake" in rule, rule[-600:])
+
+
 def model_answer_bands() -> None:
     """The user's rule (2026-11-12), Writing and Speaking alike: 5.0-6.5 -> a Band 7 model answer, 7.0-7.5 ->
     Band 8, 8.0-9.0 -> Band 9 only."""
@@ -1655,5 +1746,7 @@ if __name__ == "__main__":
     writing_label_repetition()
     checklist_and_band9_samples()
     per_criterion_range()
+    task2_and_speaking_20261112()
+    task1_labels_and_close_reads()
     print(f"\n{len(fails)} failed" if fails else "\nall passed")
     sys.exit(1 if fails else 0)

@@ -537,12 +537,19 @@ async def part2_bot() -> None:
     check("[fix] graded with the student's split", len(graded[-1]["questions"]) == 3 and len(documents(calls)) == 1)
     fake.confidence = "high"
 
-    # 6. Part 2: the minute of preparation is no pause; the examiner's words are not the answer.
+    # 6. Part 2: one cue card, one talk - no "how will you answer?" (2026-11-12). A recording with the
+    # examiner's voice goes through "the questions are in the recording": the minute of preparation is no
+    # pause, the examiner's words are not the answer.
     graded.clear()
     card = "Describe a book you enjoyed reading.\nYou should say:\nwhat it was\nwho wrote it\nand explain why you enjoyed it."
     await press(CB_PART2)
-    await send(text=card)
-    await press(CB_MODE_ONE)
+    calls = await send(text=card)
+    check("[part2] the cue card goes straight to the talk: no answer-mode question",
+          await state.get_state() == SpeakingStates.awaiting_answer.state
+          and not {CB_MODE_EACH, CB_MODE_ONE} & set(buttons(calls)), texts(calls)[-1:])
+    await state.clear()
+    await press(CB_PART2)
+    await press(CB_NO_QUESTIONS)
     lines2 = [line("Now I'm going to give you a topic. You have one minute to prepare.", 0.5, 5.5, "question"),
               line("All right, please start speaking now.", 64.0, 66.0, "question")]
     t0 = 67.5
@@ -553,6 +560,8 @@ async def part2_bot() -> None:
     pieces, shifted, duration = recording(lines2)
     await send_pieces(pieces, shifted, duration)
     calls = await press(CB_REC_FINISH)
+    if await state.get_state() == SpeakingStates.awaiting_question.state:  # the card isn't read aloud: send it
+        calls = await send(text=card)
     a = graded[-1]["audios"][0] if graded else None
     check("[part2] graded; the clip is the long turn only (no minute of preparation)",
           a is not None and 50 < a.duration < 56 and len(documents(calls)) == 1, a and a.duration)

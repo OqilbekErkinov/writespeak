@@ -381,6 +381,22 @@ _STRICT = ConfigDict(extra="forbid")
 RANGE_ITEMS = {"LR": "everyday words throughout, few or no less common ones",
                "GRA": "a narrow range of structures (mostly simple sentences)"}
 PER_CRITERION_WIDE = True
+# Task 2 Response: a run's own reason that is Band 7's in the descriptors - an idea not extended or supported, a
+# claim over-generalised or without support; the checklist's "a main idea stated but not extended or supported".
+# Mild remarks ("could be developed further", "depth could be expanded") are Band 8's "occasional lapses".
+TR_DEVELOPMENT_CAP = True
+_BAND7_DEVELOPMENT = re.compile(
+    r"\bnot (?:fully |well |sufficiently |really |properly )?(?:developed|extended|supported|exemplified|"
+    r"explained|elaborated|justified)\b|\bunder-?developed\b|\bunsupported\b|"
+    r"\blacks? (?:of )?(?:development|support|supporting|examples?|elaboration|justification)\b|"
+    r"\black(?:ing)? (?:of )?(?:development|support|examples?|elaboration)\b|\bover-?generali[sz]|"
+    r"\bover-?stat|\bover-?strong|\bwithout (?:support|supporting|examples?|evidence|elaboration|justification)\b|"
+    r"\bmain idea stated but not extended or supported\b", re.IGNORECASE)
+
+
+def band7_development(reasons: list[str]) -> bool:
+    """Does a Task Response reason name a Band 7 feature of development (see _BAND7_DEVELOPMENT)?"""
+    return any(_BAND7_DEVELOPMENT.search(r) for r in reasons)
 
 
 def _checklist_items(key: str, task_type: str) -> list[str]:
@@ -1500,6 +1516,14 @@ async def _score_once(task_type, prompt_text, answer_text, prompt_images, sheet:
         f"found {found(k)}"[:400] for k in SCORE_KEYS))
     for k in SCORE_KEYS:
         judged = getattr(scores, k)
+        if k == "TR_or_TA" and task_type == "task2" and out[k] == 8 and TR_DEVELOPMENT_CAP \
+                and band7_development(judged.weaknesses + found(k)):
+            # Task Response 8 is "ideas well extended and supported"; 7 is "a tendency to over-generalise or a
+            # lack of focus and precision in supporting ideas". A run that names that itself gave a 7
+            # (2026-11-12, #166: the teachers' 6.5-7.0 essay, Task 8 in all three runs with "benefits not
+            # developed", "claim without support", "over-generalised" as their own reasons)
+            logger.info("Score %s 8 -> 7: its own reasons are Band 7's (%s)", k, judged.weaknesses + found(k))
+            out[k] = 7.0
         if out[k] == 9 and found(k) and reason(k, found(k)):
             logger.info("Score %s 9 -> 8: its checklist found %s", k, found(k))
             out[k] = 8.0
@@ -1998,11 +2022,20 @@ async def grade_writing(
         lead, 2026-10-27)."""
         return m.criterion == "TR" and protected_mistake(m.wrong, m.correct, m.why, visual, prompt_text, unchecked)
 
-    auto = {m.id for m in feedback.mistakes if question_word(m) or data_protected(m) or scan_noise(m)}
+    labels = visual_label_text(visual) if visual else ""
+
+    def visual_label(m) -> bool:
+        """The visual's own words are never a wording or grammar error either - its title, unit, axes and
+        categories as printed (2026-11-12, #169: "per 1000-population", the chart's own unit, flagged four
+        times as grammar). Never a Task mistake: naming the wrong category is one."""
+        return m.criterion in ("GRA", "LR") and copies_visual_label(m.wrong, labels)
+
+    auto = {m.id for m in feedback.mistakes
+            if question_word(m) or data_protected(m) or scan_noise(m) or visual_label(m)}
     for m in feedback.mistakes:
         if m.id in auto:
-            logger.info("Dropped mistake %s by code: the question's own words, a figure the sheet confirms or can't "
-                        "check, or a trace of scanning (%r)", m.id, m.wrong)
+            logger.info("Dropped mistake %s by code: the question's or the visual's own words, a figure the sheet "
+                        "confirms or can't check, or a trace of scanning (%r)", m.id, m.wrong)
             flags.append({"wrong": m.wrong, "correct": m.correct, "class": "not_a_mistake", "criterion": m.criterion,
                           "reason": "set aside by code", "less_common": False})
     # The first pass's mistakes and the missed-errors pass's finds go to the filter together, as one voted set
@@ -2010,7 +2043,8 @@ async def grade_writing(
     # the missed finds' ids are offset so the two lists never share one.
     missed = await find_missed()
     unfiltered_missed = missed
-    missed = [x for x in missed if not question_word(x) and not data_protected(x) and not scan_noise(x)]
+    missed = [x for x in missed if not question_word(x) and not data_protected(x) and not scan_noise(x)
+              and not visual_label(x)]
     all_verdicts, fixes = await verify(
         [(m.id, "essay", m.wrong, m.correct, m.why, m.criterion, correction_note(m))
          for m in feedback.mistakes if checkable(m) and m.id not in auto]
@@ -2147,6 +2181,27 @@ def _vocabulary_fixed(feedback: WritingFeedback, fixes: dict, example_check) -> 
 
 
 _WORD = re.compile(r"[a-z]+(?:'[a-z]+)?")
+
+
+def visual_label_text(visual: dict) -> str:
+    """Every label the visual prints - titles, units, axis labels, legend, series and category names."""
+    parts: list[str] = []
+    for b in visual.get("blocks", []):
+        parts += [b.get("title") or "", b.get("units") or "", *(b.get("axis_labels") or []),
+                  *(b.get("time_points") or [])]
+        parts += [x.get("label") or "" for x in b.get("legend") or []]
+        parts += [v.get(k) or "" for v in b.get("values") or [] for k in ("series", "point")]
+    return " | ".join(str(p) for p in parts if p)
+
+
+def copies_visual_label(wrong: str, labels: str) -> bool:
+    """Is the flagged text the visual's own wording, copied as printed?"""
+    def norm(text: str) -> str:
+        return re.sub(r"\s+", " ", canon(text).lower()).strip(" .,;:")
+    w = norm(wrong)
+    # whole words only: "number of student" is no copy of the label "Number of students"
+    return bool(labels) and len(w) >= 4 and bool(
+        re.search(rf"(?<![a-z0-9]){re.escape(w)}(?![a-z0-9])", norm(labels)))
 
 
 def uses_question_words(wrong: str, correct: str, question: str) -> bool:

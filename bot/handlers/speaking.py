@@ -227,7 +227,12 @@ async def start_question_set(
 
 def _offers_one_recording(data: dict) -> bool:
     """Only the Speaking menu's own checks: Practice, group assignments and
-    mock tests stay question by question (the last prompt's D)."""
+    mock tests stay question by question (the last prompt's D). Never Part 2:
+    one cue card, one talk - its voice message is the answer, no "how will
+    you answer?" (the user, 2026-11-12); a recording with the examiner's
+    voice still goes through "the questions are in the recording"."""
+    if data.get("part") == "part2":
+        return False
     return not (data.get("practice_question_id") or data.get("mock_session_id") or data.get("assignment_part_id"))
 
 

@@ -152,9 +152,11 @@ states, not sizes - "present", "retained" or "unchanged position" says nothing a
 is a mistake only when the sheet's own detail says the opposite;
 - a year printed on the axis, or between the first and last labelled years, is never a TR mistake;
 - rankings, equal values, trends and the overview: a mistake only when the verified figures \
-contradict them (e.g. "boys lead" where the sheet shows them equal); a trend ("fell", "stayed \
+contradict them (e.g. "boys lead" where the sheet PRINTS them equal); a trend ("fell", "stayed \
 stable") is wrong only when the change between its two figures is larger than both their ±ranges \
-together and goes the other way;
+together and goes the other way. Figures read off the scale that come out the same (both "about 22.5 \
+(±2.5)") are too close to tell apart, not equal: a small rise, fall or difference between them ("a \
+slight increase in all six groups") is never a mistake;
 - a claim about the writer's own grouping of the steps or categories ("in the final stage" of the \
 three stages the writer defined) is never a data error - a different valid grouping is never a \
 mistake; only a wrong step order or a missing step counts;

@@ -206,9 +206,10 @@ async def run(cases: list[dict], out: Path, uid: int) -> None:
                     await press(sender, CB_CONFIRM)
                 if await state.get_state() == SpeakingStates.choosing_mode.state:
                     await press(sender, CB_MODE_ONE)
-            await send(sender, document=document(case["audio"], "audio/mpeg"))
+            calls = await send(sender, document=document(case["audio"], "audio/mpeg"))
             await state.update_data(test_run=True)
-            calls = await press(sender, CB_REC_FINISH)
+            if await state.get_state() == SpeakingStates.awaiting_recording.state:  # one recording: finish it
+                calls = await press(sender, CB_REC_FINISH)  # (Part 2's one talk is graded as it arrives)
             if await state.get_state() == SpeakingStates.confirming_split.state:
                 await state.update_data(test_run=True)
                 calls = await press(sender, CB_SPLIT_OK)
@@ -274,5 +275,14 @@ if __name__ == "__main__":
     ap.add_argument("cases")
     ap.add_argument("out")
     ap.add_argument("--user", type=int, default=5764504074)
+    ap.add_argument("--ignore-test-window", action="store_true",
+                    help="checks open to this run's user whatever the admin panel's test window lists (only in "
+                         "this process; the bot itself is untouched)")
     a = ap.parse_args()
+    if a.ignore_test_window:
+        from bot.utils import runtime
+
+        async def open_to_all(user_id: int) -> bool:
+            return False
+        runtime.checks_paused_for = open_to_all
     asyncio.run(run(json.loads(Path(a.cases).read_text(encoding="utf-8")), Path(a.out), a.user))

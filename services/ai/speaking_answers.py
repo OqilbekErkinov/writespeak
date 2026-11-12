@@ -64,11 +64,15 @@ from services.ai.scoring import aim_band
 logger = logging.getLogger(__name__)
 
 LENGTHS = {"part1": (40, 60), "part2": (250, 300), "part3": (70, 100)}
+WORDS_PER_MINUTE = 140
+# A Part 2 model answer lasts at least 1:30 (the user, 2026-11-12: "the rule is so" - #67's was 200 words,
+# about 86 seconds): its least word count at WORDS_PER_MINUTE, with a little to spare
+PART2_MIN_SECONDS = 90
+PART2_MIN_WORDS = round(PART2_MIN_SECONDS / 60 * WORDS_PER_MINUTE) + 5
 # about as long as the candidate's own answer (the academic lead, 2026-10-29), within these bounds
 OWN_LENGTH = 0.2
-LENGTH_BOUNDS = {"part1": (30, 110), "part2": (180, 340), "part3": (50, 170)}
+LENGTH_BOUNDS = {"part1": (30, 110), "part2": (PART2_MIN_WORDS, 340), "part3": (50, 170)}
 ALTERNATIVE_FROM = 8.5  # already at this level: one answer said another way, not a full set
-WORDS_PER_MINUTE = 140
 DEFAULT_BAND = 7.5  # without the student's results
 SELF_CHECK_MARGIN = 0.5
 REUSE_LIMIT = 0.35  # share of the answer's 4-word runs that may come from the student's transcript

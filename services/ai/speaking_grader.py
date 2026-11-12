@@ -476,7 +476,8 @@ apart - never count it or quote it as a weakness.
 that comes from attempting less common language weighs less. A slip is very small - Band 9 Grammar \
 allows mistakes characteristic of native-speaker speech.
 - A wide range with a few slips is Band 8 or 9, never 7. Lexical Resource 6 or below only for a \
-genuinely limited range or words that make the meaning unclear.
+genuinely limited range or words that make the meaning unclear. A word choice that is off while its meaning \
+stays clear (marked "word choice off, meaning clear") is one of the "occasional inaccuracies" Band 8 allows.
 - Below 9 needs a reason: a criterion's weaknesses must quote the transcript (a real error, a search \
 for language) or name what is missing. "Could be more varied", "minor slips" with no quote are no \
 reasons - with no such weakness, give 9."""
@@ -756,8 +757,12 @@ def mistake_evidence(items: list[SessionItem], checked: list, alternatives: list
             continue
         slips = distinct_slips([m for m in mine if m.severity == "slip"])  # the same slip again counts once
         errors = [m for m in mine if m.severity != "slip"]
-        density = (len(errors) + len(slips) * weight) * 100 / per
-        listed = "; ".join([f"«{m.wrong}» -> «{m.correct}»" for m in errors[:10]]
+        half = marking_config.density()["less_common_weight"]
+        density = (sum(half if getattr(m, "clear_choice", False) else 1 for m in errors)
+                   + len(slips) * weight) * 100 / per
+        listed = "; ".join([f"«{m.wrong}» -> «{m.correct}»"
+                            + (" (word choice off, meaning clear)" if getattr(m, "clear_choice", False) else "")
+                            for m in errors[:10]]
                            + [f"«{m.wrong}» -> «{m.correct}» (slip{', ' + str(n) + ' times' if n > 1 else ''})"
                               for m, n in slips[:6]])
         lines.append(f"- {name}: {len(errors)} errors, {len(slips)} slips = {density:.1f} weighted per 100 words: "
@@ -794,7 +799,9 @@ def speaking_floors(items: list[SessionItem], bands: dict[str, float], checked: 
         errors = [m for m in mine if m.severity != "slip"]
         least = f["slips_only_min"] if not errors else 0
         if key == "LR" and not any(m.unclear for m in mine):
-            if (len(errors) + (len(mine) - len(errors)) * weight) * 100 / words <= marking_config.density()["band7_max"]:
+            half = marking_config.density()["less_common_weight"]
+            counted = sum(half if getattr(m, "clear_choice", False) else 1 for m in errors)
+            if (counted + (len(mine) - len(errors)) * weight) * 100 / words <= marking_config.density()["band7_max"]:
                 least = max(least, f["clear_vocabulary_lr_min"])
         if out[key] < least:
             raised.append(f"{key} {out[key]:g} -> {least:g}")
@@ -985,8 +992,12 @@ async def grade_speaking(part: str, items: list[SessionItem], ev: Evidence, prac
                     alternatives.append({"q": m.question, "wrong": m.wrong, "correct": m.correct, "why": reason,
                                          "criterion": m.criterion})
                 continue
+            # a word choice or collocation off with its meaning clear weighs half, as in Writing (CLEAR_CHOICE,
+            # the descriptors' "occasional inaccuracies" at Lexical 8): #67's "classified as the most
+            # unbelievable" and "relive that experience" held a wide, idiomatic Part 2 talk at Lexical 7
             checked.append(SimpleNamespace(wrong=m.wrong, correct=m.correct, criterion=m.criterion, severity=kind,
-                                           unclear=m.unclear))
+                                           unclear=m.unclear,
+                                           clear_choice=m.criterion == "LR" and not m.unclear and kind == "error"))
 
     # Writing's rules for slips (the academic lead, 2026-10-29), Speaking too since 2026-11-11: a correction of
     # only an article, a full stop or a noun's number is a slip; the same slip again counts once (#42 "the age")
