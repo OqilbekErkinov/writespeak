@@ -23,9 +23,11 @@ logger = logging.getLogger(__name__)
 ENABLED = settings.marking_cache_enabled
 TTL_SECONDS = 90 * 24 * 3600
 _ROOT = Path(__file__).resolve().parents[2]
+# the chart's reading too: its data sheet and judging rules decide a Task 1 report's marks (2026-11-12, #171:
+# re-sent after the stacked bars were measured, it got the old Task 6 back from here)
 _VERSION_FILES = ("services/ai/writing_grader.py", "services/ai/essay_marking.py", "services/ai/mistake_rules.py",
                   "services/ai/schemas.py", "services/ai/scoring.py", "services/ai/visual_check.py",
-                  "config/writing_marking.json")
+                  "services/ai/visual_reading.py", "services/ai/chart_measure.py", "config/writing_marking.json")
 _version: str | None = None
 _client: redis.Redis | None = None
 
