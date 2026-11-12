@@ -2028,7 +2028,7 @@ async def grade_writing(
         """The visual's own words are never a wording or grammar error either - its title, unit, axes and
         categories as printed (2026-11-12, #169: "per 1000-population", the chart's own unit, flagged four
         times as grammar). Never a Task mistake: naming the wrong category is one."""
-        return m.criterion in ("GRA", "LR") and copies_visual_label(m.wrong, labels)
+        return m.criterion in ("GRA", "LR") and copies_visual_label(m.wrong, m.correct, labels)
 
     auto = {m.id for m in feedback.mistakes
             if question_word(m) or data_protected(m) or scan_noise(m) or visual_label(m)}
@@ -2194,14 +2194,33 @@ def visual_label_text(visual: dict) -> str:
     return " | ".join(str(p) for p in parts if p)
 
 
-def copies_visual_label(wrong: str, labels: str) -> bool:
-    """Is the flagged text the visual's own wording, copied as printed?"""
-    def norm(text: str) -> str:
-        return re.sub(r"\s+", " ", canon(text).lower()).strip(" .,;:")
-    w = norm(wrong)
-    # whole words only: "number of student" is no copy of the label "Number of students"
-    return bool(labels) and len(w) >= 4 and bool(
-        re.search(rf"(?<![a-z0-9]){re.escape(w)}(?![a-z0-9])", norm(labels)))
+def copies_visual_label(wrong: str, correct: str, labels: str) -> bool:
+    """Does the "correction" only change the visual's own wording, copied as printed? The flag may take in a few
+    words around it ("per 1000-population one year later" -> "per 1,000 population one year later", #169's
+    re-run): what counts is that every word it changes sits in a stretch the visual prints."""
+    if not labels:
+        return False
+    printed = re.sub(r"\s+", " ", canon(labels).lower())
+
+    def words(text: str) -> list[str]:
+        return [t for t in (w.strip(".,;:!?\"'()") for w in canon(text).lower().split()) if t]
+
+    def on_visual(span: list[str]) -> bool:
+        # whole words only: "number of student" is no copy of the label "Number of students"
+        text = " ".join(span)
+        return len(text) >= 4 and bool(re.search(rf"(?<![a-z0-9]){re.escape(text)}(?![a-z0-9])", printed))
+
+    w, c = words(wrong), words(correct)
+    if on_visual(w):
+        return True
+    changed: list[int] = []
+    for op, i1, i2, _, _ in difflib.SequenceMatcher(None, w, c, autojunk=False).get_opcodes():
+        if op in ("replace", "delete"):
+            changed += range(i1, i2)
+        elif op == "insert":  # a word put in between two of the student's: both must be the visual's
+            # ("Number of people rose" -> "The number of people rose" is the student's sentence, not the label)
+            changed += [i1 - 1, i1] if 0 < i1 < len(w) else [-1]
+    return bool(changed) and min(changed) >= 0 and on_visual(w[min(changed):max(changed) + 1])
 
 
 def uses_question_words(wrong: str, correct: str, question: str) -> bool:

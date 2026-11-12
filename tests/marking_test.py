@@ -1699,14 +1699,24 @@ def task1_labels_and_close_reads() -> None:
     labels = g.visual_label_text(visual)
     check("Task 1: the visual's labels are its title, unit, axes, legend and categories",
           all(x in labels for x in ("Attendances per 1000-population", "December 2016", "75+", "20")), labels)
+    unit = "per 1,000 population"
     check("...the chart's own unit, copied as printed, is no wording error (#169)",
-          g.copies_visual_label("per 1000-population", labels)
-          and g.copies_visual_label("Per 1000-Population.", labels))
+          g.copies_visual_label("per 1000-population", unit, labels)
+          and g.copies_visual_label("Per 1000-Population.", unit, labels))
+    check("...nor with a few of the student's words around it (#169's re-run)",
+          g.copies_visual_label("per 1000-population one year later", "per 1,000 population one year later", labels)
+          and g.copies_visual_label("at just over 20 per 1000-population in both months",
+                                    "at just over 20 per 1,000 population in both months", labels))
+    check("...but a change to the student's own words around it is still checked",
+          not g.copies_visual_label("per 1000-population one years later", "per 1000-population one year later",
+                                    labels)
+          and not g.copies_visual_label("Attendances per 1000-population rose", "The attendances per "
+                                        "1000-population rose", labels), "an article the sentence needs")
     check("...whole words only: one word short of the label is still an error",
-          not g.copies_visual_label("per 1000-populatio", labels)
-          and not g.copies_visual_label("attendance per 1000", labels))
-    check("...a few letters are no label", not g.copies_visual_label("per", labels))
-    check("...no visual, no labels", not g.copies_visual_label("per 1000-population", ""))
+          not g.copies_visual_label("per 1000-populatio", unit, labels)
+          and not g.copies_visual_label("attendance per 1000", "attendances per 1,000", labels))
+    check("...a few letters are no label", not g.copies_visual_label("per", "for", labels))
+    check("...no visual, no labels", not g.copies_visual_label("per 1000-population", unit, ""))
     rule = " ".join(JUDGE_RULES.split())
     check("the judge: two figures read off the scale as the same are too close to tell apart, not equal",
           "too close to tell apart, not equal" in rule and "PRINTS them equal" in rule
