@@ -1721,6 +1721,8 @@ def task1_labels_and_close_reads() -> None:
     check("the judge: two figures read off the scale as the same are too close to tell apart, not equal",
           "too close to tell apart, not equal" in rule and "PRINTS them equal" in rule
           and "is never a mistake" in rule, rule[-600:])
+    check("...an opening sentence that leaves out a minor category is no Task mistake (#171's \"Other\")",
+          'leaving out a minor one ("Other")' in rule and 'never "a key feature left out"' in rule)
 
 
 def model_answer_bands() -> None:

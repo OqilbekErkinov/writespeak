@@ -161,14 +161,17 @@ slight increase in all six groups") is never a mistake;
 three stages the writer defined) is never a data error - a different valid grouping is never a \
 mistake; only a wrong step order or a missing step counts;
 - a paraphrase of a chart label ("age at death" for "life expectancy", "proximity to home" for "close \
-to parental home") is good writing, never a mistake.
+to parental home") is good writing, never a mistake;
+- the opening sentence's summary of what the visual shows: naming its main categories and leaving out a \
+minor one ("Other") or part of a label ("recycled" for "Recycled/composted") is never a mistake and never \
+"a key feature left out" - the key features are judged in the overview and the body.
 A mistake about the data has criterion TR, and its `correct` gives the sheet's figure (e.g. "about 27%")."""
 
 # The version of how a chart is read and its two reads merged: a chart key kept by the bot itself ("auto")
 # is reused for the same picture only when it was read by this version (services/ai/chart_keys.py) - so a
 # change to the reading (2026-11-09: map places compared, a change kept as uncertain) never brings back
 # sheets read the old way. Bump it whenever the reading or the merge changes.
-READER_VERSION = "2026-11-09"
+READER_VERSION = "2026-11-12"  # stacked bars measured, narrow horizontal bars found (#171)
 
 # Added after the sheet where the model answer is written and checked.
 ANSWER_RULES ="""Use ONLY the verified figures on this DATA SHEET: a printed figure as printed; one \

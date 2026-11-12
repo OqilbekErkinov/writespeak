@@ -91,6 +91,34 @@ def bar_chart(series: dict[str, list[float]], cats: list[str], step: float, top:
     return png(fig)
 
 
+def stacked_chart(series: dict[str, list[float]], cats: list[str], step: float, top: float, colours: list[str],
+                  horizontal: bool, legend_below: bool) -> bytes:
+    fig, ax = plt.subplots(figsize=(8, 6) if horizontal else (8, 5), dpi=90)
+    start = np.zeros(len(cats))
+    for k, (name, vals) in enumerate(series.items()):
+        if horizontal:
+            ax.barh(range(len(cats)), vals, 0.6, left=start, label=name, color=colours[k])
+        else:
+            ax.bar(range(len(cats)), vals, 0.6, bottom=start, label=name, color=colours[k])
+        start = start + np.array(vals)
+    if horizontal:
+        ax.set_yticks(range(len(cats)), cats)
+        ax.invert_yaxis()
+        ax.set_xlim(0, top)
+        ax.set_xticks(np.arange(0, top + step / 2, step), [f"{v:g}%" for v in np.arange(0, top + step / 2, step)])
+    else:
+        ax.set_xticks(range(len(cats)), cats)
+        ax.set_ylim(0, top)
+        ax.set_yticks(np.arange(0, top + step / 2, step))
+    if legend_below:  # one row under the chart, the words close together (#171's "Incineration Other")
+        ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.08), ncol=len(series), frameon=False,
+                  columnspacing=0.6, handletextpad=0.3)
+    else:
+        ax.legend(loc="upper right")
+    fig.tight_layout()
+    return png(fig)
+
+
 def block(kind: str, series: dict[str, list[float]], points: list[str], step: float, slack: float) -> dict:
     """A read's block: the drawn figures, each off by `slack` steps as a read by eye would be."""
     rng = np.random.default_rng(7)
@@ -130,6 +158,27 @@ def pictures() -> None:
                 block("bar", bars, cats, 50, 0.4), bars, cats, 50, 1.0)
     measured_ok("horizontal bars", bar_chart(bars, cats, 50, 400, ["#2ca02c", "#d62728"], horizontal=True),
                 block("bar", bars, cats, 50, 0.4), bars, cats, 50, 0.75)
+
+    # 2026-11-12, #171: a 100% stacked bar chart was left to the reads by eye (Belgium's recycling 40 for 50)
+    countries = ["Greece", "Spain", "France", "Belgium", "Austria", "Germany", "Denmark"]
+    shares = {"Landfill": [91, 64, 43, 26, 25, 24, 8], "Recycled": [9, 22, 22, 50, 62, 42, 34],
+              "Incineration": [0, 6, 35, 24, 12, 22, 58], "Other": [0, 8, 0, 0, 1, 12, 0]}
+    colours = ["#ffc000", "#33ccff", "#92d050", "#8064a2"]
+    measured_ok("100% stacked horizontal bars, legend in one row below",
+                stacked_chart(shares, countries, 20, 100, colours, horizontal=True, legend_below=True),
+                block("bar", shares, countries, 20, 0.4), shares, countries, 20, 1.0)
+    spend = {"Rent": [420, 380, 510, 300], "Food": [180, 220, 160, 240], "Travel": [90, 60, 130, 110]}
+    months = ["Jan", "Feb", "Mar", "Apr"]
+    measured_ok("stacked columns, legend at the side", stacked_chart(spend, months, 100, 900, colours[:3],
+                                                                     horizontal=False, legend_below=False),
+                block("bar", spend, months, 100, 0.3), spend, months, 100, 1.0)
+    # the legend's order is the stack's order turned over: the swatches tell (Excel's side legend)
+    flipped = dict(reversed(list(spend.items())))
+    blk = block("bar", spend, months, 100, 0.3)
+    blk["legend"] = [{"label": s, "colour": ""} for s in flipped]
+    measured_ok("...with the legend listed top to bottom", stacked_chart(spend, months, 100, 900, colours[:3],
+                                                                         horizontal=False, legend_below=False),
+                blk, spend, months, 100, 1.0)
 
 
 def sheet(values: list[dict], axis: list[str], kind: str = "line") -> VisualSheet:
@@ -269,8 +318,35 @@ def rules() -> None:
                                                         "wrong figures", checked, "spending", set()))
 
 
+def stack_naming() -> None:
+    """Which series a stacked bar's piece is: by every swatch, or by the stacking order the known swatches
+    confirm (#171: the OCR read "Incineration Other" as one word); a blend between two pieces is no piece."""
+    P = chart_measure.Piece
+    yellow, blue, green, purple = (np.array(c, float) for c in ([254, 192, 0], [50, 204, 254], [146, 208, 80],
+                                                                  [128, 100, 160]))
+    series = ["Landfill", "Recycled", "Incineration", "Other"]
+
+    def bar(*colours):
+        return [P(100 - 10 * k, 90 - 10 * k, c) for k, c in enumerate(colours)]
+
+    stacks = {"Greece": bar(yellow, blue), "Spain": bar(yellow, blue, green, purple), "Denmark": bar(yellow, blue, green)}
+    two = {"Landfill": yellow, "Recycled": blue}
+    named = chart_measure._stack_series(stacks, series, two)
+    check("stacked: two swatches known, the order names the rest",
+          named == [["Landfill", "Recycled"], series, ["Landfill", "Recycled", "Incineration"]], named)
+    check("...no swatch known: not told", chart_measure._stack_series(stacks, series, {}) is None)
+    check("...a swatch against the order: not told",
+          chart_measure._stack_series(stacks, series, {"Landfill": blue, "Recycled": yellow}) is None)
+    blend = {"Greece": [P(100, 60, yellow), P(60, 58, np.array([150.0, 198.0, 130.0])), P(58, 0, blue)],
+             "Spain": bar(yellow, blue)}
+    clean = chart_measure.without_blends(blend, 100.0)
+    check("...a few rows of two colours run together are no piece: halved between them",
+          [(p.low, p.high) for p in clean["Greece"]] == [(100, 59.0), (59.0, 0)], clean["Greece"])
+
+
 if __name__ == "__main__":
     rules()
+    stack_naming()
     pictures()
     print(f"\n{len(fails)} failed" if fails else "\nall passed")
     sys.exit(1 if fails else 0)

@@ -1012,11 +1012,211 @@ def _no_shared_runs(out: dict[tuple[str, str], Measured], data: list[dict],
     return {k: m for k, m in out.items() if k not in drop}
 
 
+@dataclass
+class Piece:
+    """One series' piece of a stacked bar: its lower and upper edge (picture rows) and its colour."""
+
+    low: float
+    high: float
+    colour: np.ndarray
+
+
+PIECE_ROWS = 3  # a run of one colour shorter than this is a soft edge or a border, not a piece
+PIECE_COLOUR = 40.0  # rows within this colour distance belong to one piece
+
+
+def stack_pieces(img: np.ndarray, plot: Plot, bar: Bar) -> list[Piece]:
+    """A stacked bar's pieces from its base up (2026-11-12, #171: a 100% stacked bar chart of 15 countries
+    was left to the reads by eye, and they put Belgium's recycling at 40 for 50 and Austria's at 45 for 62).
+    Each row across the bar's middle is one even colour; rows of one colour make a piece, a few rows that
+    blend two pieces (a soft edge, a thin border) sit between them, and the bar ends where the background
+    comes back for good."""
+    width = bar.x1 - bar.x0
+    inner = slice(bar.x0 + width // 4, bar.x1 - width // 4 + 1)
+    axis = plot.axis
+    base = axis.pos(_base_value(axis))
+    gap_allowed = max(3, int(0.05 * axis.step_px))
+    runs: list[list] = []  # [first row, last row, colours]
+    blank = 0
+    for y in range(int(round(base)) - 1, plot.y0 - 1, -1):
+        px = img[y, inner].astype(int)
+        c = np.median(px, axis=0)
+        even = np.abs(c - plot.background).max() > INK and (_colour_dist(px, c) < PIECE_COLOUR).mean() >= 0.6
+        if not even:
+            blank += 1
+            if blank > gap_allowed and any(r[0] - r[1] + 1 >= PIECE_ROWS for r in runs):
+                break  # the bar's end (an axis line at its base is no piece of it)
+            continue
+        if runs and blank <= gap_allowed and _colour_dist(c[None], np.mean(runs[-1][2], axis=0))[0] < PIECE_COLOUR:
+            runs[-1][1] = y
+            runs[-1][2].append(c)
+        else:
+            runs.append([y, y, [c]])
+        blank = 0
+    kept: list[list] = []
+    for r in runs:
+        if r[0] - r[1] + 1 < PIECE_ROWS:
+            continue  # a blend of two pieces or a border
+        if kept and _colour_dist(np.mean(r[2], axis=0)[None], np.mean(kept[-1][2], axis=0))[0] < PIECE_COLOUR:
+            kept[-1][1] = r[1]  # one piece a gridline or border crossed
+            kept[-1][2] += r[2]
+        else:
+            kept.append(r)
+    pieces, lower = [], base
+    for k, (first, last, cs) in enumerate(kept):
+        upper = (last + kept[k + 1][0]) / 2 if k + 1 < len(kept) else last - 0.5
+        pieces.append(Piece(lower, upper, np.median(np.array(cs), axis=0)))
+        lower = upper
+    return pieces
+
+
+def _colour_groups(colours: list[np.ndarray], gap: float = 45.0) -> list[np.ndarray]:
+    groups: list[list[np.ndarray]] = []
+    for c in colours:
+        d = [float(np.linalg.norm(c - np.mean(g, axis=0))) for g in groups]
+        if d and min(d) < gap:
+            groups[int(np.argmin(d))].append(c)
+        else:
+            groups.append([c])
+    return [np.mean(g, axis=0) for g in groups]
+
+
+def without_blends(stacks: dict[str, list[Piece]], step_px: float) -> dict[str, list[Piece]]:
+    """The pieces with the blends between them taken out: a few rows where two pieces' colours run together
+    (#171's JPEG: 4-6 rows of a yellow-blue mix between Landfill and Recycled) are a short piece in a colour
+    no real piece has. Its rows go half to the piece below, half to the one above; a short piece in a real
+    piece's colour stays (#171: Austria's "Other", 1%)."""
+    # the real colours from pieces of some size; a blend can run to a few rows more than PIECE_ROWS, in two
+    # runs as its colour moves from one piece's to the other's
+    short = 2 * max(PIECE_ROWS, 0.03 * step_px)
+    means = _colour_groups([p.colour for ps in stacks.values() for p in ps if p.low - p.high >= short])
+
+    def same(a: np.ndarray, b: np.ndarray) -> bool:
+        return float(np.linalg.norm(a - b)) < 45
+
+    out = {}
+    for g, pieces in stacks.items():
+        kept: list[Piece] = []
+        pending = None  # (lower, upper) edge of the blend rows waiting for the piece above them
+        for p in pieces:
+            if p.low - p.high < short and not any(same(p.colour, m) for m in means):
+                pending = (p.low, p.high) if pending is None else (pending[0], p.high)
+                continue
+            if pending is not None:
+                if kept:
+                    mid = (pending[0] + pending[1]) / 2
+                    kept[-1] = Piece(kept[-1].low, mid, kept[-1].colour)
+                    p = Piece(mid, p.high, p.colour)
+                else:  # rows at the base: the first piece starts there
+                    p = Piece(pending[0], p.high, p.colour)
+                pending = None
+            if kept and same(kept[-1].colour, p.colour):
+                kept[-1] = Piece(kept[-1].low, p.high, kept[-1].colour)
+            else:
+                kept.append(p)
+        if pending is not None and kept:
+            kept[-1] = Piece(kept[-1].low, (pending[0] + pending[1]) / 2, kept[-1].colour)
+        out[g] = kept
+    return out
+
+
+def _stack_series(stacks: dict[str, list[Piece]], series: list[str],
+                  colours: dict[str, np.ndarray]) -> list[list[str]] | None:
+    """Which series each piece is, bar by bar - by the legend's swatch colours when every one is known and
+    clear; else by the order the colours stack in, the legend's order or its reverse, whichever the known
+    swatches agree with (#171's OCR read "Incineration Other" as one word: two swatches unknown). None when
+    it can't be told for sure."""
+    clusters: list[list[np.ndarray]] = []
+    ids: dict[str, list[int]] = {}
+    for g, pieces in stacks.items():
+        ids[g] = []
+        for p in pieces:
+            d = [float(np.linalg.norm(p.colour - np.mean(c, axis=0))) for c in clusters]
+            if d and min(d) < 45:
+                k = int(np.argmin(d))
+                clusters[k].append(p.colour)
+            else:
+                clusters.append([p.colour])
+                k = len(clusters) - 1
+            ids[g].append(k)
+    if len(clusters) > len(series) or any(len(set(v)) < len(v) for v in ids.values()):
+        return None  # more colours than series, or one colour twice in a bar: not a stack of these series
+    means = [np.mean(c, axis=0) for c in clusters]
+
+    def nearest(colour: np.ndarray) -> int | None:
+        d = sorted((float(np.linalg.norm(colour - m)), k) for k, m in enumerate(means))
+        return d[0][1] if len(d) == 1 or d[0][0] < 0.5 * d[1][0] else None
+
+    if all(_distinct_from_others(colours, s, series) for s in series):
+        names = {}
+        for s in series:
+            k = nearest(colours[s])
+            if k is None or k in names:
+                return None
+            names[k] = s
+        if len(names) < len(clusters):
+            return None
+        return [[names[k] for k in v] for v in ids.values()]
+    # by the order they stack in: each colour's place, from the base up, the same in every bar
+    rank = {k: float(np.mean([v.index(k) for v in ids.values() if k in v])) for k in range(len(clusters))}
+    order = sorted(rank, key=rank.get)
+    if len(order) != len(series) or any(
+            [order.index(k) for k in v] != sorted(order.index(k) for k in v) for v in ids.values()):
+        return None
+    known = [s for s in series if s in colours]
+    fits = []
+    for names in (series, series[::-1]):
+        mapping = dict(zip(order, names))
+        if known and all(nearest(colours[s]) is not None and mapping[nearest(colours[s])] == s for s in known):
+            fits.append(mapping)
+    if len(fits) != 1:
+        return None
+    return [[fits[0][k] for k in v] for v in ids.values()]
+
+
+def measure_stacked(plot: Plot, block: dict, bars_by_group: dict[str, Bar], series: list[str],
+                    colours: dict[str, np.ndarray], img: np.ndarray) -> dict[tuple[str, str], Measured]:
+    """Every series' figure in every stacked bar: the length of its piece on the value axis; a series with
+    no piece in a bar is 0 there. Only when the reads' figures of each bar add up to about its length - a
+    single bar per category whose figures make its whole (#171: each country's four methods, 100%)."""
+    data = _values(block)
+    axis = plot.axis
+    stacks = without_blends({g: stack_pieces(img, plot, b) for g, b in bars_by_group.items()}, axis.step_px)
+    stacks = {g: p for g, p in stacks.items() if p}
+    if len(stacks) < 2:
+        return {}
+    fit = 0
+    for g, pieces in stacks.items():
+        total = abs(axis.value(pieces[-1].high) - axis.value(axis.pos(_base_value(axis))))
+        read = sum(float(v["value"]) for v in data if v["point"] == g and v.get("value") is not None)
+        fit += abs(read - total) <= max(1.5 * axis.step, 0.15 * total)
+    if fit < 0.8 * len(stacks):
+        return {}  # the reads' figures are not the pieces of these bars
+    named = _stack_series(stacks, series, colours)
+    if named is None:
+        return {}
+    printed = {(v["series"], v["point"]) for v in data if v.get("printed")}
+    out = {}
+    for (g, pieces), names in zip(stacks.items(), named):
+        cx = bars_by_group[g].cx
+        for s in series:
+            if (s, g) in printed:
+                continue
+            if s in names:
+                p = pieces[names.index(s)]
+                out[(s, g)] = Measured(abs(axis.value(p.high) - axis.value(p.low)), "bar, stacked", cx, p.high)
+            else:
+                out[(s, g)] = Measured(0.0, "bar, stacked (no piece)", cx, pieces[-1].high)
+    return out
+
+
 def measure_bars(img: np.ndarray, tokens: list[Token], plot: Plot, block: dict,
-                 colours: dict[str, np.ndarray]) -> dict[tuple[str, str], Measured]:
+                 colours: dict[str, np.ndarray], turned: bool = False) -> dict[tuple[str, str], Measured]:
     data = _values(block)
     legend = [e["label"] for e in block.get("legend") or []]
-    height = float(np.median([t.h for t in plot.axis.labels]))
+    # the labels' letter height - on the picture turned for horizontal bars, their width there (#171: "100%"
+    # on end is 90 px tall, and 32 px bars came out too narrow to be bars)
+    height = float(np.median([t.x1 - t.x0 if turned else t.h for t in plot.axis.labels]))
     bars = find_bars(img, plot, max(4.0, 0.4 * height))
     if not bars:
         return {}
@@ -1031,9 +1231,15 @@ def measure_bars(img: np.ndarray, tokens: list[Token], plot: Plot, block: dict,
     spacing = min((b - a for a, b in zip(centres, centres[1:])), default=1e9)
     by_colour = legend and all(_distinct_from_others(colours, s, series) for s in series)
     printed = {(v["series"], v["point"]) for v in data if v.get("printed")}
+    at_group = {g: sorted((b for b in bars if abs(b.cx - gx) < 0.5 * spacing), key=lambda b: b.cx)
+                for g, gx in xs.items()}
+    if len(legend) >= 2 and sum(len(m) == 1 for m in at_group.values()) >= 2 \
+            and all(len(m) <= 1 for m in at_group.values()):
+        # one bar per category with a legend of several series: a stacked bar chart
+        return measure_stacked(plot, block, {g: m[0] for g, m in at_group.items() if m}, legend, colours, img)
     out = {}
     for g, gx in xs.items():
-        mine = sorted((b for b in bars if abs(b.cx - gx) < 0.5 * spacing), key=lambda b: b.cx)
+        mine = at_group[g]
         if not mine:
             continue
         if not legend:
@@ -1160,8 +1366,8 @@ def measure(pic: Picture, blocks: list[dict]) -> dict[int, BlockResult]:
             if plot is None:
                 continue
             block = blocks[i]
-            found = (measure_line if block["visual_type"] == "line" else measure_bars)(
-                p.img, p.tokens, plot, block, colours[i])
+            found = measure_line(p.img, p.tokens, plot, block, colours[i]) if block["visual_type"] == "line" \
+                else measure_bars(p.img, p.tokens, plot, block, colours[i], turned=p is not pic)
             if found:
                 out[i] = BlockResult(found, axis.low, axis.high, axis.step)
                 logger.info("Measured %d figures of block %d (%s, axis %g-%g step %g, %d labels, fit ±%.1f px%s)",
