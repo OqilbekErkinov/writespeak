@@ -444,15 +444,20 @@ def anchors_text() -> str:
     that band all the same); "" without any."""
     ids = [i for i in (speaking_config().get("anchors") or {}).get("ids", []) if i not in EXCLUDED_ANCHORS]
     found = _load_json(settings.calibration_dir / "speaking_anchors.json") or {}
-    anchors = [(i, found[i]) for i in ids if i in found]
+    anchors = sorted(((i, found[i]) for i in ids if i in found), key=lambda x: x[1].get("band", 0))
     if not anchors:
         return ""
-    out = ["ANCHOR RECORDINGS - real candidates with their OFFICIAL IELTS Speaking band. Calibrate against "
-           "them: put the student next to them, criterion by criterion. Their transcripts are verbatim speech "
-           "recognition like the student's - fillers, restarts and repeats were really said, and they earned "
-           "this band all the same."]
+    out = ["ANCHOR RECORDINGS - real candidates with the bands certified examiners gave them (the official IELTS "
+           "band, or our IELTS teachers' band for each criterion). Calibrate against them: put the student next "
+           "to the anchors, criterion by criterion, and give the bands of the anchor the student is most like. "
+           "Their transcripts are verbatim speech recognition like the student's - fillers, restarts, repeats "
+           "and short answers were really said, and the examiners gave these bands all the same: weigh the same "
+           "features the same way, no harder."]
     for k, (_, a) in enumerate(anchors, 1):
-        out.append(f"--- Anchor {k}: {a['label']}, {a['part'].replace('part', 'Part ')} ---")
+        bands = a.get("bands")
+        given = (f" - Fluency & Coherence {bands['FC']:g}, Lexical Resource {bands['LR']:g}, Grammar "
+                 f"{bands['GRA']:g}, Pronunciation {bands['P']:g}" if bands else "")
+        out.append(f"--- Anchor {k}: {a['label']}{given}, {a['part'].replace('part', 'Part ')} ---")
         out += [f"Q: {x['question']}\nA: {x['transcript']}" for x in a["answers"]]
     return "\n\n".join(out)
 

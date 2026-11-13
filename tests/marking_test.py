@@ -1802,6 +1802,35 @@ def speaking_20261113() -> None:
     got = run([], ["Structural variety could be wider in this brief response"], [error])
     check("...and so does a checked error of that criterion", got["GRA"] == 7, got)
 
+    # the teachers' checks as anchors, each criterion's band shown (the user's OK, 2026-11-13)
+    anchors = {
+        "real9-p3-travel": {"part": "part3", "band": 9.0, "label": "Band 9.0 (official)",
+                            "answers": [{"question": "Why travel?", "transcript": "Um, it breaks routines."}]},
+        "teachers-s81": {"part": "part1", "band": 6.0, "label": "Teachers' band 6", "answers": [
+            {"question": "How do you celebrate?", "transcript": "Uh, I, uh, always want to celebrate."}],
+            "bands": {"FC": 6, "LR": 7, "GRA": 6, "P": 6}},
+        "teachers-s79": {"part": "part3", "band": 8.5, "label": "Teachers' band 8.5", "answers": [
+            {"question": "Why is communication hard?", "transcript": "It depends on backgrounds."}],
+            "bands": {"FC": 8, "LR": 9, "GRA": 8, "P": 9}}}
+    real_load, real_config, real_excluded = speaking_grader._load_json, speaking_grader.speaking_config, \
+        speaking_grader.EXCLUDED_ANCHORS
+    try:
+        speaking_grader._load_json = lambda path: anchors if path.name == "speaking_anchors.json" else None
+        speaking_grader.speaking_config = lambda: {"anchors": {"ids": list(anchors)}}
+        text = speaking_grader.anchors_text()
+        speaking_grader.EXCLUDED_ANCHORS = {"teachers-s79"}
+        without = speaking_grader.anchors_text()
+    finally:
+        speaking_grader._load_json = real_load
+        speaking_grader.speaking_config = real_config
+        speaking_grader.EXCLUDED_ANCHORS = real_excluded
+    check("anchors: the teachers' checks with each criterion's band, lowest band first",
+          "Teachers' band 6 - Fluency & Coherence 6, Lexical Resource 7, Grammar 6, Pronunciation 6" in text
+          and text.index("Teachers' band 6 ") < text.index("Teachers' band 8.5") < text.index("Band 9.0 (official)")
+          and "no harder" in text, text[:600])
+    check("...a check tested against the others never sees itself", "Teachers' band 8.5" not in without
+          and "Teachers' band 6 " in without)
+
 
 def model_answer_bands() -> None:
     """The user's rule (2026-11-12), Writing and Speaking alike: 5.0-6.5 -> a Band 7 model answer, 7.0-7.5 ->

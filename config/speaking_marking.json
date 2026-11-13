@@ -18,8 +18,9 @@
     "accuracy": [[98, 9], [96, 8], [94, 7], [90, 6], [85, 5], [0, 4]]
   },
   "anchors": {
-    "_about": "Recordings with their OFFICIAL IELTS Speaking band shown to every scoring run (transcripts in data/calibration/speaking_anchors.json). real9-p3-travel: a candidate with an official 9.0 (Speaking 9.0), Part 3, six travel questions - added by the academic lead on 2026-10-27.",
-    "ids": ["real9-p3-travel"],
+    "_about": "Recordings with the bands certified examiners gave them, shown to every scoring run (transcripts in data/calibration/speaking_anchors.json, on the server only - never in a report). real9-p3-travel: a candidate with an official 9.0 (Speaking 9.0), Part 3, six travel questions - added by the academic lead on 2026-10-27. teachers-sNN: checks #NN with our IELTS teachers' band for each criterion (2026-11-13, the user's OK): on these 11 checks the scoring runs were 0.55-0.65 of a band under the teachers on Lexical and Grammar, and 1.5 under on short answers of strong speakers (#42, #79) - the teachers' own marking is the standard. Add more teacher-marked checks as they come; test a check against the others (exclude_anchor).",
+    "ids": ["real9-p3-travel", "teachers-s38", "teachers-s39", "teachers-s40", "teachers-s41", "teachers-s42",
+            "teachers-s43", "teachers-s77", "teachers-s78", "teachers-s79", "teachers-s80", "teachers-s81"],
     "review": false
   },
   "regression": {
