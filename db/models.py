@@ -378,6 +378,8 @@ class PaymentRequest(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     reviewed_by: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    # Approved only to try the bot out (2026-11-14): its coins stand, but it is never revenue
+    is_test: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
     user: Mapped["User"] = relationship()
 

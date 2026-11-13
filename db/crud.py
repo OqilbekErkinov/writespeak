@@ -1495,7 +1495,8 @@ async def get_admin_stats(session: AsyncSession) -> dict:
     revenue_today = (
         await session.execute(
             select(func.coalesce(func.sum(PaymentRequest.amount), 0)).where(
-                PaymentRequest.status == PaymentStatus.approved, PaymentRequest.reviewed_at >= since
+                PaymentRequest.status == PaymentStatus.approved, PaymentRequest.reviewed_at >= since,
+                PaymentRequest.is_test.is_(False),
             )
         )
     ).scalar() or 0
@@ -2378,7 +2379,8 @@ async def get_dashboard_timeseries(session: AsyncSession, days: int = 30) -> lis
     payments = (
         await session.execute(
             select(PaymentRequest.reviewed_at, PaymentRequest.amount).where(
-                PaymentRequest.status == PaymentStatus.approved, PaymentRequest.reviewed_at >= since
+                PaymentRequest.status == PaymentStatus.approved, PaymentRequest.reviewed_at >= since,
+                PaymentRequest.is_test.is_(False),
             )
         )
     ).all()
@@ -2444,7 +2446,8 @@ async def user_activity(session: AsyncSession) -> dict[int, dict]:
         row(user_id)["speaking"] = n
     for user_id, amount in (await session.execute(
         select(PaymentRequest.user_id, func.sum(PaymentRequest.amount))
-        .where(PaymentRequest.status == PaymentStatus.approved).group_by(PaymentRequest.user_id)
+        .where(PaymentRequest.status == PaymentStatus.approved, PaymentRequest.is_test.is_(False))
+        .group_by(PaymentRequest.user_id)
     )).all():
         row(user_id)["paid"] = amount or 0
     return out

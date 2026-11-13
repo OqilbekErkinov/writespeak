@@ -77,6 +77,10 @@ CATEGORIES = {
     "practice": "Practice import (kanallardan savollar)",
     "vocab_translate": "Lug'at: tarjima",
     "vocab_describe": "Lug'at: izoh",
+    # entered once on 2026-11-14 for the days before: test and calibration runs outside the bot, and the first
+    # weeks' checks that kept no cost (an estimate)
+    "tests": "Testlar va kalibrlash (bot tashqarisida)",
+    "early": "Dastlabki davr tekshiruvlari (taxminiy)",
 }
 
 
@@ -810,7 +814,7 @@ async def daily_report(day: date, partial: bool = False) -> str:
         lines.append("⏱ O'rtacha kutish: " + " · ".join(waits))
     lines.append("")
 
-    approved = [p for p in decided if p.status == PaymentStatus.approved]
+    approved = [p for p in decided if p.status == PaymentStatus.approved and not p.is_test]  # real money only
     revenue = sum(p.amount for p in approved)
     lines.append(
         f"💵 To'lovlar: tasdiqlandi <b>{len(approved)}</b> ta — <b>{_som(revenue)} so'm</b> · rad etildi "

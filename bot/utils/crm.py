@@ -418,7 +418,7 @@ async def flush_spent() -> dict[str, float]:
         async with redis().pipeline(transaction=False) as pipe:
             for category, cost in spent.items():
                 pipe.hincrbyfloat(key, category, cost)
-            pipe.expire(key, 400 * 24 * 3600)
+            # kept for good: the dashboard adds up every day since the start (2026-11-14)
             await pipe.execute()
     except Exception as e:  # noqa: BLE001
         usage.give_back(spent)

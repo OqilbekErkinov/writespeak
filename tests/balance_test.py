@@ -136,6 +136,47 @@ async def main() -> None:
 
     for key in await r.keys("balance:*"):
         await r.delete(key)
+    await dashboard(r)
+
+
+async def dashboard(r) -> None:
+    """2026-11-14 (the user): the dashboard's AI cost is every OpenAI dollar (the ledger, tests and the first
+    weeks included), its revenue only real money - a payment approved to try the bot out is no revenue."""
+    from datetime import datetime, timezone
+
+    from db.database import get_session
+    from db.models import PaymentKind, PaymentRequest, PaymentStatus, User
+    from webapp.main import app
+
+    today = crm.local_now().strftime("%Y-%m-%d")
+    await r.hset(f"crm:spend:{today}", mapping={"writing": 1.0, "tests": 0.5})
+    await r.hset("crm:spend:2026-09-01", mapping={"early": 0.25})
+    async with get_session() as session:
+        session.add(User(id=777000222, full_name="Payer"))
+        await session.flush()
+        now = datetime.now(timezone.utc)
+        real = PaymentRequest(user_id=777000222, coins=10, amount=5000, status=PaymentStatus.approved,
+                              kind=PaymentKind.credits, reviewed_at=now)
+        test = PaymentRequest(user_id=777000222, coins=100, amount=50000, status=PaymentStatus.approved,
+                              kind=PaymentKind.credits, reviewed_at=now, is_test=True)
+        session.add_all([real, test])
+        await session.commit()
+        test_id = test.id
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="https://testserver") as owner:
+        await owner.post("/login", data={"username": settings.web_admin_username,
+                                         "password": settings.web_admin_password})
+        page = (await owner.get("/")).text
+        listed = (await owner.get("/payments?status=approved")).text
+        await owner.post(f"/payments/{test_id}/test")
+        page2 = (await owner.get("/")).text
+    check("dashboard: revenue is real money only (the 50 000 test payment left out)",
+          "jami 5 000 so&#39;m" in page and "jami 55 000" not in page, page[page.find("Tushum"):][:600])
+    check("...AI cost from the ledger, tests and the first weeks included: all-time $1.75",
+          "($1.75)" in page and "$1.50 · jami" in page, "")
+    check("...the payments page marks the test payment, and it can be made real again",
+          "Sinov deb belgilash" in listed and ">test<" in listed and "jami 55 000 so&#39;m" in page2,
+          (listed.count("Sinov deb"), listed.count(">test<"), page2[page2.find("Tushum"):][:300]))
+    await r.delete(f"crm:spend:{today}", "crm:spend:2026-09-01")
 
 
 if __name__ == "__main__":

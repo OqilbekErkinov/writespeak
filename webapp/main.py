@@ -392,6 +392,16 @@ async def payment_receipt(request: Request, request_id: int):
 async def decide_payment_web(request: Request, request_id: int, action: str):
     if (redirect := _require_login(request)) is not None:
         return redirect
+    if action == "test":  # approved only to try the bot out: no revenue (or back to real money)
+        async with get_session() as session:
+            p = await session.get(PaymentRequest, request_id)
+            if p is not None and p.status == PaymentStatus.approved:
+                p.is_test = not p.is_test
+                user_id, now_test = p.user_id, p.is_test
+                await session.commit()
+                await panel.audit(request, "payment_test" if now_test else "payment_real", user_id,
+                                  details=f"#{request_id}")
+        return RedirectResponse("/payments?status=approved", status_code=303)
     if action in ("approve", "reject"):
         async with get_session() as session:
             decision = await crud.decide_payment_request(

@@ -52,6 +52,7 @@
         {% if r.status.value == "pending" %}<span class="pill pill-warn">kutilmoqda</span>
         {% elif r.status.value == "approved" %}<span class="pill pill-good">tasdiqlangan</span>
         {% else %}<span class="pill pill-bad">rad etilgan</span>{% endif %}
+        {% if r.is_test %}<span class="pill" title="Sinov uchun tasdiqlangan: coinlari berilgan, lekin tushumga kirmaydi">test</span>{% endif %}
       </td>
       <td>
         {% if r.status.value == "pending" %}
@@ -60,6 +61,11 @@
         </form>
         <form class="inline" method="post" action="/payments/{{ r.id }}/reject">
           <button type="submit" class="btn btn-bad">Rad etish</button>
+        </form>
+        {% elif r.status.value == "approved" %}
+        <form class="inline" method="post" action="/payments/{{ r.id }}/test"
+              title="{{ 'Haqiqiy deb belgilash: tushumga kiradi' if r.is_test else 'Sinov deb belgilash: tushumga kirmaydi' }}">
+          <button type="submit" class="btn btn-sm">{{ "Haqiqiy" if r.is_test else "Test" }}</button>
         </form>
         {% endif %}
       </td>

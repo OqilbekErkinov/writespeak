@@ -23,7 +23,7 @@ from sqlalchemy.orm import load_only
 from bot.config import settings
 from bot.utils import runtime, teacher_bands
 from bot.utils.activity import DAY_KEY, LAST_SEEN_KEY, tashkent_day
-from bot.utils.crm import redis
+from bot.utils.crm import redis, usd_rate
 from db import crud
 from db.models import (
     SPEAKING_LABELS,
@@ -183,7 +183,8 @@ async def users_overview(session, q: str | None, segment: str, limit: int = 2000
         .group_by(SpeakingSubmission.user_id))).all()}
     paid = dict((await session.execute(
         select(PaymentRequest.user_id, func.sum(PaymentRequest.amount))
-        .where(PaymentRequest.status == PaymentStatus.approved).group_by(PaymentRequest.user_id))).all())
+        .where(PaymentRequest.status == PaymentStatus.approved, PaymentRequest.is_test.is_(False))
+        .group_by(PaymentRequest.user_id))).all())
     seen = await last_seen_map()
     today, week, online_since = day_start_utc(), now() - timedelta(days=7), now() - timedelta(minutes=15)
 
@@ -260,7 +261,7 @@ async def user_profile(session, user_id: int) -> dict | None:
     checks.sort(key=lambda c: c["at"], reverse=True)
     w_bands = [x.overall_band for x in writings if x.overall_band is not None]
     s_bands = [x.overall_band for x in speakings if x.overall_band is not None]
-    approved = [p for p in payments if p.status == PaymentStatus.approved]
+    approved = [p for p in payments if p.status == PaymentStatus.approved and not p.is_test]  # real money only
     seen = (await last_seen_map()).get(user_id)
     last_active = max((d for d in (seen, *(c["at"] for c in checks[:1]), user.created_at) if d), default=None)
 
@@ -396,6 +397,21 @@ def _pct(cur: float, prev: float, floor: float = 5) -> int | None:
     return round((cur - prev) / prev * 100)
 
 
+async def spend_by_day() -> dict[str, float]:
+    """The OpenAI spend of each Tashkent day, in dollars: the ledger every process adds to (bot/utils/crm.py
+    flush_spent - the checks, reading photos, voices, the Practice import, test runs), with the tests run outside
+    the bot and the first weeks' estimate entered once on 2026-11-14 ("tests", "early")."""
+    try:
+        keys = [k async for k in redis().scan_iter("crm:spend:*")]
+        pipe = redis().pipeline()
+        for k in keys:
+            pipe.hgetall(k)
+        values = await asyncio.wait_for(pipe.execute(), 3)
+    except Exception:  # noqa: BLE001 - the dashboard still opens
+        return {}
+    return {k.rsplit(":", 1)[-1]: sum(float(v) for v in h.values()) for k, h in zip(keys, values)}
+
+
 async def dashboard(session) -> dict:
     t_now = now()
     today = day_start_utc()
@@ -404,8 +420,9 @@ async def dashboard(session) -> dict:
     writings = (await session.execute(select(WritingSubmission).options(_light(WritingSubmission)))).scalars().all()
     speakings = (await session.execute(select(SpeakingSubmission).options(_light(SpeakingSubmission)))).scalars().all()
     payments = (await session.execute(select(PaymentRequest))).scalars().all()
-    approved = [p for p in payments if p.status == PaymentStatus.approved and p.reviewed_at]
-    rate = settings.usd_uzs_rate
+    # real money only: a payment approved to try the bot out is no revenue (is_test, 2026-11-14)
+    approved = [p for p in payments if p.status == PaymentStatus.approved and p.reviewed_at and not p.is_test]
+    rate = await usd_rate()  # the Central Bank's rate of the day, as the admins' group and the balance use
     checks = [("w", x) for x in writings] + [("s", x) for x in speakings]
 
     def between(dt, a, b=None):
@@ -429,17 +446,21 @@ async def dashboard(session) -> dict:
     seen = await last_seen_map()
     online = sum(1 for t in seen.values() if t >= t_now - timedelta(minutes=15))
 
+    spend = await spend_by_day()  # every OpenAI dollar, not only the checks' own (2026-11-14)
+
+    def spent_on(start) -> float:
+        return spend.get((start + TASHKENT).strftime("%Y-%m-%d"), 0.0)
+
     series = []
     for i, start in enumerate(days):
         end = start + timedelta(days=1)
-        day_checks = [x for _, x in checks if between(x.created_at, start, end)]
         series.append({
             "date": f"{local(start).day} {MONTHS[local(start).month - 1][:3]}",
             "users": sum(1 for u in real if between(u.created_at, start, end)),
             "w": sum(1 for k, x in checks if k == "w" and between(x.created_at, start, end)),
             "s": sum(1 for k, x in checks if k == "s" and between(x.created_at, start, end)),
             "revenue": sum(p.amount for p in approved if between(p.reviewed_at, start, end)),
-            "cost": round(sum(_cost(x) for x in day_checks) * rate),
+            "cost": round(spent_on(start) * rate),
             "dau": dau[i],
         })
 
@@ -449,7 +470,9 @@ async def dashboard(session) -> dict:
     def revenue(a, b=None):
         return sum(p.amount for p in approved if between(p.reviewed_at, a, b))
 
-    cost30 = sum(_cost(x) for _, x in checks if between(x.created_at, month))
+    cost30 = sum(spent_on(d) for d in days)  # the 30 days of the series
+    cost_all = sum(spend.values())
+    check_cost30 = sum(_cost(x) for _, x in checks if between(x.created_at, month))
     rev30 = revenue(month)
     checkers = {x.user_id for _, x in checks}
     payer_counts = Counter(p.user_id for p in approved)
@@ -514,10 +537,12 @@ async def dashboard(session) -> dict:
              "delta": _pct(count_checks(week), count_checks(prev_week, week)), "spark": [d["w"] + d["s"] for d in series]},
             {"label": "Tushum · 30 kun", "value": som(rev30), "unit": "so'm", "sub": f"jami {som(sum(p.amount for p in approved))} so'm",
              "delta": _pct(rev30, revenue(prev_month, month)), "spark": [d["revenue"] for d in series]},
-            {"label": "AI xarajat · 30 kun", "value": f"${cost30:.2f}", "sub": f"≈ {som(cost30 * rate)} so'm",
+            {"label": "AI xarajat · 30 kun", "value": som(cost30 * rate), "unit": "so'm",
+             "sub": f"${cost30:.2f} · jami {som(cost_all * rate)} so'm (${cost_all:.2f})",
              "delta": None, "spark": [d["cost"] for d in series], "warm": True},
             {"label": "Foyda · 30 kun", "value": som(rev30 - cost30 * rate), "unit": "so'm",
-             "sub": f"tekshiruv o'rtacha ${(cost30 / max(1, count_checks(month))):.3f}", "delta": None,
+             "sub": f"jami {som(sum(p.amount for p in approved) - cost_all * rate)} so'm · tekshiruv o'rtacha "
+                    f"${(check_cost30 / max(1, count_checks(month))):.3f}", "delta": None,
              "spark": [d["revenue"] - d["cost"] for d in series]},
         ],
         "series": series,
