@@ -33,6 +33,7 @@
     --bad: var(--red);
     --font: "Manrope", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     --font-head: "Unbounded", "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --side-w: 252px;
   }
   * { box-sizing: border-box; }
   body {
@@ -43,57 +44,75 @@
   a { color: var(--moss); text-decoration: none; font-weight: 700; }
   a:hover { text-decoration: underline; }
 
-  /* Top bar: Ink with a row of spikes along its bottom edge */
-  .topbar {
-    position: relative; z-index: 95; background: var(--ink); color: #fff; display: flex; align-items: center;
-    gap: 14px; padding: 0 20px; min-height: 58px;
+  /* Sidebar (2026-11-14, instead of the top bar): Ink, a row of spikes down its right edge, the sections in
+     groups that open like drawers - the active page's group open, a closed group showing its badges */
+  .side {
+    position: fixed; z-index: 95; left: 0; top: 0; bottom: 0; width: var(--side-w); display: flex; flex-direction: column;
+    background: var(--ink); color: #fff;
   }
-  .topbar::after {
-    content: ""; position: absolute; left: 0; right: 0; top: 100%; height: 7px; pointer-events: none;
-    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='7' viewBox='0 0 14 7'%3E%3Cpath d='M0 0h14L7 7z' fill='%23062018'/%3E%3C/svg%3E") repeat-x left top / 14px 7px;
+  .side::after {
+    content: ""; position: absolute; top: 0; bottom: 0; left: 100%; width: 7px; pointer-events: none;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='14' viewBox='0 0 7 14'%3E%3Cpath d='M0 0v14l7-7z' fill='%23062018'/%3E%3C/svg%3E") repeat-y left top / 7px 14px;
   }
-  .topbar .brand { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-  .topbar .brand:hover { text-decoration: none; }
-  .topbar .brand img { display: block; height: 26px; width: auto; color: var(--lime);
-    font: 800 16px/26px var(--font-head); }
-  .topbar .brand .tag { font-size: 9.5px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase;
+  .side-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 20px 18px 14px; }
+  .brand { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .brand:hover { text-decoration: none; }
+  .brand img { display: block; height: 26px; width: auto; color: var(--lime); font: 800 16px/26px var(--font-head); }
+  .brand .tag { font-size: 9.5px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase;
     color: var(--ink); background: var(--lime); padding: 2px 7px; border-radius: 100px; line-height: 1.4; }
-  .topbar nav { display: flex; gap: 2px; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
-  .topbar nav::-webkit-scrollbar { display: none; }
-  .topbar nav a {
-    color: rgba(255,255,255,0.78); padding: 7px 11px; border-radius: 100px; font-size: 13.5px;
-    font-weight: 700; white-space: nowrap;
-  }
-  .topbar nav a:hover { color: #fff; text-decoration: none; background: rgba(91,242,166,0.12); }
-  .topbar nav a.active { color: var(--ink); background: var(--lime); }
-  .topbar .nb { display: inline-block; min-width: 18px; margin-left: 4px; padding: 0 5px; border-radius: 100px;
-    background: var(--red); color: var(--ink); font-size: 11px; font-weight: 800; line-height: 18px; text-align: center; }
-  .tb-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-  .tw-chip { padding: 5px 10px; border-radius: 100px; background: var(--yellow); color: var(--ink) !important; font-size: 12.5px;
-    font-weight: 800; white-space: nowrap; }
+  .side-x { display: none; border: 0; background: rgba(255,255,255,0.08); color: #fff; width: 34px; height: 34px;
+    border-radius: 50%; font-size: 20px; line-height: 1; cursor: pointer; }
+  .tw-chip { display: flex; align-items: center; gap: 8px; margin: 0 14px 10px; padding: 8px 12px; border-radius: 12px;
+    background: var(--yellow); color: var(--ink) !important; font-size: 12.5px; font-weight: 800; line-height: 1.3; }
   .tw-chip:hover { text-decoration: none; box-shadow: 0 0 0 3px rgba(255,224,102,0.35); }
-  .more { position: relative; }
-  .more summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 7px; padding: 4px 10px 4px 4px;
-    border-radius: 100px; color: #fff; background: rgba(255,255,255,0.08); font-size: 13.5px; font-weight: 700; white-space: nowrap;
-    user-select: none; }
-  .more summary .me { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--lime);
-    color: var(--ink); font: 800 12px/1 var(--font); text-transform: uppercase; }
-  .more summary .car { opacity: 0.7; font-size: 11px; }
-  .more summary::-webkit-details-marker { display: none; }
-  .more summary:hover, .more[open] summary { background: rgba(91,242,166,0.18); }
-  .more.active summary { box-shadow: inset 0 0 0 2px var(--lime); }
-  .more .menu { position: absolute; right: 0; top: calc(100% + 12px); z-index: 50; min-width: 230px; padding: 6px;
-    background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 14px 36px rgba(6,32,24,0.2); }
-  .more .menu a { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 10px; color: var(--ink);
-    font-size: 14px; white-space: nowrap; }
-  .more .menu a:hover { background: var(--mint-2); text-decoration: none; }
-  .more .menu a.on { background: var(--mint); }
-  .more .menu .sep { height: 1px; margin: 5px 8px; background: var(--border); }
-  .more .menu .nb { margin-left: auto; }
-  .more .menu .who-me { padding: 8px 12px 4px; font-size: 12px; color: var(--ink-faint); }
-  .more .menu .who-me b { color: var(--ink); }
+  .side-nav { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 12px 16px; scrollbar-width: thin;
+    scrollbar-color: rgba(255,255,255,0.18) transparent; }
+  .side-nav .lbl { margin: 16px 10px 6px; font-size: 10.5px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase;
+    color: rgba(255,255,255,0.4); }
+  .si, .sg > summary {
+    display: flex; align-items: center; gap: 11px; width: 100%; padding: 9px 12px; margin: 2px 0; border-radius: 12px;
+    color: rgba(255,255,255,0.8); font-size: 14px; font-weight: 700; line-height: 1.3; cursor: pointer; user-select: none;
+  }
+  .si:hover, .sg > summary:hover { color: #fff; text-decoration: none; background: rgba(91,242,166,0.12); }
+  .si.active { color: var(--ink); background: var(--lime); }
+  .si .ic, .sg > summary .ic { flex: none; width: 22px; text-align: center; font-size: 16px; }
+  .sg > summary { list-style: none; }
+  .sg > summary::-webkit-details-marker { display: none; }
+  .sg > summary .car { margin-left: auto; opacity: 0.6; font-size: 11px; transition: transform .18s; }
+  .sg[open] > summary .car { transform: rotate(180deg); }
+  .sg.on > summary { color: #fff; }
+  .sg > summary .nb { margin-left: auto; }
+  .sg > summary .nb + .car { margin-left: 6px; }
+  .sg[open] > summary .nb { display: none; }
+  .sg[open] > summary .car { margin-left: auto; }
+  .sg .sub { position: relative; margin: 2px 0 6px 23px; padding-left: 12px; border-left: 2px solid rgba(91,242,166,0.18); }
+  .sg .sub a { display: flex; align-items: center; gap: 8px; padding: 7px 10px; margin: 1px 0; border-radius: 10px;
+    color: rgba(255,255,255,0.72); font-size: 13.5px; font-weight: 600; }
+  .sg .sub a:hover { color: #fff; text-decoration: none; background: rgba(91,242,166,0.1); }
+  .sg .sub a.active { color: var(--ink); background: var(--lime); font-weight: 800; }
+  .sg .sub a.active .nb { box-shadow: 0 0 0 2px var(--lime); }
+  .sg .sub .nb { margin-left: auto; }
+  .nb { display: inline-block; min-width: 18px; padding: 0 5px; border-radius: 100px;
+    background: var(--red); color: var(--ink); font-size: 11px; font-weight: 800; line-height: 18px; text-align: center; }
+  .si .nb { margin-left: auto; }
+  .si.active .nb { box-shadow: 0 0 0 2px var(--lime); }
+  .side-me { display: flex; align-items: center; gap: 10px; margin: 0 12px 14px; padding: 10px; border-radius: 14px;
+    background: rgba(255,255,255,0.06); }
+  .side-me .me { display: grid; place-items: center; flex: none; width: 34px; height: 34px; border-radius: 50%; background: var(--lime);
+    color: var(--ink); font: 800 13px/1 var(--font); text-transform: uppercase; }
+  .side-me .who-tx { min-width: 0; flex: 1; line-height: 1.25; }
+  .side-me .who-tx b { display: block; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .side-me .who-tx span { font-size: 11.5px; color: rgba(255,255,255,0.55); }
+  .side-me .out { flex: none; padding: 6px 10px; border-radius: 100px; color: #fff; background: rgba(255,255,255,0.08);
+    font-size: 12px; font-weight: 700; }
+  .side-me .out:hover { text-decoration: none; background: var(--red); color: var(--ink); }
 
-  .wrap { max-width: 1120px; margin: 0 auto; padding: 36px 24px 60px; }
+  /* phones and small tablets: the sidebar slides in from the left, a thin top bar opens it */
+  .mtop { display: none; }
+  .side-shade { display: none; }
+
+  .main { margin-left: var(--side-w); min-width: 0; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 36px 32px 60px; }
   .wrap.wide { max-width: 1320px; }
 
   /* shared bits of the user pages and the dashboard */
@@ -214,7 +233,7 @@
   .modal-btns .btn { flex: 1; padding: 11px 16px; font-size: 14px; }
 
   /* Toasts: the result of an action, top right, gone by themselves */
-  .toasts { position: fixed; top: 72px; right: 20px; z-index: 90; display: grid; gap: 10px; width: min(380px, calc(100vw - 32px)); }
+  .toasts { position: fixed; top: 20px; right: 20px; z-index: 90; display: grid; gap: 10px; width: min(380px, calc(100vw - 32px)); }
   .toast { position: relative; overflow: hidden; display: flex; align-items: flex-start; gap: 12px; padding: 14px 14px 16px;
     border-radius: 16px; background: var(--ink); color: #fff; box-shadow: 0 18px 44px rgba(6,32,24,0.3);
     font-size: 14px; font-weight: 600; line-height: 1.45; transform: translateX(24px); opacity: 0; transition: transform .25s, opacity .25s; }
@@ -257,24 +276,30 @@
   .dd-opt[aria-selected=true] svg { visibility: visible; }
   .dd-opt:disabled { opacity: 0.4; cursor: default; }
 
-  /* The top bar stays one row down to laptop widths (1280px at 100% zoom): it tightens first */
-  @media (max-width: 1440px) { .topbar .brand .tag { display: none; } }
-  @media (max-width: 1340px) {
-    .topbar { gap: 10px; padding: 0 14px; }
-    .topbar nav a { padding: 7px 8px; font-size: 13px; }
-  }
-  @media (max-width: 1260px) { .tw-chip .t { display: none; } }
-  /* Narrower: logo + menu on top, the nav on its own row under them (scrolling sideways on phones) */
-  @media (max-width: 1180px) {
-    .topbar { flex-wrap: wrap; gap: 8px 16px; padding: 10px 16px 8px; }
-    .tb-right { margin-left: auto; }
-    .topbar nav { order: 3; flex: 1 0 100%; margin: 0 -16px; padding: 0 16px; }
-  }
-  @media (max-width: 1060px) {
+  @media (max-width: 1280px) { :root { --side-w: 232px; } .wrap { padding: 32px 24px 56px; } }
+  /* Under 960px the sidebar leaves the page: a thin Ink bar with ☰ opens it over the content */
+  @media (max-width: 960px) {
+    .main { margin-left: 0; }
+    .side { width: min(290px, 86vw); transform: translateX(-104%); transition: transform .24s ease; }
+    .side::after { display: none; }
+    body.side-open .side { transform: none; box-shadow: 14px 0 40px rgba(6,32,24,0.35); }
+    .side-x { display: grid; place-items: center; }
+    .side-shade { display: block; position: fixed; inset: 0; z-index: 94; background: rgba(6,32,24,0.5);
+      opacity: 0; pointer-events: none; transition: opacity .24s; }
+    body.side-open .side-shade { opacity: 1; pointer-events: auto; }
+    body.side-open { overflow: hidden; }
+    .mtop { position: sticky; top: 0; z-index: 90; display: flex; align-items: center; gap: 12px; padding: 10px 16px;
+      background: var(--ink); color: #fff; }
+    .mtop::after { content: ""; position: absolute; left: 0; right: 0; top: 100%; height: 7px; pointer-events: none;
+      background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='7' viewBox='0 0 14 7'%3E%3Cpath d='M0 0h14L7 7z' fill='%23062018'/%3E%3C/svg%3E") repeat-x left top / 14px 7px; }
+    .mtop .burger { display: grid; place-items: center; width: 38px; height: 38px; border: 0; border-radius: 12px;
+      background: rgba(91,242,166,0.14); color: var(--lime); font-size: 20px; cursor: pointer; }
+    .mtop .brand img { height: 22px; }
+    .mtop .mt-badges { margin-left: auto; display: flex; gap: 6px; }
     .wrap { padding: 30px 16px 48px; }
+    .toasts { top: 70px; }
   }
   @media (max-width: 560px) {
-    .more summary .lbl { display: none; }
     .toasts { top: auto; bottom: 16px; right: 16px; left: 16px; width: auto; }
     h1 { font-size: 20px; }
     .card { padding: 16px; border-radius: 14px; }
@@ -285,60 +310,107 @@
 </style>
 </head>
 <body>
-  <div class="topbar">
-    <a class="brand" href="/"><img src="https://bandzilla.uz/assets/logo-on-dark.webp" alt="Bandzilla" width="720" height="126"><span class="tag">Admin</span></a>
-    {% set nav = request.state.nav if request.state.nav is defined else {} %}
+  {% set nav = request.state.nav if request.state.nav is defined else {} %}
+  {% set g_users = active in ('users', 'support', 'broadcast') %}
+  {% set g_checks = active in ('checks', 'questions', 'charts') %}
+  {% set g_centers = active in ('teachers', 'groups') %}
+  {% set g_admin = active in ('errors', 'settings', 'admins', 'audit') %}
+  <aside class="side" id="bzSide" aria-label="Bo'limlar">
+    <div class="side-top">
+      <a class="brand" href="{{ '/checks' if nav.teacher else '/' }}"><img src="https://bandzilla.uz/assets/logo-on-dark.webp" alt="Bandzilla" width="720" height="126"><span class="tag">{{ "Ustoz" if nav.teacher else "Admin" }}</span></a>
+      <button type="button" class="side-x" id="bzSideX" aria-label="Menyuni yopish">×</button>
+    </div>
     {% if nav.teacher %}
-    <nav><a href="/checks" class="active">Tekshiruvlar</a></nav>
-    <div class="tb-right">
-      <details class="more">
-        <summary title="Hisob"><span class="me">{{ (nav.admin or "u")[:1] }}</span><span class="lbl">Ustoz</span><span class="car">▾</span></summary>
-        <div class="menu">
-          <div class="who-me">Siz: <b>{{ nav.admin }}</b> · ustoz</div>
-          <a href="/logout">↩️ Chiqish</a>
-        </div>
-      </details>
-    </div>
-    {% else %}
-    <nav>
-      <a href="/" class="{{ 'active' if active == 'dashboard' else '' }}">Dashboard</a>
-      <a href="/users" class="{{ 'active' if active == 'users' else '' }}">Foydalanuvchilar</a>
-      <a href="/checks" class="{{ 'active' if active == 'checks' else '' }}">Tekshiruvlar</a>
-      <a href="/payments" class="{{ 'active' if active == 'payments' else '' }}">To'lovlar{% if nav.payments %}<span class="nb" title="tasdiq kutmoqda">{{ nav.payments }}</span>{% endif %}</a>
-      <a href="/support" class="{{ 'active' if active == 'support' else '' }}">Murojaatlar{% if nav.support %}<span class="nb" title="o'qilmagan">{{ nav.support }}</span>{% endif %}</a>
-      <a href="/groups" class="{{ 'active' if active == 'groups' else '' }}">Guruhlar</a>
-      <a href="/teachers" class="{{ 'active' if active == 'teachers' else '' }}">O'qituvchilar</a>
-      <a href="/questions" class="{{ 'active' if active == 'questions' else '' }}">Savollar</a>
-      <a href="/charts" class="{{ 'active' if active == 'charts' else '' }}">Grafiklar{% if nav.charts %}<span class="nb" title="tekshirilmagan">{{ nav.charts }}</span>{% endif %}</a>
+    <nav class="side-nav">
+      <a class="si {{ 'active' if active == 'checks' }}" href="/checks"><span class="ic">📝</span>Tekshiruvlar</a>
     </nav>
-    <div class="tb-right">
-      {% if nav.window %}{% if nav.owner %}<a class="tw-chip" href="/settings" title="Faqat sinovchilar va adminlar tekshira oladi">🧪<span class="t"> Test rejimi</span></a>{% else %}<span class="tw-chip" title="Faqat sinovchilar va adminlar tekshira oladi">🧪<span class="t"> Test rejimi</span></span>{% endif %}{% endif %}
-      <details class="more {{ 'active' if active in ('broadcast', 'errors', 'settings', 'admins', 'audit') else '' }}">
-        <summary title="Boshqaruv"><span class="me">{{ (nav.admin or "a")[:1] }}</span><span class="lbl">Boshqaruv</span>{% if nav.errors %}<span class="nb" title="bugungi xatolar">{{ nav.errors }}</span>{% endif %}<span class="car">▾</span></summary>
-        <div class="menu">
-          <a href="/broadcast" class="{{ 'on' if active == 'broadcast' }}">📣 Ommaviy xabar</a>
-          <a href="/errors" class="{{ 'on' if active == 'errors' }}">⚠️ Xatolar{% if nav.errors %}<span class="nb">{{ nav.errors }}</span>{% endif %}</a>
-          {% if nav.owner %}
-          <div class="sep"></div>
-          <a href="/settings" class="{{ 'on' if active == 'settings' }}">🧪 Test rejimi</a>
-          <a href="/admins" class="{{ 'on' if active == 'admins' }}">👥 Adminlar</a>
-          <a href="/audit" class="{{ 'on' if active == 'audit' }}">📜 Kim nima qildi</a>
-          {% endif %}
-          <div class="sep"></div>
-          <div class="who-me">Siz: <b>{{ nav.admin or "admin" }}</b>{{ " · egasi" if nav.owner }}</div>
-          <a href="/logout">↩️ Chiqish</a>
+    {% else %}
+    {% if nav.window %}
+    <a class="tw-chip" href="{{ '/settings' if nav.owner else '#' }}" title="Faqat sinovchilar va adminlar tekshira oladi">🧪 <span>Test rejimi yoqilgan</span></a>
+    {% endif %}
+    <nav class="side-nav">
+      <a class="si {{ 'active' if active == 'dashboard' }}" href="/"><span class="ic">🏠</span>Dashboard</a>
+
+      <details class="sg {{ 'on' if g_users }}" data-group="users" {{ 'open' if g_users }}>
+        <summary><span class="ic">👥</span>Foydalanuvchilar{% if nav.support %}<span class="nb" title="o'qilmagan murojaatlar">{{ nav.support }}</span>{% endif %}<span class="car">▾</span></summary>
+        <div class="sub">
+          <a href="/users" class="{{ 'active' if active == 'users' }}">Ro'yxat</a>
+          <a href="/support" class="{{ 'active' if active == 'support' }}">Murojaatlar{% if nav.support %}<span class="nb" title="o'qilmagan">{{ nav.support }}</span>{% endif %}</a>
+          <a href="/broadcast" class="{{ 'active' if active == 'broadcast' }}">Ommaviy xabar</a>
         </div>
       </details>
-    </div>
+
+      <details class="sg {{ 'on' if g_checks }}" data-group="checks" {{ 'open' if g_checks }}>
+        <summary><span class="ic">📝</span>Tekshiruvlar{% if nav.charts %}<span class="nb" title="tekshirilmagan grafiklar">{{ nav.charts }}</span>{% endif %}<span class="car">▾</span></summary>
+        <div class="sub">
+          <a href="/checks" class="{{ 'active' if active == 'checks' }}">Barcha tekshiruvlar</a>
+          <a href="/questions" class="{{ 'active' if active == 'questions' }}">Practice savollari</a>
+          <a href="/charts" class="{{ 'active' if active == 'charts' }}">Grafik kalitlari{% if nav.charts %}<span class="nb" title="tekshirilmagan">{{ nav.charts }}</span>{% endif %}</a>
+        </div>
+      </details>
+
+      <a class="si {{ 'active' if active == 'payments' }}" href="/payments"><span class="ic">💳</span>To'lovlar{% if nav.payments %}<span class="nb" title="tasdiq kutmoqda">{{ nav.payments }}</span>{% endif %}</a>
+
+      <details class="sg {{ 'on' if g_centers }}" data-group="centers" {{ 'open' if g_centers }}>
+        <summary><span class="ic">🏫</span>Markazlar<span class="car">▾</span></summary>
+        <div class="sub">
+          <a href="/teachers" class="{{ 'active' if active == 'teachers' }}">O'qituvchilar va markazlar</a>
+          <a href="/groups" class="{{ 'active' if active == 'groups' }}">Guruhlar</a>
+        </div>
+      </details>
+
+      <details class="sg {{ 'on' if g_admin }}" data-group="admin" {{ 'open' if g_admin }}>
+        <summary><span class="ic">⚙️</span>Boshqaruv{% if nav.errors %}<span class="nb" title="bugungi xatolar">{{ nav.errors }}</span>{% endif %}<span class="car">▾</span></summary>
+        <div class="sub">
+          <a href="/errors" class="{{ 'active' if active == 'errors' }}">Xatolar{% if nav.errors %}<span class="nb">{{ nav.errors }}</span>{% endif %}</a>
+          {% if nav.owner %}
+          <a href="/settings" class="{{ 'active' if active == 'settings' }}">Sozlamalar</a>
+          <a href="/admins" class="{{ 'active' if active == 'admins' }}">Adminlar</a>
+          <a href="/audit" class="{{ 'active' if active == 'audit' }}">Kim nima qildi</a>
+          {% endif %}
+        </div>
+      </details>
+    </nav>
     {% endif %}
-  </div>
+    <div class="side-me">
+      <span class="me">{{ (nav.admin or "a")[:1] }}</span>
+      <span class="who-tx"><b>{{ nav.admin or "admin" }}</b><span>{{ "ustoz" if nav.teacher else ("egasi" if nav.owner else "admin") }}</span></span>
+      <a class="out" href="/logout" title="Chiqish">Chiqish</a>
+    </div>
+  </aside>
+  <div class="side-shade" id="bzShade"></div>
+
+  <div class="main">
+    <div class="mtop">
+      <button type="button" class="burger" id="bzBurger" aria-label="Menyuni ochish" aria-controls="bzSide">☰</button>
+      <a class="brand" href="{{ '/checks' if nav.teacher else '/' }}"><img src="https://bandzilla.uz/assets/logo-on-dark.webp" alt="Bandzilla" width="720" height="126"></a>
+      {% if not nav.teacher %}<span class="mt-badges">{% if nav.payments %}<a class="nb" href="/payments" title="to'lov tasdiq kutmoqda">💳 {{ nav.payments }}</a>{% endif %}{% if nav.support %}<a class="nb" href="/support" title="o'qilmagan murojaatlar">💬 {{ nav.support }}</a>{% endif %}</span>{% endif %}
+    </div>
   <script>
-    document.addEventListener("click", function (e) {
-      document.querySelectorAll("details.more[open]").forEach(function (d) { if (!d.contains(e.target)) d.removeAttribute("open"); });
+  (function () {
+    var body = document.body;
+    function open() { body.classList.add("side-open"); }
+    function close() { body.classList.remove("side-open"); }
+    document.getElementById("bzBurger").addEventListener("click", open);
+    document.getElementById("bzSideX").addEventListener("click", close);
+    document.getElementById("bzShade").addEventListener("click", close);
+    document.addEventListener("keydown", function (e) { if (e.key === "Escape") close(); });
+    /* a group opened or closed stays so on the next page (this browser only); the open page's group is always open */
+    var saved = {};
+    try { saved = JSON.parse(localStorage.getItem("bzSideGroups") || "{}"); } catch (e) { saved = {}; }
+    document.querySelectorAll(".sg[data-group]").forEach(function (g) {
+      var key = g.getAttribute("data-group");
+      if (!g.classList.contains("on") && saved[key] !== undefined) g.open = !!saved[key];
+      g.addEventListener("toggle", function () {
+        saved[key] = g.open;
+        try { localStorage.setItem("bzSideGroups", JSON.stringify(saved)); } catch (e) {}
+      });
     });
+  })();
   </script>
   <div class="wrap {% block wrapclass %}{% endblock %}">
     {% block content %}{% endblock %}
+  </div>
   </div>
 
   <div class="toasts" id="toasts" aria-live="polite"></div>
