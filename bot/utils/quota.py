@@ -51,6 +51,8 @@ async def check_quota(user_id: int, kind: str, assignment_group_id: int | None =
         # Test window: the testers check free of charge, nobody else at all.
         # Nothing is changed in the database, so ending it restores everyone.
         return Quota(not await runtime.checks_paused_for(user_id), False, price=price)
+    if await runtime.checks_paused_for(user_id):  # OpenAI's credit is gone (bot/utils/balance.py): quota.paused
+        return Quota(False, False, price=price)
     async with get_session() as session:
         if await crud.has_active_subscription(session, user_id):
             return Quota(True, False, price=price)

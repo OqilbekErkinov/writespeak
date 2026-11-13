@@ -288,6 +288,18 @@
   <div class="topbar">
     <a class="brand" href="/"><img src="https://bandzilla.uz/assets/logo-on-dark.webp" alt="Bandzilla" width="720" height="126"><span class="tag">Admin</span></a>
     {% set nav = request.state.nav if request.state.nav is defined else {} %}
+    {% if nav.teacher %}
+    <nav><a href="/checks" class="active">Tekshiruvlar</a></nav>
+    <div class="tb-right">
+      <details class="more">
+        <summary title="Hisob"><span class="me">{{ (nav.admin or "u")[:1] }}</span><span class="lbl">Ustoz</span><span class="car">▾</span></summary>
+        <div class="menu">
+          <div class="who-me">Siz: <b>{{ nav.admin }}</b> · ustoz</div>
+          <a href="/logout">↩️ Chiqish</a>
+        </div>
+      </details>
+    </div>
+    {% else %}
     <nav>
       <a href="/" class="{{ 'active' if active == 'dashboard' else '' }}">Dashboard</a>
       <a href="/users" class="{{ 'active' if active == 'users' else '' }}">Foydalanuvchilar</a>
@@ -318,6 +330,7 @@
         </div>
       </details>
     </div>
+    {% endif %}
   </div>
   <script>
     document.addEventListener("click", function (e) {

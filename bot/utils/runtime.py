@@ -57,6 +57,11 @@ async def may_recheck(user_id: int) -> bool:
 
 
 async def checks_paused_for(user_id: int) -> bool:
-    """True during a test window for everyone but its testers and the admins."""
+    """True during a test window for everyone but its testers and the admins - and while OpenAI's credit is
+    gone (bot/utils/balance.py), for everyone but the admins."""
+    from bot.utils import balance  # it imports bot.utils.crm, as this module does
+
+    if user_id in settings.admin_ids:
+        return False
     allowed = await testers()
-    return bool(allowed) and user_id not in allowed | settings.admin_ids
+    return (bool(allowed) and user_id not in allowed) or await balance.credit_paused()

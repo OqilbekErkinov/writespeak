@@ -59,6 +59,42 @@
   <p class="hint">O'zgarish botga 5 soniya ichida yetib boradi — botni qayta ishga tushirish shart emas.</p>
 </div>
 
+<div class="card">
+  <h2>Balanslar</h2>
+  <p class="hint" style="margin:-8px 0 14px">OpenAI API kalitiga qolgan balansni aytmaydi, shuning uchun bot uni o'zi sanaydi:
+    to'ldirgandan keyin summani shu yerga (yoki guruhga <code>/balans 20</code>) kiriting — har bir tekshiruv narxi undan
+    ayriladi. $5, $3 qolganda va tugaganda guruhning «Xatolar» bo'limiga xabar boradi. Hisob taxminiy: vaqti-vaqti bilan
+    platform.openai.com dagi aniq summani kiritib turing.</p>
+  <div class="bal-grid">
+    <div class="bal {{ 'bad' if credit_paused or (openai and openai.left <= 3) else 'warn' if openai and openai.left <= 5 else '' }}">
+      <div class="bal-label">💳 OpenAI</div>
+      {% if credit_paused %}<div class="bal-value">Tugagan</div>
+        <div class="bal-sub">OpenAI so'rovlarni rad etyapti — tekshiruvlar adminlardan boshqa hamma uchun to'xtatilgan.
+          To'ldirib, summani kiriting.</div>
+      {% elif openai %}<div class="bal-value">≈ ${{ "%.2f"|format(openai.left if openai.left > 0 else 0) }}</div>
+        <div class="bal-sub">≈ {{ ((openai.left if openai.left > 0 else 0) / check_usd)|int }} ta tekshiruv ·
+          {{ openai.set_at }} da ${{ "%.2f"|format(openai.entered) }} kiritilgan, ${{ "%.2f"|format(openai.spent) }} sarflandi</div>
+      {% else %}<div class="bal-value">—</div><div class="bal-sub">Hali kiritilmagan.</div>{% endif %}
+      <form method="post" action="/settings/balance" class="tw-add">
+        <input type="hidden" name="kind" value="openai">
+        <input type="text" name="amount" inputmode="decimal" placeholder="Hozirgi balans, $" required aria-label="OpenAI balansi">
+        <button type="submit" class="btn btn-good">Saqlash</button>
+      </form>
+    </div>
+    <div class="bal {{ 'bad' if azure.left is not none and azure.left <= 0.5 else 'warn' if azure.left is not none and azure.left <= 1 else '' }}">
+      <div class="bal-label">🎙 Azure (Pronunciation)</div>
+      <div class="bal-value">{{ "%.1f"|format(azure.used) }}{% if azure.hours > 0 %} / {{ "%g"|format(azure.hours) }}{% endif %} soat</div>
+      <div class="bal-sub">{% if azure.hours > 0 %}Bu oy ishlatilgan audio. Limit tugasa talaffuz o'lchanmaydi (Pronunciation taxminiy
+        bo'ladi). Bepul (F0) tarif — oyiga 5 soat.{% else %}Bu oy ishlatilgan audio · limit yo'q (pullik S0 tarif).{% endif %}</div>
+      <form method="post" action="/settings/balance" class="tw-add">
+        <input type="hidden" name="kind" value="azure">
+        <input type="text" name="amount" inputmode="decimal" placeholder="Oylik limit, soat (0 = cheklovsiz)" required aria-label="Azure limiti">
+        <button type="submit" class="btn btn-good">Saqlash</button>
+      </form>
+    </div>
+  </div>
+</div>
+
 {% if env_on %}
 <p class="hint">ℹ️ Server sozlamalarida (.env) ham CHECKS_ONLY_FOR ro'yxati bor. Bu sahifadagi sozlama undan ustun turadi;
   .env dagi ro'yxat faqat Redis ma'lumotlari yo'qolsa ishlatiladi.</p>
@@ -77,6 +113,13 @@
   .tw-hero.on .tw-text b { color: var(--lime); }
   .tw-btn { font-size: 15px; padding: 11px 20px; }
   .tw-add { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+  .bal-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+  .bal { border: 1px solid var(--line, #e5e5e5); border-radius: 16px; padding: 16px 18px; min-width: 0; }
+  .bal.warn { border-color: var(--yellow); background: rgba(255, 214, 0, 0.08); }
+  .bal.bad { border-color: #e5484d; background: rgba(229, 72, 77, 0.07); }
+  .bal-label { font-weight: 700; margin-bottom: 6px; }
+  .bal-value { font: 800 26px/1.2 var(--font-head); letter-spacing: -0.01em; }
+  .bal-sub { font-size: 13.5px; color: var(--muted, #666); margin-top: 4px; }
   .tw-add input { flex: 1 1 240px; }
 </style>
 {% endblock %}

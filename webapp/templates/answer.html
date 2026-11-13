@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}W{{ sub.id }} javobi — Bandzilla Admin{% endblock %}
+{% block content %}
+<p><a href="/checks?kind=w#c-w{{ sub.id }}">← Tekshiruvlar</a></p>
+<h1>Writing {{ task }} · #{{ sub.id }}</h1>
+<div class="card">
+  <h2>Savol</h2>
+  <div class="ans-text">{{ sub.prompt_text }}</div>
+  {% for n in charts %}
+  <p><img class="ans-chart" src="/checks/w/{{ sub.id }}/chart/{{ n }}" alt="Diagramma {{ n + 1 }}"></p>
+  {% endfor %}
+</div>
+<div class="card">
+  <h2>Javob <span class="muted num">{{ words }} so'z</span></h2>
+  <div class="ans-text">{{ sub.answer_text }}</div>
+</div>
+<p class="hint">Botning bahosi bu yerda ko'rsatilmaydi: o'z bahongizni mustaqil qo'ying, keyin u bot bilan solishtiriladi.</p>
+<style>
+  .ans-text { white-space: pre-wrap; font-size: 15px; line-height: 1.6; overflow-wrap: anywhere; }
+  .ans-chart { max-width: 100%; height: auto; border-radius: 10px; border: 1px solid var(--border); }
+</style>
+{% endblock %}

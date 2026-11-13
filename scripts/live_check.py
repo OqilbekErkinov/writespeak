@@ -268,6 +268,9 @@ async def run(cases: list[dict], out: Path, uid: int) -> None:
     speaking_marking.self_correction = real_corr
     total = sum(r.get("cost") or 0 for r in results)
     print(f"\n{len(results)} checks, ${total:.3f}", flush=True)
+    from bot.utils import crm
+
+    await crm.flush_spent()  # this run's spend comes off the OpenAI balance too (bot/utils/balance.py)
 
 
 if __name__ == "__main__":

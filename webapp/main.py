@@ -50,8 +50,11 @@ async def admin_session(request: Request, call_next):
     if request.session.get("logged_in"):
         if not await panel.session_valid(request):
             request.session.clear()
-        elif request.method == "GET" and not request.url.path.startswith(panel.NAV_SKIP):
-            request.state.nav = await panel.nav_counts(request)
+        else:
+            if panel.is_teacher(request) and not request.url.path.startswith(panel.TEACHER_PATHS):
+                return RedirectResponse("/checks", status_code=303)  # a teacher's login: the checks page only
+            if request.method == "GET" and not request.url.path.startswith(panel.NAV_SKIP):
+                request.state.nav = await panel.nav_counts(request)
     return await call_next(request)
 
 
@@ -243,14 +246,92 @@ async def report_pdf_admin(request: Request, kind: str, submission_id: int):
 
 
 @app.get("/checks", response_class=HTMLResponse)
-async def checks_page(request: Request, kind: str = "all", period: str = "all"):
+async def checks_page(request: Request, kind: str = "all", period: str = "all", tb: str = "", done: str = ""):
     if (redirect := _require_login(request)) is not None:
         return redirect
     kind = kind if kind in ("all", "w", "s") else "all"
     period = period if period in ("all", "today", "7d", "30d") else "all"
     async with get_session() as session:
-        data = await insights.all_checks(session, kind, period)
-    return templates.TemplateResponse(request, "checks.html", {"active": "checks", **data})
+        data = await insights.all_checks(session, kind, period, marked=tb == "1")
+    flash = {"saved": "Ustoz bahosi saqlandi.", "cleared": "Ustoz bahosi olib tashlandi.",
+             "bad": "Har bir mezonga 0-9 oralig'ida band kiriting (masalan 6 yoki 6.5)."}.get(done)
+    return templates.TemplateResponse(request, "checks.html", {
+        "active": "checks", **data, "tb": tb == "1", "flash": flash, "flash_bad": done == "bad",
+        "teacher_view": panel.is_teacher(request)})
+
+
+@app.post("/checks/{kind}/{submission_id}/teacher")
+async def checks_teacher_bands(request: Request, kind: str, submission_id: int):
+    """A teacher's (or an admin's) own bands for a check (bot/utils/teacher_bands.py); all empty = taken off."""
+    if (redirect := _require_login(request)) is not None:
+        return redirect
+    from sqlalchemy import null
+
+    from bot.utils import teacher_bands
+
+    if kind not in ("w", "s"):
+        return RedirectResponse("/checks", status_code=303)
+    form = await request.form()
+    back = str(form.get("back") or "/checks")
+    back = back if back.startswith("/checks") else "/checks"
+    sep = "&" if "?" in back else "?"
+    try:
+        marks = teacher_bands.record(kind, {k: str(form.get(k) or "") for k, _, _ in teacher_bands.CRITERIA[kind]},
+                                     panel.admin_name(request), str(form.get("note") or ""))
+    except ValueError:
+        return RedirectResponse(f"{back}{sep}done=bad#c-{kind}{submission_id}", status_code=303)
+    model = WritingSubmission if kind == "w" else SpeakingSubmission
+    async with get_session() as session:
+        sub = await session.get(model, submission_id)
+        if sub is None:
+            return RedirectResponse(back, status_code=303)
+        sub.teacher_bands = marks if marks is not None else null()
+        await session.commit()
+    await panel.audit(request, "teacher_bands", details=f"{'W' if kind == 'w' else 'S'}#{submission_id}: "
+                      + (" ".join(f"{k} {v:g}" for k, v in marks["bands"].items()) if marks else "olib tashlandi"))
+    return RedirectResponse(f"{back}{sep}done={'saved' if marks else 'cleared'}#c-{kind}{submission_id}",
+                            status_code=303)
+
+
+@app.get("/checks/w/{submission_id}/answer", response_class=HTMLResponse)
+async def writing_answer(request: Request, submission_id: int):
+    """A Writing check's question and essay as the student sent them - for the teacher marking it, without the
+    bot's bands."""
+    if (redirect := _require_login(request)) is not None:
+        return redirect
+    async with get_session() as session:
+        sub = await session.get(WritingSubmission, submission_id)
+    if sub is None:
+        return Response("Topilmadi", status_code=404)
+    charts = [i for i, p in enumerate((sub.original_file_paths or {}).get("chart") or []) if p and Path(p).exists()]
+    return templates.TemplateResponse(request, "answer.html", {
+        "active": "checks", "sub": sub, "task": "Task 1" if getattr(sub.task_type, "value", sub.task_type) == "task1"
+        else "Task 2", "charts": charts, "words": len((sub.answer_text or "").split())})
+
+
+@app.get("/checks/w/{submission_id}/chart/{n}")
+async def writing_chart(request: Request, submission_id: int, n: int):
+    if (redirect := _require_login(request)) is not None:
+        return redirect
+    async with get_session() as session:
+        sub = await session.get(WritingSubmission, submission_id)
+    paths = ((sub.original_file_paths or {}).get("chart") or []) if sub is not None else []
+    if not 0 <= n < len(paths) or not paths[n] or not Path(paths[n]).exists():
+        return Response(status_code=404)
+    return FileResponse(paths[n])
+
+
+@app.get("/audio/s/{submission_id}")
+async def speaking_audio(request: Request, submission_id: int):
+    """A Speaking check's recording, for the teacher marking it."""
+    if (redirect := _require_login(request)) is not None:
+        return redirect
+    async with get_session() as session:
+        sub = await session.get(SpeakingSubmission, submission_id)
+    if sub is None or not sub.audio_file_path or not Path(sub.audio_file_path).exists():
+        return Response("Audio topilmadi", status_code=404)
+    return FileResponse(sub.audio_file_path, media_type="audio/mpeg", content_disposition_type="inline",
+                        filename=f"Bandzilla_S{submission_id}.mp3")
 
 
 @app.get("/payments", response_class=HTMLResponse)

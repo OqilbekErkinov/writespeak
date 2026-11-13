@@ -34,7 +34,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Resp
 from sqlalchemy import and_, func, select, update
 
 from bot.config import settings
-from bot.utils import checks_back, crm, runtime
+from bot.utils import balance, checks_back, crm, runtime
 from db.database import get_session
 from db.models import (
     AdminAction,
@@ -133,7 +133,18 @@ async def authenticate(username: str, password: str) -> dict | None:
             return None
         row.last_login_at = datetime.now(timezone.utc)
         await session.commit()
-        return {"admin": row.username, "owner": False, "pw": _pw_tag(row.password_hash)}
+        return {"admin": row.username, "owner": False, "pw": _pw_tag(row.password_hash),
+                "teacher": (row.role or "admin") == "teacher"}
+
+
+# What a "teacher" login may open (the user, 2026-11-14: the teachers enter their bands themselves): the checks
+# page, its reports and recordings - never users, payments or settings.
+# Marked blind: no bot band, no PDF report - the answer itself (the essay and its question, the recording).
+TEACHER_PATHS = ("/checks", "/audio/", "/logout", "/login")
+
+
+def is_teacher(request: Request) -> bool:
+    return bool(request.session.get("teacher"))
 
 
 _valid_cache: dict[str, tuple[float, str | None]] = {}  # username -> (checked at, its pw tag; None = disabled)
@@ -168,8 +179,11 @@ NAV_SKIP = ("/login", "/logout", "/cabinet", "/reports/", "/export/", "/support/
 
 async def nav_counts(request: Request) -> dict:
     """The top bar's badges, and who is signed in."""
-    out = {"support": 0, "payments": 0, "charts": 0, "errors": await errors_today(), "window": False,
-           "owner": is_owner(request), "admin": admin_name(request)}
+    out = {"support": 0, "payments": 0, "charts": 0, "errors": 0, "window": False,
+           "owner": is_owner(request), "admin": admin_name(request), "teacher": is_teacher(request)}
+    if out["teacher"]:
+        return out
+    out["errors"] = await errors_today()
     try:
         async with get_session() as session:
             out["support"] = (await session.execute(select(func.count()).select_from(SupportMessage).where(
@@ -235,11 +249,42 @@ async def settings_page(request: Request, done: str | None = None):
         "off": "Tekshiruvlar hamma uchun ochildi. Kutayotganlarga «Bandzilla yana ishlayapti» xabari yuborilmoqda.",
         "added": "Sinovchi qo'shildi.", "removed": "Sinovchi olib tashlandi.", "bad": "Bunday foydalanuvchi topilmadi.",
         "empty": "Avval kamida bitta sinovchi qo'shing.",
+        "balance": "Balans saqlandi.", "resumed": "Balans saqlandi - tekshiruvlar qayta ochildi, kutganlarga xabar ketmoqda.",
+        "bad_amount": "Summani raqam bilan kiriting, masalan 20 yoki 12.5.",
     }.get(done or "")
     return templates.TemplateResponse(request, "settings.html", {
         "active": "settings", "on": on, "testers": sorted(listed), "users": users, "waiting": await checks_back.waiting_count(),
-        "flash": flash, "flash_bad": done in ("bad", "empty"), "env_on": bool(settings.checks_only_for_ids),
+        "flash": flash, "flash_bad": done in ("bad", "empty", "bad_amount"), "env_on": bool(settings.checks_only_for_ids),
+        "openai": await balance.openai_status(), "credit_paused": await balance.credit_paused(),
+        "azure": await balance.azure_status(), "check_usd": balance.CHECK_USD,
     })
+
+
+@router.post("/settings/balance")
+async def settings_balance(request: Request, kind: str = Form(...), amount: str = Form("")):
+    """The OpenAI balance after a top-up, or Azure's monthly hours (bot/utils/balance.py)."""
+    if (r := guard(request, owner=True)) is not None:
+        return r
+    value = balance.parse_amount(amount)
+    if value is None or kind not in ("openai", "azure"):
+        return RedirectResponse("/settings?done=bad_amount", status_code=303)
+    if kind == "azure":
+        await balance.set_azure_hours(value)
+        await audit(request, "azure_hours", details=f"{value:g} soat")
+        return RedirectResponse("/settings?done=balance", status_code=303)
+    resumed = await balance.set_openai(value)
+    await audit(request, "openai_balance", details=f"${value:g}")
+    if resumed:
+        _later(_credit_back_job())
+    return RedirectResponse(f"/settings?done={'resumed' if resumed else 'balance'}", status_code=303)
+
+
+async def _credit_back_job() -> None:
+    bot = new_bot()
+    try:
+        await crm.credit_back(bot, entered=True)
+    finally:
+        await bot.session.close()
 
 
 @router.post("/settings/test-window")
@@ -650,7 +695,7 @@ async def admins_page(request: Request, done: str | None = None):
 
 
 @router.post("/admins/create")
-async def admins_create(request: Request, username: str = Form(...), name: str = Form(...)):
+async def admins_create(request: Request, username: str = Form(...), name: str = Form(...), role: str = Form("admin")):
     if (r := guard(request, owner=True)) is not None:
         return r
     username = username.strip().lower()
@@ -661,10 +706,11 @@ async def admins_create(request: Request, username: str = Form(...), name: str =
     async with get_session() as session:
         if (await session.execute(select(WebAdmin).where(WebAdmin.username == username))).scalar_one_or_none():
             return RedirectResponse("/admins?done=exists", status_code=303)
-        session.add(WebAdmin(username=username, name=name.strip()[:100] or username, password_hash=hash_password(password)))
+        session.add(WebAdmin(username=username, name=name.strip()[:100] or username, password_hash=hash_password(password),
+                             role="teacher" if role == "teacher" else "admin"))
         await session.commit()
     request.session["new_password"] = {"username": username, "password": password}
-    await audit(request, "admin_created", details=username)
+    await audit(request, "admin_created", details=username + (" (ustoz)" if role == "teacher" else ""))
     return RedirectResponse("/admins?done=created", status_code=303)
 
 
@@ -695,7 +741,9 @@ ACTION_NAMES = {
     "payment_reject": "To'lovni rad etdi", "coins": "Coin o'zgartirdi", "message": "Xabar yozdi",
     "broadcast": "Ommaviy xabar", "user_blocked": "Blokladi", "user_unblocked": "Blokdan chiqardi",
     "test_window_on": "Test rejimini yoqdi", "test_window_off": "Test rejimini o'chirdi", "tester_add": "Sinovchi qo'shdi",
-    "tester_remove": "Sinovchini olib tashladi", "admin_created": "Admin qo'shdi", "admin_password_reset": "Parolni yangiladi",
+    "tester_remove": "Sinovchini olib tashladi", "openai_balance": "OpenAI balansini kiritdi",
+    "teacher_bands": "Ustoz bahosini qo'ydi",
+    "azure_hours": "Azure limitini kiritdi", "admin_created": "Admin qo'shdi", "admin_password_reset": "Parolni yangiladi",
     "admin_enabled": "Adminni yoqdi", "admin_disabled": "Adminni o'chirdi", "export": "Excel yuklab oldi",
     "errors_cleared": "Xatolarni tozaladi", "center_created": "Markaz yaratdi", "center_deleted": "Markazni o'chirdi",
     "teacher_revoked": "O'qituvchilikni oldi",

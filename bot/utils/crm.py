@@ -230,15 +230,20 @@ async def support_user(chat_id: int, message_id: int) -> int | None:
 async def run_sender(bot: Bot) -> None:
     """Sends the queued messages; also saves the OpenAI spend to the day's
     totals and posts the daily report once a day (bot/utils/crm_events.py)."""
-    from bot.utils import crm_events
+    from bot.utils import balance, crm_events
 
-    last_daily_check = 0.0
+    last_daily_check = last_probe = 0.0
     while True:
         try:
             await flush_spent()
             if time.monotonic() - last_daily_check > 60:
                 last_daily_check = time.monotonic()
                 await crm_events.daily_report_if_due()
+                await crm_events.teacher_report_if_due()
+            if time.monotonic() - last_probe > PROBE_EVERY and await balance.credit_paused():
+                last_probe = time.monotonic()
+                if await balance.probe_credit():
+                    await credit_back(bot)
             cfg = config()
             if not cfg:
                 await asyncio.sleep(5)
@@ -252,6 +257,22 @@ async def run_sender(bot: Bot) -> None:
         except Exception as e:  # noqa: BLE001
             logger.warning("Admins' group sender: %r", e)
             await asyncio.sleep(5)
+
+
+PROBE_EVERY = 600  # seconds between test calls while checks are paused for want of OpenAI credit
+
+
+async def credit_back(bot: Bot, entered: bool = False) -> None:
+    """OpenAI works again (a top-up entered, or the test call went through): the group hears it and everyone
+    who waited gets quota.back (bot/utils/checks_back.py)."""
+    from bot.utils import checks_back
+
+    await post("errors", "✅ <b>OpenAI yana ishlayapti - tekshiruvlar hamma uchun qayta ochildi.</b>"
+               + ("" if entered else "\nBalans summasini kiritishni unutmang: <code>/balans SUMMA</code> - "
+                  "shunda $5 va $3 qolganda yana ogohlantiraman."))
+    sent = await checks_back.notify_back(bot)
+    if sent:
+        await post("errors", f"🔔 Kutib turgan {sent} kishiga «Bandzilla yana ishlayapti» xabari yuborildi.")
 
 
 async def _deliver_with_retries(bot: Bot, cfg: dict, job: dict) -> None:
@@ -380,6 +401,15 @@ def spend_key(day: date) -> str:
 async def flush_spent() -> dict[str, float]:
     """Adds this process's OpenAI spend since the last flush to today's
     totals in Redis (by category - see services.ai.usage) and returns it."""
+    from bot.utils import balance  # it imports this module
+
+    azure = usage.take_azure()
+    if azure:
+        try:
+            await balance.add_azure_seconds(azure)
+        except Exception as e:  # noqa: BLE001
+            usage.give_back_azure(azure)
+            logger.warning("Admins' group: could not save Azure's audio seconds (%r)", e)
     spent = {k: v for k, v in usage.take_spent().items() if v}
     if not spent:
         return {}
@@ -394,6 +424,10 @@ async def flush_spent() -> dict[str, float]:
         usage.give_back(spent)
         logger.warning("Admins' group: could not save the spend (%r)", e)
         return {}
+    try:  # the OpenAI balance counted down, the group told at $5, $3 and $0 (bot/utils/balance.py)
+        await balance.add_spent(sum(spent.values()))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Admins' group: could not count the OpenAI balance down (%r)", e)
     return spent
 
 

@@ -48,7 +48,9 @@ async def notify_back(bot: Bot) -> int:
     """Tells everyone waiting that checks are back - only when no test
     window is on. Started with the bot, and by the panel's off switch.
     Returns how many got the message."""
-    if await runtime.window_on():
+    from bot.utils import balance
+
+    if await runtime.window_on() or await balance.credit_paused():
         return 0
     sent = tried = 0
     try:

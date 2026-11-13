@@ -15,6 +15,8 @@ import logging
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
+from sqlalchemy import select
+
 from bot.config import settings
 from bot.utils import crm
 from db import crud
@@ -672,6 +674,74 @@ async def import_done(result: dict) -> None:
         logger.warning("Admins' group: import_done failed", exc_info=True)
 
 
+# --- 👩‍🏫 Ustozlar va bot (weekly) -----------------------------------------------------------------------
+
+
+async def teacher_report_if_due() -> None:
+    """Monday from 09:00 Tashkent time: the teachers' bands of the week against the bot's (once a week; nothing
+    when no check was marked)."""
+    if not crm.ready():
+        return
+    now = crm.local_now()
+    if now.weekday() != 0 or now.hour < 9:
+        return
+    year, week, _ = now.isocalendar()
+    if not await crm.redis().set(f"crm:teachers:{year}-{week}", "1", nx=True, ex=60 * 24 * 3600):
+        return
+    text = await teacher_report(7)
+    if text:
+        await crm.post("daily", text)
+
+
+async def teacher_report(days: int | None = 7) -> str:
+    """How far the bot is from the teachers (bot/utils/teacher_bands.py) over the checks marked in the last
+    `days` days, with the all-time figures; "" when nothing was marked in them."""
+    from bot.utils import teacher_bands
+
+    rows = []
+    async with get_session() as session:
+        for kind, model in (("w", WritingSubmission), ("s", SpeakingSubmission)):
+            found = (await session.execute(
+                select(model.id, model.overall_band, model.criteria_scores, model.teacher_bands)
+                .where(model.teacher_bands.isnot(None)))).all()
+            rows += [{"kind": kind, "id": r[0], "overall": r[1], "criteria_scores": r[2], "teacher": r[3]}
+                     for r in found if r[3]]
+    since = datetime.now(timezone.utc) - timedelta(days=days) if days else None
+
+    def recent(r) -> bool:
+        try:
+            return since is None or datetime.fromisoformat(r["teacher"].get("at", "")) >= since
+        except ValueError:
+            return False
+
+    week = [r for r in rows if recent(r)]
+    if not week:
+        return ""
+
+    def block(s: dict) -> list[str]:
+        out = [f"Bot minus ustoz: o'rtacha <b>{s['mean']:+.2f}</b> band · o'rtacha farq {s['mae']:.2f} · "
+               f"±0.5 ichida {s['within_half']}/{s['n']}"]
+        if s["criteria"]:
+            out.append("   " + " · ".join(f"{k} {v:+.1f}" for k, v in s["criteria"].items()))
+        return out
+
+    s = teacher_bands.summary(week)
+    lines = [f"👩‍🏫 <b>Ustozlar va bot</b> - oxirgi {days} kun: <b>{s['n']}</b> ta tekshiruvni ustoz baholadi"
+             if days else f"👩‍🏫 <b>Ustozlar va bot</b> - jami {s['n']} ta tekshiruv"]
+    lines += block(s)
+    if s["far"]:
+        lines.append("1 band va undan ko'p farq:")
+        for r, d in s["far"][:10]:
+            lines.append(f"   • {'W' if r['kind'] == 'w' else 'S'}#{r['id']}: bot {r['overall']:g}, ustoz "
+                         f"{r['teacher']['overall']:g} ({d['overall']:+.1f})")
+    if days and len(rows) > len(week):
+        lines.append("")
+        lines.append(f"Hammasi ({len(rows)} ta):")
+        lines += block(teacher_bands.summary(rows))
+    lines.append("<i>Manfiy - bot ustozdan past, musbat - baland. Baholar: admin panel → Tekshiruvlar.</i>")
+    return "\n".join(lines)
+
+
 # --- 📊 Kunlik hisobot --------------------------------------------------------------------------------
 
 
@@ -772,6 +842,9 @@ async def daily_report(day: date, partial: bool = False) -> str:
     if note:
         lines.append(note)
     lines.append(f"<i>1 $ = {_som(rate)} so'm</i>")
+    from bot.utils import balance  # the balances now (bot/utils/balance.py)
+
+    lines += await balance.summary_lines()
     lines.append("")
     result = revenue - total * rate
     lines.append(

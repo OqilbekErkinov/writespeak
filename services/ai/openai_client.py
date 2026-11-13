@@ -16,7 +16,24 @@ from bot.config import settings
 
 logger = logging.getLogger(__name__)
 
-client = AsyncOpenAI(api_key=settings.openai_api_key)
+async def _watch_credit(response) -> None:
+    """Every OpenAI answer passes here (an httpx response hook): a 429 "insufficient_quota" means the credit
+    is gone - checks pause and the admins' group hears it at once (bot/utils/balance.py, 2026-11-14)."""
+    if response.status_code != 429:
+        return
+    try:
+        await response.aread()
+        body = response.text
+    except Exception:  # noqa: BLE001 - the SDK reports the 429 itself
+        return
+    if "insufficient_quota" in body or "credit_balance" in body:
+        from bot.utils import balance  # it imports this module's callers' helpers
+
+        await balance.out_of_credit()
+
+
+client = AsyncOpenAI(api_key=settings.openai_api_key,
+                     http_client=openai.DefaultAsyncHttpxClient(event_hooks={"response": [_watch_credit]}))
 
 # Short gpt-5-mini calls (Speaking model answers, filler words; on Flex since
 # 2026-10-17) normally take seconds, so they fall back to the default tier

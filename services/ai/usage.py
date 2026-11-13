@@ -88,6 +88,23 @@ def give_back(spent: dict[str, float]) -> None:
         _spent[category] = _spent.get(category, 0.0) + cost
 
 
+_azure_seconds: list[float] = [0.0]  # Azure audio assessed since the last take_azure() (bot/utils/balance.py)
+
+
+def record_azure(seconds: float) -> None:
+    """Audio sent to Azure for Pronunciation - counted against its monthly allowance."""
+    _azure_seconds[0] += max(0.0, seconds)
+
+
+def take_azure() -> float:
+    seconds, _azure_seconds[0] = _azure_seconds[0], 0.0
+    return seconds
+
+
+def give_back_azure(seconds: float) -> None:
+    _azure_seconds[0] += seconds
+
+
 def record(purpose: str, response) -> None:
     """Logs a chat-completion or embedding response's usage and estimated cost."""
     usage = getattr(response, "usage", None)

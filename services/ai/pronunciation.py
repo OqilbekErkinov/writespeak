@@ -270,6 +270,9 @@ async def assess_answers(answers: list[tuple[bytes, list, float]]) -> Assessment
     if not good:
         return None
     result = combine(good)
+    from services.ai import usage
+
+    usage.record_azure(result.seconds)  # against Azure's monthly allowance (bot/utils/balance.py)
     logger.info(
         "Azure pronunciation: accuracy %.0f fluency %.0f prosody %s completeness %.0f over %.0fs",
         result.accuracy, result.fluency,

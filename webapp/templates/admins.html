@@ -26,7 +26,7 @@
     </tr>
     {% for a in admins %}
     <tr>
-      <td class="strong">{{ a.name }}</td>
+      <td class="strong">{{ a.name }}{% if a.role == "teacher" %} <span class="pill">ustoz</span>{% endif %}</td>
       <td><code>{{ a.username }}</code></td>
       <td>{% if a.active %}<span class="pill pill-good">faol</span>{% else %}<span class="pill pill-bad">o'chirilgan</span>{% endif %}</td>
       <td class="num">{{ a.last }}</td>
@@ -50,9 +50,14 @@
   <div class="a-row">
     <label>Ismi<input type="text" name="name" maxlength="100" placeholder="Masalan: Dilnoza" required></label>
     <label>Login<input type="text" name="username" maxlength="30" pattern="[A-Za-z0-9_]{3,30}" placeholder="dilnoza" required></label>
+    <label>Roli<select name="role">
+      <option value="admin">Admin</option>
+      <option value="teacher">Ustoz — faqat tekshiruvlarni baholaydi</option>
+    </select></label>
     <button type="submit" class="btn btn-good">+ Qo'shish</button>
   </div>
-  <p class="hint">Parolni tizim o'zi yaratadi va bir marta ko'rsatadi.</p>
+  <p class="hint">Parolni tizim o'zi yaratadi va bir marta ko'rsatadi. <b>Ustoz</b> faqat «Tekshiruvlar» sahifasini ko'radi:
+    javob matni yoki audiosini ochib, o'z bandini qo'yadi. Botning bahosi, to'lovlar va foydalanuvchilar unga ko'rinmaydi.</p>
 </form>
 
 <style>

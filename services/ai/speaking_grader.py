@@ -40,6 +40,7 @@ import asyncio
 import json
 import logging
 import re
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
@@ -438,13 +439,74 @@ def lead_accepted(wrong: str) -> str | None:
     return None
 
 
+TEACHER_ANCHORS_MAX = 20  # teacher-marked anchors in one scoring prompt, the file's and the database's together
+TEACHER_ANCHORS_REFRESH = 600  # seconds between reads of the teacher-marked checks
+_teacher_anchors: dict = {"at": -1e9, "items": {}}
+
+
+async def refresh_teacher_anchors() -> None:
+    """The Speaking checks teachers marked in the web panel (Tekshiruvlar → Baholash; bot/utils/teacher_bands.py)
+    as anchors, read at most every TEACHER_ANCHORS_REFRESH seconds - each new mark teaches the scoring runs
+    without a deploy (the user, 2026-11-14)."""
+    if time.monotonic() - _teacher_anchors["at"] < TEACHER_ANCHORS_REFRESH:
+        return
+    _teacher_anchors["at"] = time.monotonic()
+    try:
+        from sqlalchemy import select
+
+        from db.database import get_session
+        from db.models import SpeakingSubmission as S
+
+        async with get_session() as session:
+            rows = (await session.execute(
+                select(S.id, S.part, S.report_data, S.teacher_bands)
+                .where(S.teacher_bands.isnot(None), S.is_test.is_(False)).order_by(S.created_at.desc()).limit(200)
+            )).all()
+    except Exception as e:  # noqa: BLE001 - the file's anchors still stand
+        logger.warning("Teacher-marked anchors not read: %r", e)
+        return
+    items = {}
+    for sid, part, data, marks in rows:
+        bands = (marks or {}).get("bands") or {}
+        if not all(k in bands for k in ("FC", "LR", "GRA", "P")):
+            continue
+        data = data or {}
+        answers = [{"question": q, "transcript": t.strip()}
+                   for q, t in zip(data.get("questions") or [], data.get("transcripts") or [])
+                   if isinstance(t, str) and t.strip()]
+        if answers:
+            items[f"teachers-s{sid}"] = {"part": getattr(part, "value", part), "band": marks["overall"],
+                                         "label": f"Teachers' band {marks['overall']:g}",
+                                         "bands": {k: bands[k] for k in ("FC", "LR", "GRA", "P")}, "answers": answers}
+    _teacher_anchors["items"] = items
+
+
+def _spread(items: list[tuple[str, dict]], room: int) -> list[tuple[str, dict]]:
+    """Up to `room` anchors taken in turn from each band, newest first within a band - every level shown."""
+    by_band: dict[float, list] = {}
+    for i, a in items:
+        by_band.setdefault(a.get("band", 0), []).append((i, a))
+    out, bands = [], sorted(by_band)
+    while len(out) < room and any(by_band.values()):
+        for b in bands:
+            if by_band[b] and len(out) < room:
+                out.append(by_band[b].pop(0))
+    return out
+
+
 def anchors_text() -> str:
-    """Recordings with their OFFICIAL IELTS band, as the scoring prompt shows
-    them (verbatim transcripts, fillers and restarts included - they earned
-    that band all the same); "" without any."""
+    """Recordings with the bands certified examiners gave them - the official IELTS band, or our teachers'
+    for each criterion (the file's, and the checks marked in the web panel: refresh_teacher_anchors) - as the
+    scoring prompt shows them (verbatim transcripts, fillers and restarts included - they earned that band all
+    the same); "" without any."""
     ids = [i for i in (speaking_config().get("anchors") or {}).get("ids", []) if i not in EXCLUDED_ANCHORS]
     found = _load_json(settings.calibration_dir / "speaking_anchors.json") or {}
-    anchors = sorted(((i, found[i]) for i in ids if i in found), key=lambda x: x[1].get("band", 0))
+    chosen = {i: found[i] for i in ids if i in found}
+    marked = {i: a for i, a in _teacher_anchors["items"].items() if i not in EXCLUDED_ANCHORS}
+    chosen.update({i: a for i, a in marked.items() if i in chosen})  # a teacher's later marks over the file's
+    room = TEACHER_ANCHORS_MAX - sum(i.startswith("teachers-") for i in chosen)
+    chosen.update(_spread([(i, a) for i, a in marked.items() if i not in chosen], max(0, room)))
+    anchors = sorted(chosen.items(), key=lambda x: x[1].get("band", 0))
     if not anchors:
         return ""
     out = ["ANCHOR RECORDINGS - real candidates with the bands certified examiners gave them (the official IELTS "
@@ -720,6 +782,7 @@ async def score_session(part: str, items: list[SessionItem], ev: Evidence, evide
         if not weaknesses or any(m.criterion == key and m.severity != "slip" for m in checked):
             return False
         return all(_BREVITY.search(w) and not _real_quotes(w, low, []) for w in weaknesses)
+    await refresh_teacher_anchors()  # the checks teachers marked since, among the anchors
     # in the user message: the system prompt stays the cached prefix
     short = short_sample_note(part, items) if short_scoring_on() else ""
     messages = [

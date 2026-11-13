@@ -4,43 +4,94 @@
 {% block content %}
 <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;margin-bottom:22px">
   <h1 style="margin:0">Tekshiruvlar</h1>
-  <a class="btn" href="/export/checks.xlsx" title="Barcha tekshiruvlar Excel faylda">⬇ Excel</a>
+  {% if not teacher_view %}<a class="btn" href="/export/checks.xlsx" title="Barcha tekshiruvlar Excel faylda">⬇ Excel</a>{% endif %}
 </div>
+{% if flash %}<div class="{{ 'error' if flash_bad else 'flash' }}">{{ flash }}</div>{% endif %}
+{% if teacher_view %}
+<p class="hint" style="margin-top:-8px">Javobni oching (Writing — matn, Speaking — audio), har bir mezonga o'z bandingizni
+  qo'ying va saqlang. Botning bahosi sizga ko'rsatilmaydi — mustaqil baholang; keyin bot bilan solishtiriladi.</p>
+{% endif %}
 
+{% set q = "&tb=1" if tb else "" %}
 <div class="c-bar">
   <div class="filters" style="margin:0">
     {% for key, label in [("all", "Barchasi"), ("w", "✍️ Writing"), ("s", "🎙 Speaking")] %}
-    <a href="/checks?kind={{ key }}&period={{ period }}" class="{{ 'active' if kind == key else '' }}">{{ label }}</a>
+    <a href="/checks?kind={{ key }}&period={{ period }}{{ q }}" class="{{ 'active' if kind == key else '' }}">{{ label }}</a>
     {% endfor %}
+    <a href="/checks?kind={{ kind }}&period={{ period }}{{ '' if tb else '&tb=1' }}" class="{{ 'active' if tb else '' }}">👩‍🏫 Ustoz baholagan</a>
   </div>
   <div class="filters" style="margin:0">
     {% for key, label in [("today", "Bugun"), ("7d", "7 kun"), ("30d", "30 kun"), ("all", "Hammasi")] %}
-    <a href="/checks?kind={{ kind }}&period={{ key }}" class="{{ 'active' if period == key else '' }}">{{ label }}</a>
+    <a href="/checks?kind={{ kind }}&period={{ key }}{{ q }}" class="{{ 'active' if period == key else '' }}">{{ label }}</a>
     {% endfor %}
   </div>
 </div>
 
+{% if not teacher_view %}
 <div class="c-sum">
   <div><b class="num">{{ summary.n }}</b><span>tekshiruv</span></div>
   <div><b class="num">{{ "%.2f"|format(summary.avg) if summary.avg is not none else "—" }}</b><span>o'rtacha band</span></div>
   <div><b class="num">{{ summary.coins }}</b><span>coin sarflangan</span></div>
   <div><b class="num">${{ "%.2f"|format(summary.cost) }}</b><span>AI xarajati</span></div>
 </div>
+{% if compared.n %}
+<div class="card t-cmp">
+  <b>👩‍🏫 Ustoz baholagan {{ compared.n }} ta tekshiruv</b> — bot minus ustoz:
+  o'rtacha <b class="num">{{ "%+.2f"|format(compared.mean) }}</b> band,
+  o'rtacha farq <b class="num">{{ "%.2f"|format(compared.mae) }}</b>,
+  ±0.5 ichida <b class="num">{{ compared.within_half }}/{{ compared.n }}</b>
+  <div class="t-crit">{% for k, v in compared.criteria.items() %}<span>{{ k }} <b class="num {{ 'neg' if v <= -0.5 else 'pos' if v >= 0.5 else '' }}">{{ "%+.1f"|format(v) }}</b></span>{% endfor %}</div>
+</div>
+{% endif %}
+{% endif %}
 
+{% set back = "/checks?kind=" ~ kind ~ "&period=" ~ period ~ q %}
 <div class="card" style="padding:8px 10px">
   {% if rows %}
   <div class="table-scroll"><table>
-    <tr><th>Sana</th><th>Foydalanuvchi</th><th>Turi</th><th>Band</th><th>Mezonlar</th><th>To'lov</th><th class="r">AI xarajat</th><th></th></tr>
+    <tr><th>Sana</th><th>Foydalanuvchi</th><th>Turi</th>
+      {% if not teacher_view %}<th>Band</th><th>Mezonlar</th>{% endif %}
+      <th>Ustoz</th>
+      {% if not teacher_view %}<th>To'lov</th><th class="r">AI xarajat</th>{% endif %}<th></th></tr>
     {% for c in rows %}
-    <tr>
+    <tr id="c-{{ c.kind }}{{ c.id }}">
       <td class="num">{{ c.when }}</td>
-      <td>{% if c.user %}<a class="who" href="/users/{{ c.user.id }}"><span class="ava">{{ (c.user.full_name or "?")[:1] }}</span><span class="nm">{{ c.user.full_name }}</span></a>{% else %}{{ c.user_id }}{% endif %}</td>
-      <td class="strong">{{ c.label }}{% if c.practice %} <span class="muted">· Practice</span>{% endif %}{% if c.assignment %} <span class="muted">· vazifa</span>{% endif %}</td>
+      <td>{% if teacher_view %}<span class="nm">{{ c.user.full_name if c.user else c.user_id }}</span>{% elif c.user %}<a class="who" href="/users/{{ c.user.id }}"><span class="ava">{{ (c.user.full_name or "?")[:1] }}</span><span class="nm">{{ c.user.full_name }}</span></a>{% else %}{{ c.user_id }}{% endif %}</td>
+      <td class="strong">{{ c.label }} <span class="muted">#{{ c.id }}</span>{% if c.practice %} <span class="muted">· Practice</span>{% endif %}{% if c.assignment %} <span class="muted">· vazifa</span>{% endif %}</td>
+      {% if not teacher_view %}
       <td>{% if c.band is not none %}<span class="band-chip {{ 'hi' if c.band >= 7 else ('lo' if c.band < 5.5 else '') }}">{{ "%.1f"|format(c.band) }}</span>{% else %}—{% endif %}</td>
       <td class="muted" style="font-size:12.5px">{{ c.criteria }}</td>
+      {% endif %}
+      <td class="t-cell">
+        {% if c.teacher %}
+        <span class="band-chip">{{ "%.1f"|format(c.teacher.overall) }}</span>
+        <span class="muted" style="font-size:12px">{% for k, label, v in c.fields %}{{ k }} {{ "%g"|format(v) }}{{ " · " if not loop.last }}{% endfor %}</span>
+        {% if not teacher_view and c.diff and c.diff.overall is not none %}<span class="t-diff {{ 'neg' if c.diff.overall <= -1 else 'pos' if c.diff.overall >= 1 else '' }}">bot {{ "%+.1f"|format(c.diff.overall) }}</span>{% endif %}
+        {% endif %}
+        <details class="t-form">
+          <summary class="btn btn-sm">{{ "O'zgartirish" if c.teacher else "Baholash" }}</summary>
+          <form method="post" action="/checks/{{ c.kind }}/{{ c.id }}/teacher">
+            <input type="hidden" name="back" value="{{ back }}">
+            <div class="t-fields">
+              {% for k, label, v in c.fields %}
+              <label>{{ label }}<input type="text" name="{{ k }}" inputmode="decimal" value="{{ '%g'|format(v) if v is not none else '' }}" placeholder="0-9" aria-label="{{ label }}"></label>
+              {% endfor %}
+            </div>
+            <input type="text" name="note" value="{{ c.teacher.note if c.teacher else '' }}" placeholder="Izoh (ixtiyoriy)" class="t-note">
+            <button type="submit" class="btn btn-good btn-sm">Saqlash</button>
+            {% if c.teacher %}<span class="hint">Olib tashlash uchun barcha bandlarni bo'shatib saqlang.</span>{% endif %}
+          </form>
+        </details>
+      </td>
+      {% if not teacher_view %}
       <td>{{ (c.coins ~ " coin") if c.coins else c.paid }}</td>
       <td class="r num">{{ "$%.3f"|format(c.cost) if c.cost else "—" }}</td>
-      <td>{% if c.pdf %}<a class="btn btn-sm" href="/reports/{{ c.kind }}/{{ c.id }}.pdf" target="_blank">PDF</a>{% endif %}</td>
+      {% endif %}
+      <td style="white-space:nowrap">
+        {% if c.kind == "w" %}<a class="btn btn-sm" href="/checks/w/{{ c.id }}/answer" target="_blank">Javob</a>{% endif %}
+        {% if c.audio %}<a class="btn btn-sm" href="/audio/s/{{ c.id }}" target="_blank">🎧 Audio</a>{% endif %}
+        {% if c.pdf and not teacher_view %}<a class="btn btn-sm" href="/reports/{{ c.kind }}/{{ c.id }}.pdf" target="_blank">PDF</a>{% endif %}
+      </td>
     </tr>
     {% endfor %}
   </table></div>
@@ -53,6 +104,19 @@
   .c-sum div { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 12px 16px; }
   .c-sum b { display: block; font: 700 20px/1.2 var(--font-head); color: var(--ink); }
   .c-sum span { font-size: 12px; color: var(--ink-soft); }
+  .t-cmp { padding: 12px 16px; margin-bottom: 14px; font-size: 14px; }
+  .t-crit { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 6px; font-size: 13px; color: var(--ink-soft); }
+  .neg { color: #c2410c; } .pos { color: #1d4ed8; }
+  .t-cell { min-width: 150px; }
+  .t-diff { display: inline-block; font-size: 12px; font-weight: 700; margin-left: 4px; }
+  .t-form { margin-top: 4px; }
+  .t-form summary { list-style: none; cursor: pointer; display: inline-block; }
+  .t-form summary::-webkit-details-marker { display: none; }
+  .t-form form { margin-top: 8px; display: grid; gap: 8px; max-width: 320px; }
+  .t-fields { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+  .t-fields label { display: grid; gap: 2px; font-size: 11.5px; color: var(--ink-soft); }
+  .t-fields input { width: 100%; min-width: 0; padding: 6px; text-align: center; }
+  .t-note { width: 100%; }
   table .r, th.r { text-align: right; }
   a.who:hover { text-decoration: none; }
   @media (max-width: 560px) { .c-sum { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

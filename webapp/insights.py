@@ -21,7 +21,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import load_only
 
 from bot.config import settings
-from bot.utils import runtime
+from bot.utils import runtime, teacher_bands
 from bot.utils.activity import DAY_KEY, LAST_SEEN_KEY, tashkent_day
 from bot.utils.crm import redis
 from db import crud
@@ -120,9 +120,10 @@ def _criteria(scores: dict | None) -> str:
 def _light(model):
     """Only the columns a check's row needs - not the essay, transcript or marks."""
     kind = model.task_type if model is WritingSubmission else model.part
+    extra = (model.audio_file_path,) if model is SpeakingSubmission else ()
     return load_only(model.id, model.user_id, kind, model.overall_band, model.criteria_scores, model.coins_spent,
                      model.report_data, model.feedback_pdf_path, model.practice_question_id,
-                     model.assignment_part_id, model.paid_by_id, model.created_at)
+                     model.assignment_part_id, model.paid_by_id, model.created_at, model.teacher_bands, *extra)
 
 
 def _check_row(sub, kind: str) -> dict:
@@ -136,6 +137,12 @@ def _check_row(sub, kind: str) -> dict:
         "coins": sub.coins_spent or 0, "cost": _cost(sub), "paid": _paid_mode(sub),
         "pdf": bool(sub.feedback_pdf_path), "practice": bool(sub.practice_question_id),
         "assignment": bool(sub.assignment_part_id),
+        # the teachers' bands (bot/utils/teacher_bands.py) and how far the bot is from them
+        "teacher": sub.teacher_bands, "criteria_scores": sub.criteria_scores or {},
+        "diff": teacher_bands.difference(kind, sub.overall_band, sub.criteria_scores, sub.teacher_bands),
+        "audio": kind == "s" and bool(getattr(sub, "audio_file_path", None)),
+        "fields": [(key, label, (sub.teacher_bands or {}).get("bands", {}).get(key))
+                   for key, _, label in teacher_bands.CRITERIA[kind]],
     }
 
 
@@ -340,7 +347,8 @@ async def user_profile(session, user_id: int) -> dict | None:
 # --- every check -----------------------------------------------------------------------------------------
 
 
-async def all_checks(session, kind: str, period: str, limit: int = 300) -> dict:
+async def all_checks(session, kind: str, period: str, limit: int = 300, marked: bool = False) -> dict:
+    """`marked`: only the checks a teacher has marked (bot/utils/teacher_bands.py)."""
     since = {"today": day_start_utc(), "7d": now() - timedelta(days=7), "30d": now() - timedelta(days=30)}.get(period)
     rows = []
     if kind in ("all", "w"):
@@ -348,12 +356,16 @@ async def all_checks(session, kind: str, period: str, limit: int = 300) -> dict:
                 .order_by(WritingSubmission.created_at.desc()).limit(limit))
         if since:
             stmt = stmt.where(WritingSubmission.created_at >= since)
+        if marked:
+            stmt = stmt.where(WritingSubmission.teacher_bands.isnot(None))
         rows += [_check_row(x, "w") for x in (await session.execute(stmt)).scalars()]
     if kind in ("all", "s"):
         stmt = (select(SpeakingSubmission).options(_light(SpeakingSubmission))
                 .order_by(SpeakingSubmission.created_at.desc()).limit(limit))
         if since:
             stmt = stmt.where(SpeakingSubmission.created_at >= since)
+        if marked:
+            stmt = stmt.where(SpeakingSubmission.teacher_bands.isnot(None))
         rows += [_check_row(x, "s") for x in (await session.execute(stmt)).scalars()]
     rows.sort(key=lambda c: c["at"], reverse=True)
     rows = rows[:limit]
@@ -361,9 +373,13 @@ async def all_checks(session, kind: str, period: str, limit: int = 300) -> dict:
     users = {u.id: u for u in (await session.execute(select(User).where(User.id.in_(ids)))).scalars()} if ids else {}
     for r in rows:
         r["user"] = users.get(r["user_id"])
+    if marked:  # a mark taken off may be kept as JSON null
+        rows = [r for r in rows if r["teacher"]]
     bands = [r["band"] for r in rows if r["band"] is not None]
+    compared = teacher_bands.summary([{"kind": r["kind"], "id": r["id"], "overall": r["band"],
+                                       "criteria_scores": r["criteria_scores"], "teacher": r["teacher"]} for r in rows])
     return {
-        "rows": rows, "kind": kind, "period": period,
+        "rows": rows, "kind": kind, "period": period, "marked": marked, "compared": compared,
         "summary": {"n": len(rows), "avg": statistics.mean(bands) if bands else None,
                     "cost": sum(r["cost"] for r in rows), "coins": sum(r["coins"] for r in rows)},
     }

@@ -6,6 +6,8 @@
 - /crm_agents (bot admins): who else may answer students - `/crm_agents
   @username 123456`, `/crm_agents -` for nobody, bare to see the list;
 - /crm_status, /crm_today: the queue, today's report so far;
+- /balans: the OpenAI and Azure balances; `/balans 20` after a top-up,
+  `/balans azure 5` for Azure's monthly hours (bot/utils/balance.py);
 - a reply, in 💬 Murojaatlar, to a student's message goes to that student
   (with a button to write back) - from the bot's admins and the agents only.
 
@@ -108,7 +110,8 @@ async def setup(message: Message, bot: Bot, command: CommandObject) -> None:
             "Eski ma'lumotlar (foydalanuvchilar, to'lovlar, tekshiruvlar PDF bilan) bo'limlarga yuborilmoqda - "
             "Telegram cheklovi sabab 10-15 daqiqa davom etadi."
         )
-    lines.append("/crm_status - navbat holati, /crm_today - bugungi hisobot, /crm_agents - murojaatlarga kim javob beradi.")
+    lines.append("/crm_status - navbat holati, /crm_today - bugungi hisobot, /crm_agents - murojaatlarga kim javob beradi, "
+                 "/balans - OpenAI va Azure balansi.")
     await message.reply("\n".join(lines))
     await crm_events.post_intros(list(crm.TOPICS) if first else missing)
     if first:
@@ -187,6 +190,48 @@ async def today(message: Message) -> None:
     if not _our_group(message):
         return
     await message.reply(await crm_events.daily_report(crm.local_now().date(), partial=True))
+
+
+@router.message(Command("ustozlar"))
+async def ustozlar(message: Message, command: CommandObject) -> None:
+    """The teachers' bands against the bot's (crm_events.teacher_report): the last 7 days, or `/ustozlar
+    hammasi` for every marked check."""
+    if not _our_group(message):
+        return
+    every = (command.args or "").strip().lower() in ("hammasi", "all")
+    text = await crm_events.teacher_report(None if every else 7)
+    await message.reply(text or "Oxirgi 7 kunda ustozlar hech bir tekshiruvni baholamagan. Baholar: admin panel → "
+                                "Tekshiruvlar → «Baholash». Hammasi: /ustozlar hammasi")
+
+
+@router.message(Command("balans"))
+async def balans(message: Message, bot: Bot, command: CommandObject) -> None:
+    """The OpenAI and Azure balances (bot/utils/balance.py): bare to see them; `/balans 20` after a top-up
+    (OpenAI, in dollars); `/balans azure 5` for Azure's monthly hours (0 = no limit, a paid S0 tier). Setting
+    is for the bot's admins and the agents."""
+    from bot.utils import balance
+
+    if not _our_group(message):
+        return
+    args = (command.args or "").split()
+    if args:
+        if not crm.may_answer(message.from_user):
+            await message.reply("Balansni faqat bot adminlari va /crm_agents dagilar kirita oladi.")
+            return
+        azure = args[0].lower() == "azure"
+        amount = balance.parse_amount(args[1] if azure and len(args) > 1 else args[0] if not azure else "")
+        if amount is None:
+            await message.reply("Masalan: <code>/balans 20</code> - OpenAI balansi $20; "
+                                "<code>/balans azure 5</code> - Azure oyiga 5 soat (0 = cheklovsiz).")
+            return
+        if azure:
+            await balance.set_azure_hours(amount)
+        elif await balance.set_openai(amount):
+            await crm.credit_back(bot, entered=True)
+        await message.reply("✅ Saqlandi.\n" + "\n".join(await balance.summary_lines()))
+        return
+    await message.reply("\n".join(await balance.summary_lines()) + "\n\n<i>To'ldirgandan keyin: /balans SUMMA · "
+                        "Azure limiti: /balans azure SOAT</i>")
 
 
 @router.message(F.reply_to_message)

@@ -200,6 +200,8 @@ class WritingSubmission(Base):
     # A test run (scripts/live_check.py, the academic lead's acceptance runs): never
     # a "previous essay" for the progress page, never a resubmission to give back.
     is_test: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # An IELTS teacher's own marks, from the web panel ({"bands", "overall", "by", "at", "note"}; 2026-11-14)
+    teacher_bands: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     user: Mapped["User"] = relationship(back_populates="writing_submissions", foreign_keys=[user_id])
@@ -237,6 +239,7 @@ class SpeakingSubmission(Base):
     paid_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     coins_spent: Mapped[int] = mapped_column(Integer, default=0, server_default="0")  # as in WritingSubmission
     is_test: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")  # as in WritingSubmission
+    teacher_bands: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # as in WritingSubmission
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     user: Mapped["User"] = relationship(back_populates="speaking_submissions", foreign_keys=[user_id])
@@ -446,6 +449,8 @@ class WebAdmin(Base):
     name: Mapped[str] = mapped_column(String(100))
     password_hash: Mapped[str] = mapped_column(String(255))
     active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    # "admin", or "teacher": only the checks page, their reports and recordings, and the teachers' bands
+    role: Mapped[str] = mapped_column(String(20), default="admin", server_default="admin")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
