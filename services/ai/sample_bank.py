@@ -634,7 +634,9 @@ def _task_rules(task_type: str) -> str:
         "advantages outweigh\" essay unless that is asked), a discussion question presents both views, an "
         "opinion question argues one position. Keep ONE position from the introduction to the conclusion - "
         "the conclusion restates what the body argued. Every example must support its own point. Don't "
-        "open with a stock phrase such as \"With the advent of\" or \"In this day and age\"."
+        "open with a stock phrase such as \"With the advent of\" or \"In this day and age\". Never write about "
+        "the essay itself - no \"This essay considers / will discuss / argues\", \"In this essay\", \"I will "
+        "explain\": the introduction paraphrases the question and states the position directly."
     )
 
 
@@ -1181,6 +1183,18 @@ def openers(paragraphs: list[str]) -> list[str]:
     return [" ".join(re.findall(r"[A-Za-z']+", p)[:4]).lower() for p in paragraphs if p.strip()]
 
 
+# A Task 2 model answer that talks about itself (the user, 2026-11-14: "This essay", "considers", "this essay will
+# discuss", "I will explain in this essay" are not allowed in an introduction) - any sentence of it, not only the
+# fixed openers of config "banned_openers".
+_ESSAY_ITSELF = re.compile(
+    r"\b(?:this|the following|the present|my) (?:essay|paper|composition)\b|"
+    r"\b(?:I|we) (?:will|shall|am going to|are going to|intend to|would like to|aim to|plan to) (?:first |now )?"
+    r"(?:explain|discuss|argue|examine|outline|consider|analy[sz]e|explore|look at|talk about|show|describe|present|"
+    r"evaluate|demonstrate|elaborate)\b|"
+    r"\bwill be (?:discussed|explained|examined|outlined|considered|analy[sz]ed|explored|presented|evaluated)\b",
+    re.IGNORECASE)
+
+
 def answer_problems(paragraphs: list[str], question: str, task_type: str, avoid: list[str] = (),
                     lower_case: list[str] = ()) -> list[str]:
     """The model answer's code checks (the academic lead, 2026-10-29): no
@@ -1205,6 +1219,11 @@ def answer_problems(paragraphs: list[str], question: str, task_type: str, avoid:
     stock = [o for o in marking_config.banned_openers() if o.lower() in low]
     if stock:
         out.append("don't use these stock phrases: " + ", ".join(f'"{o}"' for o in stock))
+    if task_type == "task2":
+        itself = list(dict.fromkeys(m.group(0) for m in _ESSAY_ITSELF.finditer(text)))
+        if itself:
+            out.append("never write about the essay itself - leave out " + ", ".join(f'"{m}"' for m in itself[:3])
+                       + "; state the position directly")
     seen = set(avoid)
     again = [o for o in openers(paragraphs) if o in seen]
     if again:

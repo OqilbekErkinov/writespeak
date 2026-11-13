@@ -493,7 +493,8 @@ async def part2_bot() -> None:
           and len(documents(calls)) == 1 and "o'sha yozuv" in (documents(calls)[0].caption or ""),
           [d.caption for d in documents(calls)])
 
-    # 4. A missing answer: the split is shown, 'javob topilmadi', confirmed; the question left out.
+    # 4. A missing answer: graded straight away (the split is never shown to check - the user, 2026-11-14),
+    # the question left out and named in the report.
     graded.clear()
     await press(CB_PART1)
     await send(text=p1_text)
@@ -501,11 +502,10 @@ async def part2_bot() -> None:
     pieces, shifted, duration = recording(part1_lines(RUN + "m", skip=3))
     await send_pieces(pieces, shifted, duration)
     calls = await press(CB_REC_FINISH)
-    shown = texts(calls)[-1] if texts(calls) else ""
-    check("[missing] the split is shown first, Q3 'javob topilmadi'",
-          await state.get_state() == SpeakingStates.confirming_split.state and "Q3: javob topilmadi" in shown
-          and {CB_SPLIT_OK, CB_SPLIT_FIX} <= set(buttons(calls)), shown)
-    calls = await press(CB_SPLIT_OK)
+    check("[missing] no split to check, no 'splitting the answers' message: one 'listening' message, then the report",
+          not any("ajratdim" in x or "ajratyapman" in x for x in texts(calls))
+          and texts(calls).count(t("speaking.grading_in_progress", L)) == 1
+          and not {CB_SPLIT_OK, CB_SPLIT_FIX} & set(buttons(calls)), texts(calls))
     g = graded[-1]
     check("[missing] graded without the missing question - nothing invented",
           len(documents(calls)) == 1 and [q["text"] for q in g["questions"]] == [p1[0], p1[1], p1[3]],
@@ -514,7 +514,7 @@ async def part2_bot() -> None:
           [n for n in g["report"].notices[1:] if not n.startswith("This band comes from a short answer")]
           == [one.NOTICE_NO_ANSWER.format(question=p1[2])], g["report"].notices)
 
-    # 5. An uncertain split corrected with the student's own times.
+    # 5. An uncertain split: graded as split all the same - its doubts only go to the log (2026-11-14).
     graded.clear()
     fake.confidence = "low"
     await press(CB_PART1)
@@ -523,18 +523,9 @@ async def part2_bot() -> None:
     pieces, shifted, duration = recording(part1_lines(RUN + "f"))
     await send_pieces(pieces, shifted, duration)
     calls = await press(CB_REC_FINISH)
-    check("[fix] an uncertain split is shown even with every answer found",
-          await state.get_state() == SpeakingStates.confirming_split.state, texts(calls)[-1:])
-    calls = await press(CB_SPLIT_FIX)
-    check("[fix] the format for the times is explained",
-          await state.get_state() == SpeakingStates.awaiting_split_fix.state and "Q1: 0:00–0:41" in texts(calls)[-1])
-    calls = await send(text="it's wrong")
-    check("[fix] unreadable times: asked again", texts(calls) == [t("speaking.one_split_bad", L)], texts(calls))
-    calls = await send(text="Q4: -")
-    check("[fix] the corrected split shown again to confirm", "Q4: javob topilmadi" in texts(calls)[-1]
-          and await state.get_state() == SpeakingStates.confirming_split.state, texts(calls)[-1:])
-    calls = await press(CB_SPLIT_OK)
-    check("[fix] graded with the student's split", len(graded[-1]["questions"]) == 3 and len(documents(calls)) == 1)
+    check("[uncertain] graded straight away, every answer, nothing to confirm",
+          len(documents(calls)) == 1 and len(graded[-1]["questions"]) == 4
+          and await state.get_state() != SpeakingStates.confirming_split.state, texts(calls)[-2:])
     fake.confidence = "high"
 
     # 6. Part 2: one cue card, one talk - no "how will you answer?" (2026-11-12). A recording with the
@@ -558,8 +549,10 @@ async def part2_bot() -> None:
                            t0, t0 + 6.0, "answer", 1))
         t0 += 6.6
     pieces, shifted, duration = recording(lines2)
-    await send_pieces(pieces, shifted, duration)
-    calls = await press(CB_REC_FINISH)
+    calls = await send_pieces(pieces, shifted, duration)
+    check("[part2] one talk: graded as soon as it comes - no 'piece received, send another or start'",
+          not any("bo'lak qabul qilindi" in x for x in texts(calls)) and CB_REC_FINISH not in buttons(calls)
+          and await state.get_state() != SpeakingStates.awaiting_recording.state, texts(calls)[:2])
     if await state.get_state() == SpeakingStates.awaiting_question.state:  # the card isn't read aloud: send it
         calls = await send(text=card)
     a = graded[-1]["audios"][0] if graded else None
@@ -645,8 +638,9 @@ async def part2_bot() -> None:
           "juda qisqa" in texts(calls)[-1] and CB_REC_ANYWAY in buttons(calls)
           and await state.get_state() == SpeakingStates.awaiting_recording.state, texts(calls)[-1:])
     calls = await press(CB_REC_ANYWAY)
-    check("[limits] ...going on anyway: the split is shown (three answers missing)",
-          await state.get_state() == SpeakingStates.confirming_split.state, texts(calls)[-1:])
+    check("[limits] ...going on anyway: graded with the answers there are (three missing, named in the report)",
+          len(documents(calls)) == 1 and await state.get_state() != SpeakingStates.confirming_split.state,
+          texts(calls)[-1:])
 
     # 9. All three interface languages.
     for code in ("ru", "en", "uz"):

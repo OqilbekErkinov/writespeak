@@ -457,12 +457,14 @@ async def _grade(
     message: Message, state: FSMContext, lang: str, *, questions: list[str], parts: list[str],
     clips: list[tuple[bytes, str]], audio_hash: str, paths: list[str] = (), transcribed=None,
     notices: list[str] = (), recording: bytes | None = None, extra: dict | None = None,
+    progress: Message | None = None,
 ) -> None:
     """Grades, saves and sends one Speaking check. `clips`: (audio, filename)
     per question; `paths`: where the student's own clips are saved;
     `transcribed`, `notices`, `recording` (the whole recording as mp3, kept as
     the session's audio) and `extra` (added to report_data) come from one
-    recording split into answers."""
+    recording split into answers; `progress`: its "listening and analysing"
+    message, already shown."""
     data = await state.get_data()
     user_id = message.chat.id
     part = data["part"]
@@ -473,10 +475,11 @@ async def _grade(
 
     repeated, sessions = (False, []) if test_run else await _repeated(message, state, data, audio_hash, lang)
     if repeated:
+        await _drop(progress)
         return
 
     started = time.monotonic()
-    processing_msg = await message.answer(t("speaking.grading_in_progress", lang))
+    processing_msg = progress or await message.answer(t("speaking.grading_in_progress", lang))
     try:
         async with get_session() as session:
             earlier_sessions, previous = await crud.get_speaking_history(session, user_id, part)
@@ -707,11 +710,20 @@ async def receive_recording(message: Message, state: FSMContext, lang: str) -> N
                     chat_id=message.chat.id, message_id=data["rec_msg_id"], reply_markup=None)
             except TelegramBadRequest:
                 pass
-        sent = await message.answer(
-            t("speaking.one_piece_ok", lang, n=len(pieces), length=one.clock(seconds), total=one.clock(total)),
-            reply_markup=recording_kb(lang, _back_target(data)),
-        )
-        await state.update_data(pieces=pieces, rec_msg_id=sent.message_id)
+        if data["part"] == "part2":
+            # one cue card, one talk: graded as soon as it comes, no "send another piece or start"
+            # (the user, 2026-11-14)
+            await state.update_data(pieces=pieces, rec_msg_id=None)
+            go = await _end_recording(message, state, lang, anyway=False)
+        else:
+            sent = await message.answer(
+                t("speaking.one_piece_ok", lang, n=len(pieces), length=one.clock(seconds), total=one.clock(total)),
+                reply_markup=recording_kb(lang, _back_target(data)),
+            )
+            await state.update_data(pieces=pieces, rec_msg_id=sent.message_id)
+            go = False
+    if go:
+        await _grade_pieces(message, state, lang)
 
 
 def _part_name(part: str) -> str:
@@ -729,26 +741,39 @@ async def finish_recording(callback: CallbackQuery, state: FSMContext, lang: str
     async with _user_locks[callback.from_user.id]:
         if await state.get_state() != SpeakingStates.awaiting_recording.state:
             return
-        data = await state.get_data()
-        pieces = data.get("pieces") or []
-        if not pieces:
+        if not (await state.get_data()).get("pieces"):
             return
         await strip_buttons(callback.message)
-        least = one.limits()["min_seconds_per_question"]
-        need = sum(least.get(p, 0) for p in _question_parts(data)) if data.get("questions") else 0
-        if callback.data == CB_REC_FINISH and _total(pieces) < need:
-            sent = await callback.message.answer(
-                t("speaking.one_too_short", lang, n=len(data["questions"]), total=one.clock(_total(pieces))),
-                reply_markup=recording_kb(lang, _back_target(data), anyway=True),
-            )
-            await state.update_data(rec_msg_id=sent.message_id)
-            return
-        await state.set_state(SpeakingStates.processing)
+        go = await _end_recording(callback.message, state, lang, anyway=callback.data == CB_REC_ANYWAY)
+    if go:
+        await _grade_pieces(callback.message, state, lang)
+
+
+async def _end_recording(message: Message, state: FSMContext, lang: str, anyway: bool) -> bool:
+    """The recording is complete (under the user's lock): too short for its questions - say so, with "grade
+    it anyway", and wait (False); else on to grading (True)."""
+    data = await state.get_data()
+    pieces = data.get("pieces") or []
+    least = one.limits()["min_seconds_per_question"]
+    need = sum(least.get(p, 0) for p in _question_parts(data)) if data.get("questions") else 0
+    if not anyway and _total(pieces) < need:
+        sent = await message.answer(
+            t("speaking.one_too_short", lang, n=len(data["questions"]), total=one.clock(_total(pieces))),
+            reply_markup=recording_kb(lang, _back_target(data), anyway=True),
+        )
+        await state.update_data(rec_msg_id=sent.message_id)
+        return False
+    await state.set_state(SpeakingStates.processing)
+    return True
+
+
+async def _grade_pieces(message: Message, state: FSMContext, lang: str) -> None:
+    data = await state.get_data()
     # the very same pieces again: their saved report, before anything is paid for (a test run: always anew)
     repeated, _ = (False, None) if data.get("test_run") else \
-        await _repeated(callback.message, state, data, _fingerprint(_piece_bytes(data)), lang)
+        await _repeated(message, state, data, _fingerprint(_piece_bytes(data)), lang)
     if not repeated:
-        await _read_recording(callback.message, state, lang)
+        await _read_recording(message, state, lang)
 
 
 def _piece_bytes(data: dict) -> list[bytes]:
@@ -769,7 +794,9 @@ async def _back_to_recording(message: Message, state: FSMContext, data: dict, ke
 async def _read_recording(message: Message, state: FSMContext, lang: str) -> None:
     data = await state.get_data()
     user_id = message.chat.id
-    waiting = await message.answer(t("speaking.one_splitting", lang))
+    # one "listening and analysing" message from the recording to the report - no "splitting the answers"
+    # step of its own (the user, 2026-11-14)
+    waiting = await message.answer(t("speaking.grading_in_progress", lang))
     try:
         with usage.track(f"speaking recording user={user_id}") as calls:
             rec = await one.transcribe_recording(await _joined(data))
@@ -780,17 +807,25 @@ async def _read_recording(message: Message, state: FSMContext, lang: str) -> Non
         await state.clear()
         await message.answer(t("nav.what_next", lang), reply_markup=_after_result_kb(data, lang))
         return
-    await waiting.delete()
     cost = usage.summary(calls)
     if not rec.has_speech or not rec.english:
         logger.info("Recording of user %s not graded (%s, language %s); spent %s", user_id,
                     "no speech" if not rec.has_speech else "not English", rec.language, cost)
+        await _drop(waiting)
         await _back_to_recording(message, state, data,
                                  "speaking.one_no_speech" if not rec.has_speech else "speaking.one_not_english", lang)
         return
     rec_path = save_upload(user_id, json.dumps(rec.as_json()).encode("utf-8"), ".json")
     await state.update_data(rec_path=rec_path, split_cost=cost)
-    await _split_recording(message, state, lang)
+    await _split_recording(message, state, lang, waiting)
+
+
+async def _drop(msg: Message | None) -> None:
+    if msg is not None:
+        try:
+            await msg.delete()
+        except TelegramBadRequest:
+            pass
 
 
 def _spans(split: list) -> list[list[tuple[float, float]]]:
@@ -801,9 +836,12 @@ def _recording(data: dict) -> one.Recording:
     return one.Recording.from_json(json.loads(read_file(data["rec_path"])))
 
 
-async def _split_recording(message: Message, state: FSMContext, lang: str) -> None:
+async def _split_recording(message: Message, state: FSMContext, lang: str, waiting: Message | None = None) -> None:
     """The recording's units matched to the questions - the student's, or the
-    examiner's heard in it; shown first when the split is uncertain."""
+    examiner's heard in it - and straight on to grading: the split is no longer
+    shown for the student to check (the user, 2026-11-14: "the bot splits them
+    right, no need to ask"); its doubts only go to the log. `waiting`: the
+    "listening and analysing" message, kept until the report."""
     data = await state.get_data()
     rec = _recording(data)
     found = one.units(rec)
@@ -816,6 +854,7 @@ async def _split_recording(message: Message, state: FSMContext, lang: str) -> No
         asked = result.asked if result else []
         if not asked:
             await state.update_data(split_cost=cost)
+            await _drop(waiting)
             if data["part"] == "full":
                 await state.clear()
                 await message.answer(t("speaking.one_no_questions_full", lang),
@@ -831,11 +870,9 @@ async def _split_recording(message: Message, state: FSMContext, lang: str) -> No
     await state.update_data(questions=questions, question_parts=parts, split=spans, split_cost=cost,
                             asked_from_recording=not data.get("questions"))
     if doubts:
-        logger.info("Split of user %s's recording shown to them: %s", message.chat.id, "; ".join(doubts))
-        await _show_split(message, state, lang)
-        return
+        logger.info("Split of user %s's recording uncertain, graded as split: %s", message.chat.id, "; ".join(doubts))
     await state.set_state(SpeakingStates.processing)
-    await _grade_recording(message, state, lang)
+    await _grade_recording(message, state, lang, waiting)
 
 
 async def _show_split(message: Message, state: FSMContext, lang: str) -> None:
@@ -875,14 +912,16 @@ async def receive_split_fix(message: Message, state: FSMContext, lang: str) -> N
     await _show_split(message, state, lang)
 
 
-async def _grade_recording(message: Message, state: FSMContext, lang: str) -> None:
+async def _grade_recording(message: Message, state: FSMContext, lang: str, waiting: Message | None = None) -> None:
     """Each answered question's audio cut from the recording, its transcript
     from the recording's readings - then the same grading as answers sent one
-    by one. A question with no answer is left out and named in the report."""
+    by one. A question with no answer is left out and named in the report.
+    `waiting`: the "listening and analysing" message already shown."""
     data = await state.get_data()
     split = _spans(data["split"])
     answered = [i for i, s in enumerate(split) if s]
     if not answered:
+        await _drop(waiting)
         await _back_to_recording(message, state, data, "speaking.one_no_answers", lang)
         return
     rec = _recording(data)
@@ -908,6 +947,7 @@ async def _grade_recording(message: Message, state: FSMContext, lang: str) -> No
             "split": [[[round(s, 1), round(e, 1)] for s, e in q] for q in split],
             "missing": missing, "questions_from_recording": bool(data.get("asked_from_recording")),
         }},
+        progress=waiting,
     )
 
 

@@ -1832,6 +1832,26 @@ def speaking_20261113() -> None:
           and "Teachers' band 6 " in without)
 
 
+def essay_about_itself() -> None:
+    """2026-11-14 (the user): a Task 2 model answer never writes about the essay itself - "This essay",
+    "considers", "this essay will discuss", "I will explain in this essay"."""
+    from services.ai.sample_bank import answer_problems
+
+    q = "Some people think children should learn a foreign language at primary school. To what extent do you agree?"
+    for intro in ("This essay considers both sides of the debate.", "This essay will discuss why it matters.",
+                  "I will explain in this essay why I agree.", "In this essay, the reasons will be discussed.",
+                  "We will look at both views."):
+        found = answer_problems([intro + " Children learn languages quickly.", "Body.", "In conclusion, yes."], q,
+                                "task2")
+        check(f"Task 2 model answer about itself: {intro}", any("about the essay itself" in p for p in found), found)
+    fine = answer_problems(["Learning a foreign language early gives children a lasting advantage, and I agree.",
+                            "Young learners copy sounds easily.", "In conclusion, primary school is the right time."],
+                           q, "task2")
+    check("...a direct introduction is fine", not any("about the essay itself" in p for p in fine), fine)
+    check("...Task 1 is not checked for it", not any("about the essay itself" in p for p in answer_problems(
+        ["This essay shows the chart.", "Overall, sales rose."], "The chart shows sales.", "task1")))
+
+
 def model_answer_bands() -> None:
     """The user's rule (2026-11-12), Writing and Speaking alike: 5.0-6.5 -> a Band 7 model answer, 7.0-7.5 ->
     Band 8, 8.0-9.0 -> Band 9 only."""
@@ -1868,5 +1888,6 @@ if __name__ == "__main__":
     task2_and_speaking_20261112()
     task1_labels_and_close_reads()
     speaking_20261113()
+    essay_about_itself()
     print(f"\n{len(fails)} failed" if fails else "\nall passed")
     sys.exit(1 if fails else 0)
