@@ -6,7 +6,7 @@
 - /crm_agents (bot admins): who else may answer students - `/crm_agents
   @username 123456`, `/crm_agents -` for nobody, bare to see the list;
 - /crm_status, /crm_today: the queue, today's report so far;
-- /balans: the OpenAI and Azure balances; `/balans 20` after a top-up,
+- /balans: the OpenAI and Azure balances; `/balans 70000` (so'm) after a top-up,
   `/balans azure 5` for Azure's monthly hours (bot/utils/balance.py);
 - a reply, in 💬 Murojaatlar, to a student's message goes to that student
   (with a button to write back) - from the bot's admins and the agents only.
@@ -206,9 +206,9 @@ async def ustozlar(message: Message, command: CommandObject) -> None:
 
 @router.message(Command("balans"))
 async def balans(message: Message, bot: Bot, command: CommandObject) -> None:
-    """The OpenAI and Azure balances (bot/utils/balance.py): bare to see them; `/balans 20` after a top-up
-    (OpenAI, in dollars); `/balans azure 5` for Azure's monthly hours (0 = no limit, a paid S0 tier). Setting
-    is for the bot's admins and the agents."""
+    """The OpenAI and Azure balances (bot/utils/balance.py): bare to see them; `/balans 70000` after a top-up
+    (OpenAI, in so'm - "70 000" too); `/balans azure 5` for Azure's monthly hours (0 = no limit, a paid S0
+    tier). Setting is for the bot's admins and the agents."""
     from bot.utils import balance
 
     if not _our_group(message):
@@ -219,9 +219,10 @@ async def balans(message: Message, bot: Bot, command: CommandObject) -> None:
             await message.reply("Balansni faqat bot adminlari va /crm_agents dagilar kirita oladi.")
             return
         azure = args[0].lower() == "azure"
-        amount = balance.parse_amount(args[1] if azure and len(args) > 1 else args[0] if not azure else "")
+        amount = (balance.parse_amount(args[1]) if len(args) > 1 else None) if azure \
+            else balance.parse_som(" ".join(args))
         if amount is None:
-            await message.reply("Masalan: <code>/balans 20</code> - OpenAI balansi $20; "
+            await message.reply("Masalan: <code>/balans 70000</code> - OpenAI balansi 70 000 so'm; "
                                 "<code>/balans azure 5</code> - Azure oyiga 5 soat (0 = cheklovsiz).")
             return
         if azure:

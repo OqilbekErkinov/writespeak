@@ -250,22 +250,22 @@ async def settings_page(request: Request, done: str | None = None):
         "added": "Sinovchi qo'shildi.", "removed": "Sinovchi olib tashlandi.", "bad": "Bunday foydalanuvchi topilmadi.",
         "empty": "Avval kamida bitta sinovchi qo'shing.",
         "balance": "Balans saqlandi.", "resumed": "Balans saqlandi - tekshiruvlar qayta ochildi, kutganlarga xabar ketmoqda.",
-        "bad_amount": "Summani raqam bilan kiriting, masalan 20 yoki 12.5.",
+        "bad_amount": "Summani raqam bilan kiriting: OpenAI — so'mda (masalan 70000), Azure — soatda (masalan 5).",
     }.get(done or "")
     return templates.TemplateResponse(request, "settings.html", {
         "active": "settings", "on": on, "testers": sorted(listed), "users": users, "waiting": await checks_back.waiting_count(),
         "flash": flash, "flash_bad": done in ("bad", "empty", "bad_amount"), "env_on": bool(settings.checks_only_for_ids),
         "openai": await balance.openai_status(), "credit_paused": await balance.credit_paused(),
-        "azure": await balance.azure_status(), "check_usd": balance.CHECK_USD,
+        "azure": await balance.azure_status(),
     })
 
 
 @router.post("/settings/balance")
 async def settings_balance(request: Request, kind: str = Form(...), amount: str = Form("")):
-    """The OpenAI balance after a top-up, or Azure's monthly hours (bot/utils/balance.py)."""
+    """The OpenAI balance in so'm after a top-up, or Azure's monthly hours (bot/utils/balance.py)."""
     if (r := guard(request, owner=True)) is not None:
         return r
-    value = balance.parse_amount(amount)
+    value = balance.parse_amount(amount) if kind == "azure" else balance.parse_som(amount)
     if value is None or kind not in ("openai", "azure"):
         return RedirectResponse("/settings?done=bad_amount", status_code=303)
     if kind == "azure":
@@ -273,7 +273,7 @@ async def settings_balance(request: Request, kind: str = Form(...), amount: str 
         await audit(request, "azure_hours", details=f"{value:g} soat")
         return RedirectResponse("/settings?done=balance", status_code=303)
     resumed = await balance.set_openai(value)
-    await audit(request, "openai_balance", details=f"${value:g}")
+    await audit(request, "openai_balance", details=balance.som(value))
     if resumed:
         _later(_credit_back_job())
     return RedirectResponse(f"/settings?done={'resumed' if resumed else 'balance'}", status_code=303)

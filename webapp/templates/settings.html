@@ -62,22 +62,23 @@
 <div class="card">
   <h2>Balanslar</h2>
   <p class="hint" style="margin:-8px 0 14px">OpenAI API kalitiga qolgan balansni aytmaydi, shuning uchun bot uni o'zi sanaydi:
-    to'ldirgandan keyin summani shu yerga (yoki guruhga <code>/balans 20</code>) kiriting — har bir tekshiruv narxi undan
-    ayriladi. $5, $3 qolganda va tugaganda guruhning «Xatolar» bo'limiga xabar boradi. Hisob taxminiy: vaqti-vaqti bilan
-    platform.openai.com dagi aniq summani kiritib turing.</p>
+    to'ldirgandan keyin summani <b>so'mda</b> shu yerga (yoki guruhga <code>/balans 70000</code>) kiriting — har bir tekshiruv
+    narxi kunlik kurs bo'yicha so'mga o'girilib undan ayriladi. Taxminan $5 va $3 (so'mda) qolganda va tugaganda guruhning
+    «Xatolar» bo'limiga xabar boradi. Hisob taxminiy: vaqti-vaqti bilan aniq summani kiritib turing.</p>
   <div class="bal-grid">
-    <div class="bal {{ 'bad' if credit_paused or (openai and openai.left <= 3) else 'warn' if openai and openai.left <= 5 else '' }}">
+    <div class="bal {{ 'bad' if credit_paused or (openai and openai.left <= 3 * openai.rate) else 'warn' if openai and openai.left <= 5 * openai.rate else '' }}">
       <div class="bal-label">💳 OpenAI</div>
       {% if credit_paused %}<div class="bal-value">Tugagan</div>
         <div class="bal-sub">OpenAI so'rovlarni rad etyapti — tekshiruvlar adminlardan boshqa hamma uchun to'xtatilgan.
           To'ldirib, summani kiriting.</div>
-      {% elif openai %}<div class="bal-value">≈ ${{ "%.2f"|format(openai.left if openai.left > 0 else 0) }}</div>
-        <div class="bal-sub">≈ {{ ((openai.left if openai.left > 0 else 0) / check_usd)|int }} ta tekshiruv ·
-          {{ openai.set_at }} da ${{ "%.2f"|format(openai.entered) }} kiritilgan, ${{ "%.2f"|format(openai.spent) }} sarflandi</div>
+      {% elif openai %}<div class="bal-value">≈ {{ "{:,.0f}".format(openai.left if openai.left > 0 else 0).replace(",", " ") }} so'm</div>
+        <div class="bal-sub">≈ {{ ((openai.left if openai.left > 0 else 0) / openai.check)|int }} ta tekshiruv ·
+          {{ openai.set_at }} da {{ "{:,.0f}".format(openai.entered).replace(",", " ") }} so'm kiritilgan,
+          {{ "{:,.0f}".format(openai.spent).replace(",", " ") }} so'm sarflandi · 1 $ = {{ "{:,.0f}".format(openai.rate).replace(",", " ") }} so'm</div>
       {% else %}<div class="bal-value">—</div><div class="bal-sub">Hali kiritilmagan.</div>{% endif %}
       <form method="post" action="/settings/balance" class="tw-add">
         <input type="hidden" name="kind" value="openai">
-        <input type="text" name="amount" inputmode="decimal" placeholder="Hozirgi balans, $" required aria-label="OpenAI balansi">
+        <input type="text" name="amount" inputmode="numeric" placeholder="Hozirgi balans, so'm (masalan 70000)" required aria-label="OpenAI balansi, so'm">
         <button type="submit" class="btn btn-good">Saqlash</button>
       </form>
     </div>

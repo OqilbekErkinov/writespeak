@@ -35,6 +35,10 @@ async def fake_post(topic: str, text: str = "", **kwargs) -> None:
 
 async def main() -> None:
     crm.post = fake_post
+
+    async def rate() -> float:
+        return 12500.0
+    crm.usd_rate = rate  # so'm per dollar: $5 = 62 500, $3 = 37 500
     r = crm.redis()
     for key in await r.keys("balance:*"):
         await r.delete(key)
@@ -47,23 +51,25 @@ async def main() -> None:
           await balance.openai_status() is None and "kiritilmagan" in " ".join(await balance.summary_lines()))
 
     reset()
-    await balance.set_openai(10)
+    await balance.set_openai(125000)
     await balance.add_spent(4.5)
-    check("$10 entered, $4.50 spent: $5.50 left, nothing said",
-          abs((await balance.openai_status())["left"] - 5.5) < 1e-6 and not posted, posted)
+    check("125 000 so'm entered, $4.50 spent (56 250 so'm): 68 750 left, nothing said",
+          abs((await balance.openai_status())["left"] - 68750) < 1e-6 and not posted, posted)
     await balance.add_spent(0.6)
-    check("...$4.90 left: the $5 message, in the errors topic", len(posted) == 1 and posted[0][0] == "errors"
-          and "4.90" in posted[0][1] and "/balans" in posted[0][1], posted)
+    check("...61 250 so'm left (under $5): the first message, in so'm, in the errors topic",
+          len(posted) == 1 and posted[0][0] == "errors" and "61 250 so'm" in posted[0][1]
+          and "/balans 70000" in posted[0][1], posted)
     await balance.add_spent(0.1)
     check("...said once", len(posted) == 1, posted)
     await balance.add_spent(2.0)
-    check("...$2.80 left: the $3 message", len(posted) == 2 and "2.80" in posted[1][1] and "🟠" in posted[1][1], posted)
+    check("...35 000 so'm left (under $3): the second message", len(posted) == 2 and "35 000 so'm" in posted[1][1]
+          and "🟠" in posted[1][1], posted)
     await balance.add_spent(3.0)
     check("...spent past zero: the red message, checks not paused on an estimate",
           len(posted) == 3 and "🔴" in posted[2][1] and not await balance.credit_paused(), posted)
 
     reset()
-    await balance.set_openai(10)
+    await balance.set_openai(125000)
     await balance.add_spent(8.0)
     check("one big spend past $5 and $3: one message, for $3", len(posted) == 1 and "🟠" in posted[0][1], posted)
     await balance.add_spent(0.5)
@@ -86,11 +92,11 @@ async def main() -> None:
     await openai_client._watch_credit(busy)
     check("...a plain rate limit pauses nothing", not await balance.credit_paused())
     await openai_client._watch_credit(response)
-    resumed = await balance.set_openai(25)
+    resumed = await balance.set_openai(300000)
     balance._paused.update(at=0.0)
     check("a top-up entered: checks open again (the caller tells the waiting users)",
           resumed and not await balance.credit_paused() and not await runtime.checks_paused_for(student))
-    check("...entered again with nothing paused: nothing to reopen", not await balance.set_openai(25))
+    check("...entered again with nothing paused: nothing to reopen", not await balance.set_openai(300000))
 
     reset()
     await balance.set_azure_hours(1.0)
@@ -109,9 +115,24 @@ async def main() -> None:
           and status["used"] > 1.1, (posted, status))
 
     lines = " ".join(await balance.summary_lines())
-    check("the summary: OpenAI's estimate and Azure's hours", "OpenAI balansi" in lines and "Azure" in lines, lines)
-    check("amounts: 20, $20, 12,5; not 'abc' or a minus",
-          [balance.parse_amount(x) for x in ("20", "$20", "12,5", "abc", "-3")] == [20.0, 20.0, 12.5, None, None])
+    check("the summary: OpenAI's estimate in so'm and Azure's hours", "300 000 so'm" in lines and "Azure" in lines,
+          lines)
+    check("so'm: 70000, 70 000, 70.000, 70,000 so'm; not 'abc' or a minus",
+          [balance.parse_som(x) for x in ("70000", "70 000", "70.000", "70,000 so'm", "abc", "-3")]
+          == [70000, 70000, 70000, 70000, None, None])
+    check("Azure's hours: 5, 2,5; not 'abc'", [balance.parse_amount(x) for x in ("5", "2,5", "abc")] == [5, 2.5, None])
+
+    from webapp.main import app
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="https://testserver") as owner:
+        await owner.post("/login", data={"username": settings.web_admin_username,
+                                         "password": settings.web_admin_password})
+        page = await owner.get("/settings")
+        saved = await owner.post("/settings/balance", data={"kind": "openai", "amount": "80 000"})
+        status = await balance.openai_status()
+    check("the panel: the settings page shows the balance in so'm; 80 000 entered there",
+          page.status_code == 200 and "300 000 so'm" in page.text and saved.status_code == 303
+          and status["entered"] == 80000, (page.status_code, saved.status_code, status))
 
     for key in await r.keys("balance:*"):
         await r.delete(key)

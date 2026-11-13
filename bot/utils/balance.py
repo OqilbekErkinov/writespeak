@@ -2,9 +2,10 @@
 out - a message when $5 is left, and $3, and when it is gone; the same for Azure").
 
 OpenAI tells an API key nothing about the credit left, so the bot counts it down: an admin enters the balance
-after a top-up (the panel's settings page, or /balans 20 in the group), and every dollar recorded as spent
-(services/ai/usage.py in every process, gathered by bot/utils/crm.flush_spent) comes off it. Prices come from
-token counts, so it is an estimate - enter the real figure from platform.openai.com now and then. When OpenAI
+in so'm after a top-up (the panel's settings page, or /balans 70000 in the group - the team keeps its books in
+so'm, the user 2026-11-14), and every dollar recorded as spent (services/ai/usage.py in every process, gathered
+by bot/utils/crm.flush_spent) comes off it at the Central Bank's rate of the day; the warnings come at about
+$5 and $3 in so'm. Prices come from token counts, so it is an estimate - enter the real figure now and then. When OpenAI
 itself answers "insufficient_quota" (services/ai/openai_client.py) the credit is gone for sure: the group hears
 at once and checks pause for everyone but the admins (quota.paused, bot/utils/runtime.py), to come back -
 with quota.back to everyone who waited - when a top-up is entered or a test call goes through again.
@@ -21,11 +22,11 @@ from bot.utils import crm
 
 logger = logging.getLogger(__name__)
 
-OPENAI_KEY = "balance:openai"  # hash: usd (entered), base (spent total then), set_at, warned ("5,3,0")
+OPENAI_KEY = "balance:openai"  # hash: uzs (entered), base (USD spent total then), set_at, warned ("5,3,0")
 SPENT_KEY = "balance:openai:spent"  # every USD recorded as spent, all processes, since the first flush
 EMPTY_KEY = "balance:openai:empty"  # OpenAI said insufficient_quota: when (checks paused while it is there)
 AZURE_KEY = "balance:azure"  # hash: hours (the monthly allowance; 0 = none), warned:<YYYY-MM>
-OPENAI_WARN = (5.0, 3.0)  # dollars left that the group hears about (and 0)
+OPENAI_WARN = (5.0, 3.0)  # about this many dollars left, in so'm at the day's rate, the group hears about (and 0)
 AZURE_WARN = (1.0, 0.5)  # hours left of the month's allowance that the group hears about (and 0)
 AZURE_DEFAULT_HOURS = 5.0  # Azure Speech's free F0 tier: 5 audio hours a month
 CHECK_USD = 0.15  # about one check's OpenAI cost, for "about N checks left" (Writing $0.13-0.30, Speaking ~$0.1)
@@ -41,8 +42,9 @@ def azure_seconds_key(month: str | None = None) -> str:
     return f"balance:azure:seconds:{month or _month()}"
 
 
-def _usd(value: float) -> str:
-    return f"${value:,.2f}"
+def som(value: float) -> str:
+    """70000 -> "70 000 so'm"."""
+    return f"{round(value):,} so'm".replace(",", " ")
 
 
 # --- OpenAI --------------------------------------------------------------------------------------------
@@ -53,30 +55,33 @@ async def spent_total() -> float:
 
 
 async def openai_status() -> dict | None:
-    """{"entered", "set_at", "spent", "left"} since the last top-up entered, None before the first one."""
+    """Since the last balance entered, in so'm: {"entered", "set_at", "spent", "left", "rate", "check"} (spent
+    at the day's rate; "check" about one check's cost); None before the first one."""
     data = await crm.redis().hgetall(OPENAI_KEY)
-    if not data or "usd" not in data:
+    if not data or "uzs" not in data:
         return None
-    entered, base = float(data["usd"]), float(data.get("base") or 0.0)
-    spent = max(0.0, await spent_total() - base)
-    return {"entered": entered, "set_at": data.get("set_at", ""), "spent": spent, "left": entered - spent}
+    rate = await crm.usd_rate()
+    entered, base = float(data["uzs"]), float(data.get("base") or 0.0)
+    spent = max(0.0, await spent_total() - base) * rate
+    return {"entered": entered, "set_at": data.get("set_at", ""), "spent": spent, "left": entered - spent,
+            "rate": rate, "check": CHECK_USD * rate}
 
 
-async def set_openai(usd: float) -> bool:
-    """An admin entered the balance (after a top-up, or the real figure from OpenAI's site). True when checks
-    were paused for want of credit and now go on - the caller tells the waiting users (checks_back)."""
+async def set_openai(uzs: float) -> bool:
+    """An admin entered the balance in so'm (after a top-up, or the real figure from OpenAI's site). True when
+    checks were paused for want of credit and now go on - the caller tells the waiting users (checks_back)."""
     r = crm.redis()
-    await r.hset(OPENAI_KEY, mapping={"usd": f"{usd:.4f}", "base": f"{await spent_total():.6f}",
+    await r.hset(OPENAI_KEY, mapping={"uzs": f"{uzs:.0f}", "base": f"{await spent_total():.6f}",
                                       "set_at": crm.local_now().strftime("%d.%m.%Y %H:%M"), "warned": ""})
     resumed = bool(await r.delete(EMPTY_KEY))
     _paused.update(at=0.0)
-    logger.info("OpenAI balance entered: $%.2f%s", usd, " - checks open again" if resumed else "")
+    logger.info("OpenAI balance entered: %s%s", som(uzs), " - checks open again" if resumed else "")
     return resumed
 
 
 async def add_spent(usd: float) -> None:
     """Called with each flush of the recorded spend (crm.flush_spent): counts the balance down and tells the
-    group when it passes $5, $3 and $0."""
+    group when it passes about $5 and $3 (in so'm) and nothing."""
     if usd <= 0:
         return
     r = crm.redis()
@@ -85,7 +90,8 @@ async def add_spent(usd: float) -> None:
     if status is None:
         return
     warned = set(filter(None, (await r.hget(OPENAI_KEY, "warned") or "").split(",")))
-    passed = [limit for limit in (*OPENAI_WARN, 0.0) if status["left"] <= limit and f"{limit:g}" not in warned]
+    passed = [limit for limit in (*OPENAI_WARN, 0.0)
+              if status["left"] <= limit * status["rate"] and f"{limit:g}" not in warned]
     if passed:  # one message, for the lowest limit passed - one big spend may pass two
         await r.hset(OPENAI_KEY, "warned", ",".join(sorted(warned | {f"{limit:g}" for limit in passed})))
         await crm.post("errors", openai_warning(status, min(passed)))
@@ -93,16 +99,17 @@ async def add_spent(usd: float) -> None:
 
 def openai_warning(status: dict, limit: float) -> str:
     left = max(0.0, status["left"])
-    checks = int(left / CHECK_USD)
+    checks = int(left / status["check"])
     if limit > 0:
         head = "🟡" if limit >= max(OPENAI_WARN) else "🟠"
-        return (f"{head} <b>OpenAI balansi kamaymoqda: taxminan {_usd(left)} qoldi</b> (≈ {checks} ta tekshiruv).\n"
+        return (f"{head} <b>OpenAI balansi kamaymoqda: taxminan {som(left)} qoldi</b> (≈ {checks} ta tekshiruv).\n"
                 f"platform.openai.com da to'ldiring, keyin guruhga <code>/balans SUMMA</code> yozing "
-                f"(masalan <code>/balans 20</code>) - hisob yangidan boshlanadi.\n"
-                f"<i>{status['set_at']} da {_usd(status['entered'])} kiritilgan, shundan beri {_usd(status['spent'])} "
-                f"sarflandi. Bu bot hisobi (taxminiy) - aniq summa platform.openai.com da.</i>")
-    return (f"🔴 <b>Bot hisobi bo'yicha OpenAI balansi tugadi</b> ({status['set_at']} da {_usd(status['entered'])} "
-            f"kiritilgan, {_usd(status['spent'])} sarflandi).\nHozircha tekshiruvlar ishlayapti - OpenAI rad etsa, "
+                f"(so'mda, masalan <code>/balans 70000</code>) - hisob yangidan boshlanadi.\n"
+                f"<i>{status['set_at']} da {som(status['entered'])} kiritilgan, shundan beri {som(status['spent'])} "
+                f"sarflandi (1 $ = {som(status['rate'])}). Bu bot hisobi (taxminiy) - aniq summa "
+                f"platform.openai.com da.</i>")
+    return (f"🔴 <b>Bot hisobi bo'yicha OpenAI balansi tugadi</b> ({status['set_at']} da {som(status['entered'])} "
+            f"kiritilgan, {som(status['spent'])} sarflandi).\nHozircha tekshiruvlar ishlayapti - OpenAI rad etsa, "
             f"bot ularni darhol to'xtatadi va shu yerga yozadi. platform.openai.com da to'ldirib, "
             f"<code>/balans SUMMA</code> yozing.")
 
@@ -226,9 +233,9 @@ async def summary_lines() -> list[str]:
         elif status is None:
             out.append("💳 OpenAI balansi: kiritilmagan - to'ldirgach <code>/balans SUMMA</code> yozing")
         else:
-            out.append(f"💳 OpenAI balansi: taxminan <b>{_usd(max(0.0, status['left']))}</b> qoldi "
-                       f"(≈ {int(max(0.0, status['left']) / CHECK_USD)} ta tekshiruv; {status['set_at']} da "
-                       f"{_usd(status['entered'])} kiritilgan)")
+            left = max(0.0, status["left"])
+            out.append(f"💳 OpenAI balansi: taxminan <b>{som(left)}</b> qoldi (≈ {int(left / status['check'])} ta "
+                       f"tekshiruv; {status['set_at']} da {som(status['entered'])} kiritilgan)")
         az = await azure_status()
         if az["left"] is None:
             out.append(f"🎙 Azure: bu oy {az['used']:.1f} soat audio (limit yo'q)")
@@ -241,10 +248,23 @@ async def summary_lines() -> list[str]:
 
 
 def parse_amount(text: str) -> float | None:
-    """"20", "$20", "20.5", "20,5" -> 20.5; None for anything else."""
-    raw = text.strip().lstrip("$").replace(",", ".")
+    """Azure's hours: "5", "2.5", "2,5" -> 2.5; None for anything else."""
+    raw = text.strip().replace(",", ".")
     try:
         value = float(raw)
     except ValueError:
         return None
     return value if 0 <= value < 100000 else None
+
+
+def parse_som(text: str) -> float | None:
+    """The OpenAI balance in so'm: "70000", "70 000", "70.000", "70,000 so'm" -> 70000; None for anything else
+    (no fractions of a so'm)."""
+    raw = text.lower()
+    for word in ("so'm", "so‘m", "som", "сум", "uzs"):
+        raw = raw.replace(word, "")
+    raw = "".join(ch for ch in raw if ch not in " ., '")
+    if not raw.isdigit():
+        return None
+    value = float(raw)
+    return value if value < 100_000_000 else None
