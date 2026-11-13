@@ -49,6 +49,7 @@ def build_dispatcher() -> Dispatcher:
         my_works,
         payments,
         practice,
+        progress_quiz,
         share,
         speaking,
         start,
@@ -64,6 +65,7 @@ def build_dispatcher() -> Dispatcher:
     dp.include_router(crm.router)
     private = Router(name="private_chats")
     private.message.filter(F.chat.type == "private")
+    private.include_router(progress_quiz.router)  # the waiting card's questions, in any state
     private.include_router(start.router)
     private.include_router(language.router)
     private.include_router(stats.router)

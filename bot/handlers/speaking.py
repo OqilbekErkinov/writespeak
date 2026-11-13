@@ -92,6 +92,7 @@ from bot.utils.messages import show_screen, strip_buttons
 from bot.utils.mock_test_flow import record_mock_test_part
 from bot.utils.report_names import report_filename, with_ai_note
 from bot.utils import crm_events, stickers
+from bot.utils import progress as live
 from bot.utils.coins import speaking_kind
 from bot.utils.quota import check_price, check_quota, free_check_note, payment_of, send_paywall
 from bot.utils.speaking_questions import split_questions
@@ -457,13 +458,13 @@ async def _grade(
     message: Message, state: FSMContext, lang: str, *, questions: list[str], parts: list[str],
     clips: list[tuple[bytes, str]], audio_hash: str, paths: list[str] = (), transcribed=None,
     notices: list[str] = (), recording: bytes | None = None, extra: dict | None = None,
-    progress: Message | None = None,
+    waiting_msg: Message | None = None,
 ) -> None:
     """Grades, saves and sends one Speaking check. `clips`: (audio, filename)
     per question; `paths`: where the student's own clips are saved;
     `transcribed`, `notices`, `recording` (the whole recording as mp3, kept as
     the session's audio) and `extra` (added to report_data) come from one
-    recording split into answers; `progress`: its "listening and analysing"
+    recording split into answers; `waiting_msg`: its "listening and analysing"
     message, already shown."""
     data = await state.get_data()
     user_id = message.chat.id
@@ -475,11 +476,12 @@ async def _grade(
 
     repeated, sessions = (False, []) if test_run else await _repeated(message, state, data, audio_hash, lang)
     if repeated:
-        await _drop(progress)
+        await _drop(waiting_msg)
         return
 
     started = time.monotonic()
-    processing_msg = progress or await message.answer(t("speaking.grading_in_progress", lang))
+    processing_msg = waiting_msg or await message.answer(t("speaking.grading_in_progress", lang))
+    card = live.begin(processing_msg, lang, "speaking")  # the waiting message, alive (bot/utils/progress.py)
     try:
         async with get_session() as session:
             earlier_sessions, previous = await crud.get_speaking_history(session, user_id, part)
@@ -516,6 +518,7 @@ async def _grade(
             joined = mp3s[0] if len(mp3s) == 1 else await concat_mp3(mp3s)
     except Exception:
         logger.exception("Speaking grading failed for user %s", user_id)
+        await live.end(card)
         await processing_msg.edit_text(t("writing.grading_failed", lang))
         await stickers.send(message.bot, user_id, "oops")
         await state.clear()
@@ -598,6 +601,7 @@ async def _grade(
         caption += "\n" + t("vocab.added_after_check", lang, count=new_words)
     if short_words:
         caption += "\n\n" + t("speaking.short_sample", lang, words=short_words)
+    await live.end(card)
     await processing_msg.delete()
     await stickers.send(message.bot, user_id, stickers.for_result(report.overall_band, found))  # the Gotcha moment
     await message.answer_document(
@@ -797,11 +801,13 @@ async def _read_recording(message: Message, state: FSMContext, lang: str) -> Non
     # one "listening and analysing" message from the recording to the report - no "splitting the answers"
     # step of its own (the user, 2026-11-14)
     waiting = await message.answer(t("speaking.grading_in_progress", lang))
+    live.begin(waiting, lang, "speaking")  # alive from the first listening on (bot/utils/progress.py)
     try:
         with usage.track(f"speaking recording user={user_id}") as calls:
             rec = await one.transcribe_recording(await _joined(data))
     except Exception:
         logger.exception("Reading the recording failed for user %s", user_id)
+        await live.end(live.find(waiting.chat.id, waiting.message_id))
         await waiting.edit_text(t("writing.grading_failed", lang))
         await stickers.send(message.bot, user_id, "oops")
         await state.clear()
@@ -822,6 +828,7 @@ async def _read_recording(message: Message, state: FSMContext, lang: str) -> Non
 
 async def _drop(msg: Message | None) -> None:
     if msg is not None:
+        await live.end(live.find(msg.chat.id, msg.message_id))
         try:
             await msg.delete()
         except TelegramBadRequest:
@@ -947,7 +954,7 @@ async def _grade_recording(message: Message, state: FSMContext, lang: str, waiti
             "split": [[[round(s, 1), round(e, 1)] for s, e in q] for q in split],
             "missing": missing, "questions_from_recording": bool(data.get("asked_from_recording")),
         }},
-        progress=waiting,
+        waiting_msg=waiting,
     )
 
 

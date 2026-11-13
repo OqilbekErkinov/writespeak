@@ -57,6 +57,7 @@ from bot.keyboards.writing_task_kb import (
 )
 from bot.states.writing_states import WritingStates
 from bot.utils import crm_events, runtime, stickers
+from bot.utils import progress as live
 from bot.utils.input_extraction import read_images, read_text_input
 from bot.utils.messages import show_screen, strip_buttons
 from bot.utils.mock_test_flow import record_mock_test_part
@@ -369,6 +370,7 @@ async def _ask_chart_again(processing_msg: Message, state: FSMContext, data: dic
     cost = usage.merge(data.get("input_cost"), usage.summary(calls)) if calls else data.get("input_cost")
     await state.update_data(rechart=True, prompt_image_paths=[], input_cost=cost)
     await state.set_state(WritingStates.awaiting_chart)
+    await live.end(live.find(processing_msg.chat.id, processing_msg.message_id))
     await processing_msg.edit_text(t("writing.chart_resend", lang), reply_markup=chart_kb(lang, _back_target(data, "answer")))
 
 
@@ -438,6 +440,8 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
 
     started = time.monotonic()
     processing_msg = await message.answer(t("writing.grading_in_progress", lang))
+    # the waiting message, alive (bot/utils/progress.py)
+    card = live.begin(processing_msg, lang, "writing_task1" if data["task_type"] == "task1" else "writing")
     calls: list = []
     visual = None
     chart_look = None  # how the chart was found: a checked chart key, or read now
@@ -553,6 +557,7 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
             await _ask_chart_again(processing_msg, state, data, lang, calls)
             return
         logger.exception("Writing grading failed for user %s", user_id)
+        await live.end(card)
         await processing_msg.edit_text(t("writing.grading_failed", lang))
         await stickers.send(message.bot, user_id, "oops")
         await state.clear()
@@ -639,6 +644,7 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
         caption += "\n\n" + t("writing.chart_partly_unclear", lang)
     elif data["task_type"] == "task1" and not prompt_images:
         caption += "\n\n" + t("writing.chart_not_checked", lang)
+    await live.end(card)
     await processing_msg.delete()
     await stickers.send(message.bot, user_id, stickers.for_result(report.overall_band, found))  # the Gotcha moment
     await message.answer_document(

@@ -19,6 +19,7 @@ are an estimate from this table.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -67,12 +68,29 @@ def _detail(details, name: str) -> int:
     return (getattr(details, name, None) or 0) if details is not None else 0
 
 
+# told each call's purpose as it is recorded, in this context only (bot/utils/progress.py: the waiting
+# message's stages follow the check's own calls)
+_listener: ContextVar[Callable[[str], None] | None] = ContextVar("openai_usage_listener", default=None)
+
+
+def listen(callback: Callable[[str], None] | None):
+    """Calls `callback(purpose)` for every call recorded from here on in this context; returns the token to
+    reset it with."""
+    return _listener.set(callback)
+
+
 def _add(call: Call) -> None:
     calls = _current.get()
     if calls is not None:
         calls.append(call)
     category = (_label.get() or call.purpose).split()[0]
     _spent[category] = _spent.get(category, 0.0) + call.cost
+    callback = _listener.get()
+    if callback is not None:
+        try:
+            callback(call.purpose)
+        except Exception:  # noqa: BLE001 - a progress display never breaks a check
+            logger.debug("Usage listener failed", exc_info=True)
 
 
 def take_spent() -> dict[str, float]:
