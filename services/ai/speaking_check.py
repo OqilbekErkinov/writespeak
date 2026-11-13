@@ -32,6 +32,7 @@ class SpeakingCheck:
     answers: list[dict]  # model answers
     items: list[SessionItem]
     metrics: VoiceMetrics
+    pron: pronunciation.Assessment | None = None  # Azure's scores; None when not measured
 
 
 def build_items(questions: list[dict], audios: list[AnswerAudio]) -> list[SessionItem]:
@@ -96,4 +97,4 @@ async def run_check(
             logger.exception("Speaking model answers failed again - the report goes out without them")
             answers = []
     report.vocabulary_uz = await uz_task  # never raises: "" where a meaning is missing
-    return SpeakingCheck(report=report, answers=answers, items=items, metrics=metrics)
+    return SpeakingCheck(report=report, answers=answers, items=items, metrics=metrics, pron=pron)

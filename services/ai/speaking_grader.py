@@ -39,6 +39,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
@@ -288,9 +289,10 @@ def evidence_text(items: list[SessionItem], ev: Evidence, for_scoring: bool = Fa
             f"- accuracy {p.accuracy:.0f}, fluency {p.fluency:.0f}, completeness {p.completeness:.0f}"
             + (f", prosody (stress, intonation, rhythm) {p.prosody:.0f}" if p.prosody is not None else "") + ".",
             "- lowest-scoring words: " + (", ".join(f"{w.word} {w.accuracy:.0f}" for w in low) or "none") + ".",
-            "As a guide (calibrated on teachers' bands): accuracy 98+ with prosody 85+ fits band 8-9; "
-            "accuracy 93-94 with prosody 76-81 band 6; prosody in the low 70s band 5 - the Pronunciation band "
-            "itself is set from these scores by software.",
+            "The Pronunciation band itself is set from these scores by software (calibrated on teachers' "
+            "bands): accuracy decides it (98+ band 9, 96 band 8, 94 band 7, 90 band 6), and weak prosody lowers "
+            "it by one band at most. Azure's prosody also falls with every pause and filler - hesitation is "
+            "judged under Fluency & Coherence, never under Pronunciation.",
         ]
     else:
         lines.append("PRONUNCIATION IS NOT MEASURED this time: software sets its band from the other three "
@@ -360,19 +362,37 @@ _P_BANDS = {"prosody": [[90, 9], [85, 8], [82, 7], [76, 6], [70, 5], [0, 4]],
             "accuracy": [[98, 9], [96, 8], [94, 7], [90, 6], [85, 5], [0, 4]]}
 
 
+PROSODY_MAX_DROP = 1  # bands weak prosody may take off the accuracy band (config "prosody_max_drop")
+FLOOR_MAX_LIFT = 1  # bands the Lexical Resource clear-vocabulary floor may add to the examiners' band
+BREVITY_LIFT = True  # a Lexical / Grammar band whose only reason is the answer's length: one band up (to 8 at most)
+# a reason that is about the answer's length, not its language
+# ("this short turn", "brief response", "due to brevity") - never "short, simple sentences", a range point
+_BREVITY = re.compile(
+    r"\b(?:short|brief)(?:er)? (?:turns?|answers?|responses?|samples?|replies|reply|talk|part)\b|\bbrevity\b|"
+    r"\b(?:turns?|answers?|responses?|talk) (?:is|was|are|were) (?:short|brief)\b|"
+    r"\blength of (?:the |this |your )?(?:answers?|responses?|turns?|talk)\b|\bsingle (?:turn|answer|response)\b",
+    re.IGNORECASE)
+
+
 def measured_pronunciation(pron: Assessment) -> float:
     """The Pronunciation band from Azure's scores (config "pronunciation_bands", calibrated on the
-    teachers' bands 2026-11-11): the lower of the prosody band and the accuracy band."""
-    table = {**_P_BANDS, **{k: v for k, v in (speaking_config().get("pronunciation_bands") or {}).items()
-                            if k in _P_BANDS}}
+    teachers' bands 2026-11-11): the accuracy band - how clearly the words and sounds were said - which a
+    weaker prosody band lowers by PROSODY_MAX_DROP at most and never raises. Azure's prosody counts every
+    pause and filler as a broken rhythm, so a hesitant speaker's prosody falls with its fluency (2026-11-13:
+    53 / 59, 68 / 73, 72 / 68 prosody / fluency) - hesitation is Fluency's; as the lower of the two bands,
+    #80's clear words (accuracy 94) came out Pronunciation 4. The teachers' six checks give the same bands
+    either way."""
+    config = speaking_config().get("pronunciation_bands") or {}
+    table = {**_P_BANDS, **{k: v for k, v in config.items() if k in _P_BANDS}}
+    drop = float(config.get("prosody_max_drop", PROSODY_MAX_DROP))
 
     def band(score: float, steps: list) -> float:
         return float(next((b for least, b in steps if score >= least), steps[-1][1]))
 
-    found = [band(pron.accuracy, table["accuracy"])]
-    if pron.prosody is not None:
-        found.append(band(pron.prosody, table["prosody"]))
-    return min(found)
+    accuracy = band(pron.accuracy, table["accuracy"])
+    if pron.prosody is None:
+        return accuracy
+    return max(min(accuracy, band(pron.prosody, table["prosody"])), accuracy - drop)
 
 
 def short_scoring_on() -> bool:
@@ -686,6 +706,15 @@ async def score_session(part: str, items: list[SessionItem], ev: Evidence, evide
             if not quotes or not all(any(q in s or s in q for s in slipped) for q in quotes):
                 return False  # an unquoted reason (a range limitation) or a quote of more than a slip stands
         return True
+
+    def brevity_only(weaknesses: list[str], key: str) -> bool:
+        """Every reason given is the answer's length - "range not wide in this short turn", "structural
+        variety could be wider in this brief response" - with nothing quoted from it, and the criterion has
+        no checked error: a short answer is no reason for a lower Lexical Resource or Grammar band (2026-11-13,
+        #79: Grammar 7 twice for "this brief response" alone). One band up, never past 8."""
+        if not weaknesses or any(m.criterion == key and m.severity != "slip" for m in checked):
+            return False
+        return all(_BREVITY.search(w) and not _real_quotes(w, low, []) for w in weaknesses)
     # in the user message: the system prompt stays the cached prefix
     short = short_sample_note(part, items) if short_scoring_on() else ""
     messages = [
@@ -710,6 +739,12 @@ async def score_session(part: str, items: list[SessionItem], ev: Evidence, evide
             if k != "FC" and out[k] < 8 and slips_only(j.weaknesses, k):
                 logger.info("Speaking %s %g -> 8: its only reasons are slips (%s)", k, out[k], j.weaknesses)
                 out[k] = 8.0
+            elif k != "FC" and out[k] < 8 and BREVITY_LIFT and brevity_only(j.weaknesses, k):
+                logger.info("Speaking %s %g -> %g: its only reason is the answer's length (%s)", k, out[k],
+                            out[k] + 1, j.weaknesses)
+                out[k] += 1.0
+                out["_notes"][k] = j.note.strip()
+                continue  # never on to 9 from here
             if out[k] == 8 and not evidenced(j.weaknesses, spoken, acceptable):  # only an 8, as in Writing
                 # Lexical Resource / Grammar 9 needs what 9 is - idiomatic, precise language; a wide range of
                 # structures - quoted from the answers, not only no weakness quoted (2026-11-11: with little to
@@ -784,7 +819,8 @@ def speaking_floors(items: list[SessionItem], bands: dict[str, float], checked: 
     writing_marking.json "floors", the academic lead 2026-10-29), for answers
     of 150 words or more: a wide range and only slips - at least 8; Lexical
     Resource with a wide range, nothing unclear and errors under the Band 7
-    density - at least 7. Never Fluency or Pronunciation. A short sample
+    density - at least 7, and at most FLOOR_MAX_LIFT above the examiners' band.
+    Never Fluency or Pronunciation. A short sample
     (short_sample_words()) has no floor: with no mistake its range can still be
     basic (2026-11-11: "It is fun. We eat good food." - Lexical 5, Grammar 5,
     rightly; a no-mistake floor of 8 made it 7.0)."""
@@ -802,7 +838,9 @@ def speaking_floors(items: list[SessionItem], bands: dict[str, float], checked: 
             half = marking_config.density()["less_common_weight"]
             counted = sum(half if getattr(m, "clear_choice", False) else 1 for m in errors)
             if (counted + (len(mine) - len(errors)) * weight) * 100 / words <= marking_config.density()["band7_max"]:
-                least = max(least, f["clear_vocabulary_lr_min"])
+                # one band above the examiners' at most (2026-11-13: #80's and #81's Lexical 5 - "half part
+                # of my name", "being on the attention" - came out 7 beside Fluency 4 and Grammar 4-5)
+                least = max(least, min(f["clear_vocabulary_lr_min"], out[key] + FLOOR_MAX_LIFT))
         if out[key] < least:
             raised.append(f"{key} {out[key]:g} -> {least:g}")
             out[key] = float(least)

@@ -12,7 +12,8 @@
     "_no_floor": "Tried and dropped the same day: a no-mistake floor of 8 for a short sample lifted a basic answer ('It is fun. We eat good food.', rightly Lexical 5 / Grammar 5) to 7.0 - no mistake is not a wide range."
   },
   "pronunciation_bands": {
-    "_about": "Pronunciation from Azure's measurement (services/ai/pronunciation.py): the lower of the prosody band and the accuracy band, each the first [least score, band] it reaches; accuracy alone when prosody isn't returned. Calibrated 2026-11-11 on the teachers' six checks (#38-43, Pronunciation 6, 6, 5, 6, 8, 8): their 8s had accuracy 99 and prosody 86-88, their 6s accuracy 93-94 and prosody 78-80, their 5 prosody 73 - 6 of 6 match. The old guide ('the 90s fit 8-9, the 80s 7') was a band too high in the middle. Re-check with more teacher-marked checks.",
+    "_about": "Pronunciation from Azure's measurement (services/ai/pronunciation.py): the accuracy band, which a lower prosody band takes down by prosody_max_drop at most (never up); each band the first [least score, band] it reaches; accuracy alone when prosody isn't returned. Calibrated 2026-11-11 on the teachers' six checks (#38-43, Pronunciation 6, 6, 5, 6, 8, 8): their 8s had accuracy 99 and prosody 86-88, their 6s accuracy 93-94 and prosody 78-80, their 5 prosody 73 - 6 of 6 match. 2026-11-13: Azure's prosody falls with every pause and filler (#77 53, #80 68, #81 72 with fluency 59, 73, 68), so as the lower of the two bands it took hesitant speakers with clear words (accuracy 90-95) to Pronunciation 4-5 - hesitation is Fluency's. Re-check with more teacher-marked checks.",
+    "prosody_max_drop": 1,
     "prosody": [[90, 9], [85, 8], [82, 7], [76, 6], [70, 5], [0, 4]],
     "accuracy": [[98, 9], [96, 8], [94, 7], [90, 6], [85, 5], [0, 4]]
   },

@@ -185,6 +185,17 @@ async def _assess_clip(http, sem, wav: bytes, words: list, duration: float) -> A
     )
 
 
+def scores_json(assessment: Assessment | None) -> dict | None:
+    """Azure's session scores as kept in a check's report_data["pronunciation_scores"] - for calibrating the
+    Pronunciation bands on teacher-marked checks later (2026-11-13: they lived only in the log, and #65's
+    Pronunciation 5 beside Fluency 9 could no longer be explained once the log was gone)."""
+    if assessment is None:
+        return None
+    return {"accuracy": round(assessment.accuracy, 1), "fluency": round(assessment.fluency, 1),
+            "prosody": None if assessment.prosody is None else round(assessment.prosody, 1),
+            "completeness": round(assessment.completeness, 1), "seconds": round(assessment.seconds, 1)}
+
+
 def combine(clips: list[Assessment]) -> Assessment:
     """One session-level assessment: scores weighted by assessed seconds."""
     seconds = sum(c.seconds for c in clips) or 1.0

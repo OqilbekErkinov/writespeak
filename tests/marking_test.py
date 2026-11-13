@@ -1725,6 +1725,84 @@ def task1_labels_and_close_reads() -> None:
           'leaving out a minor one ("Other")' in rule and 'never "a key feature left out"' in rule)
 
 
+def speaking_20261113() -> None:
+    """2026-11-13: Pronunciation 4-5 for clear speakers (#77, #80, #81: accuracy 90-95) - the lower of the
+    accuracy and prosody bands, and Azure's prosody falls with every pause; Lexical 5 floored to 7 beside
+    Fluency 4 (#80, #81); Grammar 7 for "this brief response" alone (#79); Azure's scores never kept."""
+    from services.ai import pronunciation
+    from services.ai.pronunciation import Assessment
+    from services.ai.speaking_grader import Evidence, SessionItem, measured_pronunciation
+    from services.ai.voice import VoiceMetrics
+
+    def az(accuracy, prosody):
+        return Assessment(seconds=30, accuracy=accuracy, fluency=70, completeness=97, prosody=prosody, pron=80,
+                          words=[])
+
+    teachers = [(az(93, 78), 6), (az(94, 79), 6), (az(93, 73), 5), (az(93, 80), 6), (az(99, 86), 8), (az(99, 88), 8)]
+    got = [measured_pronunciation(a) for a, _ in teachers]
+    check("Pronunciation: the teachers' six checks keep their bands", got == [b for _, b in teachers], got)
+    today = {"#77": (az(90, 53), 5), "#78": (az(93, 74), 5), "#79": (az(99, 88), 8), "#80": (az(94, 68), 6),
+             "#81": (az(95, 72), 6)}
+    got = {k: measured_pronunciation(a) for k, (a, _) in today.items()}
+    check("...the accuracy band, weak prosody one band lower at most (#77 4->5, #80 4->6, #81 5->6)",
+          got == {k: b for k, (_, b) in today.items()}, got)
+    check("...prosody never lifts it", measured_pronunciation(az(90, 95)) == 6.0)
+    kept = pronunciation.scores_json(az(94.04, 68.26))
+    check("Azure's scores are kept with the check", kept == {"accuracy": 94.0, "fluency": 70, "prosody": 68.3,
+                                                             "completeness": 97, "seconds": 30}
+          and pronunciation.scores_json(None) is None, kept)
+
+    text = ("I really enjoy travelling to new places with my family because we can try local food, meet "
+            "friendly people and learn about different traditions. ")
+    long = [SessionItem(qid="Q1", part="part2", question="Describe a trip", audio=_audio(text * 8))]
+    strong = ["try local food", "friendly people", "different traditions", "new places"]
+    one_error = [NS(wrong="meet friendly people", correct="meet kind people", criterion="LR", severity="error",
+                    unclear=False)]
+    lifted = {b: speaking_grader.speaking_floors(long, {"FC": 4.0, "LR": b, "GRA": 4.0, "P": 5.0}, one_error,
+                                                 strong)[0]["LR"] for b in (5.0, 6.0, 7.0)}
+    check("Lexical floor: one band above the examiners' at most (#80: 5 -> 6, not 7)",
+          lifted == {5.0: 6.0, 6.0: 7.0, 7.0: 7.0}, lifted)
+
+    pattern = speaking_grader._BREVITY
+    for reason in ("Range not especially wide in this short turn", "Structural variety could be wider in this "
+                   "brief response", "Range not fully demonstrated due to brevity", "The answers are brief"):
+        check(f"brevity reason: {reason}", bool(pattern.search(reason)))
+    for reason in ("Mostly short, simple sentences with little subordination", "Limited structural variety shown",
+                   "Few less common items"):
+        check(f"...a range point is no brevity reason: {reason}", not pattern.search(reason))
+
+    said = "I think it depends on people's backgrounds because they were raised in different cultures."
+    items = [SessionItem(qid="Q1", part="part3", question="What makes communication hard?", audio=_audio(said))]
+
+    def run(lr_reasons, gra_reasons, checked=()):
+        async def call(purpose, max_tokens, messages, response_format, model=None):
+            def j(band, why):
+                return schemas.SpeakingJudgement(strengths=['"raised in different cultures"', '"depends on"'],
+                                                 weaknesses=why, band=band, note="n")
+            return NS(choices=[NS(message=NS(parsed=schemas.SpeakingScoring(
+                FC=j(7, ["Development is general"]), LR=j(7, lr_reasons), GRA=j(7, gra_reasons), P=7)))])
+        metrics = VoiceMetrics(speaking_seconds=8, words=15, wpm=120, fillers=0, filler_types=[], long_pauses=0,
+                               mid_sentence_pauses=0, longest_pause=None, longest_pause_answer=None)
+        real = speaking_grader.parse_call
+        speaking_grader.parse_call = call
+        try:
+            return asyncio.run(speaking_grader.score_session("part3", items, Evidence(metrics, None, None),
+                                                             checked=list(checked)))[0]
+        finally:
+            speaking_grader.parse_call = real
+
+    got = run(["Range not especially wide in this short turn"], ["Structural variety could be wider in this "
+                                                                  "brief response"])
+    check("Lexical / Grammar 7 whose only reason is the answer's length: 8, never 9 (#79)",
+          got["LR"] == 8 and got["GRA"] == 8 and got["FC"] == 7, got)
+    got = run(['Repeated phrasing in this short turn: "depends on people\'s backgrounds"'],
+              ["Mostly short, simple sentences"])
+    check("...a quoted reason or a range point stands", got["LR"] == 7 and got["GRA"] == 7, got)
+    error = NS(wrong="raised in", correct="brought up in", criterion="GRA", severity="error", unclear=False)
+    got = run([], ["Structural variety could be wider in this brief response"], [error])
+    check("...and so does a checked error of that criterion", got["GRA"] == 7, got)
+
+
 def model_answer_bands() -> None:
     """The user's rule (2026-11-12), Writing and Speaking alike: 5.0-6.5 -> a Band 7 model answer, 7.0-7.5 ->
     Band 8, 8.0-9.0 -> Band 9 only."""
@@ -1760,5 +1838,6 @@ if __name__ == "__main__":
     per_criterion_range()
     task2_and_speaking_20261112()
     task1_labels_and_close_reads()
+    speaking_20261113()
     print(f"\n{len(fails)} failed" if fails else "\nall passed")
     sys.exit(1 if fails else 0)

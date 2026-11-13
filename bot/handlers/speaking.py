@@ -98,7 +98,7 @@ from bot.utils.speaking_questions import split_questions
 from db import crud
 from db.database import get_session
 from db.models import SourceType
-from services.ai import single_recording as one, tts, usage
+from services.ai import pronunciation, single_recording as one, tts, usage
 from services.ai.essay_marking import canon
 from services.ai.schemas import VocabularyItem
 from services.ai.speaking_check import run_check
@@ -535,6 +535,7 @@ async def _grade(
         "questions": questions,
         "question_parts": parts,
         "pronunciation_measured": not report.pron_estimated,
+        "pronunciation_scores": pronunciation.scores_json(check.pron),  # Azure's, for calibration
         "resubmission_of": repeat.id if repeat else None,
         # this check's OpenAI cost (estimated from tokens), reading the question
         # photo/file included ("input: ..."; the voices, made on demand, are
