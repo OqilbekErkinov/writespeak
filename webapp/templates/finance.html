@@ -23,7 +23,7 @@
   <div class="f-res">
     <span class="f-k">Sof foyda · {{ f.periods[f.period]|lower }}</span>
     <b class="f-big num {{ 'neg' if t.profit < 0 }}">{{ "−" if t.profit < 0 }}{{ s(t.profit|abs) }} <small>so'm</small></b>
-    <span class="f-sub">{% if t.margin is not none %}marja {{ t.margin }}%{% else %}bu davrda tushum yo'q{% endif %}</span>
+    <span class="f-sub">{% if t.margin is none %}bu davrda tushum yo'q{% elif t.margin >= -100 %}marja {{ t.margin }}%{% else %}xarajat tushumdan {{ (t.costs / t.revenue)|round|int }} baravar ko'p{% endif %}</span>
   </div>
   <div class="f-eq">
     <div class="f-eq-i in"><span>Tushum</span><b class="num">{{ s(t.revenue) }}</b>
