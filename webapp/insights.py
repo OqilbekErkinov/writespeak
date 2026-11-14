@@ -143,6 +143,7 @@ def _check_row(sub, kind: str) -> dict:
         "audio": kind == "s" and bool(getattr(sub, "audio_file_path", None)),
         "fields": [(key, label, (sub.teacher_bands or {}).get("bands", {}).get(key))
                    for key, _, label in teacher_bands.CRITERIA[kind]],
+        "bot": teacher_bands.bot_bands(kind, sub.criteria_scores),  # the bot's bands by the teachers' keys
     }
 
 

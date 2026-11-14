@@ -1,0 +1,337 @@
+{% extends "base.html" %}
+{% block title %}Moliya — Bandzilla Admin{% endblock %}
+{% block content %}
+{% macro s(v) %}{{ "{:,.0f}".format(v or 0).replace(",", " ") }}{% endmacro %}
+{% set t = f.totals %}
+{% set back = "/finance?p=" ~ f.period %}
+
+<div class="f-head">
+  <div>
+    <h1>Moliya</h1>
+    <p class="hint">{{ f.periods[f.period] }} · {{ f.range }} · 1 $ = {{ s(f.rate) }} so'm (bugungi kurs)</p>
+  </div>
+  <div class="f-tools">
+    <div class="filters" style="margin:0">
+      {% for k, label in f.periods.items() %}<a href="/finance?p={{ k }}" class="{{ 'active' if f.period == k }}">{{ label }}</a>{% endfor %}
+    </div>
+    <a class="btn" href="/export/finance.xlsx" title="Oylar, to'lovlar, AI xarajat kunma-kun va qo'lda kiritilganlar">⬇ Excel</a>
+  </div>
+</div>
+{% if flash %}<div class="{{ 'error' if flash_bad else 'flash' }}">{{ flash }}</div>{% endif %}
+
+<section class="f-hero">
+  <div class="f-res">
+    <span class="f-k">Sof foyda · {{ f.periods[f.period]|lower }}</span>
+    <b class="f-big num {{ 'neg' if t.profit < 0 }}">{{ "−" if t.profit < 0 }}{{ s(t.profit|abs) }} <small>so'm</small></b>
+    <span class="f-sub">{% if t.margin is not none %}marja {{ t.margin }}%{% else %}bu davrda tushum yo'q{% endif %}</span>
+  </div>
+  <div class="f-eq">
+    <div class="f-eq-i in"><span>Tushum</span><b class="num">{{ s(t.revenue) }}</b>
+      <em>{{ t.n_pay }} ta to'lov{% if t.rev_hand %} · qo'lda {{ s(t.rev_hand) }}{% endif %}</em></div>
+    <div class="f-op">−</div>
+    <div class="f-eq-i out"><span>AI xarajat</span><b class="num">{{ s(t.ai) }}</b><em>${{ "%.2f"|format(t.ai_usd) }} · OpenAI</em></div>
+    <div class="f-op">−</div>
+    <div class="f-eq-i out"><span>Boshqa xarajat</span><b class="num">{{ s(t.other) }}</b><em>{{ t.n_other }} ta yozuv</em></div>
+  </div>
+  <div class="f-chips">
+    {% if t.n_pending %}<a class="f-chip warn" href="/payments?status=pending">⏳ {{ t.n_pending }} ta to'lov tasdiq kutmoqda — {{ s(t.pending) }} so'm →</a>{% endif %}
+    {% if t.n_test %}<span class="f-chip" title="Sinash uchun tasdiqlangan to'lovlar: coinlari berilgan, lekin tushum emas">🧪 {{ t.n_test }} ta test to'lov ({{ s(t.test) }} so'm) hisobga kirmadi</span>{% endif %}
+  </div>
+</section>
+
+<div class="f-row f-row-2">
+  <div class="card">
+    <div class="f-card-h"><h2>Tushum va xarajat</h2><span class="muted">so'm, {{ "oyma-oy" if f.period == "all" else "kunma-kun" }}</span></div>
+    <div style="height:280px"><canvas id="moneyChart"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="f-card-h"><h2>Hisoblar</h2><span class="muted">hozir</span></div>
+    <div class="f-acc">
+      <div class="f-acc-i {{ 'bad' if f.credit_paused or (f.openai and f.openai.left <= 3 * f.openai.rate) else 'warn' if f.openai and f.openai.left <= 5 * f.openai.rate else '' }}">
+        <span class="f-acc-ic">💳</span>
+        <div><span class="f-acc-l">OpenAI balansi</span>
+          {% if f.credit_paused %}<b>Tugagan</b><em>tekshiruvlar to'xtatilgan — to'ldiring</em>
+          {% elif f.openai %}<b class="num">≈ {{ s(f.openai.left if f.openai.left > 0 else 0) }} so'm</b>
+            <em>≈ {{ ((f.openai.left if f.openai.left > 0 else 0) / f.openai.check)|int }} ta tekshiruvga · {{ f.openai.set_at }} da kiritilgan</em>
+          {% else %}<b>—</b><em>kiritilmagan: guruhda <code>/balans SUMMA</code>{% if request.state.nav is defined and request.state.nav.owner %} yoki <a href="/settings">Sozlamalar</a>{% endif %}</em>{% endif %}
+        </div>
+      </div>
+      <div class="f-acc-i">
+        <span class="f-acc-ic">🎙</span>
+        <div><span class="f-acc-l">Azure (talaffuz)</span>
+          <b class="num">{{ "%.1f"|format(f.azure.used) }}{% if f.azure.hours > 0 %} / {{ "%g"|format(f.azure.hours) }}{% endif %} soat</b>
+          <em>{% if f.azure.hours > 0 %}bu oy · bepul tarif (F0){% else %}bu oy · pullik tarif (S0){% endif %}</em>
+        </div>
+      </div>
+      <div class="f-acc-i">
+        <span class="f-acc-ic">🪙</span>
+        <div><span class="f-acc-l">Foydalanuvchilardagi coinlar</span>
+          <b class="num">{{ s(f.coins.in_hands) }} coin</b>
+          <em>{{ f.coins.holders }} kishida{% if f.coins.liability_usd is not none %} · hammasi ishlatilsa ≈ {{ s(f.coins.liability_usd * f.rate) }} so'm AI xarajat{% endif %}</em>
+        </div>
+      </div>
+      <div class="f-acc-i">
+        <span class="f-acc-ic">🔁</span>
+        <div><span class="f-acc-l">Coin oqimi · {{ f.periods[f.period]|lower }}</span>
+          <b class="num">{{ s(f.coins.sold) }} sotildi · {{ s(f.coins.spent) }} sarflandi</b>
+          <em>sotilgan — haqiqiy to'lovlar; sarflangan — tekshiruvlarga</em>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="f-row f-row-3">
+  <div class="card">
+    <div class="f-card-h"><h2>AI xarajat turlari</h2><span class="muted">OpenAI</span></div>
+    {% if f.ai_rows %}
+    <div class="f-bars">
+      {% for r in f.ai_rows %}
+      <div class="f-bar">
+        <div class="f-bar-l"><span>{{ r.name }}</span><b class="num">{{ s(r.som) }} <small>so'm</small></b></div>
+        <div class="f-bar-t"><i style="width: {{ r.share|round(1) }}%"></i></div>
+        <div class="f-bar-s">${{ "%.2f"|format(r.usd) }} · {{ r.share|round|int }}%</div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}<div class="empty">Bu davrda AI xarajat yo'q.</div>{% endif %}
+  </div>
+  <div class="card">
+    <div class="f-card-h"><h2>Tushum turlari</h2><span class="muted">haqiqiy to'lovlar</span></div>
+    {% if f.groups %}
+    <div class="f-list">
+      {% for name, g in f.groups.items() %}
+      <div><span>{{ name }} <em>{{ g.n }} ta</em></span><b class="num">{{ s(g.amount) }} so'm</b></div>
+      {% endfor %}
+      {% if t.rev_hand %}<div><span>Qo'lda kiritilgan tushum</span><b class="num">{{ s(t.rev_hand) }} so'm</b></div>{% endif %}
+    </div>
+    {% else %}<div class="empty">Bu davrda to'lov yo'q.</div>{% endif %}
+    <h2 style="margin-top:22px">Tekshiruvlar kim hisobidan</h2>
+    {% if f.modes %}
+    <div class="f-list">
+      {% for m in f.modes %}
+      <div><span>{{ m.name|capitalize }} <em>{{ m.n }} ta{% if m.coins %} · {{ m.coins }} coin{% endif %}</em></span><b class="num">{{ s(m.som) }} so'm</b></div>
+      {% endfor %}
+    </div>
+    <p class="hint">O'ngda — shu tekshiruvlarning AI xarajati. «Coin» ichida bepul berilgan (8 ta boshlang'ich) coinlar ham bor.</p>
+    {% else %}<div class="empty">Bu davrda tekshiruv yo'q.</div>{% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <div class="f-card-h"><h2>Har bir tekshiruv: narxi va AI xarajati</h2>
+    <span class="muted">{{ "oxirgi 30 kun o'rtachasi" if f.units_recent else "barcha tekshiruvlar o'rtachasi" }}</span></div>
+  <div class="table-scroll"><table>
+    <tr><th>Tekshiruv</th><th class="r">Coin</th><th class="r">Narxi · {{ s(f.retail_coin) }} so'm/coin</th>
+      <th class="r">Markazga · {{ s(f.center_coin) }} so'm/coin</th><th class="r">AI xarajat</th><th class="r">Marja</th><th class="r">Namuna</th></tr>
+    {% for u in f.units %}
+    <tr>
+      <td class="strong">{{ u.name }}</td>
+      <td class="r num">{{ u.coins }}</td>
+      <td class="r num">{{ s(u.retail) }} so'm</td>
+      <td class="r num">{{ s(u.center) }} so'm</td>
+      <td class="r num">{% if u.cost is not none %}{{ s(u.cost) }} so'm <span class="muted">(${{ "%.3f"|format(u.usd) }})</span>{% else %}—{% endif %}</td>
+      <td class="r">{% if u.margin is not none %}<span class="f-m {{ 'lo' if u.margin < 50 else '' }}">{{ u.margin }}%</span>
+        <span class="muted" title="markaz narxida">/ {{ u.margin_center }}%</span>{% else %}—{% endif %}</td>
+      <td class="r num muted">{{ u.n }}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  <p class="hint">Marja: oddiy narxda / markaz narxida. Faqat OpenAI xarajati olingan — server va boshqa xarajatlar «Oyma-oy hisob»da.</p>
+</div>
+
+<div class="card">
+  <div class="f-card-h"><h2>Oyma-oy hisob</h2><span class="muted">boshidan beri</span></div>
+  <div class="table-scroll"><table>
+    <tr><th>Oy</th><th class="r">Tushum</th><th class="r">AI xarajat</th><th class="r">Boshqa xarajat</th><th class="r">Foyda</th><th class="r">Tekshiruvlar</th></tr>
+    {% for m in f.by_month %}
+    <tr>
+      <td class="strong">{{ m.label }}{% if m.current %} <span class="pill pill-good">davom etmoqda</span>{% endif %}</td>
+      <td class="r num">{{ s(m.revenue) }}</td>
+      <td class="r num">{{ s(m.ai) }} <span class="muted">(${{ "%.2f"|format(m.ai_usd) }})</span></td>
+      <td class="r num">{{ s(m.other) }}</td>
+      <td class="r num strong {{ 'f-neg' if m.profit < 0 else 'f-pos' }}">{{ "−" if m.profit < 0 }}{{ s(m.profit|abs) }}</td>
+      <td class="r num">{{ m.checks }}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+</div>
+
+<div class="f-row f-row-4">
+  <div class="card">
+    <div class="f-card-h"><h2>Qo'lda kiritilganlar</h2><span class="muted">botdan tashqari pul</span></div>
+    <p class="hint" style="margin:-4px 0 12px">OpenAI sarfi va botdagi to'lovlar o'zi hisoblanadi. Bu yerga qolganini yozing: server, domen,
+      reklama, ish haqi, botdan tashqari kelgan to'lov...</p>
+    <div class="f-forms">
+      <form method="post" action="/finance/entry" class="f-form exp">
+        <input type="hidden" name="kind" value="expense"><input type="hidden" name="back" value="{{ back }}">
+        <div class="f-form-h">➖ Xarajat</div>
+        <select name="category" aria-label="Xarajat turi">{% for k, v in f.expense_names.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
+        <input type="text" name="amount" inputmode="numeric" placeholder="Summa, so'm" required aria-label="Summa">
+        <input type="date" name="day" value="{{ f.today }}" max="{{ f.today }}" aria-label="Kun">
+        <input type="text" name="note" placeholder="Izoh (ixtiyoriy)" maxlength="300" aria-label="Izoh">
+        <button type="submit" class="btn btn-bad">Xarajat qo'shish</button>
+      </form>
+      <form method="post" action="/finance/entry" class="f-form inc">
+        <input type="hidden" name="kind" value="income"><input type="hidden" name="back" value="{{ back }}">
+        <div class="f-form-h">➕ Tushum</div>
+        <select name="category" aria-label="Tushum turi">{% for k, v in f.income_names.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
+        <input type="text" name="amount" inputmode="numeric" placeholder="Summa, so'm" required aria-label="Summa">
+        <input type="date" name="day" value="{{ f.today }}" max="{{ f.today }}" aria-label="Kun">
+        <input type="text" name="note" placeholder="Izoh (ixtiyoriy)" maxlength="300" aria-label="Izoh">
+        <button type="submit" class="btn btn-good">Tushum qo'shish</button>
+      </form>
+    </div>
+    {% if f.entries %}
+    <div class="table-scroll" style="margin-top:14px"><table>
+      {% for e in f.entries %}
+      <tr>
+        <td class="num" style="white-space:nowrap">{{ e.day.strftime("%d.%m.%Y") }}</td>
+        <td><b>{{ (f.expense_names if e.kind == "expense" else f.income_names).get(e.category, e.category) }}</b>
+          {% if e.note %}<br><span class="muted" style="font-size:12.5px">{{ e.note }}</span>{% endif %}</td>
+        <td class="muted" style="font-size:12px">{{ e.created_by }}</td>
+        <td class="r num strong {{ 'f-neg' if e.kind == 'expense' else 'f-pos' }}" style="white-space:nowrap">{{ "−" if e.kind == "expense" else "+" }}{{ s(e.amount) }}</td>
+        <td class="r"><form method="post" action="/finance/entry/{{ e.id }}/delete" class="inline" data-confirm="Yozuv o'chirilsinmi?"
+              data-confirm-text="{{ s(e.amount) }} so'm, {{ e.day.strftime('%d.%m.%Y') }}" data-confirm-ok="O'chirish" data-tone="danger">
+          <input type="hidden" name="back" value="{{ back }}"><button type="submit" class="btn btn-sm" title="O'chirish">×</button></form></td>
+      </tr>
+      {% endfor %}
+    </table></div>
+    {% else %}<div class="empty">Bu davrda qo'lda kiritilgan yozuv yo'q.</div>{% endif %}
+  </div>
+  <div class="card">
+    <div class="f-card-h"><h2>To'lovlar</h2><a href="/payments" class="muted" style="font-size:12px">hammasi →</a></div>
+    {% if f.payments %}
+    <div class="table-scroll"><table>
+      {% for r in f.payments %}
+      <tr class="{{ 'f-test' if r.p.is_test }}">
+        <td class="num" style="white-space:nowrap">{{ r.when }}</td>
+        <td>{% if r.user %}<a class="who" href="/users/{{ r.user.id }}"><span class="ava">{{ (r.user.full_name or "?")[:1] }}</span><span class="nm">{{ r.user.full_name }}</span></a>{% else %}{{ r.p.user_id }}{% endif %}</td>
+        <td>{{ r.what }}{% if r.p.is_test %} <span class="pill pill-warn" title="Tushumga kirmaydi">test</span>{% endif %}</td>
+        <td class="r num strong">{{ s(r.p.amount) }}</td>
+      </tr>
+      {% endfor %}
+    </table></div>
+    {% else %}<div class="empty">Bu davrda tasdiqlangan to'lov yo'q.</div>{% endif %}
+  </div>
+</div>
+
+<style>
+  .f-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 14px; margin-bottom: 18px; }
+  .f-head h1 { margin: 0 0 4px; }
+  .f-head .hint { margin: 0; }
+  .f-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+
+  .f-hero { position: relative; overflow: hidden; display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 2fr); gap: 18px 28px;
+    align-items: center; padding: 24px 26px; margin-bottom: 18px; border-radius: 22px; background: var(--ink); color: #fff; }
+  .f-hero::after { content: ""; position: absolute; right: -60px; top: -80px; width: 260px; height: 260px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(91,242,166,0.22), transparent 70%); pointer-events: none; }
+  .f-k { display: block; font-size: 12px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: rgba(255,255,255,0.6); }
+  .f-big { display: block; margin: 6px 0 4px; font: 800 34px/1.05 var(--font-head); letter-spacing: -0.02em; color: var(--lime); white-space: nowrap; }
+  .f-big small { font-size: 14px; color: rgba(255,255,255,0.6); }
+  .f-big.neg { color: var(--red); }
+  .f-sub { font-size: 13px; color: rgba(255,255,255,0.7); }
+  .f-eq { display: flex; align-items: stretch; gap: 10px; min-width: 0; }
+  .f-eq-i { flex: 1; min-width: 0; padding: 12px 14px; border-radius: 16px; background: rgba(255,255,255,0.06); }
+  .f-eq-i span { display: block; font-size: 12px; font-weight: 700; color: rgba(255,255,255,0.65); }
+  .f-eq-i b { display: block; margin: 4px 0 2px; font: 800 20px/1.15 var(--font-head); white-space: nowrap; }
+  .f-eq-i.in b { color: var(--lime); }
+  .f-eq-i.out b { color: #FFB4A8; }
+  .f-eq-i em { font-style: normal; font-size: 12px; color: rgba(255,255,255,0.55); }
+  .f-op { align-self: center; font: 800 20px/1 var(--font-head); color: rgba(255,255,255,0.4); }
+  .f-chips { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px; }
+  .f-chips:empty { display: none; }
+  .f-chip { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 100px; font-size: 13px; font-weight: 700;
+    background: rgba(255,255,255,0.1); color: #fff; }
+  .f-chip.warn { background: var(--yellow); color: var(--ink); }
+  a.f-chip:hover { text-decoration: none; box-shadow: 0 0 0 3px rgba(255,224,102,0.35); }
+
+  .f-row { display: grid; gap: 16px; }
+  .f-row > * { min-width: 0; }
+  .f-row-2 { grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); }
+  .f-row-3 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .f-row-4 { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); align-items: start; }
+  .f-card-h { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 12px; }
+  .f-card-h h2 { margin: 0; }
+  .f-card-h .muted { font-size: 12px; }
+
+  .f-acc { display: grid; gap: 10px; }
+  .f-acc-i { display: grid; grid-template-columns: 38px minmax(0, 1fr); gap: 12px; align-items: center; padding: 11px 12px;
+    border: 1px solid var(--border); border-radius: 14px; }
+  .f-acc-i.warn { border-color: var(--yellow); background: rgba(255, 224, 102, 0.12); }
+  .f-acc-i.bad { border-color: var(--red); background: var(--red-tint); }
+  .f-acc-ic { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 12px; background: var(--mint-2); font-size: 18px; }
+  .f-acc-l { display: block; font-size: 12px; font-weight: 700; color: var(--ink-soft); }
+  .f-acc-i b { display: block; font: 800 16px/1.3 var(--font-head); color: var(--ink); }
+  .f-acc-i em { display: block; font-style: normal; font-size: 12px; color: var(--ink-faint); }
+
+  .f-bars { display: grid; gap: 12px; }
+  .f-bar-l { display: flex; justify-content: space-between; gap: 10px; font-size: 13.5px; font-weight: 700; color: var(--ink); }
+  .f-bar-l b { font-weight: 800; white-space: nowrap; }
+  .f-bar-l small { color: var(--ink-faint); font-weight: 600; }
+  .f-bar-t { height: 9px; margin-top: 5px; border-radius: 100px; background: var(--mint-2); overflow: hidden; }
+  .f-bar-t i { display: block; height: 100%; min-width: 3px; border-radius: inherit; background: linear-gradient(90deg, #F59E0B, var(--red)); }
+  .f-bar-s { margin-top: 3px; font-size: 12px; color: var(--ink-faint); }
+  .f-list { display: grid; }
+  .f-list > div { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+  .f-list > div:last-child { border-bottom: 0; }
+  .f-list span { color: var(--ink); font-weight: 700; }
+  .f-list em { font-style: normal; font-weight: 600; font-size: 12px; color: var(--ink-faint); margin-left: 4px; }
+  .f-list b { white-space: nowrap; }
+
+  .f-m { display: inline-block; padding: 1px 8px; border-radius: 100px; background: var(--mint); color: var(--moss); font-weight: 800; font-size: 12.5px; }
+  .f-m.lo { background: #FFF3BF; color: #8A6D00; }
+  .f-neg { color: #c2410c !important; }
+  .f-pos { color: var(--moss) !important; }
+  tr.f-test td { opacity: 0.6; }
+  table .r, th.r { text-align: right; }
+  a.who:hover { text-decoration: none; }
+
+  .f-forms { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .f-form { display: grid; gap: 8px; align-content: start; padding: 14px; border-radius: 16px; border: 1px solid var(--border); }
+  .f-form.exp { background: #FFF8F6; }
+  .f-form.inc { background: var(--mint-2); }
+  .f-form-h { font: 800 14px/1.3 var(--font-head); color: var(--ink); }
+  .f-form input, .f-form .dd, .f-form select { width: 100%; }
+  .f-form input[type=date] { font-family: var(--font); font-size: 14px; font-weight: 500; padding: 8px 12px; border: 1px solid var(--border-strong);
+    border-radius: 10px; background: var(--surface); color: var(--ink); }
+  .f-form input[type=date]:focus { outline: none; border-color: var(--moss); box-shadow: 0 0 0 3px rgba(91,242,166,0.45); }
+
+  @media (max-width: 1180px) { .f-hero { grid-template-columns: 1fr; } .f-row-2, .f-row-4 { grid-template-columns: 1fr; } }
+  @media (max-width: 860px) { .f-row-3 { grid-template-columns: 1fr; } .f-eq { flex-wrap: wrap; } .f-op { display: none; }
+    .f-eq-i { flex: 1 1 160px; } }
+  @media (max-width: 560px) { .f-forms { grid-template-columns: 1fr; } .f-big { font-size: 28px; } }
+</style>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script>
+  (function () {
+    const C = {{ chart | tojson }};
+    if (!window.Chart || !document.getElementById("moneyChart")) return;
+    const INK = "#062018", LIME = "#5BF2A6", RED = "#FF4D4D", YEL = "#FFE066";
+    Chart.defaults.font.family = "Manrope, system-ui, -apple-system, 'Segoe UI', sans-serif";
+    Chart.defaults.font.size = 12;
+    Chart.defaults.color = "#3E5A4F";
+    const som = v => Math.round(v).toLocaleString("ru-RU").replace(/\s|,/g, " ");
+    new Chart(document.getElementById("moneyChart"), {
+      data: {
+        labels: C.labels,
+        datasets: [
+          { type: "bar", label: "Tushum", data: C.revenue, backgroundColor: LIME, borderRadius: 4, stack: "in" },
+          { type: "bar", label: "AI xarajat", data: C.ai, backgroundColor: RED, borderRadius: 4, stack: "out" },
+          { type: "bar", label: "Boshqa xarajat", data: C.other, backgroundColor: YEL, borderRadius: 4, stack: "out" },
+          { type: "line", label: "Foyda", data: C.profit, borderColor: INK, backgroundColor: INK, borderWidth: 2,
+            pointRadius: C.labels.length > 20 ? 0 : 3, tension: 0.3 },
+        ],
+      },
+      options: {
+        maintainAspectRatio: false, interaction: { mode: "index", intersect: false },
+        plugins: { legend: { position: "top", align: "end", labels: { boxWidth: 10, boxHeight: 10, usePointStyle: true } },
+          tooltip: { callbacks: { label: (c) => c.dataset.label + ": " + som(c.raw) + " so'm" } } },
+        scales: { x: { grid: { display: false }, ticks: { maxTicksLimit: 12 } },
+          y: { grid: { color: "#E3F0E9", drawTicks: false }, ticks: { callback: (v) => Math.abs(v) >= 1000 ? (v / 1000) + "k" : v } } },
+      },
+    });
+  })();
+</script>
+{% endblock %}

@@ -358,6 +358,7 @@
   {% set g_users = active in ('users', 'support', 'broadcast') %}
   {% set g_checks = active in ('checks', 'questions', 'charts') %}
   {% set g_centers = active in ('teachers', 'groups') %}
+  {% set g_money = active in ('finance', 'payments') %}
   {% set g_admin = active in ('errors', 'settings', 'admins', 'audit') %}
   <aside class="side" id="bzSide" aria-label="Bo'limlar">
     <div class="side-top">
@@ -396,7 +397,14 @@
         </div>
       </details>
 
-      <a class="si {{ 'active' if active == 'payments' }}" href="/payments" data-tip="To'lovlar"><span class="ic">💳</span>To'lovlar{% if nav.payments %}<span class="nb" title="tasdiq kutmoqda">{{ nav.payments }}</span>{% endif %}</a>
+      <details class="sg {{ 'on' if g_money }}" data-group="money" {{ 'open' if g_money }}>
+        <summary><span class="ic">💰</span>Moliya{% if nav.payments %}<span class="nb" title="to'lov tasdiq kutmoqda">{{ nav.payments }}</span>{% endif %}<span class="car">▾</span></summary>
+        <div class="sub">
+          <div class="fly-h">Moliya</div>
+          <a href="/finance" class="{{ 'active' if active == 'finance' }}">Umumiy hisob</a>
+          <a href="/payments" class="{{ 'active' if active == 'payments' }}">To'lovlar{% if nav.payments %}<span class="nb" title="tasdiq kutmoqda">{{ nav.payments }}</span>{% endif %}</a>
+        </div>
+      </details>
 
       <details class="sg {{ 'on' if g_centers }}" data-group="centers" {{ 'open' if g_centers }}>
         <summary><span class="ic">🏫</span>Markazlar<span class="car">▾</span></summary>

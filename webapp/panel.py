@@ -747,7 +747,8 @@ ACTION_NAMES = {
     "azure_hours": "Azure limitini kiritdi", "admin_created": "Admin qo'shdi", "admin_password_reset": "Parolni yangiladi",
     "admin_enabled": "Adminni yoqdi", "admin_disabled": "Adminni o'chirdi", "export": "Excel yuklab oldi",
     "errors_cleared": "Xatolarni tozaladi", "center_created": "Markaz yaratdi", "center_deleted": "Markazni o'chirdi",
-    "teacher_revoked": "O'qituvchilikni oldi",
+    "teacher_revoked": "O'qituvchilikni oldi", "finance_entry": "Moliyaga yozuv qo'shdi",
+    "finance_entry_deleted": "Moliyadan yozuvni o'chirdi",
 }
 
 

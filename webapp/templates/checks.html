@@ -62,26 +62,21 @@
       <td>{% if c.band is not none %}<span class="band-chip {{ 'hi' if c.band >= 7 else ('lo' if c.band < 5.5 else '') }}">{{ "%.1f"|format(c.band) }}</span>{% else %}—{% endif %}</td>
       <td class="muted" style="font-size:12.5px">{{ c.criteria }}</td>
       {% endif %}
+      {% set who = c.user.full_name if c.user else c.user_id|string %}
       <td class="t-cell">
         {% if c.teacher %}
-        <span class="band-chip">{{ "%.1f"|format(c.teacher.overall) }}</span>
-        <span class="muted" style="font-size:12px">{% for k, label, v in c.fields %}{{ k }} {{ "%g"|format(v) }}{{ " · " if not loop.last }}{% endfor %}</span>
-        {% if not teacher_view and c.diff and c.diff.overall is not none %}<span class="t-diff {{ 'neg' if c.diff.overall <= -1 else 'pos' if c.diff.overall >= 1 else '' }}">bot {{ "%+.1f"|format(c.diff.overall) }}</span>{% endif %}
+        <div class="t-has">
+          <span class="band-chip">{{ "%.1f"|format(c.teacher.overall) }}</span>
+          {% if not teacher_view and c.diff and c.diff.overall is not none %}<span class="t-diff {{ 'neg' if c.diff.overall <= -1 else 'pos' if c.diff.overall >= 1 else '' }}">bot {{ "%+.1f"|format(c.diff.overall) }}</span>{% endif %}
+          <div class="t-crits">{% for k, label, v in c.fields %}{{ k }} {{ "%g"|format(v) }}{{ " · " if not loop.last }}{% endfor %}</div>
+        </div>
         {% endif %}
-        <details class="t-form">
-          <summary class="btn btn-sm">{{ "O'zgartirish" if c.teacher else "Baholash" }}</summary>
-          <form method="post" action="/checks/{{ c.kind }}/{{ c.id }}/teacher">
-            <input type="hidden" name="back" value="{{ back }}">
-            <div class="t-fields">
-              {% for k, label, v in c.fields %}
-              <label>{{ label }}<input type="text" name="{{ k }}" inputmode="decimal" value="{{ '%g'|format(v) if v is not none else '' }}" placeholder="0-9" aria-label="{{ label }}"></label>
-              {% endfor %}
-            </div>
-            <input type="text" name="note" value="{{ c.teacher.note if c.teacher else '' }}" placeholder="Izoh (ixtiyoriy)" class="t-note">
-            <button type="submit" class="btn btn-good btn-sm">Saqlash</button>
-            {% if c.teacher %}<span class="hint">Olib tashlash uchun barcha bandlarni bo'shatib saqlang.</span>{% endif %}
-          </form>
-        </details>
+        {% set mark = {"kind": c.kind, "id": c.id, "title": c.label ~ " #" ~ c.id, "who": who, "when": c.when,
+                       "fields": c.fields, "note": (c.teacher.note if c.teacher else ""), "marked": c.teacher is not none,
+                       "bot": (none if teacher_view else c.bot), "band": (none if teacher_view else c.band),
+                       "audio": ("/audio/s/" ~ c.id) if c.audio else none,
+                       "answer": ("/checks/w/" ~ c.id ~ "/answer") if c.kind == "w" else none} %}
+        <button type="button" class="btn btn-sm t-open" data-mark='{{ mark|tojson }}'>{{ "✎ O'zgartirish" if c.teacher else "Baholash" }}</button>
       </td>
       {% if not teacher_view %}
       <td>{{ (c.coins ~ " coin") if c.coins else c.paid }}</td>
@@ -89,7 +84,7 @@
       {% endif %}
       <td style="white-space:nowrap">
         {% if c.kind == "w" %}<a class="btn btn-sm" href="/checks/w/{{ c.id }}/answer" target="_blank">Javob</a>{% endif %}
-        {% if c.audio %}<a class="btn btn-sm" href="/audio/s/{{ c.id }}" target="_blank">🎧 Audio</a>{% endif %}
+        {% if c.audio %}<button type="button" class="btn btn-sm a-open" data-audio='{{ {"src": "/audio/s/" ~ c.id, "title": c.label ~ " #" ~ c.id, "who": who, "when": c.when}|tojson }}'>🎧 Audio</button>{% endif %}
         {% if c.pdf and not teacher_view %}<a class="btn btn-sm" href="/reports/{{ c.kind }}/{{ c.id }}.pdf" target="_blank">PDF</a>{% endif %}
       </td>
     </tr>
@@ -107,18 +102,440 @@
   .t-cmp { padding: 12px 16px; margin-bottom: 14px; font-size: 14px; }
   .t-crit { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 6px; font-size: 13px; color: var(--ink-soft); }
   .neg { color: #c2410c; } .pos { color: #1d4ed8; }
-  .t-cell { min-width: 150px; }
+  .t-cell { min-width: 140px; }
+  .t-has { margin-bottom: 6px; }
+  .t-crits { margin-top: 3px; font-size: 12px; color: var(--ink-faint); white-space: nowrap; }
   .t-diff { display: inline-block; font-size: 12px; font-weight: 700; margin-left: 4px; }
-  .t-form { margin-top: 4px; }
-  .t-form summary { list-style: none; cursor: pointer; display: inline-block; }
-  .t-form summary::-webkit-details-marker { display: none; }
-  .t-form form { margin-top: 8px; display: grid; gap: 8px; max-width: 320px; }
-  .t-fields { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
-  .t-fields label { display: grid; gap: 2px; font-size: 11.5px; color: var(--ink-soft); }
-  .t-fields input { width: 100%; min-width: 0; padding: 6px; text-align: center; }
-  .t-note { width: 100%; }
   table .r, th.r { text-align: right; }
   a.who:hover { text-decoration: none; }
   @media (max-width: 560px) { .c-sum { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+  /* the marking and the listening windows (2026-11-14: the inline form was too tight) */
+  .mk-card, .au-card { position: relative; width: min(580px, 100%); max-height: calc(100vh - 32px); overflow-y: auto; padding: 24px 24px 20px;
+    text-align: left; }
+  .au-card { width: min(640px, 100%); }
+  .mk-x { position: absolute; top: 14px; right: 14px; display: grid; place-items: center; width: 34px; height: 34px; border: 0; border-radius: 50%;
+    background: var(--mint-2); color: var(--ink); font-size: 20px; line-height: 1; cursor: pointer; }
+  .mk-x:hover { background: var(--mint); }
+  .mk-head { display: flex; align-items: center; gap: 14px; padding-right: 40px; margin-bottom: 18px; }
+  .mk-ic { flex: none; display: grid; place-items: center; width: 50px; height: 50px; border-radius: 50%; background: var(--mint); font-size: 24px; }
+  .mk-head h3 { margin: 0 0 2px; font: 800 18px/1.25 var(--font-head); letter-spacing: -0.01em; color: var(--ink); }
+  .mk-sub { margin: 0; font-size: 13.5px; color: var(--ink-soft); }
+  .mk-media { margin-bottom: 16px; }
+  .mk-answer { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 11px; border-radius: 14px;
+    border: 1px dashed var(--border-strong); background: var(--paper); font-size: 14px; }
+  .mk-answer:hover { text-decoration: none; border-color: var(--moss); background: var(--mint-2); }
+  .mk-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .mk-c { padding: 12px 12px 10px; border: 1px solid var(--border); border-radius: 16px; background: var(--surface); transition: border-color .15s, box-shadow .15s; }
+  .mk-c:focus-within { border-color: var(--moss); box-shadow: 0 0 0 3px rgba(91,242,166,0.35); }
+  .mk-c.bad { border-color: var(--red); box-shadow: 0 0 0 3px var(--red-tint); }
+  .mk-c label { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 8px; font-size: 13px; font-weight: 800; color: var(--ink); }
+  .mk-c label span { font-size: 11px; font-weight: 800; letter-spacing: 0.06em; color: var(--ink-faint); }
+  .mk-step { display: grid; grid-template-columns: 40px minmax(0, 1fr) 40px; align-items: center; gap: 8px; }
+  .mk-pm { height: 40px; border: 1px solid var(--border-strong); border-radius: 12px; background: var(--paper); color: var(--ink);
+    font: 800 18px/1 var(--font); cursor: pointer; }
+  .mk-pm:hover { background: var(--mint); border-color: var(--moss); }
+  .mk-step input[type=text] { width: 100%; height: 44px; padding: 0 6px; text-align: center; font: 800 22px/1 var(--font-head); border-radius: 12px; }
+  .mk-total { display: flex; align-items: center; gap: 12px; margin: 14px 0 12px; padding: 12px 16px; border-radius: 16px; background: var(--ink); color: #fff; }
+  .mk-total span { font-size: 13px; font-weight: 700; color: rgba(255,255,255,0.7); }
+  .mk-total b { font: 800 24px/1 var(--font-head); color: var(--lime); }
+  .mk-total em { margin-left: auto; font-style: normal; font-size: 12.5px; font-weight: 700; color: #FFB4A8; text-align: right; }
+  .mk-card textarea { min-height: 60px; }
+  .mk-bot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-top: 12px; padding: 10px 12px; border-radius: 14px;
+    background: var(--mint-2); font-size: 13px; color: var(--ink-soft); }
+  .mk-bot b { color: var(--ink); }
+  .mk-bot .bc { display: inline-flex; gap: 4px; padding: 2px 9px; border-radius: 100px; background: var(--surface); border: 1px solid var(--border);
+    font-weight: 700; color: var(--ink); }
+  .mk-bot .bc.all { background: var(--ink); color: var(--lime); border-color: var(--ink); }
+  .mk-card .modal-btns { margin-top: 16px; }
+  .mk-card [hidden] { display: none !important; }
+  .mk-clear { display: block; margin: 12px auto 0; border: 0; background: none; color: #c2410c; font: 700 13px/1.4 var(--font); cursor: pointer; }
+  .mk-clear:hover { text-decoration: underline; }
+
+  /* the player: the recording's waveform, played part in Moss */
+  .pl { display: grid; gap: 10px; }
+  .pl-wave { position: relative; height: 84px; border-radius: 14px; background: var(--paper); cursor: pointer; touch-action: none; user-select: none; }
+  .pl-wave canvas { position: absolute; inset: 8px 12px; width: calc(100% - 24px); height: calc(100% - 16px); }
+  .pl-wave:focus-visible { outline: 2px solid var(--moss); outline-offset: 2px; }
+  .pl-tip { position: absolute; top: -8px; transform: translate(-50%, -100%); padding: 3px 8px; border-radius: 8px; background: var(--ink); color: #fff;
+    font-size: 12px; font-weight: 700; pointer-events: none; opacity: 0; transition: opacity .12s; white-space: nowrap; }
+  .pl-wave:hover .pl-tip { opacity: 1; }
+  .pl-msg { position: absolute; inset: 0; display: grid; place-items: center; font-size: 13px; font-weight: 700; color: var(--ink-soft); pointer-events: none; }
+  .pl-msg.err { color: #c2410c; }
+  .pl-times { display: flex; justify-content: space-between; margin-top: -4px; font-size: 12.5px; font-weight: 700; color: var(--ink-soft);
+    font-variant-numeric: tabular-nums; }
+  .pl-ctrl { display: flex; align-items: center; justify-content: center; gap: 18px; }
+  .pl-b { display: grid; place-items: center; width: 44px; height: 44px; border: 0; border-radius: 50%; background: var(--mint-2); color: var(--ink); cursor: pointer; }
+  .pl-b:hover { background: var(--mint); }
+  .pl-b svg { width: 24px; height: 24px; }
+  .pl-play { display: grid; place-items: center; width: 64px; height: 64px; border: 0; border-radius: 50%; background: var(--lime); color: var(--ink); cursor: pointer;
+    box-shadow: 0 8px 22px rgba(43,203,123,0.45); transition: transform .12s; }
+  .pl-play:hover { transform: scale(1.05); }
+  .pl-play:active { transform: scale(0.97); }
+  .pl-play svg { width: 30px; height: 30px; }
+  .pl-play:disabled, .pl-b:disabled { opacity: 0.4; cursor: default; transform: none; }
+  .pl-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+  .pl-speeds { display: inline-flex; padding: 3px; border-radius: 100px; background: var(--mint-2); }
+  .pl-speeds button { border: 0; background: none; padding: 5px 10px; border-radius: 100px; font: 800 12.5px/1 var(--font); color: var(--ink-soft); cursor: pointer; }
+  .pl-speeds button[aria-pressed=true] { background: var(--ink); color: var(--lime); }
+  .pl-vol { display: inline-flex; align-items: center; gap: 6px; }
+  .pl-vol button, .pl-dl { display: grid; place-items: center; width: 34px; height: 34px; border: 0; border-radius: 50%; background: var(--mint-2); color: var(--ink); cursor: pointer; }
+  .pl-vol button:hover, .pl-dl:hover { background: var(--mint); text-decoration: none; }
+  .pl-vol svg, .pl-dl svg { width: 18px; height: 18px; }
+  .pl-vol input[type=range] { width: 96px; accent-color: var(--moss); }
+  .pl-right { display: inline-flex; align-items: center; gap: 10px; }
+  /* compact: inside the marking window, the play button beside the waveform */
+  .pl.compact { grid-template-columns: 52px minmax(0, 1fr); align-items: center; gap: 8px 12px; padding: 10px 12px; border-radius: 16px; background: var(--paper); }
+  .pl.compact .pl-ctrl { grid-row: 1; grid-column: 1; }
+  .pl.compact .pl-ctrl .pl-b { display: none; }
+  .pl.compact .pl-play { width: 52px; height: 52px; box-shadow: none; }
+  .pl.compact .pl-play svg { width: 24px; height: 24px; }
+  .pl.compact .pl-wave { grid-row: 1; grid-column: 2; height: 56px; background: var(--surface); }
+  .pl.compact .pl-wave canvas { inset: 6px 10px; width: calc(100% - 20px); height: calc(100% - 12px); }
+  .pl.compact .pl-times { grid-column: 1 / -1; margin: 0; }
+  .pl.compact .pl-foot { grid-column: 1 / -1; }
+  .pl.compact .pl-vol input[type=range] { width: 70px; }
+  @media (max-width: 560px) {
+    .mk-card, .au-card { padding: 20px 16px 16px; }
+    .mk-grid { gap: 8px; }
+    .mk-c { padding: 10px 10px 8px; }
+    .mk-c label { font-size: 12px; }
+    .mk-step { grid-template-columns: 34px minmax(0, 1fr) 34px; gap: 6px; }
+    .pl-vol input[type=range] { display: none; }
+  }
 </style>
+
+<div class="modal mk-modal" id="mkModal" hidden>
+  <form class="modal-card mk-card" id="mkForm" method="post" role="dialog" aria-modal="true" aria-labelledby="mkTitle" novalidate>
+    <button type="button" class="mk-x" data-close aria-label="Yopish">×</button>
+    <div class="mk-head">
+      <div class="mk-ic" aria-hidden="true">👩‍🏫</div>
+      <div><h3 id="mkTitle"></h3><p class="mk-sub" id="mkSub"></p></div>
+    </div>
+    <input type="hidden" name="back" value="{{ back }}">
+    <div class="mk-media" id="mkMedia"></div>
+    <div class="mk-grid" id="mkGrid"></div>
+    <div class="mk-total"><span>Umumiy band</span><b id="mkOverall">—</b><em id="mkErr"></em></div>
+    <textarea name="note" id="mkNote" rows="2" maxlength="500" placeholder="Izoh (ixtiyoriy)" aria-label="Izoh"></textarea>
+    <div class="mk-bot" id="mkBot" hidden></div>
+    <div class="modal-btns"><button type="button" class="btn" data-close>Bekor qilish</button><button type="submit" class="btn btn-good">Saqlash</button></div>
+    <button type="button" class="mk-clear" id="mkClear" hidden>Ustoz bahosini olib tashlash</button>
+  </form>
+</div>
+
+<div class="modal au-modal" id="auModal" hidden>
+  <div class="modal-card au-card" role="dialog" aria-modal="true" aria-labelledby="auTitle">
+    <button type="button" class="mk-x" data-close aria-label="Yopish">×</button>
+    <div class="mk-head">
+      <div class="mk-ic" aria-hidden="true">🎧</div>
+      <div><h3 id="auTitle"></h3><p class="mk-sub" id="auSub"></p></div>
+    </div>
+    <div id="auPlayer"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var I = {
+    play: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z" fill="currentColor"/></svg>',
+    pause: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="5" width="4" height="14" rx="1.2" fill="currentColor"/><rect x="13.5" y="5" width="4" height="14" rx="1.2" fill="currentColor"/></svg>',
+    back: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1"/><path d="M3.5 4v5h5"/><text x="12.6" y="15.6" text-anchor="middle" font-size="7.5" font-weight="800" font-family="Manrope, sans-serif" fill="currentColor" stroke="none">10</text></svg>',
+    fwd: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 12a8.5 8.5 0 1 1-2.6-6.1"/><path d="M20.5 4v5h-5"/><text x="11.4" y="15.6" text-anchor="middle" font-size="7.5" font-weight="800" font-family="Manrope, sans-serif" fill="currentColor" stroke="none">10</text></svg>',
+    vol: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z" fill="currentColor"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>',
+    mute: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z" fill="currentColor"/><path d="m16 9 5 6M21 9l-5 6"/></svg>',
+    dl: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><path d="m7 10 5 5 5-5"/><path d="M5 20h14"/></svg>',
+  };
+  var SPEEDS = [0.75, 1, 1.25, 1.5, 2];
+  function clock(s) {
+    if (!isFinite(s) || s < 0) s = 0;
+    s = Math.floor(s);
+    return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+  }
+
+  /* A recording's player: the file is fetched once, its waveform drawn from the decoded sound, played from memory
+     (so every second can be jumped to). Space plays and pauses, the arrows skip 5 seconds. */
+  function Player(box, src, compact) {
+    box.innerHTML =
+      '<div class="pl' + (compact ? " compact" : "") + '">' +
+      '<div class="pl-wave" tabindex="0" role="slider" aria-label="Yozuvning joyi" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">' +
+      '<canvas></canvas><span class="pl-tip"></span><div class="pl-msg">Yuklanmoqda…</div></div>' +
+      '<div class="pl-times"><span class="pl-cur">0:00</span><span class="pl-dur">—</span></div>' +
+      '<div class="pl-ctrl"><button type="button" class="pl-b pl-back" title="10 soniya orqaga" disabled>' + I.back + '</button>' +
+      '<button type="button" class="pl-play" title="Ijro / pauza (Probel)" aria-label="Ijro etish" disabled>' + I.play + '</button>' +
+      '<button type="button" class="pl-b pl-fwd" title="10 soniya oldinga" disabled>' + I.fwd + '</button></div>' +
+      '<div class="pl-foot"><div class="pl-speeds" role="group" aria-label="Tezlik">' +
+      SPEEDS.map(function (v) { return '<button type="button" data-v="' + v + '" aria-pressed="' + (v === 1) + '">' + v + '×</button>'; }).join("") +
+      '</div><div class="pl-right"><div class="pl-vol"><button type="button" class="pl-mute" title="Ovozni o\'chirish" aria-label="Ovozni o\'chirish">' + I.vol + '</button>' +
+      '<input type="range" min="0" max="1" step="0.05" value="1" aria-label="Ovoz balandligi"></div>' +
+      '<a class="pl-dl" href="' + src + '" download title="Yuklab olish" aria-label="Yuklab olish">' + I.dl + '</a></div></div></div>';
+    var q = function (s) { return box.querySelector(s); };
+    var wave = q(".pl-wave"), canvas = q("canvas"), tip = q(".pl-tip"), msg = q(".pl-msg"), cur = q(".pl-cur"), dur = q(".pl-dur"),
+        play = q(".pl-play"), back = q(".pl-back"), fwd = q(".pl-fwd"), mute = q(".pl-mute"), vol = q(".pl-vol input");
+    var audio = new Audio(), url = null, peaks = null, hoverX = null, raf = 0, dead = false, ctx = canvas.getContext("2d");
+    audio.preload = "auto";
+
+    function draw() {
+      var dpr = window.devicePixelRatio || 1, w = canvas.clientWidth, h = canvas.clientHeight;
+      if (!w || !h) return;
+      if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+        canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+      }
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, w, h);
+      var step = 5, bw = 3, n = Math.max(10, Math.floor((w + 2) / step));
+      var p = audio.duration ? audio.currentTime / audio.duration : 0;
+      for (var i = 0; i < n; i++) {
+        var v = 0.12;
+        if (peaks) {
+          var a = Math.floor(i / n * peaks.length), b = Math.max(a + 1, Math.floor((i + 1) / n * peaks.length));
+          v = 0;
+          for (var j = a; j < b; j++) if (peaks[j] > v) v = peaks[j];
+        }
+        var x = i * step, bh = Math.max(3, v * h), y = (h - bh) / 2;
+        var played = (x + bw / 2) / w <= p;
+        ctx.fillStyle = played ? "#0A7C4A" : (hoverX !== null && x <= hoverX ? "#8CC9A8" : "#C9DDD2");
+        if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(x, y, bw, bh, 1.5); ctx.fill(); } else ctx.fillRect(x, y, bw, bh);
+      }
+      cur.textContent = clock(audio.currentTime);
+      wave.setAttribute("aria-valuenow", Math.round(p * 100));
+    }
+    function loop() { draw(); if (!audio.paused) raf = requestAnimationFrame(loop); }
+    function icon() {
+      play.innerHTML = audio.paused ? I.play : I.pause;
+      play.setAttribute("aria-label", audio.paused ? "Ijro etish" : "Pauza");
+    }
+    function seekTo(clientX) {
+      var r = canvas.getBoundingClientRect(), f = Math.min(1, Math.max(0, (clientX - r.left) / r.width));
+      if (audio.duration) audio.currentTime = f * audio.duration;
+      draw();
+    }
+    function skip(s) { if (audio.duration) { audio.currentTime = Math.min(audio.duration, Math.max(0, audio.currentTime + s)); draw(); } }
+    function toggle() { if (!audio.duration) return; if (audio.paused) audio.play(); else audio.pause(); }
+
+    play.addEventListener("click", toggle);
+    back.addEventListener("click", function () { skip(-10); });
+    fwd.addEventListener("click", function () { skip(10); });
+    q(".pl-speeds").addEventListener("click", function (e) {
+      var b = e.target.closest("button[data-v]");
+      if (!b) return;
+      audio.playbackRate = +b.dataset.v;
+      box.querySelectorAll(".pl-speeds button").forEach(function (x) { x.setAttribute("aria-pressed", x === b ? "true" : "false"); });
+    });
+    function volIcon() { mute.innerHTML = audio.muted || audio.volume === 0 ? I.mute : I.vol; }
+    mute.addEventListener("click", function () { audio.muted = !audio.muted; volIcon(); });
+    vol.addEventListener("input", function () { audio.volume = +vol.value; audio.muted = false; volIcon(); });
+    var dragging = false;
+    wave.addEventListener("pointerdown", function (e) { dragging = true; wave.setPointerCapture(e.pointerId); seekTo(e.clientX); });
+    wave.addEventListener("pointermove", function (e) {
+      var r = canvas.getBoundingClientRect(), x = e.clientX - r.left;
+      hoverX = Math.min(r.width, Math.max(0, x));
+      if (audio.duration) { tip.textContent = clock(hoverX / r.width * audio.duration); tip.style.left = (hoverX + 12) + "px"; }
+      if (dragging) seekTo(e.clientX); else draw();
+    });
+    wave.addEventListener("pointerup", function () { dragging = false; });
+    wave.addEventListener("pointerleave", function () { hoverX = null; draw(); });
+    wave.addEventListener("keydown", function (e) {
+      if (e.key === "ArrowLeft") { e.preventDefault(); skip(-5); }
+      else if (e.key === "ArrowRight") { e.preventDefault(); skip(5); }
+    });
+    audio.addEventListener("play", function () { icon(); cancelAnimationFrame(raf); loop(); });
+    audio.addEventListener("pause", function () { icon(); draw(); });
+    audio.addEventListener("ended", function () { icon(); draw(); });
+    audio.addEventListener("loadedmetadata", function () { dur.textContent = clock(audio.duration); draw(); });
+    var onResize = function () { draw(); };
+    window.addEventListener("resize", onResize);
+
+    fetch(src, { credentials: "same-origin" }).then(function (r) {
+      if (!r.ok || (r.headers.get("content-type") || "").indexOf("text/html") === 0) throw new Error("not found");
+      return r.arrayBuffer();
+    }).then(function (buf) {
+      if (dead) return;
+      url = URL.createObjectURL(new Blob([buf], { type: "audio/mpeg" }));
+      audio.src = url;
+      [play, back, fwd].forEach(function (b) { b.disabled = false; });
+      msg.remove();
+      draw();
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      var ac = new AC();
+      ac.decodeAudioData(buf.slice(0), function (sound) {
+        var data = sound.getChannelData(0), N = 800, block = Math.max(1, Math.floor(data.length / N)), stride = Math.max(1, Math.floor(block / 48)), out = [], top = 0;
+        for (var i = 0; i < N; i++) {
+          var m = 0;
+          for (var j = i * block, e = Math.min(data.length, j + block); j < e; j += stride) { var a = Math.abs(data[j]); if (a > m) m = a; }
+          out.push(m); if (m > top) top = m;
+        }
+        peaks = out.map(function (v) { return top ? Math.pow(v / top, 0.8) : 0; });
+        if (ac.close) ac.close();
+        draw();
+      }, function () { if (ac.close) ac.close(); });
+    }).catch(function () {
+      if (dead) return;
+      msg.textContent = "Audio topilmadi";
+      msg.classList.add("err");
+    });
+    draw();
+    return {
+      toggle: toggle, skip: skip,
+      destroy: function () {
+        dead = true;
+        audio.pause();
+        cancelAnimationFrame(raf);
+        window.removeEventListener("resize", onResize);
+        if (url) URL.revokeObjectURL(url);
+        audio.removeAttribute("src");
+        box.innerHTML = "";
+      },
+    };
+  }
+
+  function show(m) {
+    m.hidden = false;
+    document.body.classList.add("modal-open");
+    requestAnimationFrame(function () { requestAnimationFrame(function () { m.classList.add("in"); }); });
+  }
+  function hide(m) {
+    m.classList.remove("in");
+    document.body.classList.remove("modal-open");
+    setTimeout(function () { if (!m.classList.contains("in")) m.hidden = true; }, 180);
+  }
+
+  /* --- listening */
+  var au = document.getElementById("auModal"), auPlayer = null;
+  function closeAudio() { if (auPlayer) { auPlayer.destroy(); auPlayer = null; } hide(au); }
+  document.querySelectorAll(".a-open").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var d = JSON.parse(b.dataset.audio);
+      document.getElementById("auTitle").textContent = d.title;
+      document.getElementById("auSub").textContent = d.who + " · " + d.when;
+      show(au);
+      auPlayer = Player(document.getElementById("auPlayer"), d.src, false);
+      setTimeout(function () { au.querySelector(".pl-play").focus(); }, 60);
+    });
+  });
+
+  /* --- marking: a teacher's (or an admin's) bands, the overall counted as the bot counts it (down to the half) */
+  var mk = document.getElementById("mkModal"), form = document.getElementById("mkForm"), grid = document.getElementById("mkGrid"),
+      overall = document.getElementById("mkOverall"), err = document.getElementById("mkErr"), note = document.getElementById("mkNote"),
+      botBox = document.getElementById("mkBot"), media = document.getElementById("mkMedia"), clear = document.getElementById("mkClear"),
+      mkPlayer = null, current = null;
+  var NAMES = { TA: "Task Achievement", CC: "Coherence & Cohesion", LR: "Lexical Resource", GRA: "Grammatical Range & Accuracy",
+                FC: "Fluency & Coherence", P: "Pronunciation" };
+  function band(raw) {
+    raw = String(raw || "").trim().replace(",", ".");
+    if (!raw) return null;
+    var v = Number(raw);
+    if (!isFinite(v) || v < 0 || v > 9 || v * 2 !== Math.floor(v * 2)) return NaN;
+    return v;
+  }
+  function recount() {
+    var vals = [], bad = 0, empty = 0;
+    grid.querySelectorAll(".mk-c").forEach(function (c) {
+      var v = band(c.querySelector("input").value);
+      c.classList.toggle("bad", Number.isNaN(v));
+      if (Number.isNaN(v)) bad++; else if (v === null) empty++; else vals.push(v);
+    });
+    overall.textContent = !bad && !empty ? (Math.floor(vals.reduce(function (a, b) { return a + b; }, 0) / vals.length * 2 + 1e-9) / 2).toFixed(1) : "—";
+    err.textContent = bad ? "0–9, yarim band qadam bilan (6 yoki 6.5)" : "";
+    return { bad: bad, empty: empty, n: vals.length };
+  }
+  function closeMark() { if (mkPlayer) { mkPlayer.destroy(); mkPlayer = null; } hide(mk); }
+  document.querySelectorAll(".t-open").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var d = current = JSON.parse(b.dataset.mark);
+      form.action = "/checks/" + d.kind + "/" + d.id + "/teacher";
+      document.getElementById("mkTitle").textContent = (d.marked ? "Bahoni o'zgartirish · " : "Baholash · ") + d.title;
+      document.getElementById("mkSub").textContent = d.who + " · " + d.when;
+      grid.innerHTML = "";
+      d.fields.forEach(function (f) {
+        var key = f[0], name = key === "TA" && d.title.indexOf("Task 2") >= 0 ? "Task Response" : (NAMES[key] || f[1]);
+        var c = document.createElement("div");
+        c.className = "mk-c";
+        c.innerHTML = '<label for="mk-' + key + '"></label><div class="mk-step">' +
+          '<button type="button" class="mk-pm" data-d="-0.5" aria-label="0.5 kamaytirish">−</button>' +
+          '<input type="text" id="mk-' + key + '" name="' + key + '" inputmode="decimal" autocomplete="off" placeholder="—">' +
+          '<button type="button" class="mk-pm" data-d="0.5" aria-label="0.5 oshirish">+</button></div>';
+        c.querySelector("label").textContent = name;
+        var tag = document.createElement("span"); tag.textContent = key; c.querySelector("label").appendChild(tag);
+        c.querySelector("input").value = f[2] === null || f[2] === undefined ? "" : String(f[2]);
+        grid.appendChild(c);
+      });
+      note.value = d.note || "";
+      clear.hidden = !d.marked;
+      botBox.hidden = true;
+      if (d.bot && Object.keys(d.bot).some(function (k) { return d.bot[k] !== null; })) {
+        botBox.innerHTML = "<b>🤖 Bot bahosi:</b>";
+        d.fields.forEach(function (f) {
+          var s = document.createElement("span"); s.className = "bc";
+          s.textContent = f[0] + " " + (d.bot[f[0]] === null || d.bot[f[0]] === undefined ? "—" : d.bot[f[0]]);
+          botBox.appendChild(s);
+        });
+        if (d.band !== null && d.band !== undefined) {
+          var all = document.createElement("span"); all.className = "bc all"; all.textContent = "Umumiy " + Number(d.band).toFixed(1);
+          botBox.appendChild(all);
+        }
+        botBox.hidden = false;
+      }
+      media.innerHTML = "";
+      media.hidden = !(d.audio || d.answer);
+      if (d.audio) mkPlayer = Player(media, d.audio, true);
+      else if (d.answer) media.innerHTML = '<a class="mk-answer" href="' + d.answer + '" target="_blank">📄 Talabaning javobini ochish (yangi oynada) ↗</a>';
+      recount();
+      show(mk);
+      setTimeout(function () { var i = grid.querySelector("input"); if (i) i.focus(); }, 60);
+    });
+  });
+  grid.addEventListener("input", recount);
+  grid.addEventListener("click", function (e) {
+    var b = e.target.closest(".mk-pm");
+    if (!b) return;
+    var input = b.parentNode.querySelector("input"), v = band(input.value), d = +b.dataset.d;
+    var start = current && current.bot && typeof current.bot[input.name] === "number" ? current.bot[input.name] : 6;
+    v = v === null || Number.isNaN(v) ? start : Math.min(9, Math.max(0, v + d));
+    input.value = String(v);
+    recount();
+  });
+  form.addEventListener("submit", function (e) {
+    var r = recount();
+    if (r.bad || (r.empty && r.n) || (!r.n && !current.marked)) {
+      e.preventDefault();
+      err.textContent = r.bad ? err.textContent : "Har bir mezonga band qo'ying";
+      var first = grid.querySelector(".mk-c.bad input") || Array.prototype.find.call(grid.querySelectorAll("input"), function (i) { return !i.value.trim(); });
+      if (first) first.focus();
+      return;
+    }
+    if (!r.n && current.marked) {  // every band emptied: the same as "take off"
+      e.preventDefault();
+      clear.click();
+    }
+  });
+  clear.addEventListener("click", function () {
+    window.bz.confirm({ title: "Ustoz bahosi olib tashlansinmi?", text: current.title, ok: "Olib tashlash", tone: "danger" }).then(function (ok) {
+      if (!mk.hidden) document.body.classList.add("modal-open");
+      if (!ok) return;
+      grid.querySelectorAll("input").forEach(function (i) { i.value = ""; });
+      form.submit();
+    });
+  });
+
+  [mk, au].forEach(function (m) {
+    m.addEventListener("click", function (e) {
+      if (e.target === m || e.target.closest("[data-close]")) (m === mk ? closeMark : closeAudio)();
+    });
+  });
+  document.addEventListener("keydown", function (e) {
+    var confirmOpen = !document.getElementById("bzModal").hidden;
+    if (confirmOpen) return;
+    var open = !au.hidden ? au : !mk.hidden ? mk : null;
+    if (!open) return;
+    if (e.key === "Escape") { e.preventDefault(); (open === mk ? closeMark : closeAudio)(); return; }
+    var typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) && e.target.type !== "range";
+    var player = open === au ? auPlayer : mkPlayer;
+    if (!player || typing || e.target.tagName === "BUTTON") return;
+    if (e.key === " ") { e.preventDefault(); player.toggle(); }
+    else if (e.key === "ArrowLeft" && !e.target.closest(".pl-wave")) { e.preventDefault(); player.skip(-5); }
+    else if (e.key === "ArrowRight" && !e.target.closest(".pl-wave")) { e.preventDefault(); player.skip(5); }
+  });
+})();
+</script>
 {% endblock %}

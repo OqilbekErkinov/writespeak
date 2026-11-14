@@ -79,6 +79,11 @@ from webapp import charts  # noqa: E402
 
 charts.templates = templates
 app.include_router(charts.router)
+# Finance: every income and expense, month by month (2026-11-14).
+from webapp import finance  # noqa: E402
+
+finance.templates = templates
+app.include_router(finance.router)
 
 
 @app.on_event("startup")

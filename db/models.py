@@ -457,6 +457,23 @@ class WebAdmin(Base):
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class FinanceEntry(Base):
+    """Money that moves outside the bot, entered by hand on the panel's finance page (webapp/finance.py,
+    2026-11-14): a server bill, the domain, ads, a cash payment from a center... The bot's own money - the
+    approved payments and the OpenAI spend ledger - is counted there by itself."""
+
+    __tablename__ = "finance_entries"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    kind: Mapped[str] = mapped_column(String(10))  # "expense" | "income"
+    category: Mapped[str] = mapped_column(String(40))
+    amount: Mapped[int] = mapped_column(Integer)  # so'm
+    day: Mapped[date] = mapped_column(Date, index=True)  # the Tashkent day it belongs to
+    note: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    created_by: Mapped[str] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class AdminAction(Base):
     """What was done in the web panel, by whom (the audit log): payment
     decisions, coin changes, messages, broadcasts, blocks, settings, logins."""
