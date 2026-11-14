@@ -51,6 +51,8 @@ async def main() -> None:
             check(f"{path}: opens with the sidebar, no top bar; its group open", r.status_code == 200
                   and 'class="side"' in html and "topbar" not in html and opened
                   and html.count('data-group="') == 4, r.status_code)
+            check(f"{path}: the fold button, a flyout title per group, full width", 'id="bzFold"' in html
+                  and html.count('class="fly-h"') == 4 and ".wrap.wide" not in html and "max-width: 1440px" in html)
             if OUT:
                 OUT.mkdir(parents=True, exist_ok=True)
                 (OUT / f"{active}.html").write_text(html, encoding="utf-8")

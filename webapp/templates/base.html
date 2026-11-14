@@ -6,6 +6,7 @@
 <meta name="theme-color" content="#062018">
 <title>{% block title %}Bandzilla Admin{% endblock %}</title>
 <link rel="icon" type="image/png" sizes="32x32" href="https://bandzilla.uz/assets/favicon-32.png">
+<script>try { if (localStorage.getItem("bzSideMini") === "1") document.documentElement.classList.add("side-mini"); } catch (e) {}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&family=Unbounded:wght@700;800&display=swap">
@@ -111,9 +112,21 @@
   .mtop { display: none; }
   .side-shade { display: none; }
 
-  .main { margin-left: var(--side-w); min-width: 0; }
-  .wrap { max-width: 1120px; margin: 0 auto; padding: 36px 32px 60px; }
-  .wrap.wide { max-width: 1320px; }
+  .main { margin-left: var(--side-w); min-width: 0; transition: margin-left .2s ease; }
+  /* every page as wide as the screen allows (2026-11-14: no narrow pages any more) */
+  .wrap { max-width: 1440px; margin: 0 auto; padding: 36px 32px 60px; }
+
+  /* The fold button on the sidebar's spiky edge: the sidebar folds to a rail of icons and back, remembered in
+     this browser; folded, a group's links open beside it */
+  .side { transition: width .2s ease; }
+  .side-fold { position: absolute; z-index: 3; top: 21px; right: -14px; display: grid; place-items: center; width: 28px; height: 28px;
+    padding: 0; border: 2px solid var(--ink); border-radius: 50%; background: var(--lime); color: var(--ink); cursor: pointer;
+    box-shadow: 0 4px 12px rgba(6,32,24,0.25); transition: box-shadow .15s; }
+  .side-fold:hover { box-shadow: 0 0 0 4px rgba(91,242,166,0.35), 0 4px 12px rgba(6,32,24,0.25); }
+  .side-fold svg { display: block; transition: transform .2s ease; }
+  html.side-mini { --side-w: 76px; }
+  html.side-mini .side-fold svg { transform: rotate(180deg); }
+  .fly-h, .out-ic { display: none; }
 
   /* shared bits of the user pages and the dashboard */
   .ava { display: inline-grid; place-items: center; flex: none; width: 34px; height: 34px; border-radius: 50%;
@@ -276,7 +289,37 @@
   .dd-opt[aria-selected=true] svg { visibility: visible; }
   .dd-opt:disabled { opacity: 0.4; cursor: default; }
 
-  @media (max-width: 1280px) { :root { --side-w: 232px; } .wrap { padding: 32px 24px 56px; } }
+  @media (max-width: 1280px) { :root { --side-w: 232px; } .wrap { padding: 32px 24px 56px; } .side .brand img { height: 23px; } }
+  /* folded: icons only; a badge sits on its icon's corner, a page's name shows on hover, a group's links fly out */
+  @media (min-width: 961px) {
+    html.side-mini .side-top { justify-content: center; padding: 20px 0 14px; }
+    html.side-mini .side .brand img { width: 30px; height: 30px; object-fit: cover; object-position: left center; }
+    html.side-mini .brand .tag { display: none; }
+    html.side-mini .tw-chip { justify-content: center; margin: 0 12px 10px; padding: 7px 0; font-size: 16px; }
+    html.side-mini .tw-chip span { display: none; }
+    html.side-mini .side-nav { overflow: visible; padding: 4px 10px 16px; }
+    html.side-mini .si, html.side-mini .sg > summary { position: relative; justify-content: center; gap: 0; padding: 10px 0; font-size: 0; }
+    html.side-mini .sg > summary .car { display: none; }
+    html.side-mini .si .nb, html.side-mini .sg > summary .nb { display: inline-block; position: absolute; top: 1px; right: 3px; margin: 0;
+      min-width: 16px; padding: 0 4px; font-size: 10px; line-height: 16px; box-shadow: 0 0 0 2px var(--ink); }
+    html.side-mini .sg.on > summary { color: var(--ink); background: var(--lime); }
+    html.side-mini .sg { position: relative; }
+    html.side-mini .sg > .sub { display: none; }
+    html.side-mini .sg.fly > .sub { display: block; position: absolute; z-index: 5; top: -6px; left: calc(100% + 20px); width: 240px;
+      margin: 0; padding: 6px 8px 8px; border: 0; border-radius: 14px; background: var(--ink); box-shadow: 0 14px 36px rgba(6,32,24,0.35); }
+    html.side-mini .sg.fly > .sub::before { content: ""; position: absolute; top: 0; bottom: 0; left: -24px; width: 24px; }
+    html.side-mini .fly-h { display: block; padding: 6px 10px 6px; font-size: 10.5px; font-weight: 800; letter-spacing: 0.14em;
+      text-transform: uppercase; color: rgba(255,255,255,0.45); }
+    html.side-mini .si[data-tip]:hover::after { content: attr(data-tip); position: absolute; z-index: 5; top: 50%; left: calc(100% + 20px);
+      transform: translateY(-50%); padding: 7px 12px; border-radius: 10px; background: var(--ink); color: #fff; font-size: 13px;
+      font-weight: 700; white-space: nowrap; box-shadow: 0 10px 28px rgba(6,32,24,0.3); pointer-events: none; }
+    html.side-mini .side-me { flex-direction: column; gap: 8px; margin: 0 10px 14px; padding: 10px 0; }
+    html.side-mini .side-me .who-tx { display: none; }
+    html.side-mini .side-me .out { display: grid; place-items: center; width: 34px; height: 34px; padding: 0; }
+    html.side-mini .side-me .out span { display: none; }
+    html.side-mini .side-me .out .out-ic { display: block; }
+    html.side-anim .side-top, html.side-anim .tw-chip, html.side-anim .side-nav, html.side-anim .side-me { overflow: hidden; white-space: nowrap; }
+  }
   /* Under 960px the sidebar leaves the page: a thin Ink bar with ☰ opens it over the content */
   @media (max-width: 960px) {
     .main { margin-left: 0; }
@@ -284,6 +327,7 @@
     .side::after { display: none; }
     body.side-open .side { transform: none; box-shadow: 14px 0 40px rgba(6,32,24,0.35); }
     .side-x { display: grid; place-items: center; }
+    .side-fold { display: none; }
     .side-shade { display: block; position: fixed; inset: 0; z-index: 94; background: rgba(6,32,24,0.5);
       opacity: 0; pointer-events: none; transition: opacity .24s; }
     body.side-open .side-shade { opacity: 1; pointer-events: auto; }
@@ -320,20 +364,22 @@
       <a class="brand" href="{{ '/checks' if nav.teacher else '/' }}"><img src="https://bandzilla.uz/assets/logo-on-dark.webp" alt="Bandzilla" width="720" height="126"><span class="tag">{{ "Ustoz" if nav.teacher else "Admin" }}</span></a>
       <button type="button" class="side-x" id="bzSideX" aria-label="Menyuni yopish">×</button>
     </div>
+    <button type="button" class="side-fold" id="bzFold" aria-controls="bzSide" aria-expanded="true" title="Menyuni yig'ish"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>
     {% if nav.teacher %}
     <nav class="side-nav">
-      <a class="si {{ 'active' if active == 'checks' }}" href="/checks"><span class="ic">📝</span>Tekshiruvlar</a>
+      <a class="si {{ 'active' if active == 'checks' }}" href="/checks" data-tip="Tekshiruvlar"><span class="ic">📝</span>Tekshiruvlar</a>
     </nav>
     {% else %}
     {% if nav.window %}
     <a class="tw-chip" href="{{ '/settings' if nav.owner else '#' }}" title="Faqat sinovchilar va adminlar tekshira oladi">🧪 <span>Test rejimi yoqilgan</span></a>
     {% endif %}
     <nav class="side-nav">
-      <a class="si {{ 'active' if active == 'dashboard' }}" href="/"><span class="ic">🏠</span>Dashboard</a>
+      <a class="si {{ 'active' if active == 'dashboard' }}" href="/" data-tip="Dashboard"><span class="ic">🏠</span>Dashboard</a>
 
       <details class="sg {{ 'on' if g_users }}" data-group="users" {{ 'open' if g_users }}>
         <summary><span class="ic">👥</span>Foydalanuvchilar{% if nav.support %}<span class="nb" title="o'qilmagan murojaatlar">{{ nav.support }}</span>{% endif %}<span class="car">▾</span></summary>
         <div class="sub">
+          <div class="fly-h">Foydalanuvchilar</div>
           <a href="/users" class="{{ 'active' if active == 'users' }}">Ro'yxat</a>
           <a href="/support" class="{{ 'active' if active == 'support' }}">Murojaatlar{% if nav.support %}<span class="nb" title="o'qilmagan">{{ nav.support }}</span>{% endif %}</a>
           <a href="/broadcast" class="{{ 'active' if active == 'broadcast' }}">Ommaviy xabar</a>
@@ -343,17 +389,19 @@
       <details class="sg {{ 'on' if g_checks }}" data-group="checks" {{ 'open' if g_checks }}>
         <summary><span class="ic">📝</span>Tekshiruvlar{% if nav.charts %}<span class="nb" title="tekshirilmagan grafiklar">{{ nav.charts }}</span>{% endif %}<span class="car">▾</span></summary>
         <div class="sub">
+          <div class="fly-h">Tekshiruvlar</div>
           <a href="/checks" class="{{ 'active' if active == 'checks' }}">Barcha tekshiruvlar</a>
           <a href="/questions" class="{{ 'active' if active == 'questions' }}">Practice savollari</a>
           <a href="/charts" class="{{ 'active' if active == 'charts' }}">Grafik kalitlari{% if nav.charts %}<span class="nb" title="tekshirilmagan">{{ nav.charts }}</span>{% endif %}</a>
         </div>
       </details>
 
-      <a class="si {{ 'active' if active == 'payments' }}" href="/payments"><span class="ic">💳</span>To'lovlar{% if nav.payments %}<span class="nb" title="tasdiq kutmoqda">{{ nav.payments }}</span>{% endif %}</a>
+      <a class="si {{ 'active' if active == 'payments' }}" href="/payments" data-tip="To'lovlar"><span class="ic">💳</span>To'lovlar{% if nav.payments %}<span class="nb" title="tasdiq kutmoqda">{{ nav.payments }}</span>{% endif %}</a>
 
       <details class="sg {{ 'on' if g_centers }}" data-group="centers" {{ 'open' if g_centers }}>
         <summary><span class="ic">🏫</span>Markazlar<span class="car">▾</span></summary>
         <div class="sub">
+          <div class="fly-h">Markazlar</div>
           <a href="/teachers" class="{{ 'active' if active == 'teachers' }}">O'qituvchilar va markazlar</a>
           <a href="/groups" class="{{ 'active' if active == 'groups' }}">Guruhlar</a>
         </div>
@@ -362,6 +410,7 @@
       <details class="sg {{ 'on' if g_admin }}" data-group="admin" {{ 'open' if g_admin }}>
         <summary><span class="ic">⚙️</span>Boshqaruv{% if nav.errors %}<span class="nb" title="bugungi xatolar">{{ nav.errors }}</span>{% endif %}<span class="car">▾</span></summary>
         <div class="sub">
+          <div class="fly-h">Boshqaruv</div>
           <a href="/errors" class="{{ 'active' if active == 'errors' }}">Xatolar{% if nav.errors %}<span class="nb">{{ nav.errors }}</span>{% endif %}</a>
           {% if nav.owner %}
           <a href="/settings" class="{{ 'active' if active == 'settings' }}">Sozlamalar</a>
@@ -375,7 +424,7 @@
     <div class="side-me">
       <span class="me">{{ (nav.admin or "a")[:1] }}</span>
       <span class="who-tx"><b>{{ nav.admin or "admin" }}</b><span>{{ "ustoz" if nav.teacher else ("egasi" if nav.owner else "admin") }}</span></span>
-      <a class="out" href="/logout" title="Chiqish">Chiqish</a>
+      <a class="out" href="/logout" title="Chiqish"><svg class="out-ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg><span>Chiqish</span></a>
     </div>
   </aside>
   <div class="side-shade" id="bzShade"></div>
@@ -394,7 +443,41 @@
     document.getElementById("bzBurger").addEventListener("click", open);
     document.getElementById("bzSideX").addEventListener("click", close);
     document.getElementById("bzShade").addEventListener("click", close);
-    document.addEventListener("keydown", function (e) { if (e.key === "Escape") close(); });
+    document.addEventListener("keydown", function (e) { if (e.key === "Escape") { close(); unfly(); } });
+
+    /* the fold button: the sidebar becomes a rail of icons and back (remembered in this browser) */
+    var root = document.documentElement, fold = document.getElementById("bzFold");
+    function folded() { return root.classList.contains("side-mini"); }
+    function mini() { return folded() && window.innerWidth > 960; }
+    function label() {
+      fold.title = folded() ? "Menyuni ochish" : "Menyuni yig'ish";
+      fold.setAttribute("aria-expanded", folded() ? "false" : "true");
+    }
+    label();
+    fold.addEventListener("click", function () {
+      unfly();
+      root.classList.add("side-anim");
+      var m = root.classList.toggle("side-mini");
+      try { localStorage.setItem("bzSideMini", m ? "1" : "0"); } catch (e) {}
+      label();
+      setTimeout(function () { root.classList.remove("side-anim"); }, 260);
+    });
+    /* folded, a group's links fly out beside its icon (on hover, or a tap) */
+    function unfly(keep) {
+      document.querySelectorAll(".sg.fly").forEach(function (g) {
+        if (g === keep) return;
+        g.classList.remove("fly");
+        if (g.getAttribute("data-tmp")) { g.removeAttribute("data-tmp"); g.open = false; }
+      });
+    }
+    function fly(g) {
+      unfly(g);
+      if (g.classList.contains("fly")) return;
+      g.classList.add("fly");
+      if (!g.open) { g.setAttribute("data-tmp", "1"); g.open = true; }
+    }
+    document.addEventListener("click", function (e) { if (!e.target.closest(".sg.fly")) unfly(); });
+
     /* a group opened or closed stays so on the next page (this browser only); the open page's group is always open */
     var saved = {};
     try { saved = JSON.parse(localStorage.getItem("bzSideGroups") || "{}"); } catch (e) { saved = {}; }
@@ -402,9 +485,13 @@
       var key = g.getAttribute("data-group");
       if (!g.classList.contains("on") && saved[key] !== undefined) g.open = !!saved[key];
       g.addEventListener("toggle", function () {
+        if (folded()) return;
         saved[key] = g.open;
         try { localStorage.setItem("bzSideGroups", JSON.stringify(saved)); } catch (e) {}
       });
+      g.addEventListener("mouseenter", function () { if (mini()) fly(g); });
+      g.addEventListener("mouseleave", function () { if (mini()) unfly(); });
+      g.querySelector("summary").addEventListener("click", function (e) { if (mini()) { e.preventDefault(); fly(g); } });
     });
   })();
   </script>
