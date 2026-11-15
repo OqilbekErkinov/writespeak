@@ -290,7 +290,7 @@ async def overview(session, period: str) -> dict:
 
 @router.get("/finance", response_class=HTMLResponse)
 async def finance_page(request: Request, p: str = "month", done: str = ""):
-    if (r := panel.guard(request)) is not None:
+    if (r := panel.guard(request, perm="finance")) is not None:
         return r
     period = p if p in PERIODS else "month"
     async with get_session() as session:
@@ -317,7 +317,7 @@ def _done(back: str, what: str) -> RedirectResponse:
 async def finance_add(request: Request, kind: str = Form(...), category: str = Form(""), amount: str = Form(""),
                       day: str = Form(""), note: str = Form(""), back: str = Form("/finance")):
     """Money entered by hand: an expense (server, domain, ads...) or an income from outside the bot."""
-    if (r := panel.guard(request)) is not None:
+    if (r := panel.guard(request, perm="finance")) is not None:
         return r
     back = _back(back)
     names = EXPENSES if kind == "expense" else INCOMES if kind == "income" else None
@@ -342,7 +342,7 @@ async def finance_add(request: Request, kind: str = Form(...), category: str = F
 
 @router.post("/finance/entry/{entry_id}/delete")
 async def finance_delete(request: Request, entry_id: int, back: str = Form("/finance")):
-    if (r := panel.guard(request)) is not None:
+    if (r := panel.guard(request, perm="finance")) is not None:
         return r
     back = _back(back)
     async with get_session() as session:
@@ -361,7 +361,7 @@ async def finance_delete(request: Request, entry_id: int, back: str = Form("/fin
 @router.get("/export/finance.xlsx")
 async def finance_export(request: Request):
     """Everything on the page for Excel: month by month, the payments, the AI spend by day, the entries."""
-    if (r := panel.guard(request)) is not None:
+    if (r := panel.guard(request, perm="finance")) is not None:
         return r
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Font, PatternFill

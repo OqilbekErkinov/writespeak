@@ -150,6 +150,10 @@ class Settings(BaseSettings):
     # Session cookie only sent over HTTPS - true in production, false for a
     # local http:// run (otherwise login can't stick).
     web_cookie_secure: bool = False
+    # Two-step sign-in (bot/utils/second_factor.py, 2026-11-16): after the password, a code from the bot in the
+    # login's own Telegram. false only as a break-glass (Telegram unreachable and no recovery code at hand):
+    # set WEB_2FA=false in .env and restart admin_web.
+    web_2fa: bool = True
     # Teachers' web cabinet (webapp/cabinet.py), e.g. https://bandzilla.uz/cabinet
     # - the bot's "Web-kabinet" button signs them in there. Empty = button hidden.
     cabinet_base_url: str = ""

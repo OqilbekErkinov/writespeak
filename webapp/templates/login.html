@@ -38,13 +38,53 @@
   button:focus-visible { outline: 2px solid var(--moss); outline-offset: 2px; }
   .error { margin-top: 14px; font-size: 13px; font-weight: 700; color: var(--ink); background: var(--red-tint);
     border-left: 4px solid var(--red); padding: 9px 12px; border-radius: 10px; }
+  .note { margin: 4px 0 6px; font-size: 13px; font-weight: 700; background: var(--paper);
+    border-left: 4px solid var(--skin); padding: 9px 12px; border-radius: 10px; }
+  .steps { margin: 0 0 14px; padding-left: 20px; font-size: 14px; color: var(--ink-soft); display: grid; gap: 4px; }
+  a.tg { display: block; text-align: center; padding: 12px; border-radius: 100px; background: #229ED9; color: #fff;
+    font-weight: 800; font-size: 15px; text-decoration: none; }
+  a.tg:hover { background: #1B8BC0; }
+  label.check { display: flex; gap: 8px; align-items: center; font-weight: 600; font-size: 13px; color: var(--ink-soft); }
+  label.check input { width: auto; }
+  button.ghost { margin-top: 10px; background: transparent; border-color: var(--border-strong); color: var(--ink); font-weight: 700; }
+  button.ghost:hover { background: var(--paper); border-color: var(--moss); }
+  p.small { font-size: 12.5px; color: var(--ink-faint); margin: 12px 0 0; }
+  p.small a { color: var(--moss); font-weight: 700; }
   @media (max-width: 400px) { .box { padding: 28px 22px 24px; } }
 </style>
 </head>
 <body>
   <div class="box">
     <h1><img class="logo" src="https://bandzilla.uz/assets/logo-on-light.webp" alt="Bandzilla" width="720" height="131"><span class="tag">Admin</span></h1>
+    {% if step == "link" %}
+    <p class="sub"><b>{{ login }}</b> — kirish kodlari uchun Telegram'ni ulang (bir marta)</p>
+    <ol class="steps">
+      <li>Quyidagi tugmani bosing va botda <b>Start</b> ni bosing.</li>
+      <li>Bot shu zahoti 6 xonali kod yuboradi — uni pastga yozing.</li>
+    </ol>
+    <a class="tg" href="{{ link_url }}" target="_blank" rel="noopener">Telegram'da @{{ bot }} ni ochish</a>
+    {% if owner %}<p class="small">Egasining logini faqat bot admini (ADMIN_TELEGRAM_IDS) Telegram'iga ulanadi.</p>{% endif %}
+    {% elif step == "code" %}
+    <p class="sub">Kod <b>@{{ bot }}</b> chatiga yuborildi{% if tg_name %} ({{ tg_name }}){% endif %}.</p>
+    {% else %}
     <p class="sub">Boshqaruv paneliga kirish</p>
+    {% endif %}
+
+    {% if step %}
+    {% if note %}<div class="note">{{ note }}</div>{% endif %}
+    <form method="post" action="/login/code">
+      <label for="code">Telegram'dagi kod</label>
+      <input type="text" id="code" name="code" inputmode="{{ 'text' if owner else 'numeric' }}" autocomplete="one-time-code"
+             maxlength="{{ 16 if owner else 6 }}" placeholder="123456" required autofocus>
+      <label class="check"><input type="checkbox" name="remember" value="1" checked> Bu qurilmani {{ days }} kun eslab qol</label>
+      <button type="submit">Kirish</button>
+    </form>
+    {% if step == "code" %}
+    <form method="post" action="/login/code/resend"><button type="submit" class="ghost">Kodni qayta yuborish</button></form>
+    {% if owner %}<p class="small">Telegram'ga kod kelmayaptimi? Kod o'rniga tiklash kodlaringizdan birini yozing.</p>{% endif %}
+    {% endif %}
+    <p class="small"><a href="/login">← Boshqa login bilan kirish</a></p>
+    {% else %}
     <form method="post" action="/login">
       <label for="username">Login</label>
       <input type="text" id="username" name="username" autocomplete="username" required autofocus>
@@ -52,6 +92,7 @@
       <input type="password" id="password" name="password" autocomplete="current-password" required>
       <button type="submit">Kirish</button>
     </form>
+    {% endif %}
     {% if error %}<div class="error">{{ error }}</div>{% endif %}
   </div>
 </body>

@@ -8,7 +8,9 @@ same Docker image as the bot (see docker-compose.yml's `admin_web` service):
 Sign-in: the owner's login from .env (WEB_ADMIN_USERNAME/PASSWORD - always
 works, the break-glass login) or a separate admin login the owner made on
 /admins (since 2026-10-18; webapp/panel.py), and what each one did goes to
-the audit log.
+the audit log. Since 2026-11-16 the password is followed by a code from the
+bot in the login's own Telegram, and each admin's actions are limited to
+what the owner ticked (bot/utils/panel_access.py).
 In production it sits behind the host's nginx at https://admin.bandzilla.uz
 (see bot/config.py's web panel comment), which passes the real client IP in
 X-Forwarded-For for the small brute-force guard below.
@@ -82,6 +84,9 @@ templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
 # Teachers' web cabinet (/cabinet, its own sign-in from the bot) - see webapp/cabinet.py.
 from webapp import cabinet, insights, panel, sessions  # noqa: E402
+from bot.utils import panel_access  # noqa: E402
+
+templates.env.globals["can"] = panel.can  # {% if can(request, "payments") %}: a button only for who may press it
 
 cabinet.templates = templates
 app.include_router(cabinet.router)
@@ -189,15 +194,120 @@ async def login_submit(request: Request, username: str = Form(...), password: st
         )
     found = await panel.authenticate(username.strip(), password)
     if found is not None:
-        await sessions.issue(request, found)  # a fresh session for every sign-in, its id kept on the server
-        await panel.audit(found["admin"], "login", details=ip)
-        return RedirectResponse("/", status_code=303)
+        if panel_access.enabled() and not await panel_access.device_ok(
+                found["admin"], request.cookies.get(panel_access.DEVICE_COOKIE)):
+            # the password was right; the code from the bot finishes it (bot/utils/panel_access.py)
+            pid = await panel_access.start(found, ip)
+            request.session.clear()
+            request.session["mfa_pid"] = pid
+            if await panel_access.linked(found["admin"]) is None:
+                return RedirectResponse("/login/link", status_code=303)
+            sent = await _with_bot_result(lambda bot: panel_access.send_code(bot, pid))
+            return RedirectResponse(f"/login/code?s={sent or 'failed'}", status_code=303)
+        return await _signed_in(request, found, ip, "eslab qolingan qurilma" if panel_access.enabled() else "")
     _record_failure(ip)
     await sessions.failed(ip, username.strip())
     await panel.audit("—", "login_failed", details=f"{ip} · {username.strip()[:50]}")
     return templates.TemplateResponse(
         request, "login.html", {"error": "Login yoki parol noto'g'ri."}, status_code=401
     )
+
+
+async def _signed_in(request: Request, found: dict, ip: str, how: str) -> RedirectResponse:
+    # a fresh session, its id kept on the server; "mfa" only when the second step was on (a sign-in made while
+    # WEB_2FA=false does not outlive the step being switched back on)
+    await sessions.issue(request, {**found, "mfa": panel_access.enabled()})
+    await panel.audit(found["admin"], "login", details=ip + (f" · {how}" if how else ""))
+    return RedirectResponse("/", status_code=303)
+
+
+async def _with_bot_result(send):
+    """Like _with_bot, but returns what `send(bot)` returned (None when it raised)."""
+    bot = Bot(settings.telegram_bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    try:
+        return await send(bot)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Panel bot call failed: %r", e)
+        return None
+    finally:
+        await bot.session.close()
+
+
+_CODE_NOTES = {
+    "sent": "Kod Telegram'ga yuborildi.", "wait": "Kod yaqinda yuborilgan — biroz kuting yoki o'sha kodni kiriting.",
+    "failed": "Kodni Telegram'ga yuborib bo'lmadi. Botni bloklamaganingizni tekshirib, qayta yuboring.",
+}
+
+
+async def _second_step_page(request: Request, step: str, error: str | None = None, note: str | None = None,
+                             status_code: int = 200):
+    data = await panel_access.pending(request.session.get("mfa_pid"))
+    if data is None:
+        request.session.pop("mfa_pid", None)
+        return templates.TemplateResponse(request, "login.html", {
+            "error": "Kirish vaqti tugadi — login va parolni qayta kiriting."}, status_code=401)
+    login = data["found"]["admin"]
+    row = await panel_access.linked(login)
+    if step == "code" and row is None:
+        step = "link"
+    if step == "link" and row is not None:
+        step = "code"
+    return templates.TemplateResponse(request, "login.html", {
+        "step": step, "error": error, "note": note, "login": login, "owner": bool(data["found"].get("owner")),
+        "tg_name": row.telegram_name if row is not None else None, "bot": settings.telegram_bot_username,
+        "link_url": await panel_access.link_url(request.session["mfa_pid"]) if step == "link" else None,
+        "days": panel_access.DEVICE_DAYS,
+    }, status_code=status_code)
+
+
+@app.get("/login/code", response_class=HTMLResponse)
+async def login_code_form(request: Request, s: str = ""):
+    return await _second_step_page(request, "code", note=_CODE_NOTES.get(s))
+
+
+@app.get("/login/link", response_class=HTMLResponse)
+async def login_link_form(request: Request):
+    return await _second_step_page(request, "link")
+
+
+@app.post("/login/code/resend")
+async def login_code_resend(request: Request):
+    pid = request.session.get("mfa_pid")
+    sent = await _with_bot_result(lambda bot: panel_access.send_code(bot, pid)) if pid else "gone"
+    return RedirectResponse(f"/login/code?s={sent or 'failed'}", status_code=303)
+
+
+@app.post("/login/code")
+async def login_code_submit(request: Request, code: str = Form(""), remember: str | None = Form(None)):
+    ip = _client_ip(request)
+    pid = request.session.get("mfa_pid")
+    data = await panel_access.pending(pid)
+    login = data["found"]["admin"] if data else ""
+    if data and await sessions.too_many_fails(ip, login):
+        return await _second_step_page(request, "code", "Juda ko'p urinish. 15 daqiqadan so'ng qayta urining.",
+                                       status_code=429)
+    result, found = await panel_access.check(pid, code)
+    if found is not None:
+        response = await _signed_in(request, found, ip, "tiklash kodi" if result == "recovery" else "Telegram kodi")
+        if remember:
+            token = await panel_access.remember_device(found["admin"])
+            response.set_cookie(panel_access.DEVICE_COOKIE, token, max_age=panel_access.DEVICE_DAYS * 86400,
+                                httponly=True, secure=settings.web_cookie_secure, samesite="lax")
+        return response
+    if result == "gone" or result == "locked":
+        request.session.pop("mfa_pid", None)
+        if result == "locked":
+            await sessions.failed(ip, login)
+            await panel.audit(login, "login_code_failed", details=f"{ip} · {panel_access.MAX_TRIES} marta xato")
+        return templates.TemplateResponse(request, "login.html", {"error": (
+            "Kod ko'p marta xato kiritildi — login va parolni qayta kiriting." if result == "locked" else
+            "Kirish vaqti tugadi — login va parolni qayta kiriting.")}, status_code=401)
+    await sessions.failed(ip, login)
+    if result == "expired":
+        return await _second_step_page(request, "code", "Kod eskirgan — «Kodni qayta yuborish» ni bosing.",
+                                       status_code=401)
+    await panel.audit(login, "login_code_failed", details=ip)
+    return await _second_step_page(request, "code", "Kod noto'g'ri.", status_code=401)
 
 
 @app.get("/logout")
@@ -477,7 +587,7 @@ async def payment_receipt(request: Request, request_id: int):
 
 @app.post("/payments/{request_id}/{action}")
 async def decide_payment_web(request: Request, request_id: int, action: str):
-    if (redirect := _require_login(request)) is not None:
+    if (redirect := panel.guard(request, perm="payments")) is not None:
         return redirect
     if action == "test":  # approved only to try the bot out: no revenue (or back to real money)
         async with get_session() as session:
@@ -528,13 +638,14 @@ _COIN_FLASH = {
     "added": "Coin qo'shildi.", "removed": "Coin ayirildi.",
     "number": "Butun son kiriting: masalan 6 yoki -2.", "range": f"0 bo'lmagan, ±{MAX_COIN_CHANGE:,} gacha son kiriting.",
     "balance": "Balans manfiy bo'lib qoladi - buncha coin ayirib bo'lmaydi.",
+    "cap": "Bir martada ko'pi bilan 50 coin — undan ko'pini faqat egasi qo'sha yoki ayira oladi.",
 }
 
 
 @app.get("/users/{user_id}/coins", response_class=HTMLResponse)
 async def user_coins_page(request: Request, user_id: int, note: str = "", done: str | None = None,
                           sent: str | None = None):
-    if (redirect := _require_login(request)) is not None:
+    if (redirect := panel.guard(request, perm="coins")) is not None:
         return redirect
     async with get_session() as session:
         user = await crud.get_user(session, user_id)
@@ -547,14 +658,14 @@ async def user_coins_page(request: Request, user_id: int, note: str = "", done: 
             " Xabar yuborilmadi (botni bloklagan bo'lishi mumkin)." if sent == "0" else "")
     return templates.TemplateResponse(request, "user_coins.html", {
         "active": "users", "u": user, "history": history, "note": note, "flash": flash,
-        "error": done in ("number", "range", "balance"),
+        "error": done in ("number", "range", "balance", "cap"),
     })
 
 
 @app.post("/users/{user_id}/coins")
 async def user_coins_submit(request: Request, user_id: int, delta: str = Form(...), note: str = Form(""),
                             notify: str | None = Form(None)):
-    if (redirect := _require_login(request)) is not None:
+    if (redirect := panel.guard(request, perm="coins")) is not None:
         return redirect
     back = f"/users/{user_id}/coins"
     try:
@@ -563,6 +674,8 @@ async def user_coins_submit(request: Request, user_id: int, delta: str = Form(..
         return RedirectResponse(f"{back}?done=number", status_code=303)
     if amount == 0 or abs(amount) > MAX_COIN_CHANGE:
         return RedirectResponse(f"{back}?done=range", status_code=303)
+    if abs(amount) > panel_access.COIN_CAP and not panel.is_owner(request):
+        return RedirectResponse(f"{back}?done=cap", status_code=303)
     note = note.strip()[:500]
     async with get_session() as session:
         adjustment = await crud.adjust_coins(session, user_id, amount, note)
@@ -611,7 +724,7 @@ async def teachers_page(request: Request, done: str | None = None):
 
 @app.post("/teachers/{user_id}/center")
 async def make_center(request: Request, user_id: int, name: str = Form(...)):
-    if (redirect := _require_login(request)) is not None:
+    if (redirect := panel.guard(request, perm="users")) is not None:
         return redirect
     name = " ".join(name.split())[:100]
     async with get_session() as session:
@@ -626,7 +739,7 @@ async def make_center(request: Request, user_id: int, name: str = Form(...)):
 
 @app.post("/teachers/{user_id}/revoke")
 async def revoke_teacher(request: Request, user_id: int):
-    if (redirect := _require_login(request)) is not None:
+    if (redirect := panel.guard(request, perm="users")) is not None:
         return redirect
     async with get_session() as session:
         user = await crud.get_user(session, user_id)
@@ -641,7 +754,7 @@ async def revoke_teacher(request: Request, user_id: int):
 
 @app.post("/centers/{center_id}/delete")
 async def delete_center(request: Request, center_id: int):
-    if (redirect := _require_login(request)) is not None:
+    if (redirect := panel.guard(request, perm="users")) is not None:
         return redirect
     async with get_session() as session:
         await crud.delete_center(session, center_id)
@@ -747,7 +860,7 @@ async def questions_page(request: Request, module: str | None = None):
 
 @app.get("/questions/new", response_class=HTMLResponse)
 async def question_new_form(request: Request, module: str | None = None):
-    if (redirect := _require_login(request)) is not None:
+    if (redirect := panel.guard(request, perm="content")) is not None:
         return redirect
     return _question_form(request, module=_parse_module(module) or PracticeModule.writing_task1)
 
@@ -760,7 +873,7 @@ async def question_create(
     question_text: str = Form(""),
     image: UploadFile | None = File(None),
 ):
-    if (redirect := _require_login(request)) is not None:
+    if (redirect := panel.guard(request, perm="content")) is not None:
         return redirect
     module_enum = _parse_module(module) or PracticeModule.writing_task1
     topic, question_text = topic.strip(), question_text.strip()
@@ -794,7 +907,7 @@ async def question_create(
 
 @app.get("/questions/{question_id}/edit", response_class=HTMLResponse)
 async def question_edit_form(request: Request, question_id: int):
-    if (redirect := _require_login(request)) is not None:
+    if (redirect := panel.guard(request, perm="content")) is not None:
         return redirect
     async with get_session() as session:
         question = await crud.get_practice_question(session, question_id)
@@ -816,7 +929,7 @@ async def question_update(
     remove_image: str | None = Form(None),
     image: UploadFile | None = File(None),
 ):
-    if (redirect := _require_login(request)) is not None:
+    if (redirect := panel.guard(request, perm="content")) is not None:
         return redirect
     async with get_session() as session:
         question = await crud.get_practice_question(session, question_id)
@@ -858,7 +971,7 @@ async def question_update(
 
 @app.post("/questions/{question_id}/delete")
 async def question_delete(request: Request, question_id: int):
-    if (redirect := _require_login(request)) is not None:
+    if (redirect := panel.guard(request, perm="content")) is not None:
         return redirect
     async with get_session() as session:
         question = await crud.delete_practice_question(session, question_id)
@@ -871,7 +984,7 @@ async def question_delete(request: Request, question_id: int):
 
 @app.post("/questions/{question_id}/move/{direction}")
 async def question_move(request: Request, question_id: int, direction: str):
-    if (redirect := _require_login(request)) is not None:
+    if (redirect := panel.guard(request, perm="content")) is not None:
         return redirect
     async with get_session() as session:
         if direction in ("up", "down"):

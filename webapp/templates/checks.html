@@ -4,7 +4,7 @@
 {% block content %}
 <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;margin-bottom:22px">
   <h1 style="margin:0">Tekshiruvlar</h1>
-  {% if not teacher_view %}<a class="btn" href="/export/checks.xlsx" title="Barcha tekshiruvlar Excel faylda">⬇ Excel</a>{% endif %}
+  {% if not teacher_view and can(request, "users") %}<a class="btn" href="/export/checks.xlsx" title="Barcha tekshiruvlar Excel faylda">⬇ Excel</a>{% endif %}
 </div>
 {% if flash %}<div class="{{ 'error' if flash_bad else 'flash' }}">{{ flash }}</div>{% endif %}
 {% if teacher_view %}

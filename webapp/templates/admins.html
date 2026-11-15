@@ -9,28 +9,52 @@
   <div><b>{{ password.username }}</b> uchun parol — faqat hozir ko'rinadi, nusxa olib qo'ying:</div>
   <div class="pw-row"><code id="pw">{{ password.password }}</code>
     <button type="button" class="btn btn-sm" onclick="navigator.clipboard.writeText(document.getElementById('pw').textContent); this.textContent='✓ Nusxa olindi';">Nusxa olish</button></div>
-  <div class="hint" style="color:rgba(255,255,255,0.7)">Kirish: admin.bandzilla.uz → login <b>{{ password.username }}</b> va shu parol.</div>
+  <div class="hint" style="color:rgba(255,255,255,0.7)">Kirish: admin.bandzilla.uz → login <b>{{ password.username }}</b> va shu parol.
+    {% if two_fa %}Birinchi kirishda panel Telegram'ni ulashni so'raydi: tugmani bosib, botda <b>Start</b> — kod o'sha yerga keladi.{% endif %}</div>
+</div>
+{% endif %}
+
+{% if recovery %}
+<div class="pw-box">
+  <div><b>Tiklash kodlari</b> — faqat hozir ko'rinadi. Ularni yozib oling yoki parollar menejeriga saqlang (serverdan tashqarida):</div>
+  <div class="rc-grid" id="rc">{% for c in recovery %}<code>{{ c }}</code>{% endfor %}</div>
+  <div class="pw-row"><button type="button" class="btn btn-sm" onclick="navigator.clipboard.writeText(Array.from(document.querySelectorAll('#rc code')).map(function (e) { return e.textContent; }).join(' ')); this.textContent='✓ Nusxa olindi';">Nusxa olish</button></div>
+  <div class="hint" style="color:rgba(255,255,255,0.7)">Telegram'ga kod kelmasa: login + parol, so'ng kod o'rniga shu kodlardan birini yozing.
+    Har bir kod bir marta ishlaydi. Eski kodlar endi ishlamaydi.</div>
 </div>
 {% endif %}
 
 <div class="card">
   <h2>Kirish huquqi borlar</h2>
   <div class="table-scroll"><table>
-    <tr><th>Admin</th><th>Login</th><th>Holat</th><th>Oxirgi kirish</th><th></th></tr>
+    <tr><th>Admin</th><th>Login</th><th>Holat</th>{% if two_fa %}<th>Kirish kodi keladigan Telegram</th>{% endif %}<th>Oxirgi kirish</th><th></th></tr>
     <tr>
       <td class="strong">Egasi <span class="pill pill-good">asosiy</span></td>
       <td><code>{{ owner_login }}</code></td>
       <td><span class="pill pill-good">faol</span></td>
+      {% if two_fa %}<td>{% if owner_tg %}{{ owner_tg.telegram_name }}{% else %}<span class="muted">ulanmagan — keyingi kirishda ulanadi</span>{% endif %}</td>{% endif %}
       <td class="muted">—</td>
-      <td class="muted" style="font-size:12.5px">Server sozlamalarida (.env) — hamma sahifaga kira oladi</td>
+      <td style="white-space:nowrap;text-align:right">
+        {% if two_fa and owner_tg %}
+        <form method="post" action="/security/owner-unlink" class="inline" data-confirm="Telegram uzilsinmi?"
+              data-confirm-text="Keyingi kirishda yangi Telegram ulanadi (faqat bot admini — ADMIN_TELEGRAM_IDS). Yangi telefon yoki hisob bo'lsa kerak bo'ladi." data-confirm-ok="Uzish" data-tone="warn">
+          <button type="submit" class="btn btn-sm">Telegram'ni uzish</button></form>
+        {% else %}<span class="muted" style="font-size:12.5px">Hamma narsa ochiq</span>{% endif %}
+      </td>
     </tr>
     {% for a in admins %}
     <tr>
       <td class="strong">{{ a.name }}{% if a.role == "teacher" %} <span class="pill">ustoz</span>{% endif %}</td>
       <td><code>{{ a.username }}</code></td>
       <td>{% if a.active %}<span class="pill pill-good">faol</span>{% else %}<span class="pill pill-bad">o'chirilgan</span>{% endif %}</td>
+      {% if two_fa %}<td>{% if a.tg %}{{ a.tg.telegram_name }}{% else %}<span class="muted">ulanmagan</span>{% endif %}</td>{% endif %}
       <td class="num">{{ a.last }}</td>
       <td style="white-space:nowrap;text-align:right">
+        {% if two_fa and a.tg %}
+        <form method="post" action="/admins/{{ a.id }}/unlink" class="inline" data-confirm="{{ a.name }}ning Telegram'i uzilsinmi?"
+              data-confirm-text="Ochiq sessiyasi yopiladi. Keyingi kirishda u Telegram'ni yangidan ulaydi — sizga xabar keladi." data-confirm-ok="Uzish" data-tone="warn">
+          <button type="submit" class="btn btn-sm">Telegram'ni uzish</button></form>
+        {% endif %}
         <form method="post" action="/admins/{{ a.id }}/reset" class="inline" data-confirm="Yangi parol berilsinmi?"
               data-confirm-text="{{ a.name }}ning eski paroli ishlamay qoladi va ochiq sessiyasi yopiladi." data-confirm-ok="Yangi parol" data-tone="warn">
           <button type="submit" class="btn btn-sm">Yangi parol</button></form>
@@ -39,11 +63,52 @@
           <button type="submit" class="btn btn-sm {{ 'btn-bad' if a.active else 'btn-good' }}">{{ "O'chirish" if a.active else "Yoqish" }}</button></form>
       </td>
     </tr>
+    <tr class="perm-row">
+      <td colspan="{{ 6 if two_fa else 5 }}">
+        <details>
+          <summary>Huquqlar:
+            {% if a.role == "teacher" %}<span class="pill">faqat tekshiruvlarni baholaydi</span>
+            {% elif not a.perm_set %}<span class="pill">faqat ko'rish va kundalik ish</span>
+            {% else %}{% for key, p in perms.items() if key in a.perm_set %}<span class="pill pill-good">{{ p[0] }}</span> {% endfor %}{% endif %}
+            <span class="perm-edit">o'zgartirish ▾</span></summary>
+          <form method="post" action="/admins/{{ a.id }}/perms" class="perm-form">
+            <label class="perm-role">Roli <select name="role">
+              <option value="admin" {{ 'selected' if a.role != 'teacher' }}>Admin</option>
+              <option value="teacher" {{ 'selected' if a.role == 'teacher' }}>Ustoz — faqat tekshiruvlarni baholaydi</option>
+            </select></label>
+            <div class="perm-list">
+              {% for key, p in perms.items() %}
+              <label class="perm"><input type="checkbox" name="perms" value="{{ key }}" {{ 'checked' if key in a.perm_set }}>
+                <span><b>{{ p[0] }}</b><small>{{ p[1] }}</small></span></label>
+              {% endfor %}
+            </div>
+            <button type="submit" class="btn btn-sm btn-good">Saqlash</button>
+            <span class="hint">Rol o'zgarsa, uning ochiq sessiyasi yopiladi. Belgilar ustoz uchun e'tiborga olinmaydi.</span>
+          </form>
+        </details>
+      </td>
+    </tr>
     {% endfor %}
   </table></div>
-  <p class="hint">Yangi adminlar Dashboard, foydalanuvchilar, to'lovlar, murojaatlar, ommaviy xabar va xatolar bilan ishlay oladi.
-    Test rejimi, adminlar va «Kim nima qildi» jurnali faqat egasiga ochiq.</p>
+  <p class="hint">Har bir admin hamma sahifani ko'ra oladi va kundalik ishni qiladi: tekshiruvlar, murojaatlarga javob, foydalanuvchiga
+    xabar, qidiruv, xatolar. Yuqoridagi belgilangan amallar — faqat ruxsat berilganlarga. Sozlamalar, adminlar va «Kim nima qildi» —
+    faqat egasiga.</p>
 </div>
+
+{% if two_fa %}
+<div class="card">
+  <h2>🔐 Ikki bosqichli kirish</h2>
+  <p class="hint" style="margin-top:-6px">Parol to'g'ri bo'lsa, bot shu login ulangan Telegram'ga 6 xonali kod yuboradi — kod kiritilgandagina panel
+    ochiladi. «Bu qurilmani eslab qol» belgilansa, o'sha brauzer 30 kun kod so'ramaydi. Yangi parol, admin o'chirilishi,
+    Telegram uzilishi yoki «Hamma qurilmalardan chiqarish» eslab qolingan brauzerlarni ham unutadi.</p>
+  <p><b>Tiklash kodlari</b> (faqat egasi uchun): Telegram'ga kod kelmay qolgan kun uchun 8 ta bir martalik kod.
+    {% if owner_tg %}Hozir <b>{{ recovery_left }}</b> ta kod qolgan.{% endif %}</p>
+  <form method="post" action="/security/recovery" class="inline" data-confirm="Yangi tiklash kodlari yaratilsinmi?"
+        data-confirm-text="Eski kodlar ishlamay qoladi. Yangilari faqat bir marta ko'rsatiladi." data-confirm-ok="Yaratish" data-tone="warn">
+    <button type="submit" class="btn btn-sm"{% if not owner_tg %} disabled title="Avval Telegram'ni ulang"{% endif %}>🔑 Yangi tiklash kodlari</button></form>
+  <p class="hint">Eng oxirgi chora: serverdagi <code>.env</code> ga <code>WEB_2FA=false</code> yozib, <code>admin_web</code> ni qayta ishga tushirish — kod so'ralmaydi.</p>
+</div>
+{% endif %}
 
 <form class="card a-new" method="post" action="/admins/create">
   <h2>Yangi admin</h2>
@@ -56,18 +121,38 @@
     </select></label>
     <button type="submit" class="btn btn-good">+ Qo'shish</button>
   </div>
-  <p class="hint">Parolni tizim o'zi yaratadi va bir marta ko'rsatadi. <b>Ustoz</b> faqat «Tekshiruvlar» sahifasini ko'radi:
+  <div class="perm-list" style="margin-top:14px">
+    {% for key, p in perms.items() %}
+    <label class="perm"><input type="checkbox" name="perms" value="{{ key }}">
+      <span><b>{{ p[0] }}</b><small>{{ p[1] }}</small></span></label>
+    {% endfor %}
+  </div>
+  <p class="hint">Hech biri belgilanmasa — admin hamma narsani ko'radi va kundalik ishni qiladi, lekin pul, coin, ommaviy xabar va
+    bloklashga tegolmaydi. Parolni tizim o'zi yaratadi va bir marta ko'rsatadi. <b>Ustoz</b> faqat «Tekshiruvlar» sahifasini ko'radi:
     javob matni yoki audiosini ochib, o'z bandini qo'yadi. Botning bahosi, to'lovlar va foydalanuvchilar unga ko'rinmaydi.</p>
 </form>
 
 <style>
   .pw-box { margin-bottom: 20px; padding: 18px 20px; border-radius: 16px; background: var(--ink); color: #fff; display: grid; gap: 10px; }
   .pw-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
-  .pw-row code { font: 800 20px/1.3 ui-monospace, Consolas, monospace; color: var(--lime); letter-spacing: 0.04em;
+  .pw-row code, .rc-grid code { font: 800 20px/1.3 ui-monospace, Consolas, monospace; color: var(--lime); letter-spacing: 0.04em;
     background: rgba(91,242,166,0.1); padding: 6px 12px; border-radius: 10px; }
+  .rc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+  .rc-grid code { font-size: 16px; text-align: center; user-select: all; }
   .a-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
   .a-row label { display: grid; gap: 4px; flex: 1 1 200px; font-size: 12px; font-weight: 800; color: var(--moss);
     text-transform: uppercase; letter-spacing: 0.05em; }
   code { font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+  .perm-row td { padding-top: 0; border-top: 0; }
+  .perm-row summary { cursor: pointer; font-size: 13px; color: var(--ink-soft); display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .perm-edit { color: var(--moss); font-weight: 800; font-size: 12.5px; }
+  .perm-form { display: grid; gap: 12px; padding: 12px 0 4px; }
+  .perm-role { display: flex; gap: 8px; align-items: center; font-size: 13px; font-weight: 700; }
+  .perm-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; }
+  .perm { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--border, #DCEBE3);
+    border-radius: 12px; cursor: pointer; }
+  .perm input { margin-top: 3px; }
+  .perm span { display: grid; gap: 2px; font-size: 13.5px; }
+  .perm small { color: var(--ink-soft); font-size: 12px; font-weight: 500; text-transform: none; letter-spacing: 0; }
 </style>
 {% endblock %}

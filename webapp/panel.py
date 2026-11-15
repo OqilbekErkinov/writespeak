@@ -34,7 +34,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Resp
 from sqlalchemy import and_, func, select, update
 
 from bot.config import settings
-from bot.utils import balance, checks_back, crm, runtime
+from bot.utils import balance, checks_back, crm, panel_access, runtime
 from db.database import get_session
 from db.models import (
     AdminAction,
@@ -78,12 +78,24 @@ def is_owner(request: Request) -> bool:
     return bool(request.session.get("owner", "admin" not in request.session))
 
 
-def guard(request: Request, owner: bool = False):
-    """A redirect when the request may not see the page, else None."""
+def can(request: Request, perm: str) -> bool:
+    """May this sign-in do `perm` (bot/utils/panel_access.py's PERMS)? The owner: everything; a teacher login:
+    none of them; an admin: what the owner ticked (read by session_valid, at most 15 seconds old)."""
+    if is_owner(request):
+        return True
+    if is_teacher(request):
+        return False
+    return perm in (getattr(request.state, "perms", None) or set())
+
+
+def guard(request: Request, owner: bool = False, perm: str | None = None):
+    """A redirect when the request may not see the page or do the action, else None."""
     if not logged_in(request):
         return RedirectResponse("/login", status_code=303)
     if owner and not is_owner(request):
-        return RedirectResponse("/?denied=1", status_code=303)
+        return RedirectResponse("/?denied=owner", status_code=303)
+    if perm and not can(request, perm):
+        return RedirectResponse(f"/?denied={perm}", status_code=303)
     return None
 
 
@@ -140,6 +152,17 @@ async def authenticate(username: str, password: str) -> dict | None:
                 "teacher": (row.role or "admin") == "teacher"}
 
 
+def denied_note(request: Request) -> str | None:
+    """The top-of-page note after a refused page or action (guard's ?denied=)."""
+    what = request.query_params.get("denied")
+    if not what:
+        return None
+    if what == "owner":
+        return "Bu sahifa faqat egasiga ochiq."
+    label = panel_access.PERMS.get(what, ("",))[0]
+    return f"Bu amal uchun ruxsatingiz yo'q{f' ({label})' if label else ''} — egasiga murojaat qiling."
+
+
 # What a "teacher" login may open (the user, 2026-11-14: the teachers enter their bands themselves): the checks
 # page, its reports and recordings - never users, payments or settings.
 # Marked blind: no bot band, no PDF report - the answer itself (the essay and its question, the recording).
@@ -150,7 +173,8 @@ def is_teacher(request: Request) -> bool:
     return bool(request.session.get("teacher"))
 
 
-_valid_cache: dict[str, tuple[float, str | None]] = {}  # username -> (checked at, its pw tag; None = disabled)
+# username -> (checked at, its pw tag (None = disabled), its permissions)
+_valid_cache: dict[str, tuple[float, str | None, set[str]]] = {}
 
 
 async def session_valid(request: Request) -> bool:
@@ -162,6 +186,8 @@ async def session_valid(request: Request) -> bool:
 
     if not await sessions.valid(request):
         return False
+    if panel_access.enabled() and not request.session.get("mfa"):
+        return False  # signed in before the two-step sign-in (2026-11-16), or without it
     if is_owner(request):
         return True
     username = request.session.get("admin") or ""
@@ -172,8 +198,10 @@ async def session_valid(request: Request) -> bool:
                 row = (await session.execute(select(WebAdmin).where(WebAdmin.username == username))).scalar_one_or_none()
         except Exception:  # noqa: BLE001 - the database is down: the pages fail anyway
             return True
-        cached = (time.monotonic(), _pw_tag(row.password_hash) if row is not None and row.active else None)
+        cached = (time.monotonic(), _pw_tag(row.password_hash) if row is not None and row.active else None,
+                  panel_access.perms_of(row.perms) if row is not None else set())
         _valid_cache[username] = cached
+    request.state.perms = cached[2]
     return cached[1] is not None and cached[1] == request.session.get("pw")
 
 
@@ -189,7 +217,8 @@ NAV_SKIP = ("/login", "/logout", "/cabinet", "/reports/", "/export/", "/support/
 async def nav_counts(request: Request) -> dict:
     """The top bar's badges, and who is signed in."""
     out = {"support": 0, "payments": 0, "charts": 0, "errors": 0, "window": False,
-           "owner": is_owner(request), "admin": admin_name(request), "teacher": is_teacher(request)}
+           "owner": is_owner(request), "admin": admin_name(request), "teacher": is_teacher(request),
+           "can": {p: can(request, p) for p in panel_access.PERMS}, "denied": denied_note(request)}
     if out["teacher"]:
         return out
     out["errors"] = await errors_today()
@@ -353,6 +382,7 @@ async def settings_signout_all(request: Request):
     ended = 0
     for login in logins:
         ended += await sessions.end_all(login)
+        await panel_access.forget_devices(login)  # a lost laptop: it must not skip the code either
     await audit(request, "signout_all", details=f"{ended} ta sessiya")
     await sessions.end(request)
     return RedirectResponse("/login", status_code=303)
@@ -499,7 +529,7 @@ async def _broadcasts() -> list[dict]:
 
 @router.get("/broadcast", response_class=HTMLResponse)
 async def broadcast_page(request: Request, audience: str = "all", lang: str = "any", started: str | None = None):
-    if (r := guard(request)) is not None:
+    if (r := guard(request, perm="broadcast")) is not None:
         return r
     audience = audience if audience in AUDIENCES else "all"
     lang = lang if lang in LANG_FILTERS else "any"
@@ -515,7 +545,7 @@ async def broadcast_page(request: Request, audience: str = "all", lang: str = "a
 @router.post("/broadcast/send")
 async def broadcast_send(request: Request, audience: str = Form(...), lang: str = Form("any"),
                          text_uz: str = Form(""), text_ru: str = Form(""), text_en: str = Form("")):
-    if (r := guard(request)) is not None:
+    if (r := guard(request, perm="broadcast")) is not None:
         return r
     # Escaped first, then measured (2026-11-15: cut at 3500 and escaped after, a text full of & < > grew past
     # Telegram's 4096 characters and every single message failed).
@@ -681,7 +711,7 @@ async def errors_clear(request: Request):
 
 @router.post("/users/{user_id}/block")
 async def user_block(request: Request, user_id: int, action: str = Form(...)):
-    if (r := guard(request)) is not None:
+    if (r := guard(request, perm="users")) is not None:
         return r
     if user_id in settings.admin_ids:
         return RedirectResponse(f"/users/{user_id}?blocked=admin", status_code=303)
@@ -738,7 +768,7 @@ def _local(dt):
 
 @router.get("/export/users.xlsx")
 async def export_users(request: Request):
-    if (r := guard(request)) is not None:
+    if (r := guard(request, perm="users")) is not None:
         return r
     async with get_session() as session:
         data = await insights.users_overview(session, None, "all", limit=10 ** 6)
@@ -752,7 +782,7 @@ async def export_users(request: Request):
 
 @router.get("/export/payments.xlsx")
 async def export_payments(request: Request):
-    if (r := guard(request)) is not None:
+    if (r := guard(request, perm="users")) is not None:
         return r
     async with get_session() as session:
         payments = (await session.execute(select(PaymentRequest).order_by(PaymentRequest.created_at.desc()))).scalars().all()
@@ -770,7 +800,7 @@ async def export_payments(request: Request):
 
 @router.get("/export/checks.xlsx")
 async def export_checks(request: Request):
-    if (r := guard(request)) is not None:
+    if (r := guard(request, perm="users")) is not None:
         return r
     async with get_session() as session:
         data = await insights.all_checks(session, "all", "all", limit=100000)
@@ -788,21 +818,35 @@ async def export_checks(request: Request):
 async def admins_page(request: Request, done: str | None = None):
     if (r := guard(request, owner=True)) is not None:
         return r
+    return await _admins_page(request, done)
+
+
+async def _admins_page(request: Request, done: str | None = None, recovery: list[str] | None = None):
     async with get_session() as session:
         admins = (await session.execute(select(WebAdmin).order_by(WebAdmin.created_at))).scalars().all()
     password = await _take_new_password(request)
     flash = {"created": "Admin qo'shildi.", "reset": "Yangi parol berildi.", "toggled": "Holat o'zgartirildi.",
-             "exists": "Bu login band.", "bad": "Login: 3-30 ta lotin harfi, raqam yoki _ ."}.get(done or "")
+             "exists": "Bu login band.", "bad": "Login: 3-30 ta lotin harfi, raqam yoki _ .",
+             "perms": "Huquqlar saqlandi.", "unlinked": "Telegram uzildi: keyingi kirishda u yangidan ulanadi.",
+             "nolink": "Avval Telegram'ni ulang (panelga qayta kirganda), keyin tiklash kodlarini yarating."
+             }.get(done or "")
+    links = await panel_access.all_linked()
     for a in admins:
         a.last = insights.ago(a.last_login_at) if a.last_login_at else "hali kirmagan"
+        a.perm_set = panel_access.perms_of(a.perms)
+        a.tg = links.get(a.username)
+    owner_tg = links.get(settings.web_admin_username)
     return templates.TemplateResponse(request, "admins.html", {
-        "active": "admins", "admins": admins, "flash": flash, "flash_bad": done in ("exists", "bad"), "password": password,
-        "owner_login": settings.web_admin_username,
+        "active": "admins", "admins": admins, "flash": flash, "flash_bad": done in ("exists", "bad", "nolink"),
+        "password": password, "owner_login": settings.web_admin_username, "perms": panel_access.PERMS,
+        "owner_tg": owner_tg, "recovery": recovery, "two_fa": panel_access.enabled(),
+        "recovery_left": await panel_access.recovery_left(settings.web_admin_username) if owner_tg else 0,
     })
 
 
 @router.post("/admins/create")
-async def admins_create(request: Request, username: str = Form(...), name: str = Form(...), role: str = Form("admin")):
+async def admins_create(request: Request, username: str = Form(...), name: str = Form(...), role: str = Form("admin"),
+                        perms: list[str] = Form([])):
     if (r := guard(request, owner=True)) is not None:
         return r
     username = username.strip().lower()
@@ -813,11 +857,13 @@ async def admins_create(request: Request, username: str = Form(...), name: str =
     async with get_session() as session:
         if (await session.execute(select(WebAdmin).where(WebAdmin.username == username))).scalar_one_or_none():
             return RedirectResponse("/admins?done=exists", status_code=303)
+        chosen = "" if role == "teacher" else panel_access.perms_value(perms)
         session.add(WebAdmin(username=username, name=name.strip()[:100] or username, password_hash=hash_password(password),
-                             role="teacher" if role == "teacher" else "admin"))
+                             role="teacher" if role == "teacher" else "admin", perms=chosen))
         await session.commit()
     await _keep_new_password(request, username, password)
-    await audit(request, "admin_created", details=username + (" (ustoz)" if role == "teacher" else ""))
+    await audit(request, "admin_created", details=username + (" (ustoz)" if role == "teacher" else (
+        " · " + (chosen or VIEW_ONLY))))
     return RedirectResponse("/admins?done=created", status_code=303)
 
 
@@ -843,6 +889,10 @@ async def _take_new_password(request: Request) -> dict | None:
 async def admins_change(request: Request, admin_id: int, action: str):
     if (r := guard(request, owner=True)) is not None:
         return r
+    from webapp import sessions
+
+    if action in ("perms", "unlink"):
+        return await _admins_perms_or_unlink(request, admin_id, action)
     async with get_session() as session:
         a = await session.get(WebAdmin, admin_id)
         if a is None or action not in ("reset", "toggle"):
@@ -860,12 +910,67 @@ async def admins_change(request: Request, admin_id: int, action: str):
     if new_password is not None:
         await _keep_new_password(request, username, new_password)
     if action == "reset" or not active:
-        from webapp import sessions
-
         await sessions.end_all(username)  # a new password or a switched-off admin: every sign-in of theirs ends
+        await panel_access.forget_devices(username)  # and no browser of theirs skips the code any more
     await audit(request, "admin_password_reset" if action == "reset" else ("admin_enabled" if active else "admin_disabled"),
                 details=username)
     return RedirectResponse(f"/admins?done={'reset' if action == 'reset' else 'toggled'}", status_code=303)
+
+
+VIEW_ONLY = "faqat ko'rish"
+
+
+async def _admins_perms_or_unlink(request: Request, admin_id: int, action: str):
+    """The owner's "Huquqlar" form (role + ticks) for one admin, or "Telegram'ni uzish"."""
+    from webapp import sessions
+
+    role_changed = False
+    async with get_session() as session:
+        a = await session.get(WebAdmin, admin_id)
+        if a is None:
+            return RedirectResponse("/admins", status_code=303)
+        username = a.username
+        if action == "perms":
+            form = await request.form()
+            role = "teacher" if form.get("role") == "teacher" else "admin"
+            new_perms = "" if role == "teacher" else panel_access.perms_value(form.getlist("perms"))
+            role_changed = (a.role or "admin") != role
+            a.role, a.perms = role, new_perms
+            await session.commit()
+    _valid_cache.pop(username, None)
+    if action == "unlink":
+        if await panel_access.unlink(username):
+            await sessions.end_all(username)
+            await audit(request, "2fa_unlinked", details=username)
+        return RedirectResponse("/admins?done=unlinked", status_code=303)
+    if role_changed:
+        await sessions.end_all(username)  # the role is read at sign-in: they sign in again
+    await audit(request, "admin_perms", details=f"{username}: " + (
+        "ustoz" if role == "teacher" else (new_perms or VIEW_ONLY)))
+    return RedirectResponse("/admins?done=perms", status_code=303)
+
+
+@router.post("/security/owner-unlink")
+async def security_owner_unlink(request: Request):
+    """The owner's own Telegram for the sign-in codes is unlinked (a new phone, a new account): the next
+    sign-in links one again - only an ADMIN_TELEGRAM_IDS account."""
+    if (r := guard(request, owner=True)) is not None:
+        return r
+    if await panel_access.unlink(settings.web_admin_username):
+        await audit(request, "2fa_unlinked", details=settings.web_admin_username)
+    return RedirectResponse("/admins?done=unlinked", status_code=303)
+
+
+@router.post("/security/recovery", response_class=HTMLResponse)
+async def security_recovery(request: Request):
+    """8 new one-time recovery codes for the owner (the old ones stop working), shown on this page once."""
+    if (r := guard(request, owner=True)) is not None:
+        return r
+    codes = await panel_access.new_recovery_codes(settings.web_admin_username)
+    if codes is None:
+        return RedirectResponse("/admins?done=nolink", status_code=303)
+    await audit(request, "2fa_recovery", details="8 ta yangi kod")
+    return await _admins_page(request, recovery=codes)
 
 
 ACTION_NAMES = {
@@ -883,6 +988,9 @@ ACTION_NAMES = {
     "signout_all": "Hamma qurilmalardan chiqardi", "backup_key_viewed": "Zaxira kalitini ko'rdi", "capacity": "Bir vaqtdagi tekshiruvlar sonini o'zgartirdi", "report_resent": "Hisobotni qayta yubordi",
     "check_test": "Tekshiruvni test deb belgiladi", "check_real": "Tekshiruvni haqiqiy deb belgiladi",
     "finance_entry_deleted": "Moliyadan yozuvni o'chirdi",
+    "admin_perms": "Admin huquqlarini o'zgartirdi", "2fa_linked": "Kirish kodlari uchun Telegram uladi",
+    "2fa_unlinked": "Kirish kodlari Telegram'ini uzdi", "2fa_recovery": "Tiklash kodlarini yaratdi",
+    "login_code_failed": "Kirish kodi xato",
 }
 
 

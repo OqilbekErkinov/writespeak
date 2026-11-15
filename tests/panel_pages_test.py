@@ -15,6 +15,8 @@ import httpx  # noqa: E402
 
 from bot.config import settings  # noqa: E402
 
+settings.web_2fa = False  # signs in with the password alone: the two-step sign-in is tests/panel_access_test.py
+
 fails: list[str] = []
 OUT = Path(sys.argv[1]) if len(sys.argv) > 1 else None
 

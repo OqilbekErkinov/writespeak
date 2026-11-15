@@ -127,7 +127,7 @@ async def _next_unchecked(after: int) -> int | None:
 
 @router.post("/charts/{key_id}")
 async def chart_save(request: Request, key_id: int):
-    if (redirect := panel.guard(request)) is not None:
+    if (redirect := panel.guard(request, perm="content")) is not None:
         return redirect
     form = {k: str(v) for k, v in (await request.form()).items()}
     action = form.pop("action", "save")
@@ -163,7 +163,7 @@ async def chart_save(request: Request, key_id: int):
 
 @router.post("/charts/{key_id}/delete")
 async def chart_delete(request: Request, key_id: int):
-    if (redirect := panel.guard(request)) is not None:
+    if (redirect := panel.guard(request, perm="content")) is not None:
         return redirect
     async with get_session() as session:
         key = await session.get(ChartKey, key_id)

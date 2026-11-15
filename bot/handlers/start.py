@@ -7,7 +7,9 @@ menu. Also handles two deep-link payloads (https://t.me/<bot>?start=<arg>):
 reward comes later, on the referred user's first check) and a group invite
 (bot/utils/group_invite.py's signed `g<id>_<sig>`; works for new AND existing
 users, since a current student's teacher may share one after they've
-already been using the bot on their own). Old unsigned `group_<id>` links
+already been using the bot on their own). And `pl_<token>`: the admin
+panel's link of a login to this Telegram for its sign-in codes
+(bot/utils/panel_access.py). Old unsigned `group_<id>` links
 are refused with a "ask your teacher for a new link" note. A coin gift's
 `gift_<code>` (bot/utils/gifts.py) is claimed at once by a user already in
 the bot, and after the language pick by a new one, whose referrer becomes
@@ -33,7 +35,7 @@ from bot.i18n import DEFAULT_LANG, LANGS, t
 from bot.keyboards.lang_kb import CB_LANG_ONBOARD_PREFIX, lang_picker_kb
 from bot.keyboards.main_menu_kb import main_menu_kb
 from bot.middlewares.access_control import DENIED_TEXT
-from bot.utils import crm_events, gifts
+from bot.utils import crm_events, gifts, panel_access
 from bot.utils.flow import leave_flow
 from bot.utils.group_invite import (
     is_center_payload,
@@ -52,6 +54,11 @@ router = Router(name="start")
 @router.message(CommandStart())
 async def cmd_start(message: Message, command: CommandObject, state: FSMContext, lang: str) -> None:
     tg = message.from_user
+    if command.args and command.args.startswith(panel_access.LINK_PREFIX):
+        # the admin panel's sign-in: this Telegram becomes a panel login's code receiver (bot/utils/panel_access.py)
+        await message.answer(await panel_access.link_from_bot(
+            message.bot, command.args.removeprefix(panel_access.LINK_PREFIX), tg))
+        return
     gift_code = gifts.gift_code(command.args)
     # /start leaves whatever flow they were in (a check being graded goes on): their next message is a new
     # start, never the answer an old "send your answer" was waiting for (2026-11-15)

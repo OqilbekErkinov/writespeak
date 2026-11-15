@@ -14,6 +14,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import httpx  # noqa: E402
 
 from bot.config import settings  # noqa: E402
+
+settings.web_2fa = False  # signs in with the password alone: the two-step sign-in is tests/panel_access_test.py
 from bot.utils import crm_events, teacher_bands  # noqa: E402
 from db.database import get_session  # noqa: E402
 from db.models import SpeakingSubmission, User, WebAdmin, WritingSubmission  # noqa: E402

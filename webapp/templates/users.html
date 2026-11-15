@@ -9,7 +9,7 @@
     <input type="text" name="q" value="{{ q }}" placeholder="Ism, @username yoki ID…" aria-label="Qidirish">
     <button type="submit" class="btn">Qidirish</button>
     {% if q %}<a class="btn" href="/users?s={{ segment }}">✕</a>{% endif %}
-    <a class="btn" href="/export/users.xlsx" title="Barcha foydalanuvchilar Excel faylda">⬇ Excel</a>
+    {% if can(request, "users") %}<a class="btn" href="/export/users.xlsx" title="Barcha foydalanuvchilar Excel faylda">⬇ Excel</a>{% endif %}
   </form>
 </div>
 
@@ -48,7 +48,7 @@
       <td class="r num">{% if r.paid %}<b class="strong">{{ r.paid_str }}</b>{% else %}<span class="muted">—</span>{% endif %}</td>
       <td class="num">{{ r.joined }}</td>
       <td>{% if r.online %}<span class="dot"></span> <b class="strong">hozir</b>{% else %}{{ r.last_active_str }}{% endif %}</td>
-      <td class="r"><a class="btn btn-sm" href="/users/{{ u.id }}/coins" title="Coin qo'shish yoki ayirish">🟡 ±</a></td>
+      <td class="r">{% if can(request, "coins") %}<a class="btn btn-sm" href="/users/{{ u.id }}/coins" title="Coin qo'shish yoki ayirish">🟡 ±</a>{% endif %}</td>
     </tr>
     {% endfor %}
   </table>

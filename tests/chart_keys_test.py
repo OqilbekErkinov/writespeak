@@ -248,8 +248,10 @@ async def flow() -> None:
 async def panel_pages(key_id: int) -> None:
     import httpx
 
+    from bot.config import settings
     from webapp.main import app
 
+    settings.web_2fa = False  # the password alone: the two-step sign-in is tests/panel_access_test.py
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://panel") as web:
         r = await web.post("/login", data={"username": "admin", "password": "change-me"})
         check("panel: signed in", r.status_code == 303, r.status_code)

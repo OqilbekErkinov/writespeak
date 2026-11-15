@@ -43,7 +43,7 @@ from bot.keyboards.payment_kb import (
     receipt_cancel_kb,
 )
 from bot.states.payment_states import PaymentStates
-from bot.utils import crm_events, stickers
+from bot.utils import crm_events, panel_access, stickers
 from bot.utils.coins import CENTER_PACKS, COIN_PACKS, pack_price
 from bot.utils.gifts import gift_link
 from bot.utils.quota import format_som
@@ -193,6 +193,8 @@ async def receive_receipt(message: Message, state: FSMContext, lang: str) -> Non
         caption += "\n\n⚠️ <b>DIQQAT: bu chek rasmi avval ishlatilgan</b> — " + ", ".join(
             f"#{p.id} ({'tasdiqlangan' if p.status == PaymentStatus.approved else 'kutmoqda'})" for p in twins)
     for admin_id in settings.admin_ids:
+        if not await panel_access.telegram_may(admin_id, "payments"):
+            continue  # linked to a panel login without 💳 To'lovlar (bot/utils/panel_access.py)
         try:
             await message.bot.send_photo(
                 admin_id, file_id, caption=caption, reply_markup=payment_review_kb(request.id)
@@ -220,7 +222,7 @@ async def on_pay_reject(callback: CallbackQuery) -> None:
 
 
 async def _decide(callback: CallbackQuery, *, approve: bool, status_line: str) -> None:
-    if not _is_admin(callback.from_user.id):
+    if not _is_admin(callback.from_user.id) or not await panel_access.telegram_may(callback.from_user.id, "payments"):
         await callback.answer("Sizda ruxsat yo'q.", show_alert=True)
         return
 

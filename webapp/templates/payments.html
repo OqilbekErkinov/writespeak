@@ -3,7 +3,7 @@
 {% block content %}
 <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;margin-bottom:22px">
   <h1 style="margin:0">To'lovlar</h1>
-  <a class="btn" href="/export/payments.xlsx" title="Barcha to'lovlar Excel faylda">⬇ Excel</a>
+  {% if can(request, "users") %}<a class="btn" href="/export/payments.xlsx" title="Barcha to'lovlar Excel faylda">⬇ Excel</a>{% endif %}
 </div>
 
 <div class="filters">
@@ -55,7 +55,8 @@
         {% if r.is_test %}<span class="pill" title="Sinov uchun tasdiqlangan: coinlari berilgan, lekin tushumga kirmaydi">test</span>{% endif %}
       </td>
       <td>
-        {% if r.status.value == "pending" %}
+        {% if not can(request, "payments") %}
+        {% elif r.status.value == "pending" %}
         {# no receipt yet: approving is still possible (cash, a transfer checked elsewhere) - but never by mistake #}
         <form class="inline" method="post" action="/payments/{{ r.id }}/approve"
               {% if not r.receipt_file_id %}data-confirm="Chek yuborilmagan — baribir tasdiqlansinmi?"

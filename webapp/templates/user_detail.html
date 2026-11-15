@@ -26,11 +26,11 @@
     </div>
   </div>
   <div class="p-actions">
-    <a class="btn btn-primary" href="/users/{{ user.id }}/coins">🟡 Coin ±</a>
+    {% if can(request, "coins") %}<a class="btn btn-primary" href="/users/{{ user.id }}/coins">🟡 Coin ±</a>{% endif %}
     <a class="btn btn-ghost" href="#message">✉️ Xabar yozish</a>
     <a class="btn btn-ghost" href="/support/{{ user.id }}">💬 Yozishma</a>
     <a class="btn btn-ghost" href="tg://user?id={{ user.id }}">Telegram'da ochish</a>
-    {% if not is_admin %}
+    {% if not is_admin and can(request, "users") %}
     {% if blocked %}
     <form method="post" action="/users/{{ user.id }}/block" class="inline" data-confirm="Blokdan chiqarilsinmi?"
           data-confirm-text="{{ user.full_name }} botdan yana odatdagidek foydalana oladi." data-confirm-ok="Blokdan chiqarish" data-tone="good">
@@ -176,7 +176,7 @@
 </div>
 
 <div class="card" id="coin">
-  <h2>Coin qo'lda o'zgartirishlar <span class="muted num">{{ adjustments|length }}</span> <a class="btn btn-sm" href="/users/{{ user.id }}/coins" style="margin-left:8px">🟡 Coin ±</a></h2>
+  <h2>Coin qo'lda o'zgartirishlar <span class="muted num">{{ adjustments|length }}</span>{% if can(request, "coins") %} <a class="btn btn-sm" href="/users/{{ user.id }}/coins" style="margin-left:8px">🟡 Coin ±</a>{% endif %}</h2>
   {% if adjustments %}
   <div class="table-scroll"><table>
     <tr><th>Sana</th><th>O'zgarish</th><th>Balans</th><th>Izoh</th></tr>

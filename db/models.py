@@ -466,8 +466,25 @@ class WebAdmin(Base):
     active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     # "admin", or "teacher": only the checks page, their reports and recordings, and the teachers' bands
     role: Mapped[str] = mapped_column(String(20), default="admin", server_default="admin")
+    # What an admin may do beyond looking (webapp/panel.py's PERMS, comma-separated; 2026-11-16). NULL =
+    # everything: the logins made before then keep their access until the owner narrows it.
+    perms: Mapped[str | None] = mapped_column(String(200), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class PanelSecondFactor(Base):
+    """The Telegram account a panel login's sign-in codes go to (bot/utils/second_factor.py, 2026-11-16) - one
+    row per login, the owner's .env login included - linked by the person themselves from the bot. The owner's
+    one-time recovery codes are kept here as hashes (JSON list)."""
+
+    __tablename__ = "panel_second_factor"
+
+    login: Mapped[str] = mapped_column(String(50), primary_key=True)
+    telegram_id: Mapped[int] = mapped_column(BigInteger)
+    telegram_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    linked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    recovery_hashes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class CheckHold(Base):
