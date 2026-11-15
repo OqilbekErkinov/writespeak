@@ -1,3 +1,10 @@
+# Every service's log is capped (2026-11-15: docker kept them forever): 5 files of 20 MB.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "5"
+
 services:
   db:
     image: pgvector/pgvector:pg16
@@ -24,6 +31,10 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+    # Append-only file (2026-11-15): the spend ledger, the balances and the students' unfinished flows
+    # survive a restart to the last write, not to the last snapshot.
+    command: ["redis-server", "--appendonly", "yes"]
+    logging: *logging
     volumes:
       - redisdata:/data
 
@@ -46,7 +57,12 @@ services:
         condition: service_started
     volumes:
       - ./data:/data
-    command: sh -c "alembic upgrade head && python -m bot.main"
+    # `exec`: python becomes PID 1 and gets docker's SIGTERM - the checks being graded are finished before it
+    # exits (bot/utils/check_guard.py drain, settings.check_drain_seconds); under `sh` it never got the
+    # signal and was killed after 10 s, the checks with it.
+    command: sh -c "alembic upgrade head && exec python -m bot.main"
+    stop_grace_period: 15m
+    logging: *logging
 
   # Imports Practice questions from the Telegram channels every few hours
   # (services/practice_import/). Separate from the bot so the CPU-heavy
@@ -63,6 +79,7 @@ services:
     volumes:
       - ./data:/data
     command: python -m services.practice_import.runner
+    logging: *logging
 
   # The previous bot (@writespeak_bot) since the move to the new one: answers
   # everyone with a link to it (bot/moved.py). Idles while MOVED_BOT_TOKEN is
@@ -75,6 +92,7 @@ services:
       db:
         condition: service_healthy
     command: python -m bot.moved
+    logging: *logging
 
   admin_web:
     build: .
@@ -95,6 +113,7 @@ services:
     # --proxy-headers: take the client IP from nginx's X-Forwarded-For (safe
     # to trust from anywhere since only nginx can reach the port above).
     command: uvicorn webapp.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips=*
+    logging: *logging
 
 volumes:
   pgdata:

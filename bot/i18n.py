@@ -78,8 +78,10 @@ _T: dict[str, dict[str, str]] = {
         "ru": "🟡 <b>Цены проверок:</b>\n✍️ Writing Task 1 — <b>{w1} coin</b> · Task 2 — <b>{w2} coin</b>\n🎙 Speaking Part 1 — <b>{s1} coin</b> · Part 2 — <b>{s2} coin</b> · Part 3 — <b>{s3} coin</b>\n<i>1 coin = {coin} сум, в больших пакетах дешевле. Coin не сгорают.</i>",
     },
     "quota.price_note": {
-        "uz": "🟡 Bu tekshiruv — <b>{price} coin</b>. Hisobot tayyor bo'lganda yechiladi, balansingizda <b>{left} coin</b> qoladi.",
-        "ru": "🟡 Эта проверка — <b>{price} coin</b>. Спишется, когда отчёт будет готов; на балансе останется <b>{left} coin</b>.",
+        "uz": "🟡 Bu tekshiruv — <b>{price} coin</b>, balansingizda <b>{left} coin</b> qoladi. Tekshiruv yakunlanmasa, "
+        "coin qaytariladi.",
+        "ru": "🟡 Эта проверка — <b>{price} coin</b>, на балансе останется <b>{left} coin</b>. Если проверка не "
+        "завершится, coin вернутся.",
     },
     # Shown during a test window (settings.checks_only_for) to everyone else;
     # they get quota.back when it ends (bot/utils/checks_back.py).
@@ -195,8 +197,33 @@ _T: dict[str, dict[str, str]] = {
         "ru": "Пожалуйста, отправьте правильный текст:",
     },
     "writing.send_answer": {
-        "uz": "✅ Qabul qilindi.\n\n✏️ Endi javobingizni yuboring (kamida {min_words} so'z).",
-        "ru": "✅ Принято.\n\n✏️ Теперь отправьте свой ответ (минимум {min_words} слов).",
+        "uz": "✅ Qabul qilindi.\n\n✏️ Endi javobingizni <b>bitta xabarda</b> yuboring (kamida {min_words} so'z).",
+        "ru": "✅ Принято.\n\n✏️ Теперь отправьте свой ответ <b>одним сообщением</b> (минимум {min_words} слов).",
+    },
+    # A typed answer far below the minimum, or long enough that Telegram may have cut it in two (2026-11-15):
+    # asked before anything is charged; more text sent now is added to it
+    "writing.short_answer": {
+        "uz": "✋ Javobingizda <b>{words}</b> ta so'z bor — {task} uchun kamida <b>{min_words}</b> ta so'z kerak.\n\n"
+        "Davomi bo'lsa, shu yerga yuboring — qo'shib qo'yaman. Javobingiz shu bo'lsa, «✅ Shuni tekshirish»ni "
+        "bosing.",
+        "ru": "✋ В вашем ответе <b>{words}</b> слов — для {task} нужно не меньше <b>{min_words}</b>.\n\n"
+        "Если есть продолжение, отправьте его сюда — я добавлю. Если это весь ответ, нажмите «✅ Проверить так».",
+    },
+    "writing.long_answer": {
+        "uz": "📨 Matningiz uzun ({words} ta so'z) — Telegram uni bir necha xabarga bo'lib yuborgan bo'lishi mumkin.\n\n"
+        "Davomi bo'lsa, yuboring — qo'shib qo'yaman. Hammasi kelgan bo'lsa, «✅ Shuni tekshirish»ni bosing.",
+        "ru": "📨 Текст длинный ({words} слов) — Telegram мог разбить его на несколько сообщений.\n\n"
+        "Если есть продолжение, отправьте его — я добавлю. Если всё пришло, нажмите «✅ Проверить так».",
+    },
+    "writing.more_added": {
+        "uz": "➕ Qo'shildi — endi <b>{words}</b> ta so'z. Yana davomi bo'lsa yuboring yoki «✅ Shuni tekshirish»ni "
+        "bosing.",
+        "ru": "➕ Добавлено — теперь <b>{words}</b> слов. Если есть ещё, отправьте или нажмите «✅ Проверить так».",
+    },
+    "writing.short_check_btn": {"uz": "✅ Shuni tekshirish", "ru": "✅ Проверить так"},
+    "writing.text_only_here": {
+        "uz": "Bu yerga javobning davomini matn ko'rinishida yuboring yoki «✅ Shuni tekshirish»ni bosing.",
+        "ru": "Отправьте сюда продолжение ответа текстом или нажмите «✅ Проверить так».",
     },
     # Shown wherever a Writing answer is asked for (the user, 2026-11-10: many students send a ChatGPT-corrected
     # essay - a Band 5 script comes back as a 7 and the report can't help them)
@@ -285,6 +312,49 @@ _T: dict[str, dict[str, str]] = {
         "uz": "Voy, nimadir xato ketdi — tekshiruv tugamadi, coin yechilmadi. Birozdan so'ng qayta "
         "urinib ko'ring.",
         "ru": "Ой, что-то пошло не так — проверка не завершилась, coin не списаны. Попробуйте ещё раз чуть позже.",
+    },
+    # --- A running check (bot/utils/check_guard.py, 2026-11-15): one at a time, coins held, "try again" ---
+    "check.busy": {
+        "uz": "⏳ <b>Oldingi tekshiruvingiz hali baholanmoqda.</b>\nNatija kelishi bilan yangisini boshlashingiz "
+        "mumkin — odatda bir necha daqiqa. Bir vaqtda bitta tekshiruv ishlaydi, shunda coinlaringiz doim to'g'ri "
+        "hisoblanadi.",
+        "ru": "⏳ <b>Ваша предыдущая проверка ещё идёт.</b>\nКак только придёт результат, можно начать новую — "
+        "обычно это несколько минут. Одновременно идёт одна проверка, так coin всегда считаются верно.",
+    },
+    "check.failed": {
+        "uz": "⚠️ <b>Tekshiruv yakunlanmadi</b> — bizning tomonda xatolik yuz berdi.\nJavobingiz saqlangan: "
+        "«🔁 Qayta urinish» tugmasini bosing — qaytadan yuborish shart emas.",
+        "ru": "⚠️ <b>Проверка не завершилась</b> — сбой на нашей стороне.\nВаш ответ сохранён: нажмите "
+        "«🔁 Повторить» — отправлять заново не нужно.",
+    },
+    "check.failed_lost": {
+        "uz": "⚠️ <b>Tekshiruv yakunlanmadi</b> — bizning tomonda xatolik yuz berdi. Iltimos, javobingizni "
+        "qaytadan yuboring.",
+        "ru": "⚠️ <b>Проверка не завершилась</b> — сбой на нашей стороне. Пожалуйста, отправьте ответ заново.",
+    },
+    "check.interrupted": {
+        "uz": "⚠️ <b>Bot yangilanayotgan paytda tekshiruvingiz to'xtab qoldi.</b>\nJavobingiz saqlangan: "
+        "«🔁 Qayta urinish» tugmasini bosing.",
+        "ru": "⚠️ <b>Проверка прервалась, пока бот обновлялся.</b>\nВаш ответ сохранён: нажмите «🔁 Повторить».",
+    },
+    "check.interrupted_lost": {
+        "uz": "⚠️ <b>Bot yangilanayotgan paytda tekshiruvingiz to'xtab qoldi.</b> Iltimos, javobingizni qaytadan "
+        "yuboring.",
+        "ru": "⚠️ <b>Проверка прервалась, пока бот обновлялся.</b> Пожалуйста, отправьте ответ заново.",
+    },
+    "check.coins_back": {
+        "uz": "🟡 Band qilingan <b>{coins} coin</b> balansingizga qaytarildi.",
+        "ru": "🟡 Зарезервированные <b>{coins} coin</b> возвращены на баланс.",
+    },
+    "check.retry_btn": {"uz": "🔁 Qayta urinish", "ru": "🔁 Повторить"},
+    "check.retry_gone": {
+        "uz": "Bu tekshiruvning ma'lumotlari endi yo'q — javobingizni qaytadan yuboring.",
+        "ru": "Данных этой проверки уже нет — отправьте ответ заново.",
+    },
+    "check.still_failed": {
+        "uz": "Hozircha tekshiruv yana yakunlanmadi. Bir necha daqiqadan so'ng qayta urinib ko'ring — javobingiz "
+        "saqlangan.",
+        "ru": "Проверка снова не завершилась. Попробуйте через несколько минут — ваш ответ сохранён.",
     },
     "writing.done_caption": {
         "uz": "Gotcha! {mistakes} ta xato topdim 🦖\nNatijangiz: <b>Band {band}</b>",

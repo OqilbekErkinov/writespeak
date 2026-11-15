@@ -261,6 +261,22 @@ async def run_sender(bot: Bot) -> None:
 
 PROBE_EVERY = 600  # seconds between test calls while checks are paused for want of OpenAI credit
 
+HEARTBEAT_KEY = "health:bot"  # deploy/watchdog/watchdog.sh alerts when it is older than its expiry
+HEARTBEAT_EVERY = 60
+
+
+async def run_heartbeat() -> None:
+    """The bot's "I'm alive" for the host's watchdog (2026-11-15): every alert path goes through this process,
+    so a dead or stuck bot could not report itself - the watchdog notices the key expiring instead."""
+    while True:
+        try:
+            await redis().set(HEARTBEAT_KEY, str(int(time.time())), ex=HEARTBEAT_EVERY * 5)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Heartbeat not written: %r", e)
+        await asyncio.sleep(HEARTBEAT_EVERY)
+
 
 async def credit_back(bot: Bot, entered: bool = False) -> None:
     """OpenAI works again (a top-up entered, or the test call went through): the group hears it and everyone

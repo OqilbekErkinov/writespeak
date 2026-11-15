@@ -10,3 +10,4 @@ class SpeakingStates(StatesGroup):
     confirming_split = State()    # the recording's split into answers, shown when it is uncertain
     awaiting_split_fix = State()  # the student's own times for the split
     processing = State()
+    failed = State()  # the check stopped (an error, a restart): its answers kept for "🔁 Try again"

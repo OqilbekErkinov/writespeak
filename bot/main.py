@@ -41,6 +41,7 @@ def build_dispatcher() -> Dispatcher:
     # 2026-08-29. Re-enable by importing it and adding its router back below.
     from bot.handlers import (
         account,
+        check_retry,
         crm,
         group,
         group_assignments,
@@ -66,6 +67,7 @@ def build_dispatcher() -> Dispatcher:
     private = Router(name="private_chats")
     private.message.filter(F.chat.type == "private")
     private.include_router(progress_quiz.router)  # the waiting card's questions, in any state
+    private.include_router(check_retry.router)  # "🔁 Try again" on a stopped check, in its `failed` state
     private.include_router(start.router)
     private.include_router(language.router)
     private.include_router(stats.router)
@@ -95,19 +97,36 @@ async def main() -> None:
     )
     dp = build_dispatcher()
 
-    from bot.utils import crm
+    from bot.utils import check_guard, crm
     from bot.utils.checks_back import notify_back
     from bot.utils.group_scheduler import run_group_jobs
     from bot.utils.vocab_reminders import run_vocab_reminders
 
     logger.info("Starting Bandzilla bot (polling mode)")
-    await bot.delete_webhook(drop_pending_updates=True)
+    # The messages sent while the bot was down (a deploy) are handled now, not dropped: an essay or a voice
+    # answer sent during a restart used to vanish without a reply (until 2026-11-15).
+    await bot.delete_webhook(drop_pending_updates=False)
     crm.install_error_forwarding()
+    # The checks a stopped bot left running: coins back, "🔁 Try again" on their cards (bot/utils/check_guard.py).
+    try:
+        await check_guard.recover(bot, dp.storage)
+    except Exception:  # noqa: BLE001 - the bot still starts; the sweep settles them later
+        logger.exception("Recovering the interrupted checks failed")
+
+    async def drain_checks() -> None:
+        # aiogram's shutdown event, before the bot session closes: a deploy (SIGTERM) waits for the checks
+        # being graded instead of killing them - docker-compose.yml's stop_grace_period is longer than this
+        await check_guard.drain()
+        await crm.flush_spent()  # the last checks' OpenAI spend into the ledger before the process exits
+
+    dp.shutdown.register(drain_checks)
     background = [
         asyncio.create_task(run_vocab_reminders(bot)),
         asyncio.create_task(run_group_jobs(bot)),
         asyncio.create_task(crm.run_sender(bot)),
         asyncio.create_task(notify_back(bot)),  # after a test window: "checks are back"
+        asyncio.create_task(check_guard.run_sweeper(bot, dp.storage)),
+        asyncio.create_task(crm.run_heartbeat()),  # deploy/watchdog/watchdog.sh watches it
     ]
     try:
         await dp.start_polling(bot)

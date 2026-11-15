@@ -27,6 +27,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
+from sqlalchemy import text as sql_text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 EMBEDDING_DIM = 1536  # text-embedding-3-small
@@ -455,6 +456,41 @@ class WebAdmin(Base):
     role: Mapped[str] = mapped_column(String(20), default="admin", server_default="admin")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class CheckHold(Base):
+    """One Writing/Speaking check while it is graded, and how it ended (bot/utils/check_guard.py, the 2026-11-15
+    audit). Its coins are taken from the payer the moment grading starts - one conditional UPDATE, so two
+    checks can never both spend the same coins - and given back unless the report is saved. A student has at
+    most one check `held` at a time (the partial unique index), so a double tap or a second essay sent
+    meanwhile cannot start a second paid run. A bot restart finds its checks still `held`: their coins go
+    back and the students are offered "try again" (the input is still in their FSM data). The rows that did
+    not end `charged` are the panel's list of failed checks."""
+
+    __tablename__ = "check_holds"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)  # uuid4 hex, also kept in the FSM data
+    user_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    chat_id: Mapped[int] = mapped_column(BigInteger)
+    message_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)  # the live card
+    module: Mapped[str] = mapped_column(String(1))  # "w" | "s"
+    kind: Mapped[str] = mapped_column(String(30))  # a bot/utils/coins.py CHECK_COINS key
+    lang: Mapped[str] = mapped_column(String(5), default="uz")
+    payer_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)  # whose coins were taken
+    coins: Mapped[int] = mapped_column(Integer, default=0)
+    # False for admins: they may run several checks at once (tests)
+    exclusive: Mapped[bool] = mapped_column(Boolean, default=True)
+    # held | charged | refunded (failed, coins back) | interrupted (bot restart) | expired (never finished)
+    state: Mapped[str] = mapped_column(String(12), default="held")
+    reason: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    submission_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        Index("uq_check_holds_one_running", "user_id", unique=True,
+              postgresql_where=sql_text("state = 'held' AND exclusive")),
+    )
 
 
 class FinanceEntry(Base):

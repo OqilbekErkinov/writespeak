@@ -6,6 +6,7 @@ already-open AsyncSession so callers control the transaction boundary via
 """
 from __future__ import annotations
 
+import logging
 import secrets
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
@@ -20,6 +21,7 @@ from db.models import (
     AssignmentPart,
     Center,
     CenterTeacher,
+    CheckHold,
     CoinAdjustment,
     CoinGift,
     Group,
@@ -50,6 +52,8 @@ from services.ai import usage
 from services.ai.essay_marking import count_words
 from services.ai.scoring import band_down, writing_speaking_overall
 from services.ai.schemas import VocabularyItem
+
+logger = logging.getLogger(__name__)
 
 # --- Users / access control -------------------------------------------------
 
@@ -145,13 +149,16 @@ async def save_writing_submission(
     payer_id: int | None = None,
     report_data: dict | None = None,
     is_test: bool = False,
+    hold_id: str | None = None,
 ) -> WritingSubmission:
     """`annotations` holds the report's numbered mistakes (each with its
     `criterion`) since the 2026-10 report redesign - get_writing_history
     compares their per-criterion counts with the student's next essay.
-    Older rows hold the previous sentence-annotation format. `coins` (the
-    check's price, 0 when free) are spent from `payer_id` (a group's
-    sponsor) when given, else from the student."""
+    Older rows hold the previous sentence-annotation format. The check is
+    paid by its hold (`hold_id`, bot/utils/check_guard.py: the coins were
+    taken when grading started) - else `coins` from `payer_id` (a group's
+    sponsor) or the student, only if they are there (_charge)."""
+    coins, payer_id, hold = await _charge(session, user_id=user_id, coins=coins, payer_id=payer_id, hold_id=hold_id)
     submission = WritingSubmission(
         user_id=user_id,
         task_type=task_type,
@@ -174,8 +181,9 @@ async def save_writing_submission(
         is_test=is_test,
     )
     session.add(submission)
-    if coins:
-        await _spend_coins(session, payer_id or user_id, coins)
+    await session.flush()
+    if hold is not None:
+        hold.submission_id = submission.id
     await session.commit()
     await session.refresh(submission)
     return submission
@@ -200,10 +208,13 @@ async def save_speaking_submission(
     assignment_part_id: int | None = None,
     payer_id: int | None = None,
     is_test: bool = False,
+    hold_id: str | None = None,
 ) -> SpeakingSubmission:
-    """`coins` (the check's price, 0 when free - bot/utils/coins.py) are
-    spent from `payer_id` (a group's sponsor) when given, else from the
-    student. `is_test`: a test run (scripts/live_check.py)."""
+    """Paid by its hold (`hold_id`, bot/utils/check_guard.py) - else `coins`
+    (the check's price, 0 when free - bot/utils/coins.py) from `payer_id` (a
+    group's sponsor) or the student, only if they are there (_charge).
+    `is_test`: a test run (scripts/live_check.py)."""
+    coins, payer_id, hold = await _charge(session, user_id=user_id, coins=coins, payer_id=payer_id, hold_id=hold_id)
     submission = SpeakingSubmission(
         user_id=user_id,
         part=part,
@@ -223,8 +234,9 @@ async def save_speaking_submission(
         is_test=is_test,
     )
     session.add(submission)
-    if coins:
-        await _spend_coins(session, payer_id or user_id, coins)
+    await session.flush()
+    if hold is not None:
+        hold.submission_id = submission.id
     await session.commit()
     await session.refresh(submission)
     return submission
@@ -362,12 +374,34 @@ async def get_writing_history(
     }
 
 
-async def _spend_coins(session: AsyncSession, user_id: int, coins: int) -> None:
-    """Takes a check's price off the payer's balance (never below 0: the
-    balance was checked when the check started - bot/utils/quota.py)."""
-    user = (await session.execute(select(User).where(User.id == user_id).with_for_update())).scalar_one_or_none()
-    if user is not None:
-        user.coin_balance = max(0, user.coin_balance - coins)
+async def _charge(
+    session: AsyncSession, *, user_id: int, coins: int, payer_id: int | None, hold_id: str | None
+) -> tuple[int, int | None, CheckHold | None]:
+    """How a check being saved is paid: (coins spent, the group sponsor who paid - None for the student or a
+    free check, its hold). A hold still `held` already took its coins when grading started
+    (bot/utils/check_guard.py): it becomes `charged` in this transaction. Without one - or one settled
+    meanwhile (a restart gave its coins back) - `coins` are taken now, but only if the payer has them: a
+    balance never goes below 0, and a check whose coins are not there is recorded as free (logged), never as
+    paid (until 2026-11-15 the balance was floored at 0 and the check still recorded as paid)."""
+    if hold_id:
+        hold = (await session.execute(select(CheckHold).where(CheckHold.id == hold_id).with_for_update())) \
+            .scalar_one_or_none()
+        if hold is not None and hold.state == "held":
+            hold.state, hold.finished_at = "charged", datetime.now(timezone.utc)
+            sponsor = hold.payer_id if hold.coins and hold.payer_id and hold.payer_id != user_id else None
+            return hold.coins, sponsor, hold
+        if hold is not None:
+            coins, payer_id = hold.coins, (hold.payer_id if hold.payer_id != user_id else None)
+    if not coins:
+        return 0, None, None
+    payer = payer_id or user_id
+    took = (await session.execute(
+        update(User).where(User.id == payer, User.coin_balance >= coins)
+        .values(coin_balance=User.coin_balance - coins).returning(User.id))).scalar_one_or_none()
+    if took is None:
+        logger.warning("Check of user %s saved unpaid: payer %s has fewer than %s coins", user_id, payer, coins)
+        return 0, None, None
+    return coins, (payer_id if payer_id and payer_id != user_id else None), None
 
 
 async def get_writing_submission(

@@ -785,13 +785,21 @@ async def cut_start_flow() -> None:
 
     message = NS(answer=answer, chat=NS(id=1))
     state = FSMContext(storage=MemoryStorage(), key=StorageKey(bot_id=1, chat_id=1, user_id=1))
-    cut = "e youngest people had the highest figures. There was a big gap. In 2010, 72% used the internet."
+    # long enough not to be asked "is this your whole answer?" first (2026-11-15: under half the minimum is)
+    cut = ("e youngest people had the highest figures. There was a big gap. In 2010, 72% used the internet. "
+           + "The figures for the other groups rose steadily over the whole period shown in the chart. " * 6)
     real_grade, real_strip = writing._run_grading, writing.strip_buttons
     writing._run_grading, writing.strip_buttons = grade, nothing
+
+    async def advance():
+        # _advance says when the answer is ready; its caller grades it (outside the student's lock)
+        if await writing._advance(message, state, "answer", "uz"):
+            await grade(message, state, "uz")
+
     try:
         await state.set_state(WritingStates.awaiting_answer)
         await state.update_data(task_type="task1", answer_text=cut, answer_source="text")
-        await writing._advance(message, state, "answer", "uz")
+        await advance()
         buttons = [b.callback_data for row in said[-1][1].inline_keyboard for b in row] if said else []
         check("a cut answer: the student is asked, nothing marked yet",
               not graded and "e youngest people" in said[-1][0] and CB_CHECK_AS_IS in buttons, said)
@@ -802,8 +810,8 @@ async def cut_start_flow() -> None:
         said.clear()
         await state.set_state(WritingStates.awaiting_answer)
         await state.update_data(_cut_warned=None)
-        await writing._advance(message, state, "answer", "uz")
-        await writing._advance(message, state, "answer", "uz")
+        await advance()
+        await advance()
         check("...the same text sent again is marked", graded == [cut] and len(said) == 1, (graded, said))
 
         graded.clear()
@@ -811,8 +819,17 @@ async def cut_start_flow() -> None:
         whole = "The y" + cut
         await state.set_state(WritingStates.awaiting_answer)
         await state.update_data(answer_text=whole)
-        await writing._advance(message, state, "answer", "uz")
+        await advance()
         check("...a whole answer goes straight on", graded == [whole] and not said, (graded, said))
+
+        graded.clear()
+        said.clear()
+        short = "The chart shows the internet use of three age groups between 2000 and 2010."
+        await state.set_state(WritingStates.awaiting_answer)
+        await state.update_data(answer_text=short, _length_ok=False)
+        await advance()
+        check("...a far too short typed answer is asked about first, nothing marked",
+              not graded and said and "ta so'z bor" in said[-1][0], said)
     finally:
         writing._run_grading, writing.strip_buttons = real_grade, real_strip
 

@@ -9,13 +9,13 @@ subscription (no longer sold since 2026-10-17) makes it free; (2) a group
 whose teacher/center pays for its students' checks covers it, within that
 group's daily limit (its assignments are never limited - see
 db.crud.find_sponsor); (3) otherwise the student's own coins must cover the
-price. The coins are only spent later, once grading succeeds and the
-report is saved (db.crud.save_writing_submission/save_speaking_submission's
-`coins`) - so an abandoned or failed attempt costs nothing. Callers here
-just decide and remember *whether* this attempt is paid, and by whom
-(`payer_id`, None = the student), via the `spend_credit` and `payer_id`
-keys threaded through FSM state; the price itself is looked up again from
-the check's kind when it is saved (check_price).
+price. Callers here just decide and remember *whether* this attempt is
+paid, and by whom (`payer_id`, None = the student), via the `spend_credit`
+and `payer_id` keys threaded through FSM state. The coins themselves are
+taken when grading starts, atomically, and given back unless the report is
+saved (bot/utils/check_guard.py, since 2026-11-15) - so an abandoned or
+failed attempt still costs nothing, and two checks can never share one
+price. A student whose check is being graded is told to wait (Quota.busy).
 """
 from __future__ import annotations
 
@@ -40,13 +40,19 @@ class Quota:
     payer_id: int | None = None  # a group's sponsor paying for this check
     price: int = 0  # coins this check costs
     balance: int | None = None  # the student's coins, when they pay themselves
+    busy: bool = False  # another check of theirs is being graded (bot/utils/check_guard.py)
 
 
 async def check_quota(user_id: int, kind: str, assignment_group_id: int | None = None) -> Quota:
     """`kind`: what is being checked - a bot/utils/coins.py CHECK_COINS key
     ("writing_task2", "speaking_full", ...). `assignment_group_id`: the check
-    answers that group's assignment."""
+    answers that group's assignment. A student whose check is being graded
+    is told to wait first - before they type a new answer for nothing."""
     price = check_coins(kind)
+    from bot.utils import check_guard  # noqa: PLC0415 - check_guard imports this module
+
+    if await check_guard.busy(user_id):
+        return Quota(False, False, price=price, busy=True)
     if await runtime.window_on():
         # Test window: the testers check free of charge, nobody else at all.
         # Nothing is changed in the database, so ending it restores everyone.
@@ -98,6 +104,9 @@ def free_check_note(quota: Quota, lang: str) -> str:
 
 
 async def send_paywall(message: Message, lang: str = "uz", quota: Quota | None = None) -> None:
+    if quota is not None and quota.busy:
+        await message.answer(t("check.busy", lang))
+        return
     if await runtime.checks_paused_for(message.chat.id):
         await message.answer(t("quota.paused", lang))
         # It promises a message when checks are back: bot/utils/checks_back.py.

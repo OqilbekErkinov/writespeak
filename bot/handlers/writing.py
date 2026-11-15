@@ -26,12 +26,16 @@ import difflib
 import html
 import logging
 import time
+from collections import defaultdict
 from pathlib import Path
 
 from aiogram import F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State
 from aiogram.types import BufferedInputFile, CallbackQuery, Message
 
+from bot.config import settings
 from bot.i18n import t
 from bot.keyboards.confirm_kb import CB_CONFIRM, CB_EDIT, confirm_edit_kb
 from bot.keyboards.group_kb import CB_MY_ASSIGNMENTS, assignment_after_kb
@@ -42,10 +46,12 @@ from bot.keyboards.share_kb import share_card_kb
 from bot.keyboards.writing_task_kb import (
     CB_NO_CHART,
     CB_CHECK_AS_IS,
+    CB_LENGTH_OK,
     CB_RECHECK_NEW,
     CB_RECHECK_OLD,
     CB_SWITCH_SECTION,
     cut_start_kb,
+    length_kb,
     recheck_kb,
     wrong_section_kb,
     CB_TASK1,
@@ -56,6 +62,7 @@ from bot.keyboards.writing_task_kb import (
     writing_task_kb,
 )
 from bot.states.writing_states import WritingStates
+from bot.utils import check_guard as guard
 from bot.utils import crm_events, runtime, stickers
 from bot.utils import progress as live
 from bot.utils.input_extraction import read_images, read_text_input
@@ -63,12 +70,12 @@ from bot.utils.messages import show_screen, strip_buttons
 from bot.utils.mock_test_flow import record_mock_test_part
 from bot.utils.report_names import report_filename, with_ai_note
 from bot.utils.coins import writing_kind
-from bot.utils.quota import check_price, check_quota, free_check_note, payment_of, send_paywall
+from bot.utils.quota import check_quota, free_check_note, payment_of, send_paywall
 from db import crud
 from db.database import get_session
 from db.models import SourceType
 from services.ai import chart_keys, marking_config, usage
-from services.ai.essay_marking import PASTE_NOTICE, canon, clean_pasted, starts_mid_word, wrong_section
+from services.ai.essay_marking import PASTE_NOTICE, canon, clean_pasted, count_words, starts_mid_word, wrong_section
 from services.ai.openai_client import is_image_error
 from services.ai.sample_bank import build_model_answer, needs_from_feedback
 from services.ai.schemas import VocabularyItem
@@ -83,6 +90,24 @@ router = Router(name="writing")
 
 MIN_ANSWER_WORDS = {"task1": 150, "task2": 250}
 RESUBMISSION_SIMILARITY = 0.9
+# A typed answer under this share of the minimum is asked about before it is graded (2026-11-15: an essay sent
+# paragraph by paragraph had its first 60 words graded at full price, the rest dropped) - and so is one this
+# long, which Telegram may have split into several messages.
+SHORT_SHARE = 0.5
+SPLIT_CHARS = 3900
+
+# One student's steps into grading are taken one at a time: a double tap on "✅", or two messages arriving
+# together, must not both start a check (and race on the same FSM data) - the speaking module's pattern.
+_user_locks: defaultdict[int, asyncio.Lock] = defaultdict(asyncio.Lock)
+
+
+async def _claim(user_id: int, state: FSMContext, *expected: State) -> bool:
+    """Moves the flow from one of `expected` to `processing` - for exactly one of several taps."""
+    async with _user_locks[user_id]:
+        if await state.get_state() not in {s.state for s in expected}:
+            return False
+        await state.set_state(WritingStates.processing)
+        return True
 
 MAX_PROMPT_IMAGES = 3
 
@@ -130,12 +155,25 @@ async def choose_task(callback: CallbackQuery, state: FSMContext, lang: str) -> 
 
 @router.message(WritingStates.awaiting_prompt, ~F.text.in_(MENU_BUTTON_TEXTS))
 async def receive_prompt(message: Message, state: FSMContext, lang: str) -> None:
-    await _receive_input(message, state, field="prompt", lang=lang)
+    async with _user_locks[message.from_user.id]:
+        if await state.get_state() != WritingStates.awaiting_prompt.state:
+            return  # a second message that came together with the first: the first one is used
+        await _receive_input(message, state, field="prompt", lang=lang)
 
 
 @router.message(WritingStates.awaiting_answer, ~F.text.in_(MENU_BUTTON_TEXTS))
 async def receive_answer(message: Message, state: FSMContext, lang: str) -> None:
-    await _receive_input(message, state, field="answer", lang=lang)
+    async with _user_locks[message.from_user.id]:
+        current = await state.get_state()
+        if current == WritingStates.confirming_length.state and message.text:
+            # the next part of a long text Telegram split, arriving while the first was handled
+            await _add_more(message, state, lang)
+            return
+        if current != WritingStates.awaiting_answer.state:
+            return
+        go = await _receive_input(message, state, field="answer", lang=lang)
+    if go:
+        await _run_grading(message, state, lang)
 
 
 def _back_target(data: dict, field: str) -> str:
@@ -151,13 +189,15 @@ def _back_target(data: dict, field: str) -> str:
     return TASK_CALLBACKS[data["task_type"]]  # re-asks for the prompt
 
 
-async def _receive_input(message: Message, state: FSMContext, field: str, lang: str) -> None:
+async def _receive_input(message: Message, state: FSMContext, field: str, lang: str) -> bool:
+    """Reads the prompt or the answer (any format). True when the answer is ready to be graded - the state is
+    `processing` then, and the caller grades it (outside its lock)."""
     task1_question = field == "prompt" and (await state.get_data()).get("task_type") == "task1"
     # A photo of a Task 1 task: only its wording is read as text - the chart's
     # own figures come from the chart reading, never from OCR.
     extracted = await read_text_input(message, lang, ocr_mode="writing_task1_question" if task1_question else "verbatim")
     if extracted is None:
-        return
+        return False
     if extracted.cost:
         # reading a photo/file costs too: it is added to the check's cost
         earlier = (await state.get_data()).get("input_cost")
@@ -179,8 +219,7 @@ async def _receive_input(message: Message, state: FSMContext, field: str, lang: 
                 f"{field}_file_path": file_path,
             }
         )
-        await _advance(message, state, field, lang)
-        return
+        return await _advance(message, state, field, lang)
 
     # Non-text input: show what was extracted and let the student confirm/fix
     # it before it's used for grading (OCR/parsing isn't perfect).
@@ -200,6 +239,7 @@ async def _receive_input(message: Message, state: FSMContext, field: str, lang: 
         t("writing.confirm_preview", lang, preview=_preview(extracted.text)),
         reply_markup=confirm_edit_kb(lang),
     )
+    return False
 
 
 @router.callback_query(WritingStates.confirming_section, F.data == CB_SWITCH_SECTION)
@@ -212,9 +252,13 @@ async def switch_section(callback: CallbackQuery, state: FSMContext, lang: str) 
     if not quota.allowed:
         await send_paywall(callback.message, lang, quota)
         return
-    await state.update_data(task_type=task_type, spend_credit=quota.spend_credit, payer_id=quota.payer_id,
-                            switch_to=None, prompt_image_paths=[] if task_type == "task2" else data.get("prompt_image_paths"))
-    await _advance(callback.message, state, "prompt", lang)
+    async with _user_locks[callback.from_user.id]:
+        if await state.get_state() != WritingStates.confirming_section.state:
+            return
+        await state.update_data(task_type=task_type, spend_credit=quota.spend_credit, payer_id=quota.payer_id,
+                                switch_to=None,
+                                prompt_image_paths=[] if task_type == "task2" else data.get("prompt_image_paths"))
+        await _advance(callback.message, state, "prompt", lang)
 
 
 def _preview(text: str) -> str:
@@ -224,27 +268,98 @@ def _preview(text: str) -> str:
 @router.callback_query(WritingStates.confirming_prompt, F.data.in_({CB_CONFIRM, CB_EDIT}))
 @router.callback_query(WritingStates.confirming_answer, F.data.in_({CB_CONFIRM, CB_EDIT}))
 async def confirm_or_edit(callback: CallbackQuery, state: FSMContext, lang: str) -> None:
-    data = await state.get_data()
-    field = data["_confirm_field"]
     await callback.answer()
-    await strip_buttons(callback.message)  # no double-confirm
+    async with _user_locks[callback.from_user.id]:  # a double tap: only the first one goes on
+        if await state.get_state() not in {WritingStates.confirming_prompt.state,
+                                           WritingStates.confirming_answer.state}:
+            return
+        data = await state.get_data()
+        field = data["_confirm_field"]
+        await strip_buttons(callback.message)  # no double-confirm
 
-    if callback.data == CB_EDIT:
-        await callback.message.answer(
-            t("writing.send_correct_text", lang), reply_markup=back_kb(lang, _back_target(data, field))
-        )
-        back_state = (
-            WritingStates.awaiting_prompt if field == "prompt" else WritingStates.awaiting_answer
-        )
-        await state.update_data(_editing=field)
-        await state.set_state(back_state)
-        return
+        if callback.data == CB_EDIT:
+            await callback.message.answer(
+                t("writing.send_correct_text", lang), reply_markup=back_kb(lang, _back_target(data, field))
+            )
+            back_state = (
+                WritingStates.awaiting_prompt if field == "prompt" else WritingStates.awaiting_answer
+            )
+            await state.update_data(_editing=field)
+            await state.set_state(back_state)
+            return
 
-    await state.update_data(**{f"{field}_text": data[f"{field}_candidate_text"]})
-    await _advance(callback.message, state, field, lang)
+        await state.update_data(**{f"{field}_text": data[f"{field}_candidate_text"]})
+        go = await _advance(callback.message, state, field, lang)
+    if go:
+        await _run_grading(callback.message, state, lang)
 
 
-async def _advance(message: Message, state: FSMContext, field: str, lang: str) -> None:
+def _length_problem(data: dict) -> str | None:
+    """A typed answer to ask about before it is graded: "short" (under half the minimum) or "long" (Telegram
+    may have split it). Never twice for the same text."""
+    if data.get("answer_source") != SourceType.text.value or data.get("_length_ok"):
+        return None
+    text = data.get("answer_text", "")
+    if count_words(text) < MIN_ANSWER_WORDS[data["task_type"]] * SHORT_SHARE:
+        return "short"
+    if len(text) >= SPLIT_CHARS:
+        return "long"
+    return None
+
+
+async def _ask_length(message: Message, state: FSMContext, data: dict, problem: str, lang: str) -> None:
+    await state.set_state(WritingStates.confirming_length)
+    words = count_words(data.get("answer_text", ""))
+    if problem == "short":
+        text = t("writing.short_answer", lang, words=words, min_words=MIN_ANSWER_WORDS[data["task_type"]],
+                 task="Task 1" if data["task_type"] == "task1" else "Task 2")
+    else:
+        text = t("writing.long_answer", lang, words=words)
+    await message.answer(text, reply_markup=length_kb(lang, _back_target(data, "answer")))
+
+
+async def _add_more(message: Message, state: FSMContext, lang: str) -> None:
+    """More of the answer, sent after "only N words" / "Telegram may have split it": added to it."""
+    data = await state.get_data()
+    before = data.get("answer_text", "").rstrip()
+    joiner = "\n" if before.endswith((".", "!", "?", ":", '"', "»")) else " "
+    text = (before + joiner + message.text.strip()).strip()
+    await state.update_data(answer_text=text)
+    await message.answer(t("writing.more_added", lang, words=count_words(text)),
+                         reply_markup=length_kb(lang, _back_target(data, "answer")))
+
+
+@router.message(WritingStates.confirming_length, F.text, ~F.text.in_(MENU_BUTTON_TEXTS))
+async def receive_more(message: Message, state: FSMContext, lang: str) -> None:
+    async with _user_locks[message.from_user.id]:
+        if await state.get_state() != WritingStates.confirming_length.state:
+            return
+        await _add_more(message, state, lang)
+
+
+@router.message(WritingStates.confirming_length, ~F.text)
+async def receive_more_not_text(message: Message, lang: str) -> None:
+    await message.answer(t("writing.text_only_here", lang))
+
+
+@router.callback_query(WritingStates.confirming_length, F.data == CB_LENGTH_OK)
+async def length_ok(callback: CallbackQuery, state: FSMContext, lang: str) -> None:
+    """The short (or long) answer is the whole answer: on to grading - its other checks first."""
+    await callback.answer()
+    async with _user_locks[callback.from_user.id]:
+        if await state.get_state() != WritingStates.confirming_length.state:
+            return
+        await strip_buttons(callback.message)
+        await state.update_data(_length_ok=True)
+        await state.set_state(WritingStates.awaiting_answer)
+        go = await _advance(callback.message, state, "answer", lang)
+    if go:
+        await _run_grading(callback.message, state, lang)
+
+
+async def _advance(message: Message, state: FSMContext, field: str, lang: str) -> bool:
+    """The next step after the prompt or the answer. True when the answer is ready to be graded (the state is
+    `processing` then; the caller grades it, outside its lock)."""
     if field == "prompt":
         data = await state.get_data()
         own_question = data.get("mock_session_id") or data.get("assignment_part_id") or data.get("practice_question_id")
@@ -256,38 +371,49 @@ async def _advance(message: Message, state: FSMContext, field: str, lang: str) -
             name = "Task 1" if section == "task1" else "Task 2"
             await message.answer(t("writing.wrong_section", lang, section=name),
                                  reply_markup=wrong_section_kb(lang, name, CB_WRITING_MENU))
-            return
+            return False
         if data["task_type"] == "task1" and not data.get("prompt_image_paths"):
             # A Task 1 question typed as text: the report is checked against the
             # chart/diagram itself, so ask for its picture first.
             await state.set_state(WritingStates.awaiting_chart)
             await message.answer(t("writing.send_chart", lang), reply_markup=chart_kb(lang, _back_target(data, "answer")))
-            return
+            return False
         await _ask_for_answer(message, state, data, lang)
-    else:
-        data = await state.get_data()
-        text = data.get("answer_text", "")
-        if data.get("answer_source") == SourceType.text.value and starts_mid_word(text) \
-                and data.get("_cut_warned") != text[:200]:
-            # "e youngest people had..." - the start lost in copying (two teachers' tests, 2026-11-07):
-            # the same text again, or the button, goes on
-            await state.update_data(_cut_warned=text[:200])
-            await message.answer(t("writing.cut_start", lang, start=html.escape(text[:40].strip(), quote=False)),
-                                 reply_markup=cut_start_kb(lang, _back_target(data, "answer")))
-            return
-        await state.set_state(WritingStates.processing)
-        await _run_grading(message, state, lang)
+        return False
+    data = await state.get_data()
+    text = data.get("answer_text", "")
+    if data.get("answer_source") == SourceType.text.value and starts_mid_word(text) \
+            and data.get("_cut_warned") != text[:200]:
+        # "e youngest people had..." - the start lost in copying (two teachers' tests, 2026-11-07):
+        # the same text again, or the button, goes on
+        await state.update_data(_cut_warned=text[:200])
+        await message.answer(t("writing.cut_start", lang, start=html.escape(text[:40].strip(), quote=False)),
+                             reply_markup=cut_start_kb(lang, _back_target(data, "answer")))
+        return False
+    problem = _length_problem(data)
+    if problem:
+        await _ask_length(message, state, data, problem, lang)
+        return False
+    await state.set_state(WritingStates.processing)
+    return True
 
 
 @router.callback_query(WritingStates.awaiting_answer, F.data == CB_CHECK_AS_IS)
 async def check_as_is(callback: CallbackQuery, state: FSMContext, lang: str) -> None:
-    """The answer that seemed to start mid-word is complete: mark it as it is."""
+    """The answer that seemed to start mid-word is complete: mark it as it is (its length asked about first)."""
     await callback.answer()
-    await strip_buttons(callback.message)
-    data = await state.get_data()
-    if not data.get("answer_text") or data.get("_cut_warned") != data["answer_text"][:200]:
-        return
-    await state.set_state(WritingStates.processing)
+    async with _user_locks[callback.from_user.id]:
+        if await state.get_state() != WritingStates.awaiting_answer.state:
+            return
+        data = await state.get_data()
+        if not data.get("answer_text") or data.get("_cut_warned") != data["answer_text"][:200]:
+            return
+        await strip_buttons(callback.message)
+        problem = _length_problem(data)
+        if problem:
+            await _ask_length(callback.message, state, data, problem, lang)
+            return
+        await state.set_state(WritingStates.processing)
     await _run_grading(callback.message, state, lang)
 
 
@@ -296,12 +422,13 @@ async def recheck_choice(callback: CallbackQuery, state: FSMContext, lang: str) 
     """An admin or tester sent an essay checked before: mark it again, or
     get its saved report."""
     await callback.answer()
-    await strip_buttons(callback.message)
     data = await state.get_data()
     if not data.get("answer_text") or data.get("repeat_of") is None:
         return
+    if not await _claim(callback.from_user.id, state, WritingStates.confirming_recheck):
+        return
+    await strip_buttons(callback.message)
     await state.update_data(repeat_choice={"id": data["repeat_of"], "new": callback.data == CB_RECHECK_NEW})
-    await state.set_state(WritingStates.processing)
     await _run_grading(callback.message, state, lang)
 
 
@@ -323,28 +450,38 @@ async def receive_chart(message: Message, state: FSMContext, lang: str) -> None:
     paths = await read_images(message, lang)
     if paths is None:
         return
-    await state.update_data(prompt_image_paths=paths[:MAX_PROMPT_IMAGES])
-    await _after_chart(message, state, data, lang)
+    async with _user_locks[message.from_user.id]:
+        if await state.get_state() != WritingStates.awaiting_chart.state:
+            return
+        await state.update_data(prompt_image_paths=paths[:MAX_PROMPT_IMAGES])
+        go = await _after_chart(message, state, data, lang)
+    if go:
+        await _run_grading(message, state, lang)
 
 
 @router.callback_query(WritingStates.awaiting_chart, F.data == CB_NO_CHART)
 async def skip_chart(callback: CallbackQuery, state: FSMContext, lang: str) -> None:
     await callback.answer()
-    await strip_buttons(callback.message)
-    data = await state.get_data()
-    if data.get("rechart"):
-        await state.update_data(prompt_image_paths=[])
-    await _after_chart(callback.message, state, data, lang)
+    async with _user_locks[callback.from_user.id]:
+        if await state.get_state() != WritingStates.awaiting_chart.state:
+            return
+        await strip_buttons(callback.message)
+        data = await state.get_data()
+        if data.get("rechart"):
+            await state.update_data(prompt_image_paths=[])
+        go = await _after_chart(callback.message, state, data, lang)
+    if go:
+        await _run_grading(callback.message, state, lang)
 
 
-async def _after_chart(message: Message, state: FSMContext, data: dict, lang: str) -> None:
+async def _after_chart(message: Message, state: FSMContext, data: dict, lang: str) -> bool:
+    """True when the check goes on now (the chart asked for again after the answer)."""
     if data.get("rechart"):
-        # The chart asked for again after the answer: check it now.
         await state.update_data(rechart=False)
         await state.set_state(WritingStates.processing)
-        await _run_grading(message, state, lang)
-        return
+        return True
     await _ask_for_answer(message, state, data, lang)
+    return False
 
 
 class ChartUnreadable(Exception):
@@ -363,15 +500,54 @@ def _load_prompt_images(paths: list[str]) -> list[tuple[bytes, str]]:
     return images
 
 
-async def _ask_chart_again(processing_msg: Message, state: FSMContext, data: dict, lang: str, calls) -> None:
+async def _ask_chart_again(processing_msg: Message, state: FSMContext, data: dict, lang: str, calls,
+                           hold: guard.Hold) -> None:
     """The chart couldn't be used: the student sends it again (or goes on
-    without it) and the check starts right away - the answer is kept and
-    nothing was charged; what the reading cost joins the check's cost."""
+    without it) and the check starts right away - the answer is kept and its
+    coins went back (the hold ended); what the reading cost joins the check's cost."""
+    await live.end(live.find(processing_msg.chat.id, processing_msg.message_id))
+    if not await guard.owns(state, hold):  # they started something else meanwhile: nothing to come back to
+        await _edit_or_send(processing_msg, t("check.failed_lost", lang))
+        return
     cost = usage.merge(data.get("input_cost"), usage.summary(calls)) if calls else data.get("input_cost")
     await state.update_data(rechart=True, prompt_image_paths=[], input_cost=cost)
     await state.set_state(WritingStates.awaiting_chart)
-    await live.end(live.find(processing_msg.chat.id, processing_msg.message_id))
-    await processing_msg.edit_text(t("writing.chart_resend", lang), reply_markup=chart_kb(lang, _back_target(data, "answer")))
+    await _edit_or_send(processing_msg, t("writing.chart_resend", lang),
+                        chart_kb(lang, _back_target(data, "answer")))
+
+
+async def _edit_or_send(msg: Message, text: str, markup=None) -> None:
+    """The check's card becomes `text` - or, when it is gone (the student deleted it), a new message."""
+    try:
+        await msg.edit_text(text, reply_markup=markup)
+    except TelegramBadRequest:
+        await msg.answer(text, reply_markup=markup)
+
+
+async def _failed(message: Message, state: FSMContext, lang: str, card: Message, hold: guard.Hold, data: dict,
+                  refunded: bool) -> None:
+    """The check stopped: the card says so - with "🔁 Try again" while the answer is still this check's (the
+    state moves to `failed`, which the button needs; bot/handlers/check_retry.py)."""
+    note = ("\n\n" + t("check.coins_back", lang, coins=hold.coins)) if refunded else ""
+    if data.get("mock_session_id"):
+        await state.clear()
+        await _edit_or_send(card, t("check.failed_lost", lang) + note)
+    elif await guard.owns(state, hold):
+        await state.set_state(WritingStates.failed)
+        await _edit_or_send(card, t("check.failed", lang) + note, guard.retry_kb(lang, hold.id))
+    else:
+        await _edit_or_send(card, t("check.failed_lost", lang) + note)
+    await stickers.send(message.bot, message.chat.id, "oops")
+
+
+def _reason(e: BaseException) -> str:
+    return f"{type(e).__name__}: {e}"[:300]
+
+
+async def retry(message: Message, state: FSMContext, lang: str) -> None:
+    """"🔁 Try again" after a failed or interrupted check: the same input graded again (the state is already
+    `processing`, claimed by bot/handlers/check_retry.py)."""
+    await _run_grading(message, state, lang)
 
 
 def _same_text(a: str, b: str) -> float:
@@ -380,12 +556,19 @@ def _same_text(a: str, b: str) -> float:
 
 async def _repeat_of(user_id: int, task_type: str, answer_text: str):
     """(an earlier essay with exactly this text, an earlier essay more than
-    90% the same, {submission id: essay number}) - either may be None."""
+    90% the same, {submission id: essay number}) - either may be None. The
+    character-by-character comparisons run off the event loop (a student with
+    many essays: seconds of work)."""
     async with get_session() as session:
         earlier = await crud.get_writing_sessions(session, user_id, task_type)
         numbers = {s.id: await crud.writing_essay_number(session, user_id, s.id) for s in earlier}
-    same = next((s for s in earlier if canon(s.answer_text).lower() == canon(answer_text).lower()), None)
-    similar = next((s for s in earlier if _same_text(s.answer_text, answer_text) > RESUBMISSION_SIMILARITY), None)
+
+    def compare():
+        same = next((s for s in earlier if canon(s.answer_text).lower() == canon(answer_text).lower()), None)
+        similar = next((s for s in earlier if _same_text(s.answer_text, answer_text) > RESUBMISSION_SIMILARITY), None)
+        return same, similar
+
+    same, similar = await asyncio.to_thread(compare)
     return same, similar, numbers
 
 
@@ -440,200 +623,237 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
 
     started = time.monotonic()
     processing_msg = await message.answer(t("writing.grading_in_progress", lang))
+    # One check at a time, its coins taken now and given back unless the report is saved
+    # (bot/utils/check_guard.py) - refused: the card says why, with "🔁 Try again" (the answer is kept).
+    hold = await guard.begin(processing_msg, state, data, module="w", kind=writing_kind(data["task_type"]),
+                             lang=lang, failed_state=WritingStates.failed)
+    if hold is None:
+        return
+    data = await state.get_data()  # with its check_token (and the payer begin() settled on)
     # the waiting message, alive (bot/utils/progress.py)
     card = live.begin(processing_msg, lang, "writing_task1" if data["task_type"] == "task1" else "writing")
     calls: list = []
     visual = None
     chart_look = None  # how the chart was found: a checked chart key, or read now
     prompt_images = None
-
+    submission = None
     try:
-        async with get_session() as session:
-            earlier_essays, previous = await crud.get_writing_history(
-                session, user_id, data["task_type"], min_words=marking_config.progress_min_words(data["task_type"]))
-            # the paragraph openers of the student's last model answers: the next one opens differently
-            recent = await crud.get_writing_sessions(session, user_id, data["task_type"], limit=3)
-        avoid = [o for sub in recent for o in (((sub.report_data or {}).get("model_answer") or {}).get("openers") or [])]
-        if data["task_type"] == "task1":
-            prompt_images = _load_prompt_images(data.get("prompt_image_paths") or [])
-        seed = user_id + earlier_essays
-        answer_task: asyncio.Task | None = None
-        needs = None
-        sheet = judged = ""
-        visual_data = None  # the sheet as data: code checks the corrections and the model answer's figures
+        async with guard.slot(hold, card), asyncio.timeout(settings.check_deadline_seconds):
+            async with get_session() as session:
+                earlier_essays, previous = await crud.get_writing_history(
+                    session, user_id, data["task_type"], min_words=marking_config.progress_min_words(data["task_type"]))
+                # the paragraph openers of the student's last model answers: the next one opens differently
+                recent = await crud.get_writing_sessions(session, user_id, data["task_type"], limit=3)
+            avoid = [o for sub in recent for o in (((sub.report_data or {}).get("model_answer") or {}).get("openers") or [])]
+            if data["task_type"] == "task1":
+                prompt_images = _load_prompt_images(data.get("prompt_image_paths") or [])
+            seed = user_id + earlier_essays
+            answer_task: asyncio.Task | None = None
+            needs = None
+            sheet = judged = ""
+            visual_data = None  # the sheet as data: code checks the corrections and the model answer's figures
 
-        def start_answer(bands, overall, feedback) -> None:
-            # The model answer is written for this student's results, as soon
-            # as the bands are decided.
-            nonlocal answer_task, needs
-            needs = needs_from_feedback(bands, overall, feedback, data["answer_text"])
-            answer_task = asyncio.create_task(build_model_answer(
-                data["task_type"], data["prompt_text"], prompt_images, seed=seed, needs=needs, sheet=sheet,
-                visual=visual_data, avoid=avoid))
+            def start_answer(bands, overall, feedback) -> None:
+                # The model answer is written for this student's results, as soon
+                # as the bands are decided.
+                nonlocal answer_task, needs
+                needs = needs_from_feedback(bands, overall, feedback, data["answer_text"])
+                answer_task = asyncio.create_task(build_model_answer(
+                    data["task_type"], data["prompt_text"], prompt_images, seed=seed, needs=needs, sheet=sheet,
+                    visual=visual_data, avoid=avoid))
 
-        notices = [PASTE_NOTICE] if footers else []
-        if data["task_type"] == "task1" and not prompt_images:
-            notices.append(CHART_NOT_CHECKED)
-        with usage.track(f"writing {data['task_type']} user={user_id}") as calls:
-            if prompt_images:
-                # The chart read into a checked data sheet whose figures every call
-                # uses - an admin's checked sheet when the chart has a chart key -
-                # and the first sign of a picture OpenAI can't open, before the
-                # scoring runs spend anything on it.
-                visual, chart_look = await chart_keys.sheet_for(
-                    data["prompt_text"], prompt_images, data.get("practice_question_id"))
-                if visual is not None and visual.readability == "unreadable":
-                    raise ChartUnreadable(visual.readability_note)
-                sheet = sheet_text(visual)
-                if sheet:
-                    # the report's own figures checked against it - every figure the
-                    # sheet doesn't show read once more on its own first: for judging
-                    # the report (judged), the sheet alone for the model answer
-                    visual_data, sheet, judged, unchecked = await judge_ready(
-                        data["answer_text"], visual.model_dump(), data["prompt_text"], prompt_images)
-                    if unchecked:
-                        notices.append(CHART_PARTLY_CHECKED)
-            try:
-                report = await grade_writing(
+            notices = [PASTE_NOTICE] if footers else []
+            if data["task_type"] == "task1" and not prompt_images:
+                notices.append(CHART_NOT_CHECKED)
+            with usage.track(f"writing {data['task_type']} user={user_id}") as calls:
+                if prompt_images:
+                    # The chart read into a checked data sheet whose figures every call
+                    # uses - an admin's checked sheet when the chart has a chart key -
+                    # and the first sign of a picture OpenAI can't open, before the
+                    # scoring runs spend anything on it.
+                    visual, chart_look = await chart_keys.sheet_for(
+                        data["prompt_text"], prompt_images, data.get("practice_question_id"))
+                    if visual is not None and visual.readability == "unreadable":
+                        raise ChartUnreadable(visual.readability_note)
+                    sheet = sheet_text(visual)
+                    if sheet:
+                        # the report's own figures checked against it - every figure the
+                        # sheet doesn't show read once more on its own first: for judging
+                        # the report (judged), the sheet alone for the model answer
+                        visual_data, sheet, judged, unchecked = await judge_ready(
+                            data["answer_text"], visual.model_dump(), data["prompt_text"], prompt_images)
+                        if unchecked:
+                            notices.append(CHART_PARTLY_CHECKED)
+                try:
+                    report = await grade_writing(
+                        task_type=data["task_type"],
+                        prompt_text=data["prompt_text"],
+                        answer_text=data["answer_text"],
+                        prompt_images=prompt_images,
+                        on_feedback=start_answer,
+                        sheet=judged,
+                        notices=notices,
+                        visual=visual_data,
+                        text_source=data.get("answer_source") or "text",
+                        fresh=fresh,
+                    )
+                except BaseException:
+                    if answer_task is not None:
+                        answer_task.cancel()
+                    raise
+                # the vocabulary's Uzbek meanings, written beside the model answer (no longer wait)
+                uz_task = asyncio.create_task(uzbek_meanings(report.vocabulary))
+                try:
+                    if answer_task is None:
+                        raise RuntimeError("the feedback never reached the model answer")
+                    answer = await answer_task
+                except Exception as e:
+                    # The model answer page is never left empty: one more try.
+                    logger.error("Model answer failed for user %s - trying once more", user_id, exc_info=e)
+                    try:
+                        answer = await build_model_answer(
+                            data["task_type"], data["prompt_text"], prompt_images, seed=seed, needs=needs, sheet=sheet,
+                            visual=visual_data, avoid=avoid
+                        )
+                    except Exception:
+                        logger.exception("Model answer failed again for user %s - report goes out without it", user_id)
+                        answer = None
+                report.vocabulary_uz = await uz_task  # never raises: "" where a meaning is missing
+
+            if similar is not None:
+                # Nearly the same essay: no "progress" between an essay and itself.
+                progress = {"first": True, "note": f"Same essay as #{numbers[similar.id]}, so there is no progress to "
+                            "show. Your next new essay will be compared with this one."}
+            else:
+                progress = build_progress(report, previous)
+            # WeasyPrint is CPU-bound for a few seconds - off the event loop, so
+            # other students' messages aren't held up while a report renders.
+            pdf_bytes = await asyncio.to_thread(
+                build_writing_report_pdf,
+                report,
+                answer,
+                progress,
+                message.chat.full_name,
+                earlier_essays + 1,
+                prompt_images,
+            )
+
+            pdf_path = save_report(user_id, pdf_bytes, ".pdf")
+            # Report vocabulary also feeds the student's flashcards ("Lug'atim").
+            vocabulary = [
+                VocabularyItem(word_or_phrase=v.term, meaning=v.meaning, example_sentence=v.example)
+                for v in report.vocabulary
+            ]
+            coins = 0 if test_run else hold.coins
+            paid_with = {"mode": "test-run", "coins": 0} if test_run else await payment_of(user_id, coins, hold.sponsor_id)
+            async with get_session() as session:
+                # paid by the hold, in this same transaction (db/crud.py _charge)
+                submission = await crud.save_writing_submission(
+                    session,
+                    user_id=user_id,
                     task_type=data["task_type"],
                     prompt_text=data["prompt_text"],
+                    prompt_source=data["prompt_source"],
                     answer_text=data["answer_text"],
-                    prompt_images=prompt_images,
-                    on_feedback=start_answer,
-                    sheet=judged,
-                    notices=notices,
-                    visual=visual_data,
-                    text_source=data.get("answer_source") or "text",
-                    fresh=fresh,
+                    answer_source=data["answer_source"],
+                    original_file_paths={
+                        "prompt": data.get("prompt_file_path"),
+                        "answer": data.get("answer_file_path"),
+                        # the Task 1 chart(s) the check used - also when sent apart from the question
+                        "chart": data.get("prompt_image_paths") or None,
+                    },
+                    overall_band=report.overall_band,
+                    criteria_scores=report.criteria_scores(),
+                    annotations=report.mistakes_json(),
+                    vocabulary=vocabulary,
+                    book_sample_ref=None,  # the model answer is always newly written
+                    feedback_pdf_path=pdf_path,
+                    practice_question_id=data.get("practice_question_id"),
+                    coins=coins,
+                    assignment_part_id=data.get("assignment_part_id"),
+                    payer_id=hold.sponsor_id,
+                    is_test=test_run,
+                    hold_id=hold.id if hold.persisted else None,
+                    report_data={
+                        # where the model answer came from: internal only, never in the report
+                        "model_answer": None if answer is None else {
+                            "source": answer.source, "aimed_at": answer.band,
+                            "provisional": answer.source != "human_reviewed",
+                            "shows": [x["n"] for x in answer.shows], "writer": answer.log.get("chosen"),
+                            "reference_ids": answer.log.get("reference_ids", []),
+                            "alternative": answer.alternative, "openers": answer.log.get("openers", []),
+                        },
+                        "resubmission_of": similar.id if similar is not None else None,
+                        # a Task 1 chart's data sheet: the figures every part of the report used
+                        "visual": visual.model_dump() if visual is not None else None,
+                        # this check's OpenAI cost (estimated from tokens), reading the
+                        # prompt/answer photo or file included ("input: ..."), how long the
+                        # student waited, and how it was paid
+                        "cost": usage.merge(usage.summary(calls), data.get("input_cost"), prefix="input: "),
+                        "seconds": round(time.monotonic() - started),
+                        "paid_with": paid_with,
+                        "check_token": hold.id,
+                    },
                 )
-            except BaseException:
-                if answer_task is not None:
-                    answer_task.cancel()
-                raise
-            # the vocabulary's Uzbek meanings, written beside the model answer (no longer wait)
-            uz_task = asyncio.create_task(uzbek_meanings(report.vocabulary))
-            try:
-                if answer_task is None:
-                    raise RuntimeError("the feedback never reached the model answer")
-                answer = await answer_task
-            except Exception as e:
-                # The model answer page is never left empty: one more try.
-                logger.error("Model answer failed for user %s - trying once more", user_id, exc_info=e)
-                try:
-                    answer = await build_model_answer(
-                        data["task_type"], data["prompt_text"], prompt_images, seed=seed, needs=needs, sheet=sheet,
-                        visual=visual_data, avoid=avoid
-                    )
-                except Exception:
-                    logger.exception("Model answer failed again for user %s - report goes out without it", user_id)
-                    answer = None
-            report.vocabulary_uz = await uz_task  # never raises: "" where a meaning is missing
-
-        if similar is not None:
-            # Nearly the same essay: no "progress" between an essay and itself.
-            progress = {"first": True, "note": f"Same essay as #{numbers[similar.id]}, so there is no progress to "
-                        "show. Your next new essay will be compared with this one."}
-        else:
-            progress = build_progress(report, previous)
-        # WeasyPrint is CPU-bound for a few seconds - off the event loop, so
-        # other students' messages aren't held up while a report renders.
-        pdf_bytes = await asyncio.to_thread(
-            build_writing_report_pdf,
-            report,
-            answer,
-            progress,
-            message.chat.full_name,
-            earlier_essays + 1,
-            prompt_images,
-        )
     except (ChartImageRejected, ChartUnreadable) as e:
         logger.warning("Task 1 chart of user %s can't be used (%s: %s) - asking for it again",
                        user_id, type(e).__name__, str(e)[:300])
-        await _ask_chart_again(processing_msg, state, data, lang, calls)
+        await guard.end(hold, f"chart unreadable: {_reason(e)}")
+        await _ask_chart_again(processing_msg, state, data, lang, calls, hold)
         return
     except Exception as e:
-        if prompt_images and is_image_error(e):
+        if submission is None and prompt_images and is_image_error(e):
             logger.warning("OpenAI turned the Task 1 chart of user %s down - asking for it again: %s", user_id, e)
-            await _ask_chart_again(processing_msg, state, data, lang, calls)
+            await guard.end(hold, f"chart refused: {_reason(e)}")
+            await _ask_chart_again(processing_msg, state, data, lang, calls, hold)
             return
-        logger.exception("Writing grading failed for user %s", user_id)
+        if isinstance(e, TimeoutError):
+            logger.error("Writing check of user %s ran past %ss - stopped", user_id, settings.check_deadline_seconds)
+        else:
+            logger.exception("Writing grading failed for user %s", user_id)
+        refunded = await guard.end(hold, _reason(e))
         await live.end(card)
-        await processing_msg.edit_text(t("writing.grading_failed", lang))
-        await stickers.send(message.bot, user_id, "oops")
-        await state.clear()
-        if not data.get("mock_session_id"):
-            await message.answer(t("nav.what_next", lang), reply_markup=_after_result_kb(data, lang))
+        await _failed(message, state, lang, processing_msg, hold, data, refunded)
         return
+    finally:
+        if submission is None:
+            # Not saved, whatever happened (a cancellation at shutdown too): the hold gives its coins back.
+            await guard.end(hold, "stopped")
 
-    pdf_path = save_report(user_id, pdf_bytes, ".pdf")
-    # Report vocabulary also feeds the student's flashcards ("Lug'atim").
-    vocabulary = [
-        VocabularyItem(word_or_phrase=v.term, meaning=v.meaning, example_sentence=v.example)
-        for v in report.vocabulary
-    ]
+    # The report is saved and paid: what follows only delivers it - a failure here never fails the check
+    # (the report stays in "My works"). The check counts as running until it is delivered (a deploy waits).
+    try:
+        await _deliver_writing(message, state, lang, data, hold, submission, report, vocabulary, pdf_bytes,
+                               notices, prompt_images, visual, chart_look, test_run, processing_msg, card)
+    finally:
+        await guard.end(hold)
 
-    coins = 0 if test_run else check_price(data, writing_kind(data["task_type"]))
-    paid_with = {"mode": "test-run", "coins": 0} if test_run else await payment_of(user_id, coins, data.get("payer_id"))
-    async with get_session() as session:
-        submission = await crud.save_writing_submission(
-            session,
-            user_id=user_id,
-            task_type=data["task_type"],
-            prompt_text=data["prompt_text"],
-            prompt_source=data["prompt_source"],
-            answer_text=data["answer_text"],
-            answer_source=data["answer_source"],
-            original_file_paths={
-                "prompt": data.get("prompt_file_path"),
-                "answer": data.get("answer_file_path"),
-                # the Task 1 chart(s) the check used - also when sent apart from the question
-                "chart": data.get("prompt_image_paths") or None,
-            },
-            overall_band=report.overall_band,
-            criteria_scores=report.criteria_scores(),
-            annotations=report.mistakes_json(),
-            vocabulary=vocabulary,
-            book_sample_ref=None,  # the model answer is always newly written
-            feedback_pdf_path=pdf_path,
-            practice_question_id=data.get("practice_question_id"),
-            coins=coins,
-            assignment_part_id=data.get("assignment_part_id"),
-            payer_id=data.get("payer_id"),
-            is_test=test_run,
-            report_data={
-                # where the model answer came from: internal only, never in the report
-                "model_answer": None if answer is None else {
-                    "source": answer.source, "aimed_at": answer.band,
-                    "provisional": answer.source != "human_reviewed",
-                    "shows": [x["n"] for x in answer.shows], "writer": answer.log.get("chosen"),
-                    "reference_ids": answer.log.get("reference_ids", []),
-                    "alternative": answer.alternative, "openers": answer.log.get("openers", []),
-                },
-                "resubmission_of": similar.id if similar is not None else None,
-                # a Task 1 chart's data sheet: the figures every part of the report used
-                "visual": visual.model_dump() if visual is not None else None,
-                # this check's OpenAI cost (estimated from tokens), reading the
-                # prompt/answer photo or file included ("input: ..."), how long the
-                # student waited, and how it was paid
-                "cost": usage.merge(usage.summary(calls), data.get("input_cost"), prefix="input: "),
-                "seconds": round(time.monotonic() - started),
-                "paid_with": paid_with,
-            },
-        )
-        if data.get("practice_question_id"):
-            await crud.mark_practice_complete(
-                session,
-                user_id=user_id,
-                practice_question_id=data["practice_question_id"],
-                submission_id=submission.id,
-                submission_type="writing",
-            )
-        new_words = 0 if test_run else await crud.add_vocabulary_entries(session, user_id, vocabulary,
-                                                                         source="writing")
+
+async def _deliver_writing(message, state, lang, data, hold, submission, report, vocabulary, pdf_bytes, notices,
+                           prompt_images, visual, chart_look, test_run, processing_msg, card) -> None:
+    user_id = message.chat.id
+    try:
+        async with get_session() as session:
+            if data.get("practice_question_id"):
+                await crud.mark_practice_complete(
+                    session,
+                    user_id=user_id,
+                    practice_question_id=data["practice_question_id"],
+                    submission_id=submission.id,
+                    submission_type="writing",
+                )
+            new_words = 0 if test_run else await crud.add_vocabulary_entries(session, user_id, vocabulary,
+                                                                             source="writing")
+    except Exception:
+        logger.exception("Practice mark / word bank of submission %s not saved", submission.id)
+        new_words = 0
     if chart_look is not None and not test_run:
-        # one more use of its chart key, or the chart kept for an admin to check
-        await chart_keys.remember(data["prompt_text"], prompt_images, visual, chart_look,
-                                  data.get("practice_question_id"), submission.id)
+        try:
+            # one more use of its chart key, or the chart kept for an admin to check
+            await chart_keys.remember(data["prompt_text"], prompt_images, visual, chart_look,
+                                      data.get("practice_question_id"), submission.id)
+        except Exception:
+            logger.exception("Chart key of submission %s not remembered", submission.id)
 
     found = len(report.mistakes)
     caption = (t("writing.done_caption", lang, band=report.overall_band, mistakes=found) if found
@@ -645,13 +865,16 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
     elif data["task_type"] == "task1" and not prompt_images:
         caption += "\n\n" + t("writing.chart_not_checked", lang)
     await live.end(card)
-    await processing_msg.delete()
+    try:
+        await processing_msg.delete()
+    except TelegramBadRequest:
+        pass  # the student deleted the card meanwhile
     await stickers.send(message.bot, user_id, stickers.for_result(report.overall_band, found))  # the Gotcha moment
-    await message.answer_document(
+    await guard.deliver(lambda: message.answer_document(
         BufferedInputFile(pdf_bytes, filename=report_filename("writing", data["task_type"])),
         caption=with_ai_note(caption, lang),
         reply_markup=share_card_kb("writing", submission.id, lang),
-    )
+    ), f"writing report {submission.id}")
 
     if data.get("mock_session_id"):
         await record_mock_test_part(
@@ -661,7 +884,7 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
             submission_type="writing",
             band=report.overall_band,
         )
-    else:
+    elif await guard.owns(state, hold):  # not when they started something else meanwhile
         await state.clear()
         await message.answer(t("nav.what_next", lang), reply_markup=_after_result_kb(data, lang))
     if not test_run:

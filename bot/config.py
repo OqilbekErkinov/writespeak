@@ -64,6 +64,18 @@ class Settings(BaseSettings):
     # openai_flex_timeout seconds (services/ai/openai_client.py). "" = default tier.
     openai_service_tier: str = "flex"
     openai_flex_timeout: float = 240.0
+    # The default tier's own limit per call (it is the fallback, so never left at the SDK's 600 s x 3 tries).
+    openai_default_timeout: float = 300.0
+
+    # --- Running checks (bot/utils/check_guard.py, the 2026-11-15 audit) ---
+    # Checks graded at the same time; the rest wait their turn on the live card. One check makes 8-15 model
+    # calls, so this keeps a class sending at once inside OpenAI's limits (and Flex's price).
+    max_parallel_checks: int = 6
+    # A check still running after this long is stopped: the student gets "try again", the coins go back.
+    check_deadline_seconds: int = 15 * 60
+    # At shutdown (a deploy) the running checks are waited for this long before the process exits -
+    # docker-compose.yml's stop_grace_period for the bot must be longer.
+    check_drain_seconds: int = 12 * 60
     openai_model_audio: str = "gpt-audio-1.5"
     openai_model_transcribe: str = "whisper-1"
     openai_embedding_model: str = "text-embedding-3-small"

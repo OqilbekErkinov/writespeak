@@ -9,6 +9,7 @@ CB_WRITING_MENU = "writing:menu"  # back to the Task 1/Task 2 picker
 CB_NO_CHART = "writing:no_chart"  # a typed Task 1 question checked without its chart
 CB_SWITCH_SECTION = "writing:switch_section"  # the question belongs to the other Task: mark it there
 CB_CHECK_AS_IS = "writing:check_as_is"  # the answer seems to start mid-word, but it is complete
+CB_LENGTH_OK = "writing:length_ok"  # a typed answer far too short (or maybe cut by Telegram) is complete
 CB_RECHECK_NEW = "writing:recheck_new"  # an essay sent before (admins, testers): mark it again
 CB_RECHECK_OLD = "writing:recheck_old"  # ...or send its saved report
 
@@ -43,6 +44,16 @@ def cut_start_kb(lang: str, back_callback: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text=t("writing.btn_check_as_is", lang), callback_data=CB_CHECK_AS_IS)],
+            [back_button(lang, back_callback)],
+        ]
+    )
+
+
+def length_kb(lang: str, back_callback: str) -> InlineKeyboardMarkup:
+    """Under "your answer has only N words / may have been cut": check it as it is, or back."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=t("writing.short_check_btn", lang), callback_data=CB_LENGTH_OK)],
             [back_button(lang, back_callback)],
         ]
     )

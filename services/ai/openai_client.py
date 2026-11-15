@@ -8,6 +8,7 @@ then sends the same call on the default tier, so a check never fails or
 waits forever because of Flex - it just costs the normal price that time.
 """
 import logging
+import time
 
 import openai
 from openai import AsyncOpenAI
@@ -33,6 +34,9 @@ async def _watch_credit(response) -> None:
 
 
 client = AsyncOpenAI(api_key=settings.openai_api_key,
+                     # every call's own limit (the SDK's default was 600 s, three tries: a hung call held a
+                     # check for half an hour); the grading calls have the check's deadline over them too
+                     timeout=settings.openai_default_timeout,
                      http_client=openai.DefaultAsyncHttpxClient(event_hooks={"response": [_watch_credit]}))
 
 # Short gpt-5-mini calls (Speaking model answers, filler words; on Flex since
@@ -55,7 +59,7 @@ async def parse_flex(flex_timeout: float | None = None, **kwargs):
     settings.openai_service_tier is "flex", on the default tier otherwise or
     when Flex is unavailable or slower than `flex_timeout` seconds
     (settings.openai_flex_timeout by default)."""
-    if settings.openai_service_tier == "flex":
+    if settings.openai_service_tier == "flex" and time.monotonic() >= _flex_off_until:
         timeout = flex_timeout or settings.openai_flex_timeout
         flex_kwargs = dict(kwargs)
         flex_kwargs["extra_body"] = {**(kwargs.get("extra_body") or {}), "service_tier": "flex"}
@@ -67,4 +71,28 @@ async def parse_flex(flex_timeout: float | None = None, **kwargs):
             logger.warning("Flex unavailable (%s) - using the default tier", getattr(e, "code", None) or "429")
         except openai.APITimeoutError:
             logger.warning("Flex took over %ss - using the default tier", timeout)
+            _flex_slow()
+        except (openai.APIConnectionError, openai.InternalServerError) as e:
+            # a dropped connection or OpenAI's 5xx on Flex (2026-11-15: these failed the whole check - Flex
+            # runs with no retries of its own); the default tier, with its retries, takes the call
+            logger.warning("Flex call failed (%s) - using the default tier", type(e).__name__)
     return await client.beta.chat.completions.parse(**kwargs)
+
+
+# Flex keeps timing out (OpenAI's queue is long): skip it for a while instead of making every call of every
+# check wait `flex_timeout` first - FLEX_SLOW_COUNT timeouts within FLEX_SLOW_WINDOW s switch it off for
+# FLEX_PAUSE s (the default tier's price meanwhile).
+FLEX_SLOW_COUNT, FLEX_SLOW_WINDOW, FLEX_PAUSE = 3, 300.0, 600.0
+_flex_timeouts: list[float] = []
+_flex_off_until = 0.0
+
+
+def _flex_slow() -> None:
+    global _flex_off_until
+    now = time.monotonic()
+    _flex_timeouts[:] = [t for t in _flex_timeouts if now - t < FLEX_SLOW_WINDOW] + [now]
+    if len(_flex_timeouts) >= FLEX_SLOW_COUNT:
+        _flex_off_until = now + FLEX_PAUSE
+        _flex_timeouts.clear()
+        logger.warning("Flex timed out %d times in %ds - the default tier for the next %ds",
+                       FLEX_SLOW_COUNT, int(FLEX_SLOW_WINDOW), int(FLEX_PAUSE))

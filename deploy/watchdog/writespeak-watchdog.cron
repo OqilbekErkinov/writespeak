@@ -1,0 +1,4 @@
+# Bandzilla watchdog: containers, the bot's heartbeat, the admin panel, the disk - every 5 minutes.
+# Install: cp deploy/watchdog/writespeak-watchdog.cron /etc/cron.d/writespeak-watchdog
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+*/5 * * * * root /bin/bash /opt/writespeak/deploy/watchdog/watchdog.sh >> /var/log/writespeak-watchdog.log 2>&1

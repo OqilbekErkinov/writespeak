@@ -103,6 +103,11 @@ TIP_HEAD = {"uz": "Bilasizmi?", "ru": "Знаете ли вы?", "en": "Did you 
 QUIZ_HEAD = {"uz": "Kutguncha mini-savol", "ru": "Мини-вопрос, пока ждёте", "en": "A quick one while you wait"}
 QUIZ_ASK = {"uz": "«{word}» ga eng yaqin so'z qaysi?", "ru": "Какое слово ближе всего к «{word}»?",
             "en": "Which word is closest to “{word}”?"}
+QUEUED = {"uz": "Navbatdasiz: <b>{n}-o'rin</b>", "ru": "Вы в очереди: <b>{n}-е место</b>",
+          "en": "You're in the queue: <b>#{n}</b>"}
+QUEUED_NOTE = {"uz": "Hozir boshqa o'quvchilarning tekshiruvlari ketmoqda — ular tugashi bilan sizniki boshlanadi.",
+               "ru": "Сейчас идут проверки других учеников — ваша начнётся, как только они закончатся.",
+               "en": "Other students' checks are running — yours starts as soon as they finish."}
 QUIZ_RIGHT = {"uz": "To'g'ri!", "ru": "Верно!", "en": "Right!"}
 QUIZ_WRONG = {"uz": "Deyarli!", "ru": "Почти!", "en": "Almost!"}
 QUIZ_SCORE = {"uz": "to'g'ri", "ru": "верно", "en": "right"}
@@ -223,6 +228,8 @@ class Waiting:
     task: asyncio.Task | None = None
     poke: asyncio.Event = field(default_factory=asyncio.Event)
     token: object = None
+    # while the check waits for a free slot (bot/utils/check_guard.py slot): its place in the queue, 0 = none
+    queued: object = None
 
     @property
     def stages(self) -> list[Stage]:
@@ -253,6 +260,16 @@ class Waiting:
         bar = "🟩" * filled + pulse + "⬜" * (CELLS - filled - 1)
         dino = "🦖" if self.frame % 2 == 0 else "🦕"
         dots = "." * (self.frame % 3 + 1)
+        place = self.queued() if callable(self.queued) else 0
+        if place:
+            self.stage_at = time.monotonic()  # the bar starts when the check does
+            self.shown = 0.0
+            elapsed = int(time.monotonic() - self.started)
+            tips = TIPS["speaking" if self.kind == "speaking" else "writing"][lang]
+            tip = tips[(self.msg.message_id + self.frame // 3) % len(tips)]
+            return "\n".join([f"{dino} <b>{TITLE[lang]}</b>{dots}", "",
+                              f"🕐 {QUEUED[lang].format(n=place)}", f"<i>{QUEUED_NOTE[lang]}</i>", "",
+                              f"⏱ {elapsed // 60}:{elapsed % 60:02d}", "", f"💡 <b>{TIP_HEAD[lang]}</b> <i>{tip}</i>"])
         lines = [f"{dino} <b>{TITLE[lang]}</b>{dots}", "", f"{bar}  <b>{round(p * 100)}%</b>", ""]
         for i, s in enumerate(self.stages):
             if i < self.stage:
@@ -289,7 +306,7 @@ class Waiting:
         return lines
 
     def keyboard(self) -> InlineKeyboardMarkup | None:
-        if not self.quiz or self.quiz[-1] in self.answered:
+        if not self.quiz or self.quiz[-1] in self.answered or (callable(self.queued) and self.queued()):
             return None
         q = self.quiz[-1]
         return InlineKeyboardMarkup(inline_keyboard=[[
