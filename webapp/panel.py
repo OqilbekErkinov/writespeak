@@ -250,6 +250,42 @@ async def _notify_back_job() -> None:
 async def settings_page(request: Request, done: str | None = None):
     if (r := guard(request, owner=True)) is not None:
         return r
+    return await _settings(request, done)
+
+
+@router.post("/settings/backup-key", response_class=HTMLResponse)
+async def settings_backup_key(request: Request):
+    """The backup passphrase, shown to the owner on request (and written in the audit log): the nightly copies
+    in the admins' group cannot be opened without it, so it has to be kept off the server too."""
+    if (r := guard(request, owner=True)) is not None:
+        return r
+    await audit(request, "backup_key_viewed")
+    return await _settings(request, None, backup_key=settings.backup_passphrase or None)
+
+
+def offsite_state() -> dict:
+    """The last nightly copy sent to the admins' group (deploy/backup/offsite.sh writes data/offsite_status.json)."""
+    from pathlib import Path
+
+    try:
+        state = json.loads((Path(settings.file_storage_path).parent / "offsite_status.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        state = {}
+    cfg = crm.config() or {}
+    out = {**state, "topic": bool((cfg.get("topics") or {}).get("backup")), "key_set": bool(settings.backup_passphrase)}
+    try:
+        at = datetime.fromisoformat(state["at"])
+        out["when"] = crm.local(at).strftime("%d.%m.%Y %H:%M")
+        out["stale"] = datetime.now(timezone.utc) - at > timedelta(hours=30)
+        if state.get("full_at"):
+            out["full_when"] = crm.local(datetime.fromisoformat(state["full_at"])).strftime("%d.%m.%Y")
+    except (KeyError, TypeError, ValueError):
+        out["when"] = None
+    out["size"] = f"{(state.get('bytes') or 0) / 1024 / 1024:.1f} MB"
+    return out
+
+
+async def _settings(request: Request, done: str | None, backup_key: str | None = None):
     on = await runtime.window_on()
     listed = await _testers_list()
     async with get_session() as session:
@@ -270,6 +306,7 @@ async def settings_page(request: Request, done: str | None = None):
         "env_on": bool(settings.checks_only_for_ids),
         "openai": await balance.openai_status(), "credit_paused": await balance.credit_paused(),
         "azure": await balance.azure_status(), "capacity": await capacity_state(),
+        "offsite": offsite_state(), "backup_key": backup_key,
     })
 
 
@@ -843,7 +880,7 @@ ACTION_NAMES = {
     "admin_enabled": "Adminni yoqdi", "admin_disabled": "Adminni o'chirdi", "export": "Excel yuklab oldi",
     "errors_cleared": "Xatolarni tozaladi", "center_created": "Markaz yaratdi", "center_deleted": "Markazni o'chirdi",
     "teacher_revoked": "O'qituvchilikni oldi", "finance_entry": "Moliyaga yozuv qo'shdi",
-    "signout_all": "Hamma qurilmalardan chiqardi", "capacity": "Bir vaqtdagi tekshiruvlar sonini o'zgartirdi", "report_resent": "Hisobotni qayta yubordi",
+    "signout_all": "Hamma qurilmalardan chiqardi", "backup_key_viewed": "Zaxira kalitini ko'rdi", "capacity": "Bir vaqtdagi tekshiruvlar sonini o'zgartirdi", "report_resent": "Hisobotni qayta yubordi",
     "check_test": "Tekshiruvni test deb belgiladi", "check_real": "Tekshiruvni haqiqiy deb belgiladi",
     "finance_entry_deleted": "Moliyadan yozuvni o'chirdi",
 }

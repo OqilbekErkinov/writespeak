@@ -108,6 +108,35 @@
   </form>
 </div>
 
+<div class="card" id="backup">
+  <h2>Zaxira</h2>
+  <p class="hint" style="margin:-8px 0 12px">Har kuni ~05:50 da baza va yangi fayllar shifrlanib, adminlar guruhidagi
+    «💾 Zaxira» bo'limiga yuboriladi (yakshanba kunlari barcha fayllar ham). Server buzilsa ham ma'lumotlar o'sha yerda
+    qoladi. Ularni ochish uchun <b>zaxira kaliti</b> kerak: bir marta ko'rib, serverdan tashqarida — daftarda yoki
+    parollar menejerida — saqlab qo'ying. Kalitsiz zaxirani hech kim, siz ham, ocha olmaydi.</p>
+  <div class="bk-state {{ 'bad' if (not offsite.topic or (offsite.when and (not offsite.ok or offsite.stale))) else '' }}">
+    {% if not offsite.topic %}⚠️ Guruhda «💾 Zaxira» bo'limi hali ulanmagan: guruhda shu nomli bo'lim oching va unda
+      <code>/crm_setup</code> yuboring.
+    {% elif not offsite.when %}⏳ Hali yuborilmagan — birinchi zaxira bugun tunda ketadi.
+    {% elif offsite.ok %}{{ '⚠️' if offsite.stale else '✅' }} Oxirgi yuborish: <b>{{ offsite.when }}</b> · {{ offsite.parts }} ta fayl,
+      {{ offsite.size }}{% if offsite.full_when %} · barcha fayllar: {{ offsite.full_when }}{% endif %}{% if offsite.stale %}
+      — bir kundan oshdi, zaxira logini tekshirish kerak{% endif %}
+    {% else %}⚠️ Oxirgi urinish ({{ offsite.when }}) xato bilan tugadi: {{ offsite.error }}
+    {% endif %}
+  </div>
+  {% if backup_key %}
+  <p style="margin:14px 0 6px">🔑 Zaxira kaliti (bosing — hammasi belgilanadi, nusxa oling):</p>
+  <code class="bk-key">{{ backup_key }}</code>
+  <p class="hint" style="margin-top:8px">Bu sahifani yopgach kalit yana yashiriladi. Ko'rilgani audit jurnaliga yozildi.</p>
+  {% elif offsite.key_set %}
+  <form method="post" action="/settings/backup-key#backup" class="tw-add">
+    <button type="submit" class="btn">🔑 Zaxira kalitini ko'rsatish</button>
+  </form>
+  {% else %}
+  <p class="hint">⚠️ Serverda zaxira kaliti (BACKUP_PASSPHRASE) o'rnatilmagan.</p>
+  {% endif %}
+</div>
+
 <div class="card">
   <h2>Xavfsizlik</h2>
   <p class="hint" style="margin:-8px 0 14px">Panelga kirish 7 kun amal qiladi. Telefon yoki kompyuter yo'qolsa, parol
@@ -145,5 +174,9 @@
   .bal-value { font: 800 26px/1.2 var(--font-head); letter-spacing: -0.01em; }
   .bal-sub { font-size: 13.5px; color: var(--muted, #666); margin-top: 4px; }
   .tw-add input { flex: 1 1 240px; }
+  .bk-state { padding: 12px 16px; border-radius: 14px; background: var(--mint); font-size: 14.5px; }
+  .bk-state.bad { background: rgba(229, 72, 77, 0.08); border: 1px solid #e5484d; }
+  .bk-key { display: block; padding: 12px 14px; border-radius: 12px; background: var(--ink); color: var(--lime);
+    font: 600 15px/1.4 ui-monospace, monospace; word-break: break-all; user-select: all; }
 </style>
 {% endblock %}

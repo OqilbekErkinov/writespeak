@@ -1,6 +1,6 @@
 # Bandzilla (avvalgi WriteSpeak) — zaxiradan tiklash
 
-Zaxiralar har kuni 03:50 (Toshkent) da `deploy/backup/backup.sh` tomonidan olinadi:
+Zaxiralar har kuni 05:50 (Toshkent; serverda 00:50 UTC) da `deploy/backup/backup.sh` tomonidan olinadi:
 
 | Joy | Nima saqlanadi |
 |---|---|
@@ -9,6 +9,7 @@ Zaxiralar har kuni 03:50 (Toshkent) da `deploy/backup/backup.sh` tomonidan olina
 | Server: `/opt/writespeak_backups/monthly/` | oxirgi 12 oyning 1-sanasi |
 | Kompyuter: `D:\Backups\WriteSpeak\daily\` | oxirgi 30 kun |
 | Kompyuter: `D:\Backups\WriteSpeak\monthly\` | har oyning birinchi nusxasi, doimiy |
+| Telegram: adminlar guruhi, «💾 Zaxira» bo'limi | har kuni baza + yangi fayllar, yakshanba barcha fayllar; shifrlangan, doimiy |
 
 Har bir papkada: `db.dump` (baza), `storage.tar.gz` (yuklangan fayllar, PDF
 hisobotlar, savol rasmlari, ustozlar anchorlari `calibration/`, guruh sozlamasi `crm.json`),
@@ -69,6 +70,35 @@ cp $B/env /opt/writespeak/.env && chmod 600 /opt/writespeak/.env
    `certbot --nginx --cert-name bandzilla.uz -d bandzilla.uz -d www.bandzilla.uz -d admin.bandzilla.uz`,
    `certbot --nginx --cert-name writespeak.uz -d writespeak.uz -d www.writespeak.uz -d admin.writespeak.uz`.
 7. Kunlik zaxirani qayta yoqing: `cp deploy/backup/writespeak-backup.cron /etc/cron.d/writespeak-backup`.
+
+## 5. Telegram'dagi zaxiradan tiklash (server ham, kompyuter ham yo'q bo'lsa)
+
+Har kecha `deploy/backup/offsite.sh` adminlar guruhining «💾 Zaxira» bo'limiga shifrlangan fayllar yuboradi:
+
+- `bandzilla-<sana>-kunlik.tar.gpg` — baza (`db.dump`), Redis, xarajat daftari, `.env`, kitoblar/namunalar/
+  anchorlar/`crm.json` (`data-small.tar.gz`) va oxirgi 26 soatda o'zgargan fayllar (`storage-new.tar.gz`);
+- `bandzilla-<sana>-fayllar.tar.gpg` — barcha fayllar (`storage.tar.gz`), yakshanba kunlari.
+
+45 MB dan katta fayl `.part00`, `.part01`, ... bo'laklarida keladi. Ochish uchun **zaxira kaliti** kerak
+(admin panel → Sozlamalar → Zaxira; uni oldindan xavfsiz joyda saqlang — kalitsiz bu fayllarni ochib bo'lmaydi).
+
+```bash
+mkdir -p /root/restore && cd /root/restore
+# Telegram'dan eng oxirgi "kunlik", eng oxirgi "fayllar" va undan keyingi barcha "kunlik" fayllarni shu papkaga yuklang
+cat bandzilla-<sana>-fayllar.tar.gpg.part* > fayllar.tar.gpg 2>/dev/null || true   # bo'laklarda kelgan bo'lsa
+gpg -d bandzilla-<sana>-kunlik.tar.gpg | tar -x          # kalitni so'raydi
+(sha256sum -c SHA256SUMS --ignore-missing)               # fayllar butunmi
+gpg -d fayllar.tar.gpg | tar -x storage.tar.gz           # barcha fayllar (haftalik)
+```
+
+Keyin 4-bo'lim: `cp env /opt/writespeak/.env`; `tar -xzf storage.tar.gz -C /opt/writespeak/data`; so'ng har bir
+keyingi kunlik arxivdagi `tar -xzf storage-new.tar.gz -C /opt/writespeak/data` (eskisidan yangisiga) va
+`tar -xzf data-small.tar.gz -C /opt/writespeak/data`; bazani `db.dump` dan, Redis'ni `redis.rdb` dan
+1 va 2a-bo'limlardagidek tiklang.
+
+Qo'lda qayta yuborish (masalan, bo'lim endi ulangan bo'lsa):
+`/opt/writespeak/deploy/backup/offsite.sh /opt/writespeak_backups/daily/<sana> --full`.
+Oxirgi yuborish natijasi: `data/offsite_status.json` (panelda ham ko'rinadi).
 
 ## Zaxira ishlayotganini tekshirish
 

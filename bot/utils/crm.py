@@ -56,10 +56,12 @@ TOPICS: dict[str, tuple[str, int]] = {
     "daily": ("📊 Kunlik hisobot", 0x6FB9F0),
     "teachers": ("👨‍🏫 O'qituvchi va guruhlar", 0x8EEE98),
     "support": ("💬 Murojaatlar", 0xFFD67E),
+    "backup": ("💾 Zaxira", 0xCB86DB),  # the nightly encrypted backup (deploy/backup/offsite.sh), off the server
 }
 
 # words in a topic's name -> what it is for (`topic_key`); the first match wins
 TOPIC_WORDS: dict[str, tuple[str, ...]] = {
+    "backup": ("zaxira", "zahira", "backup", "rezerv", "резерв"),
     "writing": ("writing",),
     "speaking": ("speaking",),
     "users": ("ro'yxat", "royxat", "registr", "foydalanuvchi"),

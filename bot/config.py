@@ -127,6 +127,9 @@ class Settings(BaseSettings):
     payment_card_holder: str = "F.I.Sh."
     # Test window - see the checks_only_for_ids property. Empty = off.
     checks_only_for: str = ""
+    # Encrypts the nightly backup sent to the admins' group (deploy/backup/offsite.sh); the owner sees it in
+    # the panel (Sozlamalar -> Zaxira) and keeps a copy off the server.
+    backup_passphrase: str = ""
     # So'm per US dollar for the admins' group's cost figures (bot/utils/crm.py)
     # when the Central Bank's daily rate can't be fetched.
     usd_uzs_rate: float = 11800.0

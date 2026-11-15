@@ -886,6 +886,9 @@ INTROS = {
     "support": "O'quvchilarning adminga yozgan xabarlari (botda «💬 Admin bilan aloqa»). Javob berish uchun "
                "xabarga reply qiling - javob o'quvchiga bot orqali boradi. Javobni faqat bot adminlari va "
                "/crm_agents da belgilanganlar bera oladi.",
+    "backup": "Har kuni ~05:50 da (Toshkent) bazaning shifrlangan zaxirasi (server buzilsa ham ma'lumotlar shu yerda qoladi): "
+              "har kuni baza va yangi fayllar, yakshanba kunlari barcha fayllar. Ochish uchun zaxira kaliti kerak - "
+              "u admin panelda (Sozlamalar → Zaxira), uni xavfsiz joyda saqlang. Tiklash: deploy/backup/RESTORE.md.",
 }
 
 

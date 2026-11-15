@@ -27,6 +27,7 @@ from db.database import get_session
 logger = logging.getLogger(__name__)
 
 WAITING_KEY = "checks:waiting"
+TOLD_KEY = "checks:back_told"  # who got quota.back: the opening-day message (bot/launch.py) skips them
 SEND_PAUSE = 0.1  # seconds between messages - well under Telegram's limits
 
 
@@ -70,6 +71,11 @@ async def notify_back(bot: Bot) -> int:
                     await asyncio.sleep(e.retry_after)
                     await bot.send_message(user_id, text)
                 sent += 1
+                try:
+                    await redis().sadd(TOLD_KEY, user_id)
+                    await redis().expire(TOLD_KEY, 30 * 24 * 3600)
+                except Exception:  # noqa: BLE001 - the message went; at worst they hear it twice
+                    pass
             except Exception as e:  # noqa: BLE001 - blocked the bot, deleted account, ...
                 logger.info("Checks-back message to %s not sent: %r", user_id, e)
             await asyncio.sleep(SEND_PAUSE)

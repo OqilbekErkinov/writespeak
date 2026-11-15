@@ -147,6 +147,31 @@ def _require_login(request: Request) -> RedirectResponse | None:
     return None
 
 
+@app.get("/healthz", include_in_schema=False)
+async def healthz():
+    """For an outside uptime monitor (UptimeRobot, 2026-11-15): the host's own watchdog cannot report a dead
+    server. 200 "ok" while the bot's heartbeat is fresh and the database answers; 503 naming what is down
+    otherwise. Public, so it says nothing more."""
+    from sqlalchemy import text
+
+    from bot.utils import crm
+
+    down = []
+    try:
+        beat = await crm.redis().get(crm.HEARTBEAT_KEY)
+        if not beat or time.time() - int(beat) > 3 * crm.HEARTBEAT_EVERY:
+            down.append("bot")
+    except Exception:  # noqa: BLE001
+        down.append("redis")
+    try:
+        async with get_session() as session:
+            await session.execute(text("select 1"))
+    except Exception:  # noqa: BLE001
+        down.append("db")
+    return PlainTextResponse("down: " + ", ".join(down) if down else "ok", status_code=503 if down else 200,
+                             headers={"Cache-Control": "no-store"})
+
+
 @app.get("/login", response_class=HTMLResponse)
 async def login_form(request: Request):
     return templates.TemplateResponse(request, "login.html", {"error": None})

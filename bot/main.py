@@ -99,6 +99,9 @@ async def main() -> None:
         token=settings.telegram_bot_token,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
+    from bot.middlewares.stale_callbacks import SkipStaleAnswers
+
+    bot.session.middleware(SkipStaleAnswers())  # a button pressed during a deploy still does its job
     dp = build_dispatcher()
 
     from bot.utils import capacity, check_guard, crm

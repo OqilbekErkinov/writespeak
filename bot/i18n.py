@@ -1607,11 +1607,31 @@ _T: dict[str, dict[str, str]] = {
     "vocab.btn_relearn": {"uz": "↩️ Qaytadan o'rganish", "ru": "↩️ Учить заново"},
     # --- The previous bot, after the move to the new one (bot/moved.py) ---
     "moved.text": {
-        "uz": "🚀 <b>Biz yangi botga ko'chdik: @{bot}</b>\n\nHisobingiz, balansingiz, obunangiz va barcha "
+        "uz": "🚀 <b>Biz yangi botga ko'chdik: @{bot}</b>\n\nHisobingiz, coinlaringiz va barcha "
               "tekshiruvlaringiz saqlangan. Quyidagi tugmani bosing, yangi botda <b>Start</b> ni bosing va "
               "davom eting.",
-        "ru": "🚀 <b>Мы переехали в новый бот: @{bot}</b>\n\nВаш аккаунт, баланс, подписка и все проверки "
+        "ru": "🚀 <b>Мы переехали в новый бот: @{bot}</b>\n\nВаш аккаунт, coin и все проверки "
               "сохранены. Нажмите кнопку ниже, затем <b>Start</b> в новом боте - и продолжайте.",
+    },
+    # --- The opening-day message (bot/launch.py): from the new bot, or from the previous one to those who
+    # never started the new bot ---
+    "launch.open": {
+        "uz": "🎉 <b>Bandzilla yana ishlayapti!</b>\n\nTekshiruvlar hamma uchun ochildi. Writing yoki Speaking "
+              "javobingizni yuboring — 2–4 daqiqada PDF hisobot keladi: 4 mezon bo'yicha ball, har bir xato "
+              "izohi va model javob.\n\n🟡 Har bir tekshiruv — {price} coin. Coinlaringiz joyida.\n\nSavol "
+              "kerakmi? <b>📝 Practice</b> bo'limida tayyor savollar bor. 🦖",
+        "ru": "🎉 <b>Bandzilla снова работает!</b>\n\nПроверки открыты для всех. Отправьте ответ по Writing или "
+              "Speaking — через 2–4 минуты придёт PDF-отчёт: балл по 4 критериям, разбор каждой ошибки и "
+              "образец ответа.\n\n🟡 Каждая проверка — {price} coin. Ваши coin на месте.\n\nНужен вопрос? "
+              "Готовые задания — в разделе <b>📝 Practice</b>. 🦖",
+    },
+    "launch.moved": {
+        "uz": "🚀 <b>WriteSpeak endi — Bandzilla: @{bot}</b>\n\nBiz yangi botga ko'chdik va tekshiruvlar yana "
+              "ochildi. Hisobingiz, coinlaringiz va barcha hisobotlaringiz saqlangan — qaytadan ro'yxatdan o'tish "
+              "shart emas.\n\nQuyidagi tugmani, so'ng yangi botda <b>Start</b> ni bosing 👇",
+        "ru": "🚀 <b>WriteSpeak теперь — Bandzilla: @{bot}</b>\n\nМы переехали в новый бот, и проверки снова "
+              "открыты. Ваш аккаунт, coin и все отчёты сохранены — заново регистрироваться не нужно.\n\n"
+              "Нажмите кнопку ниже, затем <b>Start</b> в новом боте 👇",
     },
     "moved.button": {"uz": "➡️ @{bot} ga o'tish", "ru": "➡️ Перейти в @{bot}"},
     # --- Admin bilan aloqa (bot/handlers/support.py, bot/handlers/crm.py) ---

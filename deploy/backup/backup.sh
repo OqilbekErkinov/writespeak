@@ -19,6 +19,7 @@
 # counts as good. Sunday runs are also kept in weekly/, 1st-of-month runs in
 # monthly/ (hardlinks, no extra space). Retention is by count: 14 / 8 / 12.
 # Any failure sends a Telegram message to ADMIN_TELEGRAM_IDS, and so does a disk over DISK_ALERT % full.
+# Then a copy goes off the server, encrypted, to the admins' Telegram group (deploy/backup/offsite.sh).
 #
 # 2026-11-15: the test restore waited for the throwaway Postgres on its unix socket, which answers during
 # the image's first-start init and then goes away for the restart - createdb hit that gap on ~1 night in 4
@@ -170,3 +171,8 @@ if [ -n "$used" ] && [ "$used" -ge "$DISK_ALERT" ]; then
   echo "$(date '+%F %T') disk ${used}% full"
   alert "⚠️ Bandzilla serveri: disk ${used}% to'lgan ($(hostname)). Bo'sh joy tugasa baza va bot to'xtaydi — eski fayllar/zaxiralarni tozalash kerak."
 fi
+
+# 9. Off the server (the user, 2026-11-15): the backup, encrypted, to the admins' group's "💾 Zaxira" topic -
+#    a dead or wiped server no longer takes its backups with it. offsite.sh messages the admins itself when it
+#    fails; the backup above stays good either way.
+"$APP/deploy/backup/offsite.sh" "$FINAL" "$restored" || true
