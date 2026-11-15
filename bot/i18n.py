@@ -802,14 +802,13 @@ _T: dict[str, dict[str, str]] = {
     "acc.topup": {
         "uz": "💳 <b>Hisobni to'ldirish</b>\n\nBandzilla'da har bir tekshiruv <b>coin</b> bilan to'lanadi. Coin — "
               "botning ichki puli: bir marta sotib olasiz va xohlagan vaqtda ishlatasiz.\n\n{prices}\n\n"
-              "✅ Coin tekshiruv boshlanganda yechiladi. Tekshiruv yakunlanmasa, coin avtomatik qaytariladi.\n\n"
+              "✅ Tekshiruv yakunlanmasa, coin avtomatik qaytariladi.\n\n"
               "<b>Qanday to'ldiriladi:</b>\n1️⃣ Quyida kim uchun ekanini tanlang va paketni bosing.\n"
               "2️⃣ Bot ko'rsatgan kartaga pulni o'tkazing.\n3️⃣ Chekning rasmini shu chatga yuboring — admin "
               "tekshirgach, coin hisobingizga tushadi.\n\nKim uchun to'ldiryapsiz? 👇",
         "ru": "💳 <b>Пополнение баланса</b>\n\nВ Bandzilla каждая проверка оплачивается <b>coin</b>. Coin — "
               "внутренние деньги бота: покупаете один раз и тратите когда угодно.\n\n{prices}\n\n"
-              "✅ Coin списываются, когда проверка начинается. Если она не завершилась, coin автоматически "
-              "возвращаются.\n\n"
+              "✅ Если проверка не завершилась, coin автоматически возвращаются.\n\n"
               "<b>Как пополнить:</b>\n1️⃣ Ниже выберите, для кого пакет, и нажмите на него.\n"
               "2️⃣ Переведите деньги на карту, которую покажет бот.\n3️⃣ Отправьте фото чека в этот чат — после "
               "проверки админом coin поступят на баланс.\n\nДля кого пополняете? 👇",
