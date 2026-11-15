@@ -4,7 +4,8 @@
 which promises a message when checks open again, and is remembered in a
 Redis set. When the window ends - switched off in the web panel, or the
 CHECKS_ONLY_FOR line removed from .env and the bot restarted - each of them
-gets quota.back in their own language, once.
+gets quota.back in their own language, once. The first opening is the launch: until bot/launch.py has sent
+its message (launch:done), they get that one instead (with the welcome gift), and count as told by it.
 
 Users are taken off the set one at a time (SPOP) before their message, so
 the bot's start and the panel's switch running together, or a restart
@@ -49,12 +50,14 @@ async def notify_back(bot: Bot) -> int:
     """Tells everyone waiting that checks are back - only when no test
     window is on. Started with the bot, and by the panel's off switch.
     Returns how many got the message."""
+    from bot import launch
     from bot.utils import balance
 
     if await runtime.window_on() or await balance.credit_paused():
         return 0
     sent = tried = 0
     try:
+        launching = not await redis().exists(launch.DONE)
         while True:
             raw = await redis().spop(WAITING_KEY)
             if raw is None:
@@ -63,7 +66,9 @@ async def notify_back(bot: Bot) -> int:
             tried += 1
             async with get_session() as session:
                 user = await crud.get_user(session, user_id)
-            text = t("quota.back", user.language if user else None)
+            lang = user.language if user else None
+            first = launching and not await redis().sismember(launch.TOLD, user_id)
+            text = launch.open_text(lang, user.coin_balance if user else 0) if first else t("quota.back", lang)
             try:
                 try:
                     await bot.send_message(user_id, text)
@@ -74,6 +79,8 @@ async def notify_back(bot: Bot) -> int:
                 try:
                     await redis().sadd(TOLD_KEY, user_id)
                     await redis().expire(TOLD_KEY, 30 * 24 * 3600)
+                    if first:
+                        await redis().sadd(launch.TOLD, user_id)
                 except Exception:  # noqa: BLE001 - the message went; at worst they hear it twice
                     pass
             except Exception as e:  # noqa: BLE001 - blocked the bot, deleted account, ...

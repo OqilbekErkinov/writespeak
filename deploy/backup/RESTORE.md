@@ -1,6 +1,6 @@
 # Bandzilla (avvalgi WriteSpeak) — zaxiradan tiklash
 
-Zaxiralar har kuni 05:50 (Toshkent; serverda 00:50 UTC) da `deploy/backup/backup.sh` tomonidan olinadi:
+Zaxiralar har kuni ~04:50 da (Toshkent; serverda 00:50 Berlin vaqti, yozda Toshkentda 03:50) `deploy/backup/backup.sh` tomonidan olinadi:
 
 | Joy | Nima saqlanadi |
 |---|---|

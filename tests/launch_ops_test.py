@@ -211,13 +211,17 @@ async def launch_message() -> None:
     from db.models import User, UserStatus
 
     NEW, OLD_ONLY, NOBODY, DENIED, TOLD_BACK, RU = 9_300_001, 9_300_002, 9_300_003, 9_300_004, 9_300_005, 9_300_006
+    LOW, WAITER, WAITER2 = 9_300_007, 9_300_008, 9_300_009
     async with get_session() as s:
-        for uid, status, lang in ((NEW, UserStatus.approved, "uz"), (OLD_ONLY, UserStatus.approved, "uz"),
-                                  (NOBODY, UserStatus.approved, "uz"), (DENIED, UserStatus.denied, "uz"),
-                                  (TOLD_BACK, UserStatus.approved, "uz"), (RU, UserStatus.pending, "ru")):
-            s.add(User(id=uid, full_name=f"U{uid}", coin_balance=8, language=lang, status=status))
+        for uid, status, lang, coins in ((NEW, UserStatus.approved, "uz", 8), (OLD_ONLY, UserStatus.approved, "uz", 8),
+                                         (NOBODY, UserStatus.approved, "uz", 8), (DENIED, UserStatus.denied, "uz", 8),
+                                         (TOLD_BACK, UserStatus.approved, "uz", 8), (RU, UserStatus.pending, "ru", 8),
+                                         (LOW, UserStatus.approved, "uz", 2), (WAITER, UserStatus.approved, "uz", 8),
+                                         (WAITER2, UserStatus.approved, "uz", 8)):
+            s.add(User(id=uid, full_name=f"U{uid}", coin_balance=coins, language=lang, status=status))
         await s.commit()
-    ours = {NEW, OLD_ONLY, NOBODY, DENIED, TOLD_BACK, RU}
+    ours = {NEW, OLD_ONLY, NOBODY, DENIED, TOLD_BACK, RU, LOW, WAITER, WAITER2}
+    gift = f"{settings.welcome_coins} coin sovg'a"
 
     def new_refuses(method):
         if getattr(method, "chat_id", None) in (OLD_ONLY, NOBODY):
@@ -235,7 +239,16 @@ async def launch_message() -> None:
     await runtime.set_testers({111})
     stats = await launch.run(True, new_bot, old_bot)
     check("the test window still on: refused, nothing sent", "refused" in stats and not new_s.calls and not old_s.calls)
+    await redis().sadd(checks_back.WAITING_KEY, WAITER)  # tried a check during the window
     await runtime.set_testers(set())
+
+    # the off switch before the launch message went: the opening-day message (with the gift), not quota.back
+    await checks_back.notify_back(new_bot)
+    waited = [c for c in new_s.calls if getattr(c, "chat_id", None) == WAITER]
+    check("one who waited, at the off switch: the opening message with the gift, and told by it",
+          len(waited) == 1 and "yana ishlayapti" in waited[0].text and gift in waited[0].text
+          and await redis().sismember(launch.TOLD, WAITER), [c.text for c in waited])
+    new_s.calls.clear()
 
     await redis().sadd(checks_back.TOLD_KEY, TOLD_BACK)  # already got "checks are back" from the panel's switch
     dry = await launch.run(False, new_bot, old_bot)
@@ -244,12 +257,26 @@ async def launch_message() -> None:
     stats = await launch.run(True, new_bot, old_bot)
     to_new = {c.chat_id: c for c in new_s.calls if c.chat_id in ours and type(c).__name__ == "SendMessage"}
     to_old = {c.chat_id: c for c in old_s.calls if c.chat_id in ours}
-    check("a user of the new bot: 'Bandzilla yana ishlayapti' from the new bot, the price in it",
-          NEW in to_new and "yana ishlayapti" in to_new[NEW].text and "5 coin" in to_new[NEW].text and NEW not in to_old)
-    check("one who never started the new bot: 'we've moved' from the old bot, with the button",
-          OLD_ONLY in to_old and "@" + settings.telegram_bot_username in to_old[OLD_ONLY].text
+    check("a user of the new bot: 'Bandzilla yana ishlayapti' from the new bot, the gift + free first check, no price",
+          NEW in to_new and "yana ishlayapti" in to_new[NEW].text and gift in to_new[NEW].text
+          and "bepul" in to_new[NEW].text and "5 coin" not in to_new[NEW].text and NEW not in to_old)
+    check("one who never started the new bot: 'WriteSpeak endi Bandzillada' from the old bot, gift, the button",
+          OLD_ONLY in to_old and "WriteSpeak endi Bandzillada" in to_old[OLD_ONLY].text
+          and gift in to_old[OLD_ONLY].text and "@" + settings.telegram_bot_username in to_old[OLD_ONLY].text
           and to_old[OLD_ONLY].reply_markup.inline_keyboard[0][0].url.startswith("https://t.me/"))
-    check("in their own language", RU in to_new and "снова работает" in to_new[RU].text)
+    check("a balance that no longer covers a check: no gift line", LOW in to_new and "sovg'a" not in to_new[LOW].text
+          and "yana ishlayapti" in to_new[LOW].text)
+    check("in their own language", RU in to_new and "снова работает" in to_new[RU].text and "подарок" in to_new[RU].text)
+    check("the one the off switch told is not told again", WAITER not in to_new and WAITER not in to_old)
+
+    # after the launch run: the off switch is back to the usual quota.back
+    await redis().sadd(checks_back.WAITING_KEY, WAITER2)
+    n = len(new_s.calls)
+    await checks_back.notify_back(new_bot)
+    later = [c for c in new_s.calls[n:] if getattr(c, "chat_id", None) == WAITER2]
+    check("after the launch run, the off switch says quota.back again",
+          await redis().exists(launch.DONE) and len(later) == 1 and "sovg'a" not in later[0].text
+          and "qayta ochildi" in later[0].text, [c.text for c in later])
     check("denied users and those the panel already told: skipped", DENIED not in to_new and DENIED not in to_old
           and TOLD_BACK not in to_new and TOLD_BACK not in to_old)
     check("unreachable by both: counted, not marked told", stats["missed"] >= 1
@@ -257,7 +284,7 @@ async def launch_message() -> None:
 
     before_new, before_old = len(new_s.calls), len(old_s.calls)
     again = await launch.run(True, new_bot, old_bot)
-    retried = [c.chat_id for c in new_s.calls[before_new:] + old_s.calls[before_old:]]
+    retried = [c.chat_id for c in new_s.calls[before_new:] + old_s.calls[before_old:] if c.chat_id in ours]
     check("run again: only the unreached are tried again", set(retried) == {NOBODY} and again["new_bot"] == 0
           and again["old_bot"] == 0, retried)
 
