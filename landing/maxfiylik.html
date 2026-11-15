@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<!--
+  EGASI UCHUN ESLATMA (sahifada ko‘rinmaydi).
+
+  1. Joylashtirishdan oldin quyidagilarni to‘ldiring. Sahifada ular sariq
+     <mark>[TO‘LDIRING: ...]</mark> bo‘lib ko‘rinadi:
+     - [TO‘LDIRING: YaTT F.I.Sh. yoki MChJ nomi] ........ 1.1, 11-bo‘lim
+     - [TO‘LDIRING: STIR] ................................ 11
+     - [TO‘LDIRING: yuridik manzil] ...................... 11
+     - [TO‘LDIRING: telefon] ............................. 11
+     - [TO‘LDIRING: email] ............................... 11
+     - [TO‘LDIRING: mas’ul shaxs F.I.Sh.] ................ 11
+     - [TO‘LDIRING: server joylashgan davlat] ............ 5.4 (jadval), 6.1
+     - [TO‘LDIRING: hosting provayderi] .................. 5.4 (jadval)
+     - [TO‘LDIRING: Azure mintaqasi] ..................... 5.4 (jadval) — serverdagi .env: AZURE_SPEECH_REGION
+     - [TO‘LDIRING: 16] (yosh chegarasi) ................. 8.1
+     - [TO‘LDIRING: 12 oy] (zaxiralar eng uzoq muddati) .. 6.5
+     - [TO‘LDIRING: o‘chirish muddati, masalan: 30 kun] .. 9.3
+     - [TO‘LDIRING: javob muddati, masalan: 10 kun] ...... 10.2
+
+  2. Yurist bilan tekshiring:
+     - SERVER JOYI. O‘RQ-547 ning 27-1-moddasiga ko‘ra O‘zbekiston fuqarolarining
+       shaxsga doir ma’lumotlari O‘zbekiston hududida joylashgan serverlarda
+       saqlanishi kerak. Server chet elda bo‘lsa, bu talabga qanday rioya
+       qilishni yurist bilan hal qiling (6.1 shunga qarab yoziladi).
+     - Shaxsga doir ma’lumotlar bazalari davlat reestrida ro‘yxatdan o‘tish
+       kerakmi, tekshiring.
+     - Chegaradan tashqariga uzatish (OpenAI, Microsoft — 5.5): rozilik shakli
+       qonun talabiga yetarlimi, tekshiring.
+     - ROZILIK. Bot hozir /start da alohida rozilik so‘ramaydi. Ishonchliroq
+       bo‘lishi uchun birinchi kirishda “Roziman” tugmasi va oferta + maxfiylik
+       havolalarini qo‘shish tavsiya etiladi (bu kodda o‘zgarish, qilinmagan).
+
+  3. Kod bilan solishtirilgan faktlar (kerak bo‘lsa matnni o‘zgartiring):
+     - Admin panelidagi “ustoz” (teacher) logini tekshiruvlar ro‘yxatida
+       o‘quvchining Telegram ismini ko‘radi (webapp/templates/checks.html,
+       teacher_view). Shuning uchun 5.2 da “ismingizni ko‘radi” deb yozilgan.
+       To‘liq anonim bo‘lishini istasangiz, avval kodda ismni yashiring,
+       keyin 5.2 ni o‘zgartiring. Ustozlar bilan maxfiylik kelishuvini imzolang.
+     - Ustoz baholagan Speaking transkriptlari ismsiz holda AI baholash
+       promptiga namuna (anchor) sifatida qo‘shiladi
+       (services/ai/speaking_grader.py). 5.2 da ochiq yozilgan.
+     - Zaxiralar: serverda 14 kunlik / 8 haftalik / 12 oylik nusxa (taxminan
+       12 oy). LEKIN deploy/backup/pull-backups.ps1 ularni kompyuteringizga
+       ko‘chiradi: oxirgi 30 kunlik + har oydan bittasi MUDDATSIZ saqlanadi.
+       6.5 dagi muddat to‘g‘ri bo‘lishi uchun kompyuterdagi oylik nusxalarni
+       ham cheklang yoki matnni o‘zgartiring. Zaxiralar shifrlanmagan (faqat
+       ruxsat cheklangan) — matnda “shifrlangan” deyilmagan.
+     - 2026-11-15 dan deploy/backup/offsite.sh har kungi zaxirani gpg (AES-256) bilan
+       shifrlab, adminlarning Telegram guruhiga (“💾 Zaxira” mavzusi) yuboradi — 6.5 da
+       yozildi. U yerdagi nusxalar hozircha muddatsiz qoladi: 6.5 dagi eng uzoq muddat
+       to‘g‘ri bo‘lishi uchun Telegram’dagi eski nusxalarni o‘chirish muddatini belgilang.
+     - Kodda foydalanuvchini o‘chirish funksiyasi yo‘q: 9.3 dagi so‘rovlar
+       bazadan qo‘lda bajariladi.
+  4. To‘ldirilgach: <meta name="robots" content="noindex"> qatorini olib tashlang
+     (sahifa qidiruvda chiqishi kerak bo‘lsa) va index.html pastiga havola qo‘shing.
+-->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Maxfiylik siyosati — Bandzilla</title>
+<meta name="description" content="Bandzilla qaysi shaxsga doir ma’lumotlarni yig‘adi, nima uchun ishlatadi, kimga uzatadi, qancha saqlaydi va siz qanday huquqlarga egasiz.">
+<meta name="robots" content="noindex">
+<link rel="canonical" href="https://bandzilla.uz/maxfiylik.html">
+<meta name="theme-color" content="#062018">
+<link rel="icon" href="favicon.ico" sizes="16x16 32x32 48x48">
+<link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="stylesheet" href="styles.css?v=ai1">
+<style>
+  .doc-cta { margin-left: auto; }
+  .doc-hero { padding: 40px 0 56px; }
+  @media (min-width: 960px) { .doc-hero { padding: 56px 0 72px; } }
+  .doc-hero h1 { font-size: clamp(2rem, 1.4rem + 2.6vw, 3.1rem); }
+  .doc-hero .sub { margin-top: 12px; }
+  .doc-date { margin-top: 18px; font-size: 0.92rem; font-weight: 700; color: var(--lime); }
+  .doc-body { padding: 48px 0 88px; }
+  @media (min-width: 960px) { .doc-body { padding: 64px 0 104px; } }
+  .doc { max-width: 760px; margin: 0 auto; line-height: 1.72; color: var(--ink); overflow-wrap: break-word; }
+  .doc h2 { font-size: clamp(1.12rem, 1rem + 0.5vw, 1.35rem); line-height: 1.3; letter-spacing: -0.02em; margin: 44px 0 14px; }
+  .doc h2 .n { color: var(--moss); margin-right: 0.2em; }
+  .doc p { margin: 0 0 10px; }
+  .doc a { color: var(--moss); font-weight: 700; text-underline-offset: 0.15em; }
+  .doc a:hover { color: var(--ink); }
+  .doc .pt { position: relative; padding-left: 3em; margin-bottom: 12px; }
+  .doc .pt > .n { position: absolute; left: 0; top: 0; font-weight: 800; color: var(--moss); }
+  .doc ul, .doc ol { margin: 6px 0 12px; padding-left: 1.3em; }
+  .doc ul { list-style: disc; }
+  .doc ol { list-style: decimal; }
+  .doc li { margin-bottom: 5px; }
+  .doc li::marker { color: var(--moss); font-weight: 800; }
+  .doc mark { background: var(--yellow); color: var(--ink); padding: 0.05em 0.3em; border-radius: 0.2em; font-weight: 700; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+  .doc-short { background: var(--mint-2); border: 2px solid var(--ink); border-radius: 18px; box-shadow: 0 4px 0 var(--ink); padding: 18px 20px 14px; margin-bottom: 28px; }
+  .doc-short .cap { margin-bottom: 8px; }
+  .doc-short ul { margin-bottom: 8px; }
+  .doc-short .note { font-size: 0.88rem; color: var(--ink-soft); }
+  .doc-toc { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 16px 0 10px; margin-bottom: 8px; }
+  .doc-toc .cap { margin-bottom: 8px; }
+  .doc-toc ol { columns: 2 240px; column-gap: 32px; margin: 0; padding-left: 1.5em; }
+  .doc-toc li { break-inside: avoid; margin-bottom: 4px; }
+  .doc-toc a { text-decoration: none; }
+  .doc-toc a:hover { text-decoration: underline; }
+  .tbl { overflow-x: auto; margin: 8px 0 14px; border: 1px solid var(--line); border-radius: 14px; }
+  .doc table { width: 100%; border-collapse: collapse; font-size: 0.95rem; line-height: 1.45; }
+  .doc th, .doc td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .doc tr:last-child th, .doc tr:last-child td { border-bottom: 0; }
+  .doc thead th { background: var(--mint-3); font-weight: 800; }
+  .doc .proc { min-width: 560px; }
+  .doc .req th { width: 38%; font-weight: 700; color: var(--ink-soft); }
+  .doc-foot { padding-bottom: 48px; }
+  @media print {
+    .site-head, .skip, .doc-toc, .doc-foot .foot-nav, .doc-cta { display: none !important; }
+    body, .sec, .doc-hero { background: #fff !important; color: #000 !important; }
+    .edge-zz::before { display: none; }
+    .doc-hero, .doc-body { padding: 0 0 16px; }
+    .doc-short { box-shadow: none; }
+    .doc mark { background: none; border: 1px dashed #000; }
+  }
+</style>
+</head>
+<body>
+
+<a class="skip" href="#main">Asosiy qismga o‘tish</a>
+
+<header class="site-head">
+  <div class="wrap head-in">
+    <a class="brand" href="/"><img src="assets/logo-on-dark.webp" width="720" height="126" alt="Bandzilla — bosh sahifa"></a>
+    <a class="btn btn--lime head-cta doc-cta" href="https://t.me/bandzilla_bot"><svg aria-hidden="true" viewBox="0 0 24 24"><path fill="currentColor" d="M20.7 3.4 2.9 10.3c-1.2.5-1.2 1.2-.2 1.5l4.6 1.4 1.8 5.4c.2.6.1.8.7.8.5 0 .7-.2.9-.4l2.2-2.2 4.6 3.4c.8.5 1.5.2 1.7-.8l3-14.2c.3-1.2-.5-1.8-1.5-1.3Zm-3.6 3.3-8.4 7.6-.3 3.5-1.4-4.5 10.1-6.6Z"/></svg><span>Botni ochish</span></a>
+  </div>
+  <div class="head-teeth" aria-hidden="true"><i></i></div>
+</header>
+
+<main id="main">
+<section class="sec sec--ink doc-hero">
+  <div class="wrap">
+    <p class="cap">Huquqiy hujjat</p>
+    <h1>Maxfiylik siyosati</h1>
+    <p class="sub">Bandzilla shaxsga doir ma’lumotlaringiz bilan qanday ishlaydi</p>
+    <p class="doc-date">Oxirgi yangilanish: <time datetime="2026-11-15">2026-yil 15-noyabr</time></p>
+  </div>
+</section>
+
+<section class="sec sec--white edge-zz doc-body">
+  <div class="wrap">
+    <article class="doc">
+
+      <aside class="doc-short" aria-label="Qisqacha">
+        <p class="cap">Qisqacha</p>
+        <ul>
+          <li>Faqat xizmat uchun kerakli ma’lumotni olamiz: Telegram ID va ismingiz, javoblaringiz, natijalaringiz, to‘lovlaringiz.</li>
+          <li>Telefon raqamingizni so‘ramaymiz. Karta ma’lumotlarini, CVV yoki SMS kodni hech qachon so‘ramaymiz.</li>
+          <li>Javoblaringiz faqat tekshiruv uchun AI xizmatlariga (OpenAI, Microsoft Azure) yuboriladi.</li>
+          <li>Yuborgan rasm, ovoz va video fayllaringiz serverdan 30 kundan keyin o‘chiriladi.</li>
+          <li>Ma’lumotlaringizni sotmaymiz. O‘chirishni xohlasangiz — «💬 Admin bilan aloqa».</li>
+        </ul>
+        <p class="note">Bu qisqa mazmun. Quyidagi to‘liq matn asosiy hisoblanadi.</p>
+      </aside>
+
+      <nav class="doc-toc" aria-label="Mundarija">
+        <p class="cap">Mundarija</p>
+        <ol>
+          <li><a href="#s1">Umumiy qoidalar</a></li>
+          <li><a href="#s2">Qanday ma’lumotlarni olamiz</a></li>
+          <li><a href="#s3">Nima uchun ishlatamiz</a></li>
+          <li><a href="#s4">Qayta ishlash asoslari</a></li>
+          <li><a href="#s5">Kimlar ko‘radi va kimga uzatiladi</a></li>
+          <li><a href="#s6">Qayerda va qancha saqlanadi</a></li>
+          <li><a href="#s7">Himoya choralari</a></li>
+          <li><a href="#s8">Voyaga yetmaganlar</a></li>
+          <li><a href="#s9">Sizning huquqlaringiz</a></li>
+          <li><a href="#s10">Murojaat qilish</a></li>
+          <li><a href="#s11">Operator ma’lumotlari</a></li>
+          <li><a href="#s12">Siyosatning o‘zgarishi</a></li>
+        </ol>
+      </nav>
+
+      <section id="s1">
+        <h2><span class="n">1.</span>Umumiy qoidalar</h2>
+        <div class="pt"><span class="n">1.1.</span>Ushbu siyosat <mark>[TO‘LDIRING: YaTT F.I.Sh. yoki MChJ nomi]</mark> (bundan buyon — «Biz» yoki «Operator») Bandzilla xizmati — Telegram’dagi <a href="https://t.me/bandzilla_bot">@bandzilla_bot</a> boti (bundan buyon — «Bot»), <a href="https://bandzilla.uz/">bandzilla.uz</a> sayti va o‘qituvchilar kabineti — foydalanuvchilarining shaxsga doir ma’lumotlarini qanday olishi, ishlatishi, saqlashi va himoya qilishini tushuntiradi.</div>
+        <div class="pt"><span class="n">1.2.</span>Siyosat O‘zbekiston Respublikasining 2019-yil 2-iyuldagi O‘RQ-547-son «Shaxsga doir ma’lumotlar to‘g‘risida»gi Qonuniga muvofiq tuzilgan.</div>
+        <div class="pt"><span class="n">1.3.</span>Botni ishga tushirib va unga ma’lumot yuborib, siz shaxsga doir ma’lumotlaringiz ushbu siyosatda yozilgan tartibda qayta ishlanishiga rozilik bildirasiz. Rozi bo‘lmasangiz, Botdan foydalanmang.</div>
+        <div class="pt"><span class="n">1.4.</span>Pullik xizmatlar shartlari <a href="oferta.html">Ommaviy oferta</a>da yozilgan. Ushbu siyosat uning ajralmas qismidir.</div>
+      </section>
+
+      <section id="s2">
+        <h2><span class="n">2.</span>Qanday ma’lumotlarni olamiz</h2>
+        <div class="pt"><span class="n">2.1.</span><b>Telegram hisobingiz:</b> Telegram ID raqami, Telegram’da ko‘rsatilgan ism va username (bo‘lsa), siz tanlagan interfeys tili. Telefon raqamingizni so‘ramaymiz va olmaymiz.</div>
+        <div class="pt"><span class="n">2.2.</span><b>Javoblaringiz:</b> savol matni yoki rasmi, essay matni, qo‘lda yozilgan essay va grafik rasmlari, hujjatlar, ovozli xabarlar, audio va video yozuvlar hamda ulardan olingan matn (transkript).</div>
+        <div class="pt"><span class="n">2.3.</span><b>Natijalar:</b> band ballari, PDF hisobotlar, topilgan xatolar, talaffuz baholari, lug‘atingizdagi so‘zlar, tekshiruvlar tarixi va statistika.</div>
+        <div class="pt"><span class="n">2.4.</span><b>To‘lovlar:</b> coin balansi va uning tarixi (xaridlar, sarflar, sovg‘a va bonuslar, kim kimni taklif qilgani), to‘lov cheki rasmi. Chekda ismingiz, karta raqamining bir qismi, summa va sana ko‘rinishi mumkin. To‘liq karta ma’lumotlarini so‘ramaymiz va saqlamaymiz.</div>
+        <div class="pt"><span class="n">2.5.</span><b>Murojaatlar:</b> «💬 Admin bilan aloqa» orqali yuborgan xabarlaringiz (matn, rasm, fayl, ovoz) va admin javoblari.</div>
+        <div class="pt"><span class="n">2.6.</span><b>Guruhlar:</b> qaysi o‘qituvchi yoki o‘quv markazi guruhida ekaningiz, vazifalar, o‘qituvchi izohlari va baholari.</div>
+        <div class="pt"><span class="n">2.7.</span><b>Texnik ma’lumotlar:</b> amallar sanasi va vaqti, xatolar jurnali. Saytda — veb-serverning standart jurnallari (IP manzil, brauzer turi, so‘rov vaqti). Sayt reklama yoki kuzatuv cookie’larini va analitika xizmatlarini ishlatmaydi; tanlagan tilingiz faqat brauzeringizda saqlanadi. O‘qituvchilar kabineti tizimga kirish uchun zarur sessiya cookie’sidan foydalanadi.</div>
+      </section>
+
+      <section id="s3">
+        <h2><span class="n">3.</span>Nima uchun ishlatamiz</h2>
+        <ul>
+          <li>tekshiruv o‘tkazish va hisobot yuborish;</li>
+          <li>tarix, statistika va o‘sishingizni ko‘rsatish, lug‘at eslatmalarini yuborish;</li>
+          <li>to‘lovlarni tekshirish, coinlarni hisobga olish, sovg‘a va taklif bonuslarini berish;</li>
+          <li>guruhlar ishini ta’minlash: vazifalar, eslatmalar, o‘qituvchiga natijalarni ko‘rsatish;</li>
+          <li>murojaatlarga javob berish;</li>
+          <li>baholash sifatini nazorat qilish va yaxshilash (<a href="#s5">5.2-band</a>);</li>
+          <li>xizmat haqidagi muhim xabar va yangiliklarni Bot orqali yuborish;</li>
+          <li>firibgarlikning oldini olish (masalan, bitta chekni ikki marta ishlatish) va qonunchilik talablarini bajarish.</li>
+        </ul>
+        <p>Ma’lumotlaringizni sotmaymiz va uchinchi shaxslarning reklamasi uchun bermaymiz.</p>
+      </section>
+
+      <section id="s4">
+        <h2><span class="n">4.</span>Qayta ishlash asoslari</h2>
+        <ul>
+          <li>sizning roziligingiz (<a href="#s1">1.3-band</a>);</li>
+          <li>siz bilan tuzilgan shartnomani (<a href="oferta.html">Ommaviy oferta</a>) bajarish;</li>
+          <li>qonunchilikda belgilangan majburiyatlar (masalan, to‘lovlar hisobini yuritish).</li>
+        </ul>
+      </section>
+
+      <section id="s5">
+        <h2><span class="n">5.</span>Kimlar ko‘radi va kimga uzatiladi</h2>
+        <div class="pt"><span class="n">5.1.</span><b>Bandzilla adminlari</b> — to‘lovlar, murojaatlar va xizmat sifati bilan ishlash uchun, faqat ishga kerakli hajmda. Adminlar admin paneli va adminlarning yopiq Telegram guruhi orqali ishlaydi.</div>
+        <div class="pt"><span class="n">5.2.</span><b>Bandzilla bilan ishlaydigan malakali IELTS o‘qituvchilari</b> baholash sifatini tekshirish va yaxshilash uchun ayrim javoblarni ko‘rib chiqadi. Admin panelida ular javobning o‘zini (savol va essay matni yoki ovoz yozuvi) va Telegram’dagi ismingizni ko‘radi. Bot qo‘ygan ballni, hisobotni, to‘lovlaringizni va boshqa ma’lumotlaringizni ko‘rmaydi. Ular javobga o‘z ballarini qo‘yadi va maxfiylikni saqlash majburiyatini oladi. O‘qituvchi baholagan ayrim Speaking javoblarining matni (transkripti) ismsiz holda AI’ga boshqa javoblarni baholashda namuna sifatida ko‘rsatilishi mumkin.</div>
+        <div class="pt"><span class="n">5.3.</span><b>Guruhingiz o‘qituvchisi yoki o‘quv markazi</b> siz guruhga qo‘shilgandan keyin yuborgan ishlaringizni ko‘radi: ismingiz, ballar, hisobotlar, izohlar. Ular natijalarni Excel yoki PDF qilib yuklab olishi va ota-onalar uchun oylik hisobot tayyorlashi mumkin. Guruh reytingida (o‘qituvchi uni yashirmagan bo‘lsa) ismingiz, faolligingiz va o‘sishingiz guruhdagi boshqa o‘quvchilarga ko‘rinadi. Guruhdan istalgan vaqtda chiqishingiz mumkin.</div>
+        <div class="pt"><span class="n">5.4.</span><b>Xizmat ko‘rsatuvchi tashkilotlar.</b> Ularga ma’lumot faqat tekshiruvni bajarish yoki xizmatni ishlatish uchun uzatiladi:
+          <div class="tbl">
+            <table class="proc">
+              <thead><tr><th scope="col">Kim</th><th scope="col">Nima uzatiladi</th><th scope="col">Nima uchun</th><th scope="col">Qayerda</th></tr></thead>
+              <tbody>
+                <tr><td>OpenAI</td><td>savol, essay matni, rasmlar, hujjat matni, ovoz yozuvlari</td><td>rasm va hujjatni o‘qish, ovozni matnga aylantirish, baholash, hisobot va namuna javob tayyorlash, namuna javobni ovozga aylantirish</td><td>AQSh</td></tr>
+                <tr><td>Microsoft Azure AI Speech (Microsoft)</td><td>Speaking ovoz yozuvi va uning matni</td><td>talaffuzni baholash</td><td><mark>[TO‘LDIRING: Azure mintaqasi]</mark></td></tr>
+                <tr><td>Telegram</td><td>Botdagi barcha xabar va fayllar</td><td>xizmat ishlaydigan platforma; xabarlar Telegram serverlari orqali o‘tadi va u yerda Telegram qoidalariga ko‘ra saqlanadi</td><td>Telegram serverlari</td></tr>
+                <tr><td><mark>[TO‘LDIRING: hosting provayderi]</mark></td><td>baza, fayllar va zaxira nusxalar</td><td>Bandzilla serveri</td><td><mark>[TO‘LDIRING: server joylashgan davlat]</mark></td></tr>
+              </tbody>
+            </table>
+          </div>
+          OpenAI va Microsoft ma’lumotlarni o‘z shartlari asosida qayta ishlaydi. Ularning biznes (API) shartlariga ko‘ra bunday ma’lumotlar sukut bo‘yicha AI modellarini o‘qitishga ishlatilmaydi.</div>
+        <div class="pt"><span class="n">5.5.</span><b>Chegaradan tashqariga uzatish.</b> OpenAI va Microsoft serverlari O‘zbekistondan tashqarida joylashgan. Botga javob yuborib, siz javobingiz tekshiruv uchun shu xizmatlarga uzatilishiga rozilik bildirasiz. Ularga faqat tekshiruvga kerakli ma’lumot yuboriladi: ismingiz, Telegram ID va to‘lov ma’lumotlaringiz yuborilmaydi (ular javobning o‘zida, masalan rasmda, bo‘lmasa).</div>
+        <div class="pt"><span class="n">5.6.</span><b>Davlat organlari</b> — faqat qonunchilikda belgilangan hollarda va tartibda.</div>
+      </section>
+
+      <section id="s6">
+        <h2><span class="n">6.</span>Qayerda va qancha saqlanadi</h2>
+        <div class="pt"><span class="n">6.1.</span>Ma’lumotlar <mark>[TO‘LDIRING: server joylashgan davlat]</mark> hududida joylashgan serverda saqlanadi.</div>
+        <div class="pt"><span class="n">6.2.</span>Yuborgan fayllaringiz — rasmlar, ovozli xabarlar, audio va video yozuvlar, hujjatlar — serverdan 30 kundan keyin avtomatik o‘chiriladi.</div>
+        <div class="pt"><span class="n">6.3.</span>Essay matni, transkript, ballar, PDF hisobotlar, coin tarixi, murojaatlar va guruh ma’lumotlari hisobingiz bor ekan saqlanadi — shunda tarix va statistikangizni ko‘ra olasiz. Writing Task 1 savolidagi grafik rasmi alohida saqlanishi mumkin: keyingi tekshiruvlarda xuddi shu grafik bir xil o‘qilishi uchun.</div>
+        <div class="pt"><span class="n">6.4.</span>To‘lov ma’lumotlari qonunchilik talab qiladigan muddat davomida saqlanadi.</div>
+        <div class="pt"><span class="n">6.5.</span>Har kuni zaxira nusxa olinadi: oxirgi 14 kunlik, 8 haftalik va 12 oylik nusxa saqlanadi. Zaxiraning shifrlangan (AES-256) nusxasi server tashqarisida — adminlarning yopiq Telegram guruhida ham saqlanadi; uni faqat kalitga ega shaxs ocha oladi. Shuning uchun o‘chirilgan ma’lumot zaxira nusxalarida eng uzog‘i <mark>[TO‘LDIRING: 12 oy]</mark> qolishi mumkin, keyin nusxa bilan birga o‘chib ketadi.</div>
+      </section>
+
+      <section id="s7">
+        <h2><span class="n">7.</span>Himoya choralari</h2>
+        <ul>
+          <li>Saytga ulanish shifrlangan (HTTPS).</li>
+          <li>Server, baza va admin paneliga faqat ruxsat berilgan shaxslar parol bilan kiradi. Har biri faqat ishiga kerakli bo‘limni ko‘radi: masalan, o‘qituvchilar faqat tekshiruvlar bo‘limini ochadi.</li>
+          <li>Zaxira nusxalarga faqat ruxsat berilgan shaxslar kira oladi; ular har kuni tiklab tekshiriladi.</li>
+          <li>Karta ma’lumotlari, CVV yoki SMS kodni hech qachon so‘ramaymiz.</li>
+        </ul>
+        <p>Hech bir tizim to‘liq himoyani kafolatlay olmaydi. Ma’lumotlaringizga ruxsatsiz kirilganini bilsak, zarur choralarni ko‘ramiz va sizga xabar beramiz.</p>
+      </section>
+
+      <section id="s8">
+        <h2><span class="n">8.</span>Voyaga yetmaganlar</h2>
+        <div class="pt"><span class="n">8.1.</span><mark>[TO‘LDIRING: 16]</mark> yoshga to‘lmagan foydalanuvchi Botdan faqat ota-onasi yoki boshqa qonuniy vakilining roziligi bilan foydalanishi mumkin. Ota-ona farzandining ma’lumotlari bo‘yicha <a href="#s9">9-bo‘limdagi</a> huquqlardan foydalanishi mumkin.</div>
+        <div class="pt"><span class="n">8.2.</span>O‘qituvchi yoki o‘quv markazi voyaga yetmagan o‘quvchini guruhga qo‘shganda ota-onaning roziligini olish uchun javobgar.</div>
+        <div class="pt"><span class="n">8.3.</span>Ma’lumot ota-onaning roziligisiz olinganini bilsak, ota-onaning so‘roviga ko‘ra uni o‘chiramiz.</div>
+      </section>
+
+      <section id="s9">
+        <h2><span class="n">9.</span>Sizning huquqlaringiz</h2>
+        <div class="pt"><span class="n">9.1.</span>«Shaxsga doir ma’lumotlar to‘g‘risida»gi Qonunga muvofiq siz quyidagi huquqlarga egasiz:
+          <ul>
+            <li>ma’lumotlaringiz qayta ishlanayotganini, qaysi maqsadda va kim tomonidan qayta ishlanishini bilish;</li>
+            <li>o‘zingiz haqingizdagi ma’lumotlarni olish;</li>
+            <li>noto‘g‘ri ma’lumotni to‘g‘rilashni talab qilish;</li>
+            <li>ma’lumotlaringizni o‘chirishni yoki qayta ishlashni to‘xtatishni talab qilish;</li>
+            <li>rozilikni qaytarib olish;</li>
+            <li>huquqingiz buzilgan deb hisoblasangiz, vakolatli davlat organiga yoki sudga shikoyat qilish.</li>
+          </ul>
+        </div>
+        <div class="pt"><span class="n">9.2.</span>Ba’zi narsalarni o‘zingiz qila olasiz: interfeys tili — «👤 Hisobim» → «🌐 Til»; lug‘at eslatmalarini o‘chirish — «📚 Lug‘atim»; guruhdan chiqish — «🏫 Guruh».</div>
+        <div class="pt"><span class="n">9.3.</span>Ma’lumotlaringizni o‘chirish so‘rovi <mark>[TO‘LDIRING: o‘chirish muddati, masalan: 30 kun]</mark> ichida bajariladi. Qonun saqlashni talab qiladigan ma’lumotlar (masalan, to‘lovlar hisobi) shu muddat tugaguncha saqlanadi. Zaxira nusxalardan ma’lumot <a href="#s6">6.5-bandda</a> yozilgan muddatda o‘chadi.</div>
+        <div class="pt"><span class="n">9.4.</span>Hisobingiz o‘chirilsa yoki rozilikni qaytarib olsangiz, Bot xizmatlari to‘xtaydi va coin qoldig‘i ham o‘chadi. O‘chirishdan oldin sotib olingan coinlar uchun pulni <a href="oferta.html#s8">oferta 8-bo‘limiga</a> muvofiq qaytarishni so‘rashingiz mumkin.</div>
+      </section>
+
+      <section id="s10">
+        <h2><span class="n">10.</span>Murojaat qilish</h2>
+        <div class="pt"><span class="n">10.1.</span>Savol yoki so‘rov bo‘lsa:
+          <ul>
+            <li>Botda «💬 Admin bilan aloqa» tugmasini bosing (asosiy menyuda yoki «👤 Hisobim» bo‘limida);</li>
+            <li>yoki <a href="#s11">11-bo‘limdagi</a> email yoki telefon orqali bog‘laning.</li>
+          </ul>
+        </div>
+        <div class="pt"><span class="n">10.2.</span>Murojaatga <mark>[TO‘LDIRING: javob muddati, masalan: 10 kun]</mark> ichida javob beramiz. So‘rov sizdan kelganini tekshirish uchun uni Bot orqali yuborishingizni yoki Telegram ID’ingizni ko‘rsatishingizni so‘rashimiz mumkin.</div>
+      </section>
+
+      <section id="s11">
+        <h2><span class="n">11.</span>Operator ma’lumotlari</h2>
+        <div class="tbl">
+          <table class="req">
+            <tbody>
+              <tr><th scope="row">Operator</th><td><mark>[TO‘LDIRING: YaTT F.I.Sh. yoki MChJ nomi]</mark></td></tr>
+              <tr><th scope="row">STIR</th><td><mark>[TO‘LDIRING: STIR]</mark></td></tr>
+              <tr><th scope="row">Yuridik manzil</th><td><mark>[TO‘LDIRING: yuridik manzil]</mark></td></tr>
+              <tr><th scope="row">Shaxsga doir ma’lumotlar uchun mas’ul shaxs</th><td><mark>[TO‘LDIRING: mas’ul shaxs F.I.Sh.]</mark></td></tr>
+              <tr><th scope="row">Email</th><td><mark>[TO‘LDIRING: email]</mark></td></tr>
+              <tr><th scope="row">Telefon</th><td><mark>[TO‘LDIRING: telefon]</mark></td></tr>
+              <tr><th scope="row">Telegram</th><td><a href="https://t.me/bandzilla_bot">@bandzilla_bot</a> — «💬 Admin bilan aloqa»</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="s12">
+        <h2><span class="n">12.</span>Siyosatning o‘zgarishi</h2>
+        <div class="pt"><span class="n">12.1.</span>Siyosatni o‘zgartirishimiz mumkin. Yangi tahrir sanasi bilan shu sahifada (<a href="https://bandzilla.uz/maxfiylik.html">bandzilla.uz/maxfiylik.html</a>) e’lon qilinadi, muhim o‘zgarishlar haqida Bot orqali xabar beramiz.</div>
+        <div class="pt"><span class="n">12.2.</span>Yangi tahrir e’lon qilingandan keyin Botdan foydalanishda davom etsangiz, uni qabul qilgan hisoblanasiz.</div>
+      </section>
+
+    </article>
+  </div>
+</section>
+</main>
+
+<footer class="site-foot sec--ink edge-zz doc-foot">
+  <div class="wrap">
+    <div class="foot-row">
+      <a class="brand" href="/"><img src="assets/logo-on-dark.webp" width="720" height="126" alt="Bandzilla — bosh sahifa" loading="lazy" decoding="async"></a>
+      <nav class="foot-nav" aria-label="Hujjatlar">
+        <a href="/">Bosh sahifa</a>
+        <a href="oferta.html">Ommaviy oferta</a>
+        <a href="maxfiylik.html" aria-current="page">Maxfiylik siyosati</a>
+      </nav>
+    </div>
+    <div class="foot-row foot-meta">
+      <span>Telegram: <a href="https://t.me/bandzilla_bot">@bandzilla_bot</a></span>
+      <span>© 2026 Bandzilla</span>
+    </div>
+    <p class="legal">IELTS — British Council, IDP: IELTS Australia va Cambridge University Press &amp; Assessment’ning ro‘yxatdan o‘tgan savdo belgisi. Bandzilla — mustaqil xizmat va ular bilan bog‘liq emas. Rasmiy IELTS natijasini faqat imtihon markazi beradi.</p>
+  </div>
+</footer>
+
+</body>
+</html>

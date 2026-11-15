@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<!--
+  EGASI UCHUN ESLATMA (sahifada ko‘rinmaydi).
+
+  1. Joylashtirishdan oldin quyidagilarni to‘ldiring. Sahifada ular sariq
+     <mark>[TO‘LDIRING: ...]</mark> bo‘lib ko‘rinadi:
+     - [TO‘LDIRING: YaTT F.I.Sh. yoki MChJ nomi] ........ 1.1, 15-bo‘lim
+     - [TO‘LDIRING: rahbar F.I.Sh. — MChJ bo‘lsa] ....... 15 (YaTT bo‘lsa qatorni o‘chiring)
+     - [TO‘LDIRING: STIR] ................................ 15
+     - [TO‘LDIRING: guvohnoma raqami va sanasi] .......... 15
+     - [TO‘LDIRING: yuridik manzil] ...................... 15
+     - [TO‘LDIRING: hisob raqami] ........................ 15
+     - [TO‘LDIRING: bank nomi] ........................... 15
+     - [TO‘LDIRING: MFO] ................................. 15
+     - [TO‘LDIRING: telefon] ............................. 15
+     - [TO‘LDIRING: email] ............................... 8.2, 9.7, 14.1, 15
+     - [TO‘LDIRING: QQS bilan yoki QQSsiz] ............... 5.4
+     - [TO‘LDIRING: vaqt, masalan: 30 daqiqa, har kuni 09:00–22:00] ... 6.1
+     - [TO‘LDIRING: N] (pulni qaytarishni so‘rash muddati, kun) ......... 8.2
+     - [TO‘LDIRING: muddat, masalan: 10 ish kuni] (pulni qaytarish) ..... 8.4
+     - [TO‘LDIRING: javob muddati, masalan: 10 kun] ...... 10.1, 14.1
+
+  2. Yurist / buxgalter bilan tekshiring:
+     - 8-bo‘lim (pulni qaytarish) — taklif qilingan variant: ishlatilmagan
+       sotib olingan coin N kun ichida qaytariladi, bonus coin hech qachon.
+       Qoldiq formulasi (8.3) ham taklif: bonus coinlar birinchi sarflangan
+       deb hisoblanadi, bu foydalanuvchi uchun qulay. Xohlasangiz o‘zgartiring.
+       Iste’molchilar huquqlarini himoya qilish qonunidagi muddatlarga mosligini tekshiring.
+     - Bot ko‘rsatadigan karta (PAYMENT_CARD_NUMBER / PAYMENT_CARD_HOLDER) Ijrochining
+       o‘ziga (YaTT yoki MChJ) tegishli bo‘lishi kerak; boshqa shaxsning kartasiga
+       to‘lov ofertadagi Ijrochi bilan mos kelmaydi.
+     - Karta orqali qabul qilingan to‘lov uchun fiskal chek (onlayn NKM / virtual kassa)
+       berish majburiyatini buxgalter bilan aniqlang.
+     - 5.1: Speaking Full test 2026-11-11 dan beri menyuda yo‘q, shuning uchun
+       “Bot taklif qilganda” deb yozilgan.
+  3. To‘ldirilgach: <meta name="robots" content="noindex"> qatorini olib tashlang
+     (sahifa qidiruvda chiqishi kerak bo‘lsa) va index.html pastiga havola qo‘shing.
+-->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ommaviy oferta — Bandzilla</title>
+<meta name="description" content="Bandzilla xizmatlaridan pullik foydalanish shartlari: coin paketlari, to‘lov, tekshiruv narxi, coinni qaytarish, o‘qituvchi va o‘quv markazlari uchun qoidalar.">
+<meta name="robots" content="noindex">
+<link rel="canonical" href="https://bandzilla.uz/oferta.html">
+<meta name="theme-color" content="#062018">
+<link rel="icon" href="favicon.ico" sizes="16x16 32x32 48x48">
+<link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="stylesheet" href="styles.css?v=ai1">
+<style>
+  .doc-cta { margin-left: auto; }
+  .doc-hero { padding: 40px 0 56px; }
+  @media (min-width: 960px) { .doc-hero { padding: 56px 0 72px; } }
+  .doc-hero h1 { font-size: clamp(2rem, 1.4rem + 2.6vw, 3.1rem); }
+  .doc-hero .sub { margin-top: 12px; }
+  .doc-date { margin-top: 18px; font-size: 0.92rem; font-weight: 700; color: var(--lime); }
+  .doc-body { padding: 48px 0 88px; }
+  @media (min-width: 960px) { .doc-body { padding: 64px 0 104px; } }
+  .doc { max-width: 760px; margin: 0 auto; line-height: 1.72; color: var(--ink); overflow-wrap: break-word; }
+  .doc h2 { font-size: clamp(1.12rem, 1rem + 0.5vw, 1.35rem); line-height: 1.3; letter-spacing: -0.02em; margin: 44px 0 14px; }
+  .doc h2 .n { color: var(--moss); margin-right: 0.2em; }
+  .doc p { margin: 0 0 10px; }
+  .doc a { color: var(--moss); font-weight: 700; text-underline-offset: 0.15em; }
+  .doc a:hover { color: var(--ink); }
+  .doc .pt { position: relative; padding-left: 3em; margin-bottom: 12px; }
+  .doc .pt > .n { position: absolute; left: 0; top: 0; font-weight: 800; color: var(--moss); }
+  .doc ul, .doc ol { margin: 6px 0 12px; padding-left: 1.3em; }
+  .doc ul { list-style: disc; }
+  .doc ol { list-style: decimal; }
+  .doc li { margin-bottom: 5px; }
+  .doc li::marker { color: var(--moss); font-weight: 800; }
+  .doc mark { background: var(--yellow); color: var(--ink); padding: 0.05em 0.3em; border-radius: 0.2em; font-weight: 700; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+  .doc-short { background: var(--mint-2); border: 2px solid var(--ink); border-radius: 18px; box-shadow: 0 4px 0 var(--ink); padding: 18px 20px 14px; margin-bottom: 28px; }
+  .doc-short .cap { margin-bottom: 8px; }
+  .doc-short ul { margin-bottom: 8px; }
+  .doc-short .note { font-size: 0.88rem; color: var(--ink-soft); }
+  .doc-toc { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 16px 0 10px; margin-bottom: 8px; }
+  .doc-toc .cap { margin-bottom: 8px; }
+  .doc-toc ol { columns: 2 240px; column-gap: 32px; margin: 0; padding-left: 1.5em; }
+  .doc-toc li { break-inside: avoid; margin-bottom: 4px; }
+  .doc-toc a { text-decoration: none; }
+  .doc-toc a:hover { text-decoration: underline; }
+  .tbl { overflow-x: auto; margin: 8px 0 14px; border: 1px solid var(--line); border-radius: 14px; }
+  .doc table { width: 100%; border-collapse: collapse; font-size: 0.95rem; line-height: 1.45; }
+  .doc caption { text-align: left; font-weight: 800; padding: 10px 12px 0; }
+  .doc th, .doc td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .doc tr:last-child th, .doc tr:last-child td { border-bottom: 0; }
+  .doc thead th { background: var(--mint-3); font-weight: 800; }
+  .doc .r { text-align: right; white-space: nowrap; }
+  .doc .req th { width: 38%; font-weight: 700; color: var(--ink-soft); }
+  .doc-foot { padding-bottom: 48px; }
+  @media print {
+    .site-head, .skip, .doc-toc, .doc-foot .foot-nav, .doc-cta { display: none !important; }
+    body, .sec, .doc-hero { background: #fff !important; color: #000 !important; }
+    .edge-zz::before { display: none; }
+    .doc-hero, .doc-body { padding: 0 0 16px; }
+    .doc-short { box-shadow: none; }
+    .doc mark { background: none; border: 1px dashed #000; }
+  }
+</style>
+</head>
+<body>
+
+<a class="skip" href="#main">Asosiy qismga o‘tish</a>
+
+<header class="site-head">
+  <div class="wrap head-in">
+    <a class="brand" href="/"><img src="assets/logo-on-dark.webp" width="720" height="126" alt="Bandzilla — bosh sahifa"></a>
+    <a class="btn btn--lime head-cta doc-cta" href="https://t.me/bandzilla_bot"><svg aria-hidden="true" viewBox="0 0 24 24"><path fill="currentColor" d="M20.7 3.4 2.9 10.3c-1.2.5-1.2 1.2-.2 1.5l4.6 1.4 1.8 5.4c.2.6.1.8.7.8.5 0 .7-.2.9-.4l2.2-2.2 4.6 3.4c.8.5 1.5.2 1.7-.8l3-14.2c.3-1.2-.5-1.8-1.5-1.3Zm-3.6 3.3-8.4 7.6-.3 3.5-1.4-4.5 10.1-6.6Z"/></svg><span>Botni ochish</span></a>
+  </div>
+  <div class="head-teeth" aria-hidden="true"><i></i></div>
+</header>
+
+<main id="main">
+<section class="sec sec--ink doc-hero">
+  <div class="wrap">
+    <p class="cap">Huquqiy hujjat</p>
+    <h1>Ommaviy oferta</h1>
+    <p class="sub">Bandzilla xizmatlaridan pullik foydalanish shartnomasi</p>
+    <p class="doc-date">Oxirgi yangilanish: <time datetime="2026-11-15">2026-yil 15-noyabr</time></p>
+  </div>
+</section>
+
+<section class="sec sec--white edge-zz doc-body">
+  <div class="wrap">
+    <article class="doc">
+
+      <aside class="doc-short" aria-label="Qisqacha">
+        <p class="cap">Qisqacha</p>
+        <ul>
+          <li>Coin sotib olsangiz yoki coin bilan tekshiruv boshlasangiz, shu shartlarga rozi bo‘lgan bo‘lasiz.</li>
+          <li>Har bir tekshiruv — 5 coin. Coin muddatsiz, lekin pul emas: uni naqd pulga almashtirib bo‘lmaydi.</li>
+          <li>Tekshiruv yakunlanmasa, coin avtomatik qaytadi. Yakunlangan tekshiruv uchun coin qaytmaydi.</li>
+          <li>Natija — mashq uchun AI bahosi, rasmiy IELTS natijasi emas.</li>
+        </ul>
+        <p class="note">Bu qisqa mazmun. Quyidagi to‘liq matn asosiy hisoblanadi.</p>
+      </aside>
+
+      <nav class="doc-toc" aria-label="Mundarija">
+        <p class="cap">Mundarija</p>
+        <ol>
+          <li><a href="#s1">Umumiy qoidalar</a></li>
+          <li><a href="#s2">Atamalar</a></li>
+          <li><a href="#s3">Xizmat tavsifi</a></li>
+          <li><a href="#s4">Coin</a></li>
+          <li><a href="#s5">Narxlar</a></li>
+          <li><a href="#s6">To‘lov tartibi</a></li>
+          <li><a href="#s7">Tekshiruv va coin yechilishi</a></li>
+          <li><a href="#s8">Pulni qaytarish</a></li>
+          <li><a href="#s9">O‘qituvchilar va o‘quv markazlari</a></li>
+          <li><a href="#s10">Tomonlarning huquq va majburiyatlari</a></li>
+          <li><a href="#s11">Intellektual mulk</a></li>
+          <li><a href="#s12">Javobgarlik</a></li>
+          <li><a href="#s13">Ofertaning amal qilishi va o‘zgarishi</a></li>
+          <li><a href="#s14">Nizolarni hal qilish</a></li>
+          <li><a href="#s15">Ijrochi rekvizitlari</a></li>
+        </ol>
+      </nav>
+
+      <section id="s1">
+        <h2><span class="n">1.</span>Umumiy qoidalar</h2>
+        <div class="pt"><span class="n">1.1.</span>Ushbu hujjat <mark>[TO‘LDIRING: YaTT F.I.Sh. yoki MChJ nomi]</mark> (bundan buyon — «Ijrochi») tomonidan har qanday jismoniy yoki yuridik shaxsga (bundan buyon — «Foydalanuvchi») Bandzilla xizmatlarini quyidagi shartlarda ko‘rsatish to‘g‘risida shartnoma tuzish taklifidir. U O‘zbekiston Respublikasi Fuqarolik kodeksining 367- va 369-moddalariga muvofiq ommaviy oferta hisoblanadi.</div>
+        <div class="pt"><span class="n">1.2.</span>Fuqarolik kodeksining 370-moddasiga muvofiq, Foydalanuvchining quyidagi harakatlaridan biri ofertani to‘liq va so‘zsiz qabul qilish (aksept) hisoblanadi:
+          <ul>
+            <li>Botda coin paketi (shu jumladan boshqa odamga sovg‘a uchun paket) uchun to‘lov qilish;</li>
+            <li>coin hisobidan (sovg‘a coinlar bilan ham) tekshiruv boshlash.</li>
+          </ul>
+          Aksept qilingan paytdan Ijrochi va Foydalanuvchi o‘rtasida shartnoma tuzilgan hisoblanadi. Uni qog‘ozda imzolash shart emas.</div>
+        <div class="pt"><span class="n">1.3.</span>Shartnomaga O‘zbekiston Respublikasining Fuqarolik kodeksi, «Iste’molchilarning huquqlarini himoya qilish to‘g‘risida»gi, «Elektron tijorat to‘g‘risida»gi va «Shaxsga doir ma’lumotlar to‘g‘risida»gi qonunlari hamda boshqa qonunchilik hujjatlari qo‘llaniladi.</div>
+        <div class="pt"><span class="n">1.4.</span>Foydalanuvchining shaxsga doir ma’lumotlari <a href="maxfiylik.html">Maxfiylik siyosati</a>ga muvofiq qayta ishlanadi. Maxfiylik siyosati ushbu ofertaning ajralmas qismidir.</div>
+        <div class="pt"><span class="n">1.5.</span>Shartlarga rozi bo‘lmasangiz, to‘lov qilmang va pullik xizmatlardan foydalanmang.</div>
+      </section>
+
+      <section id="s2">
+        <h2><span class="n">2.</span>Atamalar</h2>
+        <ul>
+          <li><b>Bandzilla, Xizmat</b> — IELTS Writing va Speaking javoblarini sun’iy intellekt (AI) yordamida tekshiradigan onlayn xizmat.</li>
+          <li><b>Bot</b> — Telegram’dagi <a href="https://t.me/bandzilla_bot">@bandzilla_bot</a> boti. Xizmat shu orqali ko‘rsatiladi.</li>
+          <li><b>Sayt</b> — <a href="https://bandzilla.uz/">bandzilla.uz</a> sayti, shu jumladan o‘qituvchilar kabineti (bandzilla.uz/cabinet).</li>
+          <li><b>Coin</b> — Botdagi tekshiruvlar uchun to‘lov birligi (<a href="#s4">4-bo‘lim</a>).</li>
+          <li><b>Paket</b> — so‘mda narxlangan ma’lum miqdordagi coin.</li>
+          <li><b>Tekshiruv</b> — bitta javobni (Writing Task 1, Task 2 yoki Speaking’ning bir qismi) baholash va hisobot tayyorlash.</li>
+          <li><b>Hisobot</b> — tekshiruv natijasi yozilgan PDF fayl.</li>
+          <li><b>Bonus coin</b> — Ijrochi bepul beradigan coin: yangi foydalanuvchiga sovg‘a, do‘stni taklif qilganlik uchun bonus va boshqalar.</li>
+          <li><b>Guruh</b> — o‘qituvchi yoki o‘quv markazi Botda ochgan o‘quvchilar guruhi.</li>
+          <li><b>Homiy</b> — guruhdagi o‘quvchilarning tekshiruvlarini o‘z coinlari hisobidan to‘laydigan o‘qituvchi yoki o‘quv markazi.</li>
+        </ul>
+      </section>
+
+      <section id="s3">
+        <h2><span class="n">3.</span>Xizmat tavsifi</h2>
+        <div class="pt"><span class="n">3.1.</span>Foydalanuvchi Botga IELTS savolini va o‘z javobini yuboradi: Writing uchun — matn, qo‘lda yozilgan essay rasmi yoki hujjat; Speaking uchun — ovozli xabar, audio yoki video yozuv. Bandzilla javobni AI yordamida baholaydi va Foydalanuvchiga PDF hisobot yuboradi.</div>
+        <div class="pt"><span class="n">3.2.</span>Hisobotda IELTS’ning 4 ta rasmiy mezoni bo‘yicha band ballari va umumiy ball, xatolar va ularning izohi, namuna (model) javob hamda foydali so‘zlar bo‘ladi. Speaking namuna javoblari ovozli xabar sifatida ham yuborilishi mumkin.</div>
+        <div class="pt"><span class="n">3.3.</span>Botda qo‘shimcha bo‘limlar ham bor: tayyor savollar («📝 Practice»), shaxsiy lug‘at, tekshiruvlar tarixi va statistika. Ijrochi bo‘limlar tarkibini o‘zgartirishi mumkin.</div>
+        <div class="pt"><span class="n">3.4.</span>Natijalar — mashq qilish uchun AI bahosi. Ular rasmiy IELTS natijasi yoki sertifikati emas va rasmiy imtihondagi baldan farq qilishi mumkin. Ijrochi rasmiy imtihonda yoki o‘qishga qabul qilishda biror natijani kafolatlamaydi.</div>
+        <div class="pt"><span class="n">3.5.</span>Bandzilla — mustaqil xizmat. U IELTS, British Council, IDP: IELTS Australia va Cambridge University Press &amp; Assessment bilan bog‘liq emas va ular tomonidan tasdiqlanmagan. IELTS — ularning ro‘yxatdan o‘tgan savdo belgisi.</div>
+        <div class="pt"><span class="n">3.6.</span>Tekshiruv odatda bir necha daqiqa davom etadi. Bir vaqtda ko‘p javob kelganda tekshiruv navbatda kutishi mumkin. Aniq muddat kafolatlanmaydi.</div>
+        <div class="pt"><span class="n">3.7.</span>Xizmatdan foydalanish uchun Telegram hisobi va internet kerak. Internet va aloqa xarajatlari Foydalanuvchi zimmasida.</div>
+      </section>
+
+      <section id="s4">
+        <h2><span class="n">4.</span>Coin</h2>
+        <div class="pt"><span class="n">4.1.</span>Coin — faqat Botdagi xizmatlar uchun to‘lov birligi. Coin pul, elektron pul yoki qimmatli qog‘oz emas: uni naqd pulga almashtirib, kartaga yechib yoki boshqa foydalanuvchining hisobiga o‘tkazib bo‘lmaydi. Coinni boshqa odamga faqat Bot imkon bergan yo‘llar bilan berish mumkin: sovg‘a havolasi (<a href="#s6">6.6-band</a>) yoki o‘qituvchining guruhdagi o‘quvchiga sovg‘asi.</div>
+        <div class="pt"><span class="n">4.2.</span>Coin muddatsiz: vaqt o‘tishi bilan kuyib ketmaydi.</div>
+        <div class="pt"><span class="n">4.3.</span>Coin balansi va tekshiruvlar tarixi Botning «👤 Hisobim» bo‘limida ko‘rinadi.</div>
+        <div class="pt"><span class="n">4.4.</span>Bonus coinlar:
+          <ul>
+            <li>Botga birinchi kirganda — 8 coin sovg‘a;</li>
+            <li>do‘stingizni o‘z havolangiz orqali taklif qilsangiz va u birinchi marta coin sotib olsa (to‘lovi tasdiqlansa) — ikkalangizga 5 coindan.</li>
+          </ul>
+          Ijrochi bonus shartlarini o‘zgartirishi yoki to‘xtatishi mumkin. Allaqachon berilgan bonus coinlar hisobda qoladi. Bonus olish uchun soxta hisoblar ochish taqiqlanadi: bunday hollarda shu yo‘l bilan olingan bonus coinlar bekor qilinishi mumkin.</div>
+      </section>
+
+      <section id="s5">
+        <h2><span class="n">5.</span>Narxlar</h2>
+        <div class="pt"><span class="n">5.1.</span>Bitta tekshiruv narxi — <b>5 coin</b>: Writing Task 1, Writing Task 2, Speaking Part 1, Part 2 yoki Part 3. Bot Speaking’ning to‘liq testini (Part 1, 2 va 3 bitta hisobotda) taklif qilganda uning narxi — <b>15 coin</b>.</div>
+        <div class="pt"><span class="n">5.2.</span>O‘quvchilar uchun paketlar:
+          <div class="tbl">
+            <table>
+              <thead><tr><th scope="col">Paket</th><th scope="col" class="r">Narxi</th><th scope="col" class="r">1 coin narxi</th></tr></thead>
+              <tbody>
+                <tr><td>10 coin</td><td class="r">10&nbsp;000 so‘m</td><td class="r">1&nbsp;000 so‘m</td></tr>
+                <tr><td>25 coin</td><td class="r">23&nbsp;000 so‘m</td><td class="r">920 so‘m</td></tr>
+                <tr><td>50 coin</td><td class="r">45&nbsp;000 so‘m</td><td class="r">900 so‘m</td></tr>
+                <tr><td>100 coin</td><td class="r">88&nbsp;000 so‘m</td><td class="r">880 so‘m</td></tr>
+                <tr><td>200 coin</td><td class="r">170&nbsp;000 so‘m</td><td class="r">850 so‘m</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="pt"><span class="n">5.3.</span>O‘qituvchi va o‘quv markazlari uchun paketlar (faqat admin tasdiqlagan o‘qituvchi va markaz hisoblarida ko‘rinadi):
+          <div class="tbl">
+            <table>
+              <thead><tr><th scope="col">Paket</th><th scope="col" class="r">Narxi</th><th scope="col" class="r">1 coin narxi</th></tr></thead>
+              <tbody>
+                <tr><td>500 coin</td><td class="r">400&nbsp;000 so‘m</td><td class="r">800 so‘m</td></tr>
+                <tr><td>1&nbsp;000 coin</td><td class="r">780&nbsp;000 so‘m</td><td class="r">780 so‘m</td></tr>
+                <tr><td>2&nbsp;500 coin</td><td class="r">1&nbsp;900&nbsp;000 so‘m</td><td class="r">760 so‘m</td></tr>
+                <tr><td>5&nbsp;000 coin</td><td class="r">3&nbsp;750&nbsp;000 so‘m</td><td class="r">750 so‘m</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="pt"><span class="n">5.4.</span>Eng kichik paketda 1 coin = 1&nbsp;000 so‘m; katta paketda coin arzonroq. Narxlar so‘mda, <mark>[TO‘LDIRING: QQS bilan yoki QQSsiz]</mark>.</div>
+        <div class="pt"><span class="n">5.5.</span>Amaldagi narxlar Botda («👤 Hisobim» → «💳 Hisobni to‘ldirish») va Saytda ko‘rsatiladi. To‘lov paytida Botda ko‘rsatilgan narx qo‘llaniladi.</div>
+        <div class="pt"><span class="n">5.6.</span>Ijrochi paketlar narxini va tekshiruvning coindagi narxini o‘zgartirishi mumkin. Yangi narx Bot va Saytda e’lon qilingan paytdan amal qiladi. Avval sotib olingan coinlar bekor qilinmaydi va kamaytirilmaydi.</div>
+      </section>
+
+      <section id="s6">
+        <h2><span class="n">6.</span>To‘lov tartibi</h2>
+        <div class="pt"><span class="n">6.1.</span>Hozircha to‘lov bank kartasiga o‘tkazma orqali qilinadi:
+          <ol>
+            <li>Botda «👤 Hisobim» → «💳 Hisobni to‘ldirish» bo‘limida paketni tanlaysiz;</li>
+            <li>Bot ko‘rsatgan summani Bot ko‘rsatgan kartaga o‘tkazasiz;</li>
+            <li>to‘lov chekining rasmini (skrinshotini) Botga yuborasiz;</li>
+            <li>admin chekni tekshiradi va tasdiqlagach, coinlar hisobingizga tushadi. Bu odatda <mark>[TO‘LDIRING: vaqt, masalan: 30 daqiqa, har kuni 09:00–22:00]</mark> ichida bo‘ladi. Natija haqida Bot xabar beradi.</li>
+          </ol>
+        </div>
+        <div class="pt"><span class="n">6.2.</span>Summani to‘liq, bir martada o‘tkazing. Chek o‘tkazmani tasdiqlamasa (summa mos kelmasa, pul tushmagan bo‘lsa, chek avval boshqa to‘lovda ishlatilgan bo‘lsa va h.k.), to‘lov tasdiqlanmasligi mumkin. Bunday holda chekni tekshirib, qayta yuboring yoki «💬 Admin bilan aloqa» orqali yozing.</div>
+        <div class="pt"><span class="n">6.3.</span>Pul Ijrochining kartasiga yoki hisobiga tushgan va admin to‘lovni tasdiqlagan payt to‘lov qilingan payt hisoblanadi. Bank komissiyasi (bo‘lsa) Foydalanuvchi zimmasida.</div>
+        <div class="pt"><span class="n">6.4.</span>Bandzilla hech qachon karta raqamingizni to‘liq, kartaning amal qilish muddatini, CVV kodini yoki SMS kodni so‘ramaydi. Bunday so‘rov — firibgarlik, unga javob bermang.</div>
+        <div class="pt"><span class="n">6.5.</span>Keyinchalik onlayn to‘lov tizimlari (masalan, Click, Payme) qo‘shilishi mumkin. Ular orqali to‘langanda ushbu oferta bilan birga to‘lov tizimining shartlari ham qo‘llaniladi.</div>
+        <div class="pt"><span class="n">6.6.</span>Sovg‘a: «👤 Hisobim» → «🎁 Sovg‘a qilish» bo‘limida o‘quvchilar paketini boshqa odam uchun sotib olish mumkin. To‘lov odatdagidek qilinadi; tasdiqlangach, xaridorga bir martalik sovg‘a havolasi keladi. Havolani birinchi bo‘lib ochgan foydalanuvchi coinlarni oladi. Havolani kimga yuborish uchun xaridor javobgar: havola boshqa odamga tushib qolsa, Ijrochi javob bermaydi.</div>
+      </section>
+
+      <section id="s7">
+        <h2><span class="n">7.</span>Tekshiruv va coin yechilishi</h2>
+        <div class="pt"><span class="n">7.1.</span>Bir vaqtda bitta tekshiruv o‘tkaziladi: oldingisi tugamaguncha yangisi boshlanmaydi.</div>
+        <div class="pt"><span class="n">7.2.</span>Baholash boshlanishi bilan tekshiruv narxi hisobdan yechiladi (band qilinadi). Agar tekshiruv yakunlanmasa — texnik xato, server qayta ishga tushishi, AI xizmatidagi uzilish va h.k. sabab hisobot saqlanmasa — coinlar to‘lagan hisobga avtomatik qaytariladi.</div>
+        <div class="pt"><span class="n">7.3.</span>Yakunlangan tekshiruv uchun coin qaytarilmaydi, jumladan javob savol mavzusiga mos kelmagani, juda qisqaligi, ingliz tilida emasligi, IELTS topshirig‘i emasligi, rasm sifati pastligi yoki boshqa qism tanlangani sababli. Bandzilla yuborilgan javobni qanday bo‘lsa, shundayligicha tekshiradi. Shuning uchun haqiqiy IELTS topshirig‘ini yuboring va javobni imtihondagidek to‘liq yozing yoki gapiring. Tayyor savollar «📝 Practice» bo‘limida bor.</div>
+        <div class="pt"><span class="n">7.4.</span>Aynan o‘sha javobni qayta yuborsangiz, yangi tekshiruv o‘tkazilmaydi: saqlangan hisobot qayta yuboriladi va coin yechilmaydi.</div>
+        <div class="pt"><span class="n">7.5.</span>Tayyor hisobot kelmasa yoki ochilmasa, uni «👤 Hisobim» → «📜 Tarix» bo‘limidan qayta yuklab oling yoki «💬 Admin bilan aloqa» orqali yozing.</div>
+        <div class="pt"><span class="n">7.6.</span>Ballga rozi bo‘lmaslik coin qaytarish uchun asos emas, chunki natija AI bahosi (<a href="#s3">3.4-band</a>). Fikringizni «💬 Admin bilan aloqa» orqali yozishingiz mumkin — bunday murojaatlar baholash sifatini oshirish uchun ko‘rib chiqiladi.</div>
+      </section>
+
+      <section id="s8">
+        <h2><span class="n">8.</span>Pulni qaytarish</h2>
+        <div class="pt"><span class="n">8.1.</span>Yakunlangan tekshiruvlarga sarflangan coinlar uchun pul qaytarilmaydi.</div>
+        <div class="pt"><span class="n">8.2.</span>Sotib olingan, lekin ishlatilmagan coinlar uchun pulni to‘lov kunidan boshlab <mark>[TO‘LDIRING: N]</mark> kun ichida qaytarishni so‘rash mumkin. So‘rovni to‘lov cheki bilan «💬 Admin bilan aloqa» orqali yoki <mark>[TO‘LDIRING: email]</mark> manziliga yuboring.</div>
+        <div class="pt"><span class="n">8.3.</span>Qaytariladigan coinlar soni hisobdagi qoldiqdan va shu to‘lovda olingan coinlar sonidan oshmaydi. Qaytariladigan summa = qaytariladigan coinlar soni × shu paketdagi 1 coin narxi (<a href="#s5">5-bo‘lim</a>).</div>
+        <div class="pt"><span class="n">8.4.</span>Pul to‘lov qilingan kartaga <mark>[TO‘LDIRING: muddat, masalan: 10 ish kuni]</mark> ichida qaytariladi. Puli qaytarilgan coinlar hisobdan olib tashlanadi.</div>
+        <div class="pt"><span class="n">8.5.</span>Bonus va sovg‘a coinlar (birinchi kirishdagi sovg‘a, do‘stni taklif qilganlik bonusi, o‘qituvchi sovg‘asi, ochilgan sovg‘a havolasidagi coinlar) pulga qaytarilmaydi.</div>
+        <div class="pt"><span class="n">8.6.</span>Ushbu bo‘lim Foydalanuvchining qonunchilikda belgilangan iste’molchi huquqlarini cheklamaydi.</div>
+      </section>
+
+      <section id="s9">
+        <h2><span class="n">9.</span>O‘qituvchilar va o‘quv markazlari</h2>
+        <div class="pt"><span class="n">9.1.</span>O‘qituvchi maqomi Botda so‘rov yuborilgach, admin tasdiqlasa beriladi. O‘quv markazi hisobini admin ochadi; markaz o‘z o‘qituvchilarini taklif qiladi.</div>
+        <div class="pt"><span class="n">9.2.</span>O‘qituvchi va markaz Botda guruh ochishi, o‘quvchilarni taklif havolasi orqali qo‘shishi, vazifa va mock test berishi, ishlarga izoh va o‘z bahosini qo‘yishi mumkin.</div>
+        <div class="pt"><span class="n">9.3.</span>O‘qituvchi yoki markaz guruhidagi o‘quvchilarning tekshiruvlarini o‘z coinlari hisobidan to‘lashi mumkin (homiylik). Bunda har bir o‘quvchi uchun kunlik limit belgilanishi mumkin; guruh vazifalari limitga kirmaydi. Homiyning coinlari yetmasa yoki limit tugasa, tekshiruv o‘quvchining o‘z coinlari hisobidan to‘lanadi.</div>
+        <div class="pt"><span class="n">9.4.</span>O‘qituvchi va markaz o‘z guruhidagi o‘quvchilarning guruhga qo‘shilgandan keyin yuborgan ishlari natijalari va hisobotlarini ko‘radi. O‘quvchi guruhga qo‘shilib, bunga rozilik bildiradi va guruhdan istalgan vaqtda chiqishi mumkin.</div>
+        <div class="pt"><span class="n">9.5.</span>O‘qituvchi va markaz o‘quvchilarni guruhga qo‘shganda ularning (voyaga yetmaganlar uchun — ota-onasining) roziligini olish va natijalardan faqat o‘qitish maqsadida foydalanish uchun javobgar.</div>
+        <div class="pt"><span class="n">9.6.</span>Homiy sifatida sarflangan va o‘quvchilarga sovg‘a qilingan coinlar o‘qituvchiga yoki markazga qaytarilmaydi.</div>
+        <div class="pt"><span class="n">9.7.</span>Yuridik shaxs uchun alohida shartnoma yoki hisob-faktura kerak bo‘lsa, <mark>[TO‘LDIRING: email]</mark> manziliga yozing.</div>
+      </section>
+
+      <section id="s10">
+        <h2><span class="n">10.</span>Tomonlarning huquq va majburiyatlari</h2>
+        <div class="pt"><span class="n">10.1.</span><b>Ijrochi majburiyatlari:</b>
+          <ul>
+            <li>xizmatni ushbu oferta shartlarida ko‘rsatish;</li>
+            <li>to‘lov tasdiqlangach, coinlarni hisobga qo‘shish;</li>
+            <li>yakunlanmagan tekshiruv coinlarini qaytarish;</li>
+            <li>shaxsga doir ma’lumotlarni Maxfiylik siyosatiga muvofiq himoya qilish;</li>
+            <li>murojaatlarga <mark>[TO‘LDIRING: javob muddati, masalan: 10 kun]</mark> ichida javob berish.</li>
+          </ul>
+        </div>
+        <div class="pt"><span class="n">10.2.</span><b>Ijrochi huquqlari:</b>
+          <ul>
+            <li>narxlar va oferta shartlarini o‘zgartirish (<a href="#s5">5.6</a>, <a href="#s13">13.2-bandlar</a>);</li>
+            <li>texnik ishlar uchun xizmatni vaqtincha to‘xtatish;</li>
+            <li>xizmat ko‘rsatish uchun uchinchi shaxslar xizmatlaridan foydalanish (masalan, OpenAI, Microsoft Azure, Telegram);</li>
+            <li>oferta qoidalari buzilganda Foydalanuvchining Botdan foydalanishini cheklash.</li>
+          </ul>
+        </div>
+        <div class="pt"><span class="n">10.3.</span><b>Foydalanuvchi majburiyatlari:</b>
+          <ul>
+            <li>to‘lovni to‘g‘ri qilish va faqat o‘z to‘lov chekini yuborish;</li>
+            <li>qonunga zid yoki haqoratli materiallarni, boshqa odamlarning shaxsga doir ma’lumotlarini yubormaslik;</li>
+            <li>Bot va Sayt ishiga xalaqit bermaslik, ularni buzishga yoki avtomatik so‘rovlar bilan yuklashga urinmaslik;</li>
+            <li>Telegram hisobini xavfsiz saqlash: hisobingizdan qilingan harakatlar siz qilgan deb hisoblanadi.</li>
+          </ul>
+        </div>
+        <div class="pt"><span class="n">10.4.</span><b>Foydalanuvchi huquqlari:</b>
+          <ul>
+            <li>ushbu oferta shartlarida xizmat olish;</li>
+            <li>xizmat va narxlar haqida to‘liq ma’lumot olish;</li>
+            <li><a href="#s8">8-bo‘limga</a> muvofiq pulni qaytarishni so‘rash;</li>
+            <li>«💬 Admin bilan aloqa» orqali murojaat qilish;</li>
+            <li>qonunchilikda belgilangan iste’molchi huquqlaridan foydalanish.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section id="s11">
+        <h2><span class="n">11.</span>Intellektual mulk</h2>
+        <div class="pt"><span class="n">11.1.</span>Javoblaringizga bo‘lgan huquqlar sizda qoladi. Ularni yuborib, siz Ijrochiga ularni xizmat ko‘rsatish va baholash sifatini nazorat qilish uchun <a href="maxfiylik.html">Maxfiylik siyosatida</a> yozilgan tartibda qayta ishlash huquqini berasiz.</div>
+        <div class="pt"><span class="n">11.2.</span>Bandzilla nomi, logotipi, maskoti, dizayni, Bot va Sayt matnlari hamda hisobotlarning tuzilishi Ijrochiga tegishli. Hisobot va namuna javoblardan o‘z o‘qishingiz uchun foydalanishingiz va ularni ulashishingiz mumkin. Ijrochining yozma roziligisiz ularni sotish yoki tijorat maqsadida tarqatish mumkin emas.</div>
+      </section>
+
+      <section id="s12">
+        <h2><span class="n">12.</span>Javobgarlik</h2>
+        <div class="pt"><span class="n">12.1.</span>Ijrochi Telegram, internet provayderi, bank yoki to‘lov tizimi, AI xizmatlari (OpenAI, Microsoft Azure) ishidagi uzilishlar uchun javob bermaydi. Bunday uzilish tufayli tekshiruv yakunlanmasa, coinlar <a href="#s7">7.2-bandga</a> muvofiq qaytariladi.</div>
+        <div class="pt"><span class="n">12.2.</span>Ijrochi Foydalanuvchining AI bahosi asosida qabul qilgan qarorlari (imtihonga yozilish, o‘qishga hujjat topshirish va h.k.) uchun javob bermaydi.</div>
+        <div class="pt"><span class="n">12.3.</span>Ijrochining javobgarligi Foydalanuvchi tegishli xizmat uchun to‘lagan summadan oshmaydi, qonunchilikda boshqacha belgilangan hollar bundan mustasno.</div>
+        <div class="pt"><span class="n">12.4.</span>Tomonlar yengib bo‘lmaydigan kuch (fors-major) holatlarida — tabiiy ofat, davlat organlarining qarorlari, keng ko‘lamli aloqa uzilishlari va h.k. — majburiyatlarni bajarmaganlik uchun javob bermaydi.</div>
+      </section>
+
+      <section id="s13">
+        <h2><span class="n">13.</span>Ofertaning amal qilishi va o‘zgarishi</h2>
+        <div class="pt"><span class="n">13.1.</span>Oferta Saytda (<a href="https://bandzilla.uz/oferta.html">bandzilla.uz/oferta.html</a>) e’lon qilingan paytdan amal qiladi va Ijrochi uni bekor qilmaguncha amalda bo‘ladi.</div>
+        <div class="pt"><span class="n">13.2.</span>Ijrochi ofertani o‘zgartirishi mumkin. Yangi tahrir sanasi bilan shu sahifada e’lon qilinadi, muhim o‘zgarishlar haqida Bot orqali xabar beriladi. Yangi tahrir e’lon qilingandan keyingi to‘lov va tekshiruvlarga qo‘llaniladi.</div>
+        <div class="pt"><span class="n">13.3.</span>Shartnoma aksept paytidan tomonlar majburiyatlarini to‘liq bajarguncha amal qiladi. Foydalanuvchi xizmatdan istalgan vaqtda foydalanishni to‘xtatishi mumkin: coin qoldig‘i hisobda saqlanadi, pulni qaytarish <a href="#s8">8-bo‘limga</a> muvofiq.</div>
+      </section>
+
+      <section id="s14">
+        <h2><span class="n">14.</span>Nizolarni hal qilish</h2>
+        <div class="pt"><span class="n">14.1.</span>Nizolar avvalo muzokara yo‘li bilan hal qilinadi: «💬 Admin bilan aloqa» orqali yoki <mark>[TO‘LDIRING: email]</mark> manziliga yozing. Ijrochi murojaatga <mark>[TO‘LDIRING: javob muddati, masalan: 10 kun]</mark> ichida javob beradi.</div>
+        <div class="pt"><span class="n">14.2.</span>Kelishuvga erishilmasa, nizo O‘zbekiston Respublikasi qonunchiligiga muvofiq sudda ko‘rib chiqiladi.</div>
+      </section>
+
+      <section id="s15">
+        <h2><span class="n">15.</span>Ijrochi rekvizitlari</h2>
+        <div class="tbl">
+          <table class="req">
+            <tbody>
+              <tr><th scope="row">Ijrochi</th><td><mark>[TO‘LDIRING: YaTT F.I.Sh. yoki MChJ nomi]</mark></td></tr>
+              <tr><th scope="row">Rahbar</th><td><mark>[TO‘LDIRING: rahbar F.I.Sh. — MChJ bo‘lsa]</mark></td></tr>
+              <tr><th scope="row">STIR</th><td><mark>[TO‘LDIRING: STIR]</mark></td></tr>
+              <tr><th scope="row">Davlat ro‘yxatidan o‘tganlik guvohnomasi</th><td><mark>[TO‘LDIRING: guvohnoma raqami va sanasi]</mark></td></tr>
+              <tr><th scope="row">Yuridik manzil</th><td><mark>[TO‘LDIRING: yuridik manzil]</mark></td></tr>
+              <tr><th scope="row">Hisob raqami</th><td><mark>[TO‘LDIRING: hisob raqami]</mark></td></tr>
+              <tr><th scope="row">Bank</th><td><mark>[TO‘LDIRING: bank nomi]</mark></td></tr>
+              <tr><th scope="row">MFO</th><td><mark>[TO‘LDIRING: MFO]</mark></td></tr>
+              <tr><th scope="row">Telefon</th><td><mark>[TO‘LDIRING: telefon]</mark></td></tr>
+              <tr><th scope="row">Email</th><td><mark>[TO‘LDIRING: email]</mark></td></tr>
+              <tr><th scope="row">Telegram</th><td><a href="https://t.me/bandzilla_bot">@bandzilla_bot</a> — «💬 Admin bilan aloqa»</td></tr>
+              <tr><th scope="row">Sayt</th><td><a href="https://bandzilla.uz/">bandzilla.uz</a></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+    </article>
+  </div>
+</section>
+</main>
+
+<footer class="site-foot sec--ink edge-zz doc-foot">
+  <div class="wrap">
+    <div class="foot-row">
+      <a class="brand" href="/"><img src="assets/logo-on-dark.webp" width="720" height="126" alt="Bandzilla — bosh sahifa" loading="lazy" decoding="async"></a>
+      <nav class="foot-nav" aria-label="Hujjatlar">
+        <a href="/">Bosh sahifa</a>
+        <a href="oferta.html" aria-current="page">Ommaviy oferta</a>
+        <a href="maxfiylik.html">Maxfiylik siyosati</a>
+      </nav>
+    </div>
+    <div class="foot-row foot-meta">
+      <span>Telegram: <a href="https://t.me/bandzilla_bot">@bandzilla_bot</a></span>
+      <span>© 2026 Bandzilla</span>
+    </div>
+    <p class="legal">IELTS — British Council, IDP: IELTS Australia va Cambridge University Press &amp; Assessment’ning ro‘yxatdan o‘tgan savdo belgisi. Bandzilla — mustaqil xizmat va ular bilan bog‘liq emas. Rasmiy IELTS natijasini faqat imtihon markazi beradi.</p>
+  </div>
+</footer>
+
+</body>
+</html>
