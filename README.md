@@ -127,19 +127,19 @@ yozsa, AI ma'nosi, misol va tarjimasini topadi (kuniga 30 tagacha). Bo'lim (`bot
 ## Narxlash va to'lov
 
 Botdagi to'lov birligi — **coin** (`bot/utils/coins.py`, 2026-10-17 dan; avval "1 kredit = 1
-tekshiruv = 5 000 so'm" edi). Har bir tekshiruv o'z tannarxiga qarab o'z narxida coindan yechiladi:
+tekshiruv = 5 000 so'm" edi). 2026-11-15 dan har bir tekshiruv bir xil narxda (avval 4–8 coin edi):
 
 | Tekshiruv | Coin |
 |---|---|
-| Writing Task 1 / Task 2 | 4 / 5 |
-| Speaking Part 1 / Part 2 / Part 3 | 6 / 5 / 8 |
-| To'liq Speaking (Part 1+2+3, bitta hisobot) | 16 |
+| Writing Task 1 / Task 2 | 5 / 5 |
+| Speaking Part 1 / Part 2 / Part 3 | 5 / 5 / 5 |
+| To'liq Speaking (Part 1+2+3, bitta hisobot) | 15 |
 
 - Ro'yxatdan o'tganda **`WELCOME_COINS`** (standart: 8) coin sovg'a.
-- Coin faqat hisobot saqlanganda yechiladi (xato bo'lgan tekshiruv bepul), muddati tugamaydi.
+- Coin baholash boshlanganda ushlab turiladi va hisobot saqlanmasa qaytariladi (yakunlanmagan tekshiruv bepul), muddati tugamaydi.
 - Paketlar: 10 / 25 / 50 / 100 / 200 coin — 10 000 / 23 000 / 45 000 / 88 000 / 170 000 so'm.
   O'qituvchi va markazlarga qo'shimcha: 500 / 1 000 / 2 500 / 5 000 coin — 400 000 / 780 000 /
-  1 875 000 / 3 600 000 so'm (talabalar tekshiruvini guruh to'laganda shu balansdan yechiladi).
+  1 875 000 / 3 750 000 so'm (markaz coini 750 so'mdan arzon emas; talabalar tekshiruvini guruh to'laganda shu balansdan yechiladi).
 - Referal: taklif qilingan do'st **birinchi marta coin sotib olganda** ikkalasiga
   **`REFERRAL_COINS`** (standart: 5) coin.
 - Cheksiz oylik obuna endi sotilmaydi; faol obunalar muddati tugaguncha ishlaydi.

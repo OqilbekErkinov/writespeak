@@ -178,7 +178,7 @@ EN: dict[str, str] = {
     "account.weakest": "📉 Your weakest area in recent works: <b>{label}</b> (average {avg:.1f}).\n💡 {tip}",
     "account.referral": "🔗 Invite your friends — when a friend buys coins for the first time, <b>you both get {coins} coin</b> ({count} invited):\n{link}",
     "account.language_button": "🌐 Tilni tanlang / Выберите язык / Choose language:",
-    "start.welcome_coins": "🎁 <b>A gift for you: {coins} coin!</b>\n\nCoins are Bandzilla's currency: each check takes its price in coins. {coins} coin is enough for two Writing Task 1 checks, or one Writing Task 2, or one Speaking part.\n\nPrices and top-ups are in <b>👤 My account</b>.",
+    "start.welcome_coins": "🎁 <b>A gift for you: {coins} coin!</b>\n\nCoins are Bandzilla's currency: each check costs <b>{price} coin</b>: Writing Task 1, Task 2 or any Speaking part. Your first check is on the gift coins — free.\n\nPrices and top-ups are in <b>👤 My account</b>.",
     "start.real_task": "⚠️ <b>Important tip</b>\n\nDon't spend your gift coins on a test run with random text or a couple of sentences — Bandzilla checks those too, and coins are charged.\n\n✅ Take a real IELTS task: Writing Task 1, Task 2 or Speaking.\n✅ Answer it in full, just like in the exam.\n✅ No task? <b>📝 Practice</b> has ready questions.\n\nThen the report finds your real mistakes and helps your band grow 🦖",
     "acc.title": "👤 <b>My account</b> · {name}",
     "acc.checks_line": "📝 Checks: <b>{total}</b> · Writing {w} · Speaking {s}",

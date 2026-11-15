@@ -1,31 +1,32 @@
 """Coins: the bot's one currency (since 2026-10-17, replacing "1 credit = 1
 check" at 5000 so'm).
 
-Every check costs its own number of coins, set by what it costs us in
-OpenAI usage (audio is the expensive part of Speaking, so a long Part 3
-costs more than a Writing Task 1); coins are bought in packs, the bigger
-the cheaper. 1 coin is nominally 1000 so'm (settings.coin_price) - the
-small pack's price, used for revenue estimates. New users get
-settings.welcome_coins; a referral pays settings.referral_coins to both
-sides on the invited user's first purchase. Coins never expire, and a
-check that fails costs nothing (they are spent when the report is saved).
+Every check costs the same 5 coins (2026-11-15, the owner's call: one price
+is easy to say and to remember; before that each kind had its own price,
+4-8). Coins are bought in packs, the bigger the cheaper. 1 coin is nominally
+1000 so'm (settings.coin_price) - the small pack's price, used for revenue
+estimates. New users get settings.welcome_coins; a referral pays
+settings.referral_coins to both sides on the invited user's first purchase.
+Coins never expire. They are held when grading starts and given back if the
+report is not saved (bot/utils/check_guard.py), so a failed check is free.
 
-The prices below were chosen with the owner on 2026-10-17 from measured
-per-check costs (+15% for free coins, failed checks, fees), keeping at
-least ~45% margin on the biggest student pack and ~33% on the biggest
-center pack in the worst case.
+Measured AI cost per check (7 days to 2026-11-15, $1 = 12 014 so'm): Writing
+Task 1 ~2 400 so'm (worst seen ~3 700), Task 2 ~2 100, Speaking 1 400-1 600.
+At 5 coins the dearest, Task 1, costs 3 750 so'm on the cheapest center coin
+(750): ~36% left on average, ~0 in the worst case - which is why no pack sells
+a coin below 750 so'm.
 """
 from __future__ import annotations
 
 # What one check costs, by kind - the practice module names, plus the full
 # Speaking test (Part 1+2+3 in one report).
 CHECK_COINS: dict[str, int] = {
-    "writing_task1": 4,
+    "writing_task1": 5,
     "writing_task2": 5,
-    "speaking_part1": 6,
+    "speaking_part1": 5,
     "speaking_part2": 5,
-    "speaking_part3": 8,
-    "speaking_full": 16,
+    "speaking_part3": 5,
+    "speaking_full": 15,
 }
 
 # (coins, so'm) - what anyone can buy, and the bigger packs only teachers
@@ -41,7 +42,7 @@ CENTER_PACKS: tuple[tuple[int, int], ...] = (
     (500, 400_000),
     (1000, 780_000),
     (2500, 1_875_000),
-    (5000, 3_600_000),
+    (5000, 3_750_000),  # 750 so'm a coin, the floor
 )
 ALL_PACKS = dict((*COIN_PACKS, *CENTER_PACKS))
 

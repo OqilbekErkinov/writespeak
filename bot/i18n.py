@@ -762,12 +762,12 @@ _T: dict[str, dict[str, str]] = {
         "ru": "🌐 Tilni tanlang / Выберите язык / Choose language:",
     },
     "start.welcome_coins": {
-        "uz": "🎁 <b>Sizga {coins} coin sovg'a!</b>\n\nCoin — Bandzilla'dagi to'lov birligi: har bir tekshiruv "
-              "o'z narxida coindan yechiladi. {coins} coin ikkita Writing Task 1 ga yoki bitta Writing Task 2 "
-              "yoki bitta Speaking tekshiruviga yetadi.\n\nNarxlar va hisobni to'ldirish — <b>👤 Hisobim</b> bo'limida.",
-        "ru": "🎁 <b>Вам подарок — {coins} coin!</b>\n\nCoin — валюта Bandzilla: каждая проверка списывает свою "
-              "цену в coin. {coins} coin хватит на две проверки Writing Task 1 или на одну Writing Task 2 либо "
-              "одну часть Speaking.\n\nЦены и пополнение — в разделе <b>👤 Профиль</b>.",
+        "uz": "🎁 <b>Sizga {coins} coin sovg'a!</b>\n\nCoin — Bandzilla'dagi to'lov birligi: har bir tekshiruv — "
+              "<b>{price} coin</b>: Writing Task 1, Task 2 yoki Speaking'ning istalgan qismi. Birinchi "
+              "tekshiruvingiz sovg'a coinlar hisobidan — bepul.\n\nNarxlar va hisobni to'ldirish — <b>👤 Hisobim</b> bo'limida.",
+        "ru": "🎁 <b>Вам подарок — {coins} coin!</b>\n\nCoin — валюта Bandzilla: каждая проверка стоит "
+              "<b>{price} coin</b>: Writing Task 1, Task 2 или любая часть Speaking. Первая проверка — за "
+              "подарочные coin, бесплатно.\n\nЦены и пополнение — в разделе <b>👤 Профиль</b>.",
     },
     "start.real_task": {
         "uz": "⚠️ <b>Muhim maslahat</b>\n\nSovg'a coinlarni shunchaki sinab ko'rish uchun tasodifiy matn yoki bir-ikki "

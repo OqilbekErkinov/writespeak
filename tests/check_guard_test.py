@@ -113,6 +113,7 @@ async def part1_hold() -> None:
     from bot.utils import check_guard as guard
     from db import crud
     from db.database import get_session
+    from db.models import User
     from services.ai.schemas import VocabularyItem
 
     await setup_users()
@@ -170,17 +171,19 @@ async def part1_hold() -> None:
           and h.sponsor_id is None and await balance(SPONSOR) == 4 and await balance(STUDENT) == 10
           and st.data.get("payer_id") is None)
     await guard.end(h, "test")
+    async with get_session() as s:  # topped up to exactly one check (every check is 5 coins since 2026-11-15)
+        (await s.get(User, SPONSOR)).coin_balance = 5
+        await s.commit()
     st = State({"spend_credit": True, "payer_id": SPONSOR})
     h = await guard.begin(Card(STUDENT), st, st.data, module="w", kind="writing_task1", lang="uz",
                           failed_state=WritingStates.failed)
     check("sponsor with enough: the sponsor pays", h is not None and h.sponsor_id == SPONSOR
           and await balance(SPONSOR) == 0 and await balance(STUDENT) == 15)
     await guard.end(h, "test")
-    check("the sponsor's coins back too", await balance(SPONSOR) == 4)
+    check("the sponsor's coins back too", await balance(SPONSOR) == 5)
 
     # admins may run several at once
     admin = next(iter(settings.admin_ids))
-    from db.models import User
     async with get_session() as s:
         if await s.get(User, admin) is None:
             s.add(User(id=admin, full_name="Admin", coin_balance=100, language="uz"))
@@ -536,6 +539,7 @@ async def part3_speaking() -> None:
     from bot.states.speaking_states import SpeakingStates
     from bot.utils import check_guard as guard
     from bot.utils import progress
+    from bot.utils.coins import check_coins
 
     await setup_users()
     progress.ENABLED = False
@@ -630,8 +634,9 @@ async def part3_speaking() -> None:
           and await balance(uid) == coins and await state.get_state() == SpeakingStates.failed.state
           and len(data.get("answers") or []) == 1, (graded, await balance(uid), await state.get_state()))
     out = await press(token)
-    check("speaking try again: the kept recording graded, 6 coins charged once, report sent", graded == [1, 1]
-          and await balance(uid) == coins - 6 and any(type(c).__name__ == "SendDocument" for c in out)
+    price = check_coins("speaking_part1")
+    check(f"speaking try again: the kept recording graded, {price} coins charged once, report sent", graded == [1, 1]
+          and await balance(uid) == coins - price and any(type(c).__name__ == "SendDocument" for c in out)
           and await state.get_state() is None, (graded, await balance(uid)))
     check("speaking: no hold left running", not await guard.busy(uid))
     await bot.session.close()
