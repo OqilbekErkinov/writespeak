@@ -15,7 +15,8 @@ CheckHold (db/models.py):
 - recover(): at start-up, the holds a stopped bot left `held`: coins back (`interrupted`), and the student's
   card says so - with "try again" when their answer is still in the FSM data.
 - drain(): at shutdown the running checks are waited for, so a deploy finishes them instead of killing them.
-- slot(): at most settings.max_parallel_checks graded at once; the others wait, their place on the card.
+- slot(): as many graded at once as OpenAI's limit and the panel's cap allow (bot/utils/capacity.py); the
+  others wait, their place on the card.
 - sweep(): every few minutes, a hold `held` by no running check (its end() failed) is settled the same way.
 """
 from __future__ import annotations
@@ -50,8 +51,6 @@ STALE_AFTER = 5 * 60  # a held row this old that no running check owns is settle
 
 # hold id -> the task grading it (this process only)
 running: dict[str, asyncio.Task | None] = {}
-_slots: asyncio.Semaphore | None = None
-_queue: list[str] = []  # holds waiting for a slot, in order
 
 
 @dataclass
@@ -240,25 +239,23 @@ async def owns(state: FSMContext, hold: Hold) -> bool:
 
 @asynccontextmanager
 async def slot(hold: Hold, card=None):
-    """At most settings.max_parallel_checks graded at once; while waiting, the live card shows the place in
-    the queue (bot/utils/progress.py `queued`)."""
-    global _slots
-    if _slots is None:
-        _slots = asyncio.Semaphore(max(1, settings.max_parallel_checks))
-    _queue.append(hold.id)
+    """The check's turn to be graded (bot/utils/capacity.py: as many at once as OpenAI's limit for the account
+    and the panel's cap allow); while it waits, the live card shows its place in the queue
+    (bot/utils/progress.py `queued`)."""
+    from bot.utils.capacity import governor  # noqa: PLC0415
+
+    ticket = hold.id
     if card is not None:
-        card.queued = lambda: (_queue.index(hold.id) + 1) if hold.id in _queue else 0
+        card.queued = lambda: governor.position(ticket)
     try:
-        await _slots.acquire()
+        await governor.acquire(ticket)
     finally:
-        if hold.id in _queue:
-            _queue.remove(hold.id)
         if card is not None:
             card.queued = None
     try:
         yield
     finally:
-        _slots.release()
+        governor.release()
 
 
 async def drain(timeout: float | None = None) -> None:

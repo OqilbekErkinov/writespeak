@@ -49,6 +49,7 @@ from db.models import (
 )
 from webapp import insights
 from services.excel import safe as excel_safe
+from bot.utils.capacity import CAP_KEY as CAPACITY_CAP_KEY, STATE_KEY as CAPACITY_STATE_KEY
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -260,13 +261,46 @@ async def settings_page(request: Request, done: str | None = None):
         "empty": "Avval kamida bitta sinovchi qo'shing.",
         "balance": "Balans saqlandi.", "resumed": "Balans saqlandi - tekshiruvlar qayta ochildi, kutganlarga xabar ketmoqda.",
         "bad_amount": "Summani raqam bilan kiriting: OpenAI — so'mda (masalan 70000), Azure — soatda (masalan 5).",
+        "capacity": "Saqlandi: bot uni 15 soniya ichida qo'llaydi.",
+        "bad_capacity": "1 dan 2000 gacha son kiriting.",
     }.get(done or "")
     return templates.TemplateResponse(request, "settings.html", {
         "active": "settings", "on": on, "testers": sorted(listed), "users": users, "waiting": await checks_back.waiting_count(),
-        "flash": flash, "flash_bad": done in ("bad", "empty", "bad_amount"), "env_on": bool(settings.checks_only_for_ids),
+        "flash": flash, "flash_bad": done in ("bad", "empty", "bad_amount", "bad_capacity"),
+        "env_on": bool(settings.checks_only_for_ids),
         "openai": await balance.openai_status(), "credit_paused": await balance.credit_paused(),
-        "azure": await balance.azure_status(),
+        "azure": await balance.azure_status(), "capacity": await capacity_state(),
     })
+
+
+async def capacity_state() -> dict:
+    """The check gate as the bot last published it (bot/utils/capacity.py) - {} when the bot is not running -
+    with the cap the owner set."""
+    try:
+        r = crm.redis()
+        state = json.loads(await r.get(CAPACITY_STATE_KEY) or "{}")
+        cap = await r.get(CAPACITY_CAP_KEY)
+    except Exception:  # noqa: BLE001
+        return {}
+    state["cap_set"] = int(cap) if cap and str(cap).isdigit() else None
+    state["cap_default"] = settings.max_parallel_checks
+    for model in (state.get("models") or {}).values():
+        lt = model.get("limit_tokens") or 0
+        model["left_pct"] = round(model.get("remaining_tokens", 0) / lt * 100) if lt else None
+    return state
+
+
+@router.post("/settings/capacity")
+async def settings_capacity(request: Request, cap: str = Form("")):
+    """The most checks graded at once (the server's cap; OpenAI's rate limit may hold fewer)."""
+    if (r := guard(request, owner=True)) is not None:
+        return r
+    value = cap.strip()
+    if not value.isdigit() or not 1 <= int(value) <= 2000:
+        return RedirectResponse("/settings?done=bad_capacity", status_code=303)
+    await crm.redis().set(CAPACITY_CAP_KEY, value)
+    await audit(request, "capacity", details=f"bir vaqtda ko'pi bilan {value} ta tekshiruv")
+    return RedirectResponse("/settings?done=capacity", status_code=303)
 
 
 @router.post("/settings/signout-all")
@@ -809,7 +843,7 @@ ACTION_NAMES = {
     "admin_enabled": "Adminni yoqdi", "admin_disabled": "Adminni o'chirdi", "export": "Excel yuklab oldi",
     "errors_cleared": "Xatolarni tozaladi", "center_created": "Markaz yaratdi", "center_deleted": "Markazni o'chirdi",
     "teacher_revoked": "O'qituvchilikni oldi", "finance_entry": "Moliyaga yozuv qo'shdi",
-    "signout_all": "Hamma qurilmalardan chiqardi", "report_resent": "Hisobotni qayta yubordi",
+    "signout_all": "Hamma qurilmalardan chiqardi", "capacity": "Bir vaqtdagi tekshiruvlar sonini o'zgartirdi", "report_resent": "Hisobotni qayta yubordi",
     "check_test": "Tekshiruvni test deb belgiladi", "check_real": "Tekshiruvni haqiqiy deb belgiladi",
     "finance_entry_deleted": "Moliyadan yozuvni o'chirdi",
 }

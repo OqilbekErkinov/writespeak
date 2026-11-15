@@ -100,7 +100,9 @@ async def web_and_db() -> None:
         w = WritingSubmission(user_id=777000111, task_type="task2", prompt_text="Some people think...",
                               prompt_source="text", answer_text="I agree that " * 40, answer_source="text",
                               overall_band=7.5, criteria_scores={"TA": 8, "CC": 7, "LR": 8, "GRA": 7})
-        s = SpeakingSubmission(user_id=777000111, part="part3", question_text="Why?", audio_file_path="/nope.mp3",
+        recording = Path("/tmp/teacher_bands_test.mp3")
+        recording.write_bytes(b"ID3 test")  # on the disk: the Audio button shows only while the recording is there
+        s = SpeakingSubmission(user_id=777000111, part="part3", question_text="Why?", audio_file_path=str(recording),
                                overall_band=7.0, criteria_scores={"FC": 7, "LR": 7, "GRA": 7, "Pronunciation": 8},
                                report_data={"questions": ["Why is it hard?"], "transcripts": ["It depends on people."]})
         session.add_all([w, s])

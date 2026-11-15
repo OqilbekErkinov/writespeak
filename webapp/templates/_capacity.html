@@ -1,0 +1,31 @@
+{# The check gate (bot/utils/capacity.py): how many are graded now, wait, may run; OpenAI's limits. `capacity` #}
+{% if capacity and capacity.at is defined %}
+<div class="cap-grid">
+  <div><b class="num">{{ capacity.running }}</b><span>hozir baholanmoqda</span></div>
+  <div class="{{ 'warn' if capacity.queued else '' }}"><b class="num">{{ capacity.queued }}</b><span>navbatda kutmoqda</span></div>
+  <div><b class="num">{{ capacity.limit }}</b><span>hozir bir vaqtda ruxsat{% if capacity.slowed %} · OpenAI sekinlatdi{% endif %}</span></div>
+</div>
+{% if capacity.waiting_for %}<p class="hint cap-warn">⏳ {{ capacity.waiting_for }} limiti shu daqiqada deyarli tugadi — yangi tekshiruvlar bir necha soniya navbatda turadi.</p>{% endif %}
+{% if capacity.models %}
+<div class="table-scroll"><table class="cap-models">
+  <tr><th>Model</th><th class="r">Limit (token/daqiqa)</th><th class="r">Qolgani</th><th class="r">So'rov/daqiqa</th></tr>
+  {% for name, m in capacity.models.items() %}
+  <tr><td class="strong">{{ name }}</td>
+    <td class="r num">{{ "{:,}".format(m.limit_tokens).replace(",", " ") }}</td>
+    <td class="r num">{% if m.left_pct is not none %}{{ m.left_pct }}%{% else %}—{% endif %}{% if not m.fresh %} <span class="muted">(eski)</span>{% endif %}</td>
+    <td class="r num">{{ "{:,}".format(m.limit_requests).replace(",", " ") }}</td></tr>
+  {% endfor %}
+</table></div>
+{% endif %}
+{% else %}<p class="hint">Bot holati hali kelmadi (bot ishlamayapti yoki hozirgina qayta ishga tushdi).</p>{% endif %}
+<style>
+  .cap-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 6px 0 12px; }
+  .cap-grid div { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 10px 14px; }
+  .cap-grid div.warn { border-color: var(--yellow); background: rgba(255, 224, 102, 0.12); }
+  .cap-grid b { display: block; font: 700 20px/1.2 var(--font-head); color: var(--ink); }
+  .cap-grid span { font-size: 12px; color: var(--ink-soft); }
+  .cap-warn { color: #8A6D00; }
+  .cap-models { margin-top: 4px; }
+  table .r, th.r { text-align: right; }
+  @media (max-width: 560px) { .cap-grid { grid-template-columns: 1fr; } }
+</style>

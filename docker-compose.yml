@@ -50,6 +50,10 @@ services:
       # in-network address - this is what the alembic step in `command`
       # below actually connects with.
       DATABASE_URL_SYNC: postgresql+psycopg://${POSTGRES_USER:-ielts}:${POSTGRES_PASSWORD:-ielts}@db:5432/${POSTGRES_DB:-ielts_bot}
+      # 100+ checks at once (bot/utils/capacity.py): up to 40 database connections for the bot; with the other
+      # three services' 15 each that stays under Postgres's 100
+      DB_POOL_SIZE: "20"
+      DB_MAX_OVERFLOW: "20"
     depends_on:
       db:
         condition: service_healthy

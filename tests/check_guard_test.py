@@ -209,9 +209,10 @@ async def part1_hold() -> None:
     check("no coins and no hold: saved as unpaid, balance not below 0", sub.coins_spent == 0
           and await balance(OTHER) == 3, (sub.coins_spent, await balance(OTHER)))
 
-    # the queue: at most N graded at once
-    settings.max_parallel_checks = 2
-    guard._slots = None
+    # the queue: at most N graded at once (bot/utils/capacity.py's gate, its cap set to 2 here)
+    from bot.utils.capacity import governor
+    import time as _time
+    governor.cap, governor.cap_read_at = 2, _time.monotonic() + 3600
     order, gate = [], asyncio.Event()
     holds = [guard.Hold(f"q{i}", STUDENT, "w", "k") for i in range(3)]
     cards = [NS(queued=None) for _ in range(3)]
@@ -229,9 +230,8 @@ async def part1_hold() -> None:
     gate.set()
     await asyncio.gather(*tasks)
     check("slot: the third runs when one ends, its card leaves the queue", order == [0, 1, 2]
-          and cards[2].queued is None)
-    settings.max_parallel_checks = 6
-    guard._slots = None
+          and cards[2].queued is None and governor.running == 0)
+    governor.cap, governor.cap_read_at = 0, -1e9  # read from settings/Redis again
 
 
 async def part1_recovery() -> None:

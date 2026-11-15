@@ -34,8 +34,11 @@ logger = logging.getLogger(__name__)
 
 ENABLED = True
 TICK = 4.0  # seconds between edits - well under Telegram's limits for one chat
+# All the live cards together edit at most this many messages a second (Telegram allows a bot ~30 a second in
+# all): with many checks running each card simply updates less often (2026-11-15, 100+ checks at once).
+EDITS_PER_SECOND = 8.0
 FIRST = 1.5  # the first frame, soon after the plain "analysing" text
-MAX_SECONDS = 20 * 60
+MAX_SECONDS = 60 * 60  # a check may wait its turn in the queue first
 QUIZ_AFTER = 12.0  # seconds before the first question - the card first shows what it is doing
 QUIZ_NEXT = 2  # ticks a question's result stays before the next question
 CREEP = 35.0  # seconds: how fast the bar approaches its stage's end between calls
@@ -334,14 +337,14 @@ class Waiting:
     # --- the loop --------------------------------------------------------------------------------------
 
     async def _run(self) -> None:
-        delay = FIRST
+        delay = FIRST + random.random() * (pace() - TICK)  # a class sending at once: first frames spread out
         while time.monotonic() - self.started < MAX_SECONDS:
             try:
                 await asyncio.wait_for(self.poke.wait(), timeout=delay)
             except asyncio.TimeoutError:
                 pass
             self.poke.clear()
-            delay = TICK
+            delay = pace() * random.uniform(0.9, 1.1)  # the cards drift apart instead of editing in step
             self.frame += 1
             elapsed = time.monotonic() - self.started
             if not self.quiz and elapsed >= QUIZ_AFTER:
@@ -363,6 +366,12 @@ class Waiting:
 
 
 _active: dict[tuple[int, int], Waiting] = {}
+
+
+def pace() -> float:
+    """Seconds between one card's edits: TICK, or longer when so many cards run that all of them together would
+    pass EDITS_PER_SECOND."""
+    return max(TICK, len(_active) / EDITS_PER_SECOND)
 
 
 def begin(msg: Message, lang: str, kind: str) -> Waiting | None:

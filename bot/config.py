@@ -68,9 +68,13 @@ class Settings(BaseSettings):
     openai_default_timeout: float = 300.0
 
     # --- Running checks (bot/utils/check_guard.py, the 2026-11-15 audit) ---
-    # Checks graded at the same time; the rest wait their turn on the live card. One check makes 8-15 model
-    # calls, so this keeps a class sending at once inside OpenAI's limits (and Flex's price).
-    max_parallel_checks: int = 6
+    # The most checks graded at the same time - the server's safety cap; OpenAI's own rate limit for the
+    # account usually decides first (bot/utils/capacity.py). Changed without a deploy on the panel's settings
+    # page (Redis runtime:max_parallel_checks). The rest wait their turn on the live card.
+    max_parallel_checks: int = 150
+    # The database pool of each process (the bot's is raised in docker-compose.yml: 100+ checks at once)
+    db_pool_size: int = 5
+    db_max_overflow: int = 10
     # A check still running after this long is stopped: the student gets "try again", the coins go back.
     check_deadline_seconds: int = 15 * 60
     # At shutdown (a deploy) the running checks are waited for this long before the process exits -

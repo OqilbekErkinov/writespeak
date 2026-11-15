@@ -79,6 +79,7 @@ async def stopped_checks(request: Request):
 
     return templates.TemplateResponse(request, "checks_stopped.html", {
         "active": "checks_stopped", "running": [row(h) for h in running], "stopped": [row(h) for h in stopped],
+        "capacity": await panel.capacity_state(),
         "week": {"total": total, "failed": failed, "charged": counts.get("charged", 0),
                  "rate": round(failed / total * 100) if total else 0},
     })

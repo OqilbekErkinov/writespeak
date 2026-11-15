@@ -97,6 +97,18 @@
 </div>
 
 <div class="card">
+  <h2>Tekshiruvlar sig'imi</h2>
+  <p class="hint" style="margin:-8px 0 10px">Bir vaqtda nechta tekshiruv baholanishi asosan OpenAI hisobining limitiga bog'liq: bot har
+    bir javobdagi limitni o'qiydi va limit tugay boshlasa, yangi tekshiruvlarni navbatga qo'yadi (hech biri rad etilmaydi).
+    Quyidagi son — serverni himoya qiluvchi yuqori chegara.</p>
+  {% include "_capacity.html" %}
+  <form method="post" action="/settings/capacity" class="tw-add">
+    <input type="text" name="cap" inputmode="numeric" placeholder="Bir vaqtda ko'pi bilan (hozir {{ capacity.cap_set or capacity.cap_default }})" required aria-label="Bir vaqtda ko'pi bilan">
+    <button type="submit" class="btn btn-good">Saqlash</button>
+  </form>
+</div>
+
+<div class="card">
   <h2>Xavfsizlik</h2>
   <p class="hint" style="margin:-8px 0 14px">Panelga kirish 7 kun amal qiladi. Telefon yoki kompyuter yo'qolsa, parol
     boshqalarga ma'lum bo'lib qolsa — hamma qurilmalardan chiqaring: siz ham, barcha adminlar va ustozlar ham qaytadan

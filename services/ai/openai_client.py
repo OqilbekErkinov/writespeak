@@ -18,8 +18,13 @@ from bot.config import settings
 logger = logging.getLogger(__name__)
 
 async def _watch_credit(response) -> None:
-    """Every OpenAI answer passes here (an httpx response hook): a 429 "insufficient_quota" means the credit
-    is gone - checks pause and the admins' group hears it at once (bot/utils/balance.py, 2026-11-14)."""
+    """Every OpenAI answer passes here (an httpx response hook). Its x-ratelimit-* headers tell the check gate
+    how much of the account's limit is left this minute (bot/utils/capacity.py, 2026-11-15). A 429
+    "insufficient_quota" means the credit is gone - checks pause and the admins' group hears it at once
+    (bot/utils/balance.py, 2026-11-14); a 429 "rate limit exceeded" makes the gate let fewer checks run."""
+    from bot.utils.capacity import governor, request_model  # it imports this module's callers' helpers
+
+    governor.observe(request_model(response.request), response.headers)
     if response.status_code != 429:
         return
     try:
@@ -28,9 +33,11 @@ async def _watch_credit(response) -> None:
     except Exception:  # noqa: BLE001 - the SDK reports the 429 itself
         return
     if "insufficient_quota" in body or "credit_balance" in body:
-        from bot.utils import balance  # it imports this module's callers' helpers
+        from bot.utils import balance
 
         await balance.out_of_credit()
+    elif "rate_limit_exceeded" in body:
+        governor.rate_limited()
 
 
 client = AsyncOpenAI(api_key=settings.openai_api_key,
