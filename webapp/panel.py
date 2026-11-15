@@ -56,6 +56,7 @@ templates = None  # set by webapp/main.py
 TESTERS_LIST_KEY = "runtime:testers"  # the testers list, kept while the window is off
 BROADCAST_KEY = "broadcast:{id}"
 BROADCAST_IDS = "broadcast:ids"
+BROADCAST_MAX = 4000  # characters of one language's text after escaping (Telegram: 4096)
 BROADCAST_PAUSE = 0.05  # 20 messages a second at most - under Telegram's limit
 
 
@@ -419,9 +420,17 @@ async def broadcast_send(request: Request, audience: str = Form(...), lang: str 
                          text_uz: str = Form(""), text_ru: str = Form(""), text_en: str = Form("")):
     if (r := guard(request)) is not None:
         return r
-    texts = {k: html.escape(v.strip()[:3500], quote=False) for k, v in (("uz", text_uz), ("ru", text_ru), ("en", text_en))}
+    # Escaped first, then measured (2026-11-15: cut at 3500 and escaped after, a text full of & < > grew past
+    # Telegram's 4096 characters and every single message failed).
+    texts = {k: html.escape(v.strip(), quote=False) for k, v in (("uz", text_uz), ("ru", text_ru), ("en", text_en))}
     if not texts["uz"]:
         return RedirectResponse(f"/broadcast?audience={audience}&lang={lang}&started=empty", status_code=303)
+    if any(len(v) > BROADCAST_MAX for v in texts.values()):
+        return RedirectResponse(f"/broadcast?audience={audience}&lang={lang}&started=toolong", status_code=303)
+    # A double submit (two clicks, a resent form) starts one broadcast, not two.
+    fingerprint = hashlib.sha256("|".join([audience, lang, *texts.values()]).encode()).hexdigest()[:24]
+    if not await crm.redis().set(f"broadcast:once:{fingerprint}", "1", nx=True, ex=600):
+        return RedirectResponse(f"/broadcast?audience={audience}&lang={lang}&started=dup", status_code=303)
     async with get_session() as session:
         users = await _audience(session, audience if audience in AUDIENCES else "all", lang if lang in LANG_FILTERS else "any")
     targets = [(u.id, u.language or "uz") for u in users]

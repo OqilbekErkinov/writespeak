@@ -147,6 +147,9 @@ _T: dict[str, dict[str, str]] = {
         "uz": "Iltimos, chekning skrinshotini rasm shaklida yuboring.",
         "ru": "Пожалуйста, отправьте скриншот чека именно картинкой.",
     },
+    "pay.cancel_btn": {"uz": "❌ Bekor qilish", "ru": "❌ Отменить"},
+    "pay.cancelled": {"uz": "To'lov bekor qilindi. Menyudan davom eting 👇",
+                      "ru": "Оплата отменена. Продолжите через меню 👇"},
     "pay.approved_coins": {
         "uz": "🎉 To'lovingiz tasdiqlandi! Hisobingizga <b>{coins} coin</b> qo'shildi. Balans: <b>{balance} coin</b>.",
         "ru": "🎉 Ваша оплата подтверждена! На счёт добавлено <b>{coins} coin</b>. Баланс: <b>{balance} coin</b>.",
@@ -221,6 +224,10 @@ _T: dict[str, dict[str, str]] = {
         "ru": "➕ Добавлено — теперь <b>{words}</b> слов. Если есть ещё, отправьте или нажмите «✅ Проверить так».",
     },
     "writing.short_check_btn": {"uz": "✅ Shuni tekshirish", "ru": "✅ Проверить так"},
+    "writing.page_added": {
+        "uz": "📄 Keyingi sahifa qo'shildi.",
+        "ru": "📄 Следующая страница добавлена.",
+    },
     "writing.text_only_here": {
         "uz": "Bu yerga javobning davomini matn ko'rinishida yuboring yoki «✅ Shuni tekshirish»ni bosing.",
         "ru": "Отправьте сюда продолжение ответа текстом или нажмите «✅ Проверить так».",
@@ -351,6 +358,43 @@ _T: dict[str, dict[str, str]] = {
         "uz": "Bu tekshiruvning ma'lumotlari endi yo'q — javobingizni qaytadan yuboring.",
         "ru": "Данных этой проверки уже нет — отправьте ответ заново.",
     },
+    "check.in_progress": {
+        "uz": "⏳ Tekshiruvingiz baholanmoqda — natija shu yerga keladi. Bu orada boshqa bo'limlardan "
+        "foydalanishingiz mumkin.",
+        "ru": "⏳ Ваша проверка идёт — результат придёт сюда. Пока можно пользоваться другими разделами.",
+    },
+    "check.failed_hint": {
+        "uz": "Oldingi tekshiruv yakunlanmagan edi: yuqoridagi «🔁 Qayta urinish» tugmasini bosing yoki menyudan "
+        "bo'lim tanlang.",
+        "ru": "Предыдущая проверка не завершилась: нажмите «🔁 Повторить» выше или выберите раздел в меню.",
+    },
+    "flow.use_buttons": {
+        "uz": "👆 Yuqoridagi xabardagi tugmalardan birini tanlang (yoki «⬅️ Orqaga»).",
+        "ru": "👆 Выберите одну из кнопок в сообщении выше (или «⬅️ Назад»).",
+    },
+    "flow.menu_hint": {"uz": "Quyidagi menyudan bo'lim tanlang 👇", "ru": "Выберите раздел в меню ниже 👇"},
+    "flow.cancelled": {"uz": "✅ Bekor qilindi. Menyudan bo'lim tanlang 👇",
+                       "ru": "✅ Отменено. Выберите раздел в меню 👇"},
+    "flow.cancel_grading": {
+        "uz": "⏳ Tekshiruvingiz allaqachon baholanmoqda — uni to'xtatib bo'lmaydi, natija tez orada keladi.",
+        "ru": "⏳ Ваша проверка уже идёт — её нельзя остановить, результат скоро придёт.",
+    },
+    "nav.stale": {"uz": "Bu tugma eskirgan — menyudan davom eting.",
+                  "ru": "Эта кнопка устарела — продолжите через меню."},
+    "help.text": {
+        "uz": "🦖 <b>Bandzilla — yordam</b>\n\n✍️ <b>Writing</b> va 🎙 <b>Speaking</b> — savolni, keyin javobingizni "
+        "yuboring (matn, rasm, fayl yoki ovoz). 2–5 daqiqada band ballari, har bir xatoning izohi va siz uchun "
+        "yozilgan namuna javob bilan PDF hisobot keladi.\n📝 <b>Practice</b> — tayyor IELTS savollari.\n🟡 "
+        "Tekshiruvlar coin bilan to'lanadi (1 coin = {coin_price} so'm); tekshiruv yakunlanmasa, coin "
+        "qaytariladi.\n\n<b>Buyruqlar:</b>\n/menu — asosiy menyu\n/cancel — joriy amalni bekor qilish\n/help — "
+        "shu yordam\n\nSavol yoki muammo bo'lsa — «💬 Admin bilan aloqa» orqali yozing.",
+        "ru": "🦖 <b>Bandzilla — помощь</b>\n\n✍️ <b>Writing</b> и 🎙 <b>Speaking</b> — отправьте вопрос, затем "
+        "ответ (текст, фото, файл или голос). Через 2–5 минут придёт PDF-отчёт: баллы, разбор каждой ошибки и "
+        "образец ответа для вас.\n📝 <b>Practice</b> — готовые вопросы IELTS.\n🟡 Проверки оплачиваются coin "
+        "(1 coin = {coin_price} сум); если проверка не завершится, coin вернутся.\n\n<b>Команды:</b>\n/menu — "
+        "главное меню\n/cancel — отменить текущее действие\n/help — эта справка\n\nВопросы и проблемы — через "
+        "«💬 Связь с админом».",
+    },
     "check.still_failed": {
         "uz": "Hozircha tekshiruv yana yakunlanmadi. Bir necha daqiqadan so'ng qayta urinib ko'ring — javobingiz "
         "saqlangan.",
@@ -414,6 +458,16 @@ _T: dict[str, dict[str, str]] = {
     "speaking.audio_only": {
         "uz": "🎙 Iltimos, javobingizni ovozli xabar, video-xabar yoki audio fayl qilib yuboring.",
         "ru": "🎙 Пожалуйста, отправьте ответ голосовым, видео-сообщением или аудиофайлом.",
+    },
+    "speaking.answer_too_long": {
+        "uz": "⚠️ Bu javob juda uzun ({length}) — bitta savolga eng ko'pi bilan {max} daqiqa. Qisqaroq yozib, qayta "
+        "yuboring.",
+        "ru": "⚠️ Этот ответ слишком длинный ({length}) — на один вопрос не больше {max} минут. Запишите короче и "
+        "отправьте снова.",
+    },
+    "speaking.answer_no_sound": {
+        "uz": "⚠️ Bu faylda ovoz topilmadi. Javobingizni ovozli xabar yoki audio fayl qilib yuboring.",
+        "ru": "⚠️ В этом файле нет звука. Отправьте ответ голосовым сообщением или аудиофайлом.",
     },
     "speaking.part_start": {
         "uz": "— <b>{part}</b> —",
@@ -560,6 +614,12 @@ _T: dict[str, dict[str, str]] = {
         "yoki rasm qilib).",
         "ru": "Не удалось прочитать файл такого типа. Пожалуйста, отправьте в другом виде "
         "(например, текстом или картинкой).",
+    },
+    "input.pdf_too_long": {
+        "uz": "Bu PDF {pages} sahifali — savol yoki javob uchun eng ko'pi bilan {max} sahifa qabul qilinadi. "
+        "Faqat kerakli sahifalarni (yoki ularning rasmini) yuboring.",
+        "ru": "В этом PDF {pages} страниц — для вопроса или ответа принимается не больше {max}. Отправьте только "
+        "нужные страницы (или их фото).",
     },
     "input.file_too_big": {
         "uz": "Fayl juda katta (Telegram botlar uchun chegara — 20 MB). Iltimos, kichikroq "

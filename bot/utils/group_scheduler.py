@@ -139,13 +139,23 @@ async def send_weekly_digests(bot: Bot) -> int:
         groups = await crud.take_digest_groups(session, week)
         messages = []
         for group in groups:
-            recipients = {group.teacher_id}
-            payer_id = await crud.get_group_payer_id(session, group)
-            recipients.add(payer_id)
-            for user_id in recipients:
-                user = await crud.get_user(session, user_id)
-                if user is not None:
-                    messages.append((user.id, await build_digest(session, group, user.language or "uz")))
+            # each group on its own (2026-11-15): one digest that fails to build no longer takes every other
+            # group's with it - it is unmarked and tried again on the next round
+            try:
+                recipients = {group.teacher_id}
+                payer_id = await crud.get_group_payer_id(session, group)
+                recipients.add(payer_id)
+                for user_id in recipients:
+                    user = await crud.get_user(session, user_id)
+                    if user is not None:
+                        messages.append((user.id, await build_digest(session, group, user.language or "uz")))
+            except Exception:  # noqa: BLE001
+                logger.exception("Weekly digest of group %s not built - tried again later", group.id)
+                await session.rollback()
+                fresh = await crud.get_group(session, group.id)
+                if fresh is not None:
+                    fresh.digest_week = None
+                    await session.commit()
     sent = 0
     for chat_id, text in messages:
         sent += await _send(bot, chat_id, text)

@@ -376,6 +376,7 @@ def place_pauses(answer: AnswerAudio, silences: list[tuple[float, float]]) -> li
 PITCH_RANGE_HZ = (75.0, 400.0)
 PITCH_FRAME = 0.04
 PITCH_HOP = 0.01
+PITCH_CHUNK = 3000  # frames (30 s) analysed at once
 
 
 @dataclass
@@ -399,13 +400,22 @@ def _pitch_track(wav: bytes) -> list[float | None]:
         return []
     count = 1 + (len(x) - size) // hop
     frames = np.lib.stride_tricks.as_strided(x, shape=(count, size), strides=(x.strides[0] * hop, x.strides[0]))
-    frames = (frames - frames.mean(axis=1, keepdims=True)) * np.hanning(size)
-    spec = np.fft.rfft(frames, n=2 * size, axis=1)
-    ac = np.fft.irfft(np.abs(spec) ** 2, axis=1)[:, :size]
-    energy = ac[:, 0] + 1e-9
+    window = np.hanning(size)
     lo, hi = int(rate / PITCH_RANGE_HZ[1]), int(rate / PITCH_RANGE_HZ[0])
-    lags = np.argmax(ac[:, lo:hi], axis=1) + lo
-    strength = ac[np.arange(count), lags] / energy
+    energy = np.empty(count)
+    lags = np.empty(count, dtype=np.int64)
+    strength = np.empty(count)
+    # PITCH_CHUNK frames at a time (2026-11-15): the whole answer's spectra at once took ~300 MB for 2 minutes
+    # of speech, in the bot's own process; the same numbers, a bounded amount of memory
+    for start in range(0, count, PITCH_CHUNK):
+        part = frames[start:start + PITCH_CHUNK]
+        part = (part - part.mean(axis=1, keepdims=True)) * window
+        ac = np.fft.irfft(np.abs(np.fft.rfft(part, n=2 * size, axis=1)) ** 2, axis=1)[:, :size]
+        e = ac[:, 0] + 1e-9
+        best = np.argmax(ac[:, lo:hi], axis=1) + lo
+        energy[start:start + len(part)] = e
+        lags[start:start + len(part)] = best
+        strength[start:start + len(part)] = ac[np.arange(len(part)), best] / e
     db = 10 * np.log10(energy / size + 1e-9) - 20 * np.log10(32768.0)
     loud = db > np.percentile(db, 90) - 25
     voiced = (strength > 0.45) & loud

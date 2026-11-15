@@ -4,6 +4,8 @@
 {% block content %}
 <h1>Ommaviy xabar</h1>
 {% if started == "empty" %}<div class="error">O'zbekcha matn bo'sh — xabar yuborilmadi.</div>
+{% elif started == "toolong" %}<div class="error">Matn juda uzun — bitta tilda 4000 belgidan oshmasin (Telegram chegarasi). Xabar yuborilmadi.</div>
+{% elif started == "dup" %}<div class="error">Bu xabar hozirgina yuborilishni boshladi — ikkinchi marta yuborilmadi.</div>
 {% elif started %}<div class="flash">Yuborish boshlandi — pastda jarayonni kuzatib turing. Sahifani yopsangiz ham davom etadi.</div>{% endif %}
 
 <div class="b-grid">

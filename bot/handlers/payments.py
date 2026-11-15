@@ -21,23 +21,26 @@ from __future__ import annotations
 import logging
 
 from aiogram import F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
 from bot.config import settings
 from bot.i18n import t
-from bot.keyboards.main_menu_kb import MENU_BUTTON_TEXTS
+from bot.keyboards.main_menu_kb import MENU_BUTTON_TEXTS, main_menu_kb
 from bot.keyboards.account_kb import gift_packs_kb
 from bot.keyboards.payment_kb import (
     CB_BUY_PREFIX,
     CB_BUY_SUB_PREFIX,
     CB_GIFT_BUY_PREFIX,
     CB_PAY_APPROVE_PREFIX,
+    CB_PAY_CANCEL_PREFIX,
     CB_PAY_NOOP,
     CB_PAY_REJECT_PREFIX,
     buy_coins_kb,
     gift_share_kb,
     payment_review_kb,
+    receipt_cancel_kb,
 )
 from bot.states.payment_states import PaymentStates
 from bot.utils import crm_events, stickers
@@ -128,8 +131,28 @@ async def _start_receipt_flow(
             amount=format_som(request.amount),
             card=settings.payment_card_number,
             holder=settings.payment_card_holder,
-        )
+        ),
+        reply_markup=receipt_cancel_kb(lang, request.id),
     )
+
+
+@router.callback_query(F.data.startswith(CB_PAY_CANCEL_PREFIX))
+async def cancel_payment(callback: CallbackQuery, state: FSMContext, lang: str) -> None:
+    """The buyer gives up before sending a receipt: the request goes, the flow ends."""
+    await callback.answer()
+    try:
+        request_id = int(callback.data.removeprefix(CB_PAY_CANCEL_PREFIX))
+    except ValueError:
+        return
+    async with get_session() as session:
+        await crud.cancel_payment_request(session, request_id, callback.from_user.id)
+    if (await state.get_data()).get("payment_request_id") == request_id:
+        await state.clear()
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except TelegramBadRequest:
+        pass
+    await callback.message.answer(t("pay.cancelled", lang), reply_markup=main_menu_kb(lang))
 
 
 @router.message(PaymentStates.awaiting_receipt, F.photo)
@@ -142,7 +165,9 @@ async def receive_receipt(message: Message, state: FSMContext, lang: str) -> Non
 
     file_id = message.photo[-1].file_id
     async with get_session() as session:
-        request = await crud.set_payment_receipt(session, request_id, file_id)
+        request = await crud.set_payment_receipt(session, request_id, file_id, message.photo[-1].file_unique_id)
+        # the very same picture sent for another payment: flagged on the admins' card (2026-11-15)
+        twins = await crud.same_receipt(session, request) if request is not None else []
 
     await state.clear()
     if request is None:
@@ -164,6 +189,9 @@ async def receive_receipt(message: Message, state: FSMContext, lang: str) -> Non
         f"Telegram ID: <code>{message.from_user.id}</code>\n"
         f"Miqdor: {item_line} — {format_som(request.amount)} so'm"
     )
+    if twins:
+        caption += "\n\n⚠️ <b>DIQQAT: bu chek rasmi avval ishlatilgan</b> — " + ", ".join(
+            f"#{p.id} ({'tasdiqlangan' if p.status == PaymentStatus.approved else 'kutmoqda'})" for p in twins)
     for admin_id in settings.admin_ids:
         try:
             await message.bot.send_photo(

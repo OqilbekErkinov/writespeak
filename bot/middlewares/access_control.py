@@ -58,10 +58,15 @@ class AccessControlMiddleware(BaseMiddleware):
                 admin = await crud.get_or_create_admin(
                     session, tg_user.id, tg_user.username, tg_user.full_name
                 )
-                data["lang"] = admin.language
-                return await handler(event, data)
-
-            user = await crud.get_user(session, tg_user.id)
+                lang = admin.language or "uz"
+            else:
+                lang = None
+                user = await crud.get_user(session, tg_user.id)
+        if lang is not None:
+            # the handler runs after the session is closed (2026-11-15: an admin's check held a database
+            # connection idle in a transaction for the minutes it was graded)
+            data["lang"] = lang
+            return await handler(event, data)
 
         data["lang"] = user.language if user is not None else "uz"
 

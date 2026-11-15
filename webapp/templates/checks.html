@@ -69,6 +69,16 @@
           <span class="band-chip">{{ "%.1f"|format(c.teacher.overall) }}</span>
           {% if not teacher_view and c.diff and c.diff.overall is not none %}<span class="t-diff {{ 'neg' if c.diff.overall <= -1 else 'pos' if c.diff.overall >= 1 else '' }}">bot {{ "%+.1f"|format(c.diff.overall) }}</span>{% endif %}
           <div class="t-crits">{% for k, label, v in c.fields %}{{ k }} {{ "%g"|format(v) }}{{ " · " if not loop.last }}{% endfor %}</div>
+          {% if not teacher_view and c.teacher.role == "teacher" %}
+          {# a teacher login's marks teach the Speaking scoring only once the owner approves them #}
+          <div class="t-anchor">
+            {% if c.teacher.approved %}<span class="pill pill-good" title="Speaking baholashiga namuna (anchor)">⚓ anchor</span>
+            {% else %}<span class="pill pill-warn" title="Egasi tasdiqlaguncha namuna bo'lmaydi">⏳ tasdiq kutmoqda</span>{% endif %}
+            {% if owner %}<form method="post" action="/checks/{{ c.kind }}/{{ c.id }}/teacher/approve" class="inline">
+              <input type="hidden" name="back" value="{{ back }}">
+              <button type="submit" class="btn btn-sm">{{ "Olib tashlash" if c.teacher.approved else "✓ Tasdiqlash" }}</button></form>{% endif %}
+          </div>
+          {% endif %}
         </div>
         {% endif %}
         {% set mark = {"kind": c.kind, "id": c.id, "title": c.label ~ " #" ~ c.id, "who": who, "when": c.when,
@@ -104,6 +114,7 @@
   .neg { color: #c2410c; } .pos { color: #1d4ed8; }
   .t-cell { min-width: 140px; }
   .t-has { margin-bottom: 6px; }
+  .t-anchor { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px; }
   .t-crits { margin-top: 3px; font-size: 12px; color: var(--ink-faint); white-space: nowrap; }
   .t-diff { display: inline-block; font-size: 12px; font-weight: 700; margin-left: 4px; }
   table .r, th.r { text-align: right; }

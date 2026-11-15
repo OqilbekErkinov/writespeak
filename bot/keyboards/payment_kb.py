@@ -13,6 +13,7 @@ CB_BUY_SUB_PREFIX = "buysub:"  # the retired unlimited subscription (old buttons
 CB_PAY_APPROVE_PREFIX = "pay_approve:"
 CB_PAY_REJECT_PREFIX = "pay_reject:"
 CB_PAY_NOOP = "pay:noop"  # the "center packs" heading
+CB_PAY_CANCEL_PREFIX = "pay_cancel:"  # + the request id: the buyer gives up before sending a receipt
 
 
 def pack_button(coins: int, price: int, lang: str, prefix: str = CB_BUY_PREFIX) -> InlineKeyboardButton:
@@ -56,3 +57,9 @@ def payment_review_kb(request_id: int) -> InlineKeyboardMarkup:
             ]
         ]
     )
+
+
+def receipt_cancel_kb(lang: str, request_id: int) -> InlineKeyboardMarkup:
+    """Under the card number: give up before sending a receipt (2026-11-15: the receipt step had no way out)."""
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text=t("pay.cancel_btn", lang), callback_data=f"{CB_PAY_CANCEL_PREFIX}{request_id}")]])

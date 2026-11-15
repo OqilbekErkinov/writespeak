@@ -232,7 +232,8 @@ async def run_sender(bot: Bot) -> None:
     totals and posts the daily report once a day (bot/utils/crm_events.py)."""
     from bot.utils import balance, crm_events
 
-    last_daily_check = last_probe = 0.0
+    last_daily_check = last_probe = last_alert = 0.0
+    failures = 0
     while True:
         try:
             await flush_spent()
@@ -244,6 +245,7 @@ async def run_sender(bot: Bot) -> None:
                 last_probe = time.monotonic()
                 if await balance.probe_credit():
                     await credit_back(bot)
+            failures = 0
             cfg = config()
             if not cfg:
                 await asyncio.sleep(5)
@@ -256,10 +258,22 @@ async def run_sender(bot: Bot) -> None:
             raise
         except Exception as e:  # noqa: BLE001
             logger.warning("Admins' group sender: %r", e)
+            failures += 1
+            if failures >= SENDER_ALERT_AFTER and time.monotonic() - last_alert > 3600:
+                # this loop is how every alert reaches the group - when it keeps failing (Redis away, the
+                # daily report broken), the admins are told directly, once an hour (2026-11-15)
+                last_alert = time.monotonic()
+                for admin_id in settings.admin_ids:
+                    try:
+                        await bot.send_message(admin_id, "⚠️ Bandzilla: adminlar guruhiga xabar yuborish to'xtab "
+                                               f"qoldi ({failures} marta ketma-ket xato): {html.escape(repr(e))[:300]}")
+                    except Exception:  # noqa: BLE001
+                        pass
             await asyncio.sleep(5)
 
 
 PROBE_EVERY = 600  # seconds between test calls while checks are paused for want of OpenAI credit
+SENDER_ALERT_AFTER = 10  # consecutive failures of the sender loop before the admins are told directly
 
 HEARTBEAT_KEY = "health:bot"  # deploy/watchdog/watchdog.sh alerts when it is older than its expiry
 HEARTBEAT_EVERY = 60

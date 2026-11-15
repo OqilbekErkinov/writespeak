@@ -259,10 +259,12 @@ async def checks_page(request: Request, kind: str = "all", period: str = "all", 
     async with get_session() as session:
         data = await insights.all_checks(session, kind, period, marked=tb == "1")
     flash = {"saved": "Ustoz bahosi saqlandi.", "cleared": "Ustoz bahosi olib tashlandi.",
+             "approved": "Ustoz bahosi anchor sifatida tasdiqlandi — Speaking baholashiga namuna bo'ladi.",
+             "unapproved": "Ustoz bahosi anchor'lardan olindi.",
              "bad": "Har bir mezonga 0-9 oralig'ida band kiriting (masalan 6 yoki 6.5)."}.get(done)
     return templates.TemplateResponse(request, "checks.html", {
         "active": "checks", **data, "tb": tb == "1", "flash": flash, "flash_bad": done == "bad",
-        "teacher_view": panel.is_teacher(request)})
+        "teacher_view": panel.is_teacher(request), "owner": panel.is_owner(request)})
 
 
 @app.post("/checks/{kind}/{submission_id}/teacher")
@@ -282,7 +284,8 @@ async def checks_teacher_bands(request: Request, kind: str, submission_id: int):
     sep = "&" if "?" in back else "?"
     try:
         marks = teacher_bands.record(kind, {k: str(form.get(k) or "") for k, _, _ in teacher_bands.CRITERIA[kind]},
-                                     panel.admin_name(request), str(form.get("note") or ""))
+                                     panel.admin_name(request), str(form.get("note") or ""),
+                                     role="teacher" if panel.is_teacher(request) else "admin")
     except ValueError:
         return RedirectResponse(f"{back}{sep}done=bad#c-{kind}{submission_id}", status_code=303)
     model = WritingSubmission if kind == "w" else SpeakingSubmission
@@ -295,6 +298,31 @@ async def checks_teacher_bands(request: Request, kind: str, submission_id: int):
     await panel.audit(request, "teacher_bands", details=f"{'W' if kind == 'w' else 'S'}#{submission_id}: "
                       + (" ".join(f"{k} {v:g}" for k, v in marks["bands"].items()) if marks else "olib tashlandi"))
     return RedirectResponse(f"{back}{sep}done={'saved' if marks else 'cleared'}#c-{kind}{submission_id}",
+                            status_code=303)
+
+
+@app.post("/checks/{kind}/{submission_id}/teacher/approve")
+async def checks_teacher_approve(request: Request, kind: str, submission_id: int):
+    """The owner lets a teacher login's marks teach the Speaking scoring as anchors (or takes that back)."""
+    if (redirect := panel.guard(request, owner=True)) is not None:
+        return redirect
+    if kind not in ("w", "s"):
+        return RedirectResponse("/checks", status_code=303)
+    form = await request.form()
+    back = str(form.get("back") or "/checks")
+    back = back if back.startswith("/checks") else "/checks"
+    model = WritingSubmission if kind == "w" else SpeakingSubmission
+    async with get_session() as session:
+        sub = await session.get(model, submission_id)
+        if sub is None or not sub.teacher_bands:
+            return RedirectResponse(back, status_code=303)
+        approved = not sub.teacher_bands.get("approved", True)
+        sub.teacher_bands = {**sub.teacher_bands, "approved": approved}
+        await session.commit()
+    await panel.audit(request, "teacher_bands", details=f"{'W' if kind == 'w' else 'S'}#{submission_id}: "
+                      + ("anchor sifatida tasdiqlandi" if approved else "anchor'dan olindi"))
+    sep = "&" if "?" in back else "?"
+    return RedirectResponse(f"{back}{sep}done={'approved' if approved else 'unapproved'}#c-{kind}{submission_id}",
                             status_code=303)
 
 

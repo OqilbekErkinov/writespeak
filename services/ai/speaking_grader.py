@@ -470,6 +470,8 @@ async def refresh_teacher_anchors() -> None:
         bands = (marks or {}).get("bands") or {}
         if not all(k in bands for k in ("FC", "LR", "GRA", "P")):
             continue
+        if (marks or {}).get("approved", True) is False:
+            continue  # a teacher login's marks wait for the owner's approval (bot/utils/teacher_bands.record)
         data = data or {}
         answers = [{"question": q, "transcript": t.strip()}
                    for q, t in zip(data.get("questions") or [], data.get("transcripts") or [])

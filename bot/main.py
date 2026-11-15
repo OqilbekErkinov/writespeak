@@ -25,7 +25,9 @@ logger = logging.getLogger(__name__)
 
 
 def build_dispatcher() -> Dispatcher:
-    storage = RedisStorage.from_url(settings.redis_url)
+    # A flow left untouched for 30 days is forgotten (2026-11-15: the FSM keys never expired and only grew).
+    month = 30 * 24 * 3600
+    storage = RedisStorage.from_url(settings.redis_url, state_ttl=month, data_ttl=month)
     dp = Dispatcher(storage=storage)
 
     # Middlewares (order matters: access control must run before routers below).
@@ -43,6 +45,7 @@ def build_dispatcher() -> Dispatcher:
         account,
         check_retry,
         crm,
+        fallback,
         group,
         group_assignments,
         language,
@@ -83,6 +86,7 @@ def build_dispatcher() -> Dispatcher:
     private.include_router(speaking.router)
     private.include_router(practice.router)
     private.include_router(my_works.router)
+    private.include_router(fallback.router)  # last: whatever no handler above took gets a "what now" answer
     dp.include_router(private)
 
     return dp

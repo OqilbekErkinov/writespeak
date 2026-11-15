@@ -1336,15 +1336,39 @@ async def create_payment_request(
 
 
 async def set_payment_receipt(
-    session: AsyncSession, request_id: int, receipt_file_id: str
+    session: AsyncSession, request_id: int, receipt_file_id: str, receipt_unique_id: str | None = None
 ) -> PaymentRequest | None:
     request = await session.get(PaymentRequest, request_id)
     if request is None:
         return None
     request.receipt_file_id = receipt_file_id
+    request.receipt_unique_id = receipt_unique_id
     await session.commit()
     await session.refresh(request)
     return request
+
+
+async def same_receipt(session: AsyncSession, request: PaymentRequest) -> list[PaymentRequest]:
+    """The other payments sent with the very same receipt picture (Telegram's file_unique_id): approved or
+    still pending - a second pack bought with one transfer's screenshot."""
+    if not request.receipt_unique_id:
+        return []
+    return list((await session.execute(
+        select(PaymentRequest).where(PaymentRequest.receipt_unique_id == request.receipt_unique_id,
+                                     PaymentRequest.id != request.id,
+                                     PaymentRequest.status != PaymentStatus.rejected)
+        .order_by(PaymentRequest.id))).scalars().all())
+
+
+async def cancel_payment_request(session: AsyncSession, request_id: int, user_id: int) -> bool:
+    """The buyer gave up before sending a receipt: the request goes (only theirs, only without a receipt)."""
+    request = await session.get(PaymentRequest, request_id)
+    if request is None or request.user_id != user_id or request.receipt_file_id is not None \
+            or request.status != PaymentStatus.pending:
+        return False
+    await session.delete(request)
+    await session.commit()
+    return True
 
 
 @dataclass
@@ -1415,6 +1439,13 @@ async def decide_payment_request(
                         referrer.coin_balance += referral_coins
                         user.coin_balance += referral_coins
                         referrer_id = referrer.id
+                        # recorded like any coin change, so a balance can be traced in the panel (2026-11-15)
+                        session.add(CoinAdjustment(user_id=referrer.id, delta=referral_coins,
+                                                   balance_after=referrer.coin_balance,
+                                                   note=f"Taklif bonusi: {user.id} birinchi to'lovi (#{request.id})"))
+                        session.add(CoinAdjustment(user_id=user.id, delta=referral_coins,
+                                                   balance_after=user.coin_balance,
+                                                   note=f"Taklif bonusi: to'lov #{request.id}"))
                     user.referral_rewarded = True
     await session.commit()
     await session.refresh(request)
@@ -1646,7 +1677,11 @@ async def join_center(session: AsyncSession, center_id: int, user_id: int) -> st
     user = await session.get(User, user_id)
     if user is not None and user.role == UserRole.student:
         user.role = UserRole.teacher
-    await session.execute(update(Group).where(Group.teacher_id == user_id).values(center_id=center_id))
+    # The groups move into the center, and its owner becomes their payer: a group that paid for its students'
+    # checks stops doing so until the owner switches it on (2026-11-15 - it went on, on the owner's coins,
+    # without the owner ever agreeing).
+    await session.execute(update(Group).where(Group.teacher_id == user_id)
+                          .values(center_id=center_id, sponsor_checks=False))
     await session.commit()
     return "joined"
 
@@ -2019,24 +2054,34 @@ async def gift_coins(
         (await session.execute(select(User).where(User.id.in_(members)).with_for_update())).scalars().all()
     )
     payer.coin_balance -= amount * len(students)
+    # every move recorded like any coin change (2026-11-15: a group gift left no trace but a group message)
+    session.add(CoinAdjustment(user_id=payer.id, delta=-amount * len(students), balance_after=payer.coin_balance,
+                               note=f"Guruh sovg'asi «{group.name}»: {len(students)} o'quvchiga {amount} coin"))
     for student in students:
         student.coin_balance += amount
+        session.add(CoinAdjustment(user_id=student.id, delta=amount, balance_after=student.coin_balance,
+                                   note=f"«{group.name}» guruhidan sovg'a"))
     await session.commit()
     return students
 
 
 async def count_sponsored_today(session: AsyncSession, user_id: int, payer_id: int) -> int:
+    """The checks `payer_id` paid for this student today that count against a daily limit: every one except
+    the homework of a group this payer sponsors (never limited). Until 2026-11-15 any homework row was left
+    out - another group's homework paid by this payer made the limit endless."""
     since = _today_start_tashkent_as_utc()
+    own = [g.id for g, _ in await get_member_groups(session, user_id)
+           if g.sponsor_checks and await get_group_payer_id(session, g) == payer_id]
     total = 0
     for model in (WritingSubmission, SpeakingSubmission):
-        total += (await session.execute(
-            select(_checks(model)).select_from(model).where(
-                model.user_id == user_id,
-                model.paid_by_id == payer_id,
-                model.created_at >= since,
-                model.assignment_part_id.is_(None),
-            )
-        )).scalar() or 0
+        unlimited = and_(model.assignment_part_id.is_not(None), Assignment.group_id.in_(own)) if own else None
+        stmt = (select(_checks(model)).select_from(model)
+                .outerjoin(AssignmentPart, AssignmentPart.id == model.assignment_part_id)
+                .outerjoin(Assignment, Assignment.id == AssignmentPart.assignment_id)
+                .where(model.user_id == user_id, model.paid_by_id == payer_id, model.created_at >= since))
+        if unlimited is not None:
+            stmt = stmt.where(~unlimited)
+        total += (await session.execute(stmt)).scalar() or 0
     return total
 
 
@@ -2047,8 +2092,13 @@ async def find_sponsor(
     counting `checks` against a daily limit - a full Speaking test is 3): a
     sponsored group they are in whose payer still has the coins and whose
     daily limit isn't used up (assignments of that group are never
-    limited). None if nobody does."""
-    for group, _ in await get_member_groups(session, user_id):
+    limited). The assignment's own group is asked first: its homework is
+    its own sponsor's, and paid by another group only within that group's
+    daily limit (2026-11-15). None if nobody does."""
+    groups = await get_member_groups(session, user_id)
+    if assignment_group_id is not None:
+        groups = sorted(groups, key=lambda pair: pair[0].id != assignment_group_id)
+    for group, _ in groups:
         if not group.sponsor_checks:
             continue
         payer_id = await get_group_payer_id(session, group)

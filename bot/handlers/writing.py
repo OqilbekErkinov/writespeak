@@ -294,6 +294,28 @@ async def confirm_or_edit(callback: CallbackQuery, state: FSMContext, lang: str)
         await _run_grading(callback.message, state, lang)
 
 
+@router.message(WritingStates.confirming_answer, F.photo | F.document)
+async def add_page(message: Message, state: FSMContext, lang: str) -> None:
+    """Another page of the answer sent after the first one's preview (a handwritten essay on two pages - until
+    2026-11-15 page 2 was ignored without a word): read and added to the text, the whole of it shown again.
+    Not for the question: a second picture there is usually the Task 1 chart, never more question text."""
+    async with _user_locks[message.from_user.id]:
+        if await state.get_state() != WritingStates.confirming_answer.state:
+            return
+        data = await state.get_data()
+        field = "answer"
+        extracted = await read_text_input(message, lang, ocr_mode="verbatim")
+        if extracted is None or not extracted.text.strip():
+            return
+        if extracted.cost:
+            await state.update_data(input_cost=usage.merge(data.get("input_cost"), extracted.cost))
+        text = (data.get(f"{field}_candidate_text", "").rstrip() + "\n\n" + extracted.text.strip()).strip()
+        await state.update_data(**{f"{field}_candidate_text": text})
+        await message.answer(t("writing.page_added", lang) + "\n\n"
+                             + t("writing.confirm_preview", lang, preview=_preview(text)),
+                             reply_markup=confirm_edit_kb(lang))
+
+
 def _length_problem(data: dict) -> str | None:
     """A typed answer to ask about before it is graded: "short" (under half the minimum) or "long" (Telegram
     may have split it). Never twice for the same text."""

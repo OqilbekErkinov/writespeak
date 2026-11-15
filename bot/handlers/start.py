@@ -24,6 +24,7 @@ from dataclasses import dataclass
 
 from aiogram import Router
 from aiogram.filters import CommandObject, CommandStart
+from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,6 +34,7 @@ from bot.keyboards.lang_kb import CB_LANG_ONBOARD_PREFIX, lang_picker_kb
 from bot.keyboards.main_menu_kb import main_menu_kb
 from bot.middlewares.access_control import DENIED_TEXT
 from bot.utils import crm_events, gifts
+from bot.utils.flow import leave_flow
 from bot.utils.group_invite import (
     is_center_payload,
     is_invite_payload,
@@ -48,9 +50,12 @@ router = Router(name="start")
 
 
 @router.message(CommandStart())
-async def cmd_start(message: Message, command: CommandObject, lang: str) -> None:
+async def cmd_start(message: Message, command: CommandObject, state: FSMContext, lang: str) -> None:
     tg = message.from_user
     gift_code = gifts.gift_code(command.args)
+    # /start leaves whatever flow they were in (a check being graded goes on): their next message is a new
+    # start, never the answer an old "send your answer" was waiting for (2026-11-15)
+    await leave_flow(state)
 
     if tg.id in settings.admin_ids:
         # AccessControlMiddleware already upserted the admin row.

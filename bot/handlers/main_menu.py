@@ -13,23 +13,40 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
+from bot.config import settings
 from bot.i18n import t
 from bot.keyboards.main_menu_kb import main_menu_kb
 from bot.keyboards.nav_kb import CB_BACK_MAIN
+from bot.utils.flow import leave_flow
 from bot.utils.messages import remove_message
 
 router = Router(name="main_menu")
 
 
 @router.message(Command("menu"))
-async def show_menu(message: Message, lang: str) -> None:
+async def show_menu(message: Message, state: FSMContext, lang: str) -> None:
+    await leave_flow(state)  # the menu is a fresh start (a check being graded goes on)
     await message.answer(t("menu.shown", lang), reply_markup=main_menu_kb(lang))
+
+
+@router.message(Command("cancel"))
+async def cancel(message: Message, state: FSMContext, lang: str) -> None:
+    """Stops whatever they were doing - except a check already being graded, which can't be taken back."""
+    if await leave_flow(state):
+        await message.answer(t("flow.cancelled", lang), reply_markup=main_menu_kb(lang))
+    else:
+        await message.answer(t("flow.cancel_grading", lang), reply_markup=main_menu_kb(lang))
+
+
+@router.message(Command("help"))
+async def show_help(message: Message, lang: str) -> None:
+    await message.answer(t("help.text", lang, coin_price=settings.coin_price), reply_markup=main_menu_kb(lang))
 
 
 @router.callback_query(F.data == CB_BACK_MAIN)
 async def back_to_main_menu(callback: CallbackQuery, state: FSMContext, lang: str) -> None:
     await callback.answer()
-    # Leaving a section abandons whatever flow was in progress there.
-    await state.clear()
+    # Leaving a section abandons whatever flow was in progress there (a check being graded goes on).
+    await leave_flow(state)
     await remove_message(callback.message)
     await callback.message.answer(t("menu.shown", lang), reply_markup=main_menu_kb(lang))

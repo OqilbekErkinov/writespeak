@@ -31,15 +31,19 @@ def parse_band(raw: str) -> float | None:
     return value
 
 
-def record(kind: str, values: dict[str, str], by: str, note: str = "") -> dict | None:
+def record(kind: str, values: dict[str, str], by: str, note: str = "", role: str = "admin") -> dict | None:
     """The teacher_bands to keep, from the form's values ({"TA": "7", ...}); None when every band is empty (the
-    marks taken off). ValueError when a band is missing or no IELTS band."""
+    marks taken off). ValueError when a band is missing or no IELTS band. `role`: who marked it - a "teacher"
+    login's marks wait for the owner's approval before they teach the Speaking scoring as anchors
+    (services/ai/speaking_grader.refresh_teacher_anchors; the 2026-11-15 audit: one careless login could
+    shift every student's bands within 10 minutes); an admin's or the owner's count at once."""
     bands = {key: parse_band(values.get(key, "")) for key, _, _ in CRITERIA[kind]}
     if all(v is None for v in bands.values()):
         return None
     if any(v is None for v in bands.values()):
         raise ValueError("every criterion needs a band")
-    return {"bands": bands, "overall": overall_band(list(bands.values())), "by": by,
+    return {"bands": bands, "overall": overall_band(list(bands.values())), "by": by, "role": role,
+            "approved": role != "teacher",
             "at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "note": (note or "").strip()[:500]}
 
 

@@ -8,7 +8,6 @@ become the scoring runs' anchors. Offline - a throwaway Postgres and Redis (test
 import asyncio
 import sys
 from pathlib import Path
-from types import SimpleNamespace as NS
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -153,10 +152,25 @@ async def web_and_db() -> None:
     check("the weekly report: 2 checks, the mean, the one 1.5 apart", "2</b> ta tekshiruvni" in report
           and "S#" in report and "-1.5" in report, report)
 
+    # a teacher login's marks teach the scoring only once the owner approves them (2026-11-15)
     speaking_grader._teacher_anchors.update(at=-1e9, items={})
     await speaking_grader.refresh_teacher_anchors()
     got = speaking_grader._teacher_anchors["items"].get(f"teachers-s{sid}")
-    check("a teacher-marked Speaking check becomes an anchor", got is not None and got["band"] == 8.5
+    check("a teacher login's Speaking marks: no anchor before the owner approves them", got is None, got)
+    async with httpx.AsyncClient(transport=transport, base_url="https://testserver") as teacher:
+        await teacher.post("/login", data={"username": "ustoz1", "password": "pw-ustoz"})
+        r = await teacher.post(f"/checks/s/{sid}/teacher/approve", data={"back": "/checks"})
+        check("...a teacher cannot approve them", r.status_code in (302, 303)
+              and "approved" not in r.headers.get("location", ""), r.headers.get("location"))
+    async with httpx.AsyncClient(transport=transport, base_url="https://testserver") as owner:
+        await owner.post("/login", data={"username": settings.web_admin_username,
+                                         "password": settings.web_admin_password})
+        r = await owner.post(f"/checks/s/{sid}/teacher/approve", data={"back": "/checks"})
+        check("...the owner approves them", "done=approved" in r.headers.get("location", ""), r.headers)
+    speaking_grader._teacher_anchors.update(at=-1e9, items={})
+    await speaking_grader.refresh_teacher_anchors()
+    got = speaking_grader._teacher_anchors["items"].get(f"teachers-s{sid}")
+    check("an approved teacher-marked Speaking check becomes an anchor", got is not None and got["band"] == 8.5
           and got["bands"] == {"FC": 8, "LR": 9, "GRA": 8, "P": 9}
           and got["answers"] == [{"question": "Why is it hard?", "transcript": "It depends on people."}], got)
 

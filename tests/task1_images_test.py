@@ -660,8 +660,9 @@ async def part2_bot() -> None:
         before = (await last_submission()).id
         calls = await send(text=fake.answer)
         setattr(fake, setup, False)
+        # since 2026-11-15 the failure says so with "🔁 Try again" (the answer is kept: bot/handlers/check_retry.py)
         check(f"[{tag}] the student is told the check failed (no coins), nothing saved",
-              t("writing.grading_failed", L) in texts(calls) and not document_sent(calls)
+              any(x.startswith(t("check.failed", L)[:40]) for x in texts(calls)) and not document_sent(calls)
               and (await last_submission()).id == before, texts(calls))
 
     # 9. Task 2 typed: untouched - no chart reading, no pictures.
@@ -898,7 +899,7 @@ async def recheck_flow() -> None:
               await state.get_state() == WritingStates.confirming_recheck.state and "#4" in said[-1][0]
               and buttons == [CB_RECHECK_NEW, CB_RECHECK_OLD] and not documents, (said, documents))
         try:
-            await writing.recheck_choice(NS(answer=nothing, message=message, data=CB_RECHECK_NEW), state, "uz")
+            await writing.recheck_choice(NS(answer=nothing, message=message, from_user=NS(id=1), data=CB_RECHECK_NEW), state, "uz")
             began = False
         except Started:
             began = True
@@ -907,7 +908,7 @@ async def recheck_flow() -> None:
         said.clear()
         state = await fresh_state()
         await writing._run_grading(message, state, "uz")
-        await writing.recheck_choice(NS(answer=nothing, message=message, data=CB_RECHECK_OLD), state, "uz")
+        await writing.recheck_choice(NS(answer=nothing, message=message, from_user=NS(id=1), data=CB_RECHECK_OLD), state, "uz")
         check("...'no' sends the saved report, nothing marked",
               len(documents) == 1 and "#4" in documents[0] and started not in [s for s, _ in said], (documents, said))
 

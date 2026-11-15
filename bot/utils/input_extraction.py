@@ -18,6 +18,7 @@ audio/video file, forwarded audio).
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -30,7 +31,7 @@ from bot.i18n import t
 from bot.utils.album import collect_album
 from db.models import SourceType
 from services.ai import usage
-from services.ai.document_parser import extract_text_from_docx, extract_text_from_pdf
+from services.ai.document_parser import MAX_PDF_PAGES, TooManyPages, extract_text_from_docx, extract_text_from_pdf
 from services.ai.ocr import extract_text_from_image
 from services.ai.openai_client import is_image_error
 from services.ai.transcription import ensure_mp3, transcribe_mp3
@@ -126,7 +127,7 @@ async def read_images(message: Message, lang: str) -> list[str] | None:
                 content = await _download(m.bot, m.document.file_id)
             else:
                 continue
-            image_bytes, _, image_ext = _prepare_image(content, lang)
+            image_bytes, _, image_ext = await asyncio.to_thread(_prepare_image, content, lang)
             paths.append(save_upload(m.from_user.id, image_bytes, image_ext))
     except UnsupportedInputError as e:
         await message.answer(str(e))
@@ -171,7 +172,7 @@ async def _extract_one(
 
     if message.photo:
         content = await _download(bot, message.photo[-1].file_id)  # highest resolution
-        image_bytes, image_mime, image_ext = _prepare_image(content, lang)
+        image_bytes, image_mime, image_ext = await asyncio.to_thread(_prepare_image, content, lang)
         saved_path = save_upload(user_id, image_bytes, image_ext)
         text = await extract_text_from_image(image_bytes, mime_type=image_mime, mode=ocr_mode)
         return _join(caption, text), SourceType.photo, saved_path, True
@@ -192,11 +193,16 @@ async def _extract_one(
 
         if ext == ".pdf" or mime == "application/pdf":
             saved_path = save_upload(user_id, content, ".pdf")
-            return _join(caption, await extract_text_from_pdf(content)), SourceType.pdf, saved_path, False
+            try:
+                text = await extract_text_from_pdf(content)
+            except TooManyPages as e:
+                raise UnsupportedInputError(t("input.pdf_too_long", lang, pages=e.pages, max=MAX_PDF_PAGES)) from e
+            return _join(caption, text), SourceType.pdf, saved_path, False
 
         if ext == ".docx" or mime == DOCX_MIME:
             saved_path = save_upload(user_id, content, ".docx")
-            return _join(caption, extract_text_from_docx(content)), SourceType.docx, saved_path, False
+            text = await asyncio.to_thread(extract_text_from_docx, content)
+            return _join(caption, text), SourceType.docx, saved_path, False
 
         if ext == ".txt" or mime == "text/plain":
             saved_path = save_upload(user_id, content, ".txt")
@@ -205,7 +211,7 @@ async def _extract_one(
 
         if _is_image_document(doc):
             # A photo sent "as a file" (uncompressed) - common from desktop.
-            image_bytes, image_mime, image_ext = _prepare_image(content, lang)
+            image_bytes, image_mime, image_ext = await asyncio.to_thread(_prepare_image, content, lang)
             saved_path = save_upload(user_id, image_bytes, image_ext)
             text = await extract_text_from_image(image_bytes, mime_type=image_mime, mode=ocr_mode)
             return _join(caption, text), SourceType.photo, saved_path, True
@@ -239,9 +245,15 @@ def _audio_like(message: Message) -> tuple[str | None, str]:
     if message.video:
         return message.video.file_id, message.video.file_name or "video.mp4"
     doc = message.document
-    if doc and (doc.mime_type or "").startswith(("audio/", "video/")):
+    if doc and ((doc.mime_type or "").startswith(("audio/", "video/"))
+                or Path((doc.file_name or "").lower()).suffix in AUDIO_EXTENSIONS):
+        # by its name too: an .m4a or .mp3 sent as "application/octet-stream" was turned down (2026-11-15)
         return doc.file_id, doc.file_name or "audio.mp3"
     return None, ""
+
+
+AUDIO_EXTENSIONS = {".mp3", ".m4a", ".aac", ".wav", ".ogg", ".oga", ".opus", ".flac", ".amr", ".wma", ".webm",
+                    ".mp4", ".mov", ".3gp", ".mkv"}
 
 
 def _is_image_document(doc) -> bool:

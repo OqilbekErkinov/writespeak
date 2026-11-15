@@ -13,7 +13,6 @@ import functools
 import html
 import logging
 from datetime import date, datetime, timedelta, timezone
-from pathlib import Path
 
 from sqlalchemy import select
 
@@ -221,6 +220,10 @@ async def _payment_card(session, request: PaymentRequest) -> str:
     ]
     if request.receipt_file_id is None:
         lines.append("🧾 Chek yuborilmagan")
+    twins = await crud.same_receipt(session, request)
+    if twins:  # the same receipt picture sent for another payment (2026-11-15)
+        lines.append("⚠️ <b>Bu chek rasmi avval ishlatilgan:</b> " + ", ".join(
+            f"#{p.id} ({'tasdiqlangan' if p.status == PaymentStatus.approved else 'kutmoqda'})" for p in twins))
     if request.status != PaymentStatus.pending:
         if request.reviewed_by == WEB_REVIEWER_ID:
             by = "web panel"
@@ -690,11 +693,16 @@ async def teacher_report_if_due() -> None:
     if now.weekday() != 0 or now.hour < 9:
         return
     year, week, _ = now.isocalendar()
-    if not await crm.redis().set(f"crm:teachers:{year}-{week}", "1", nx=True, ex=60 * 24 * 3600):
+    key = f"crm:teachers:{year}-{week}"
+    if not await crm.redis().set(key, "1", nx=True, ex=60 * 24 * 3600):
         return
-    text = await teacher_report(7)
-    if text:
-        await crm.post("daily", text)
+    try:
+        text = await teacher_report(7)
+        if text:
+            await crm.post("daily", text)
+    except Exception:
+        await crm.redis().delete(key)  # not sent: tried again on the next minute (2026-11-15: lost for the week)
+        raise
 
 
 async def teacher_report(days: int | None = 7) -> str:

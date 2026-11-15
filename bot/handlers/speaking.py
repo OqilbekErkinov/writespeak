@@ -117,6 +117,11 @@ router = Router(name="speaking")
 
 PART_TO_CALLBACK = {part: cb for cb, part in PART_CALLBACKS.items()}
 RESUBMISSION_SIMILARITY = 0.9
+# One answer sent on its own: at most this long (a Part 2 talk is 2 minutes), at least this much sound
+MAX_ANSWER_MINUTES = 5
+MIN_ANSWER_SECONDS = 0.5
+# A question shown to the student (a whole page OCR'd as one "question" would pass Telegram's 4096 characters)
+MAX_QUESTION_CHARS = 2500
 
 # Serializes one user's answer handling, so several voice messages sent in
 # quick succession are recorded against consecutive questions instead of
@@ -279,7 +284,8 @@ async def _ask_current_question(message: Message, state: FSMContext, lang: str) 
     questions = data["questions"]
     parts = _question_parts(data)
     index = data["q_index"]
-    question = html.escape(questions[index], quote=False)
+    shown = questions[index] if len(questions[index]) <= MAX_QUESTION_CHARS else questions[index][:MAX_QUESTION_CHARS] + "…"
+    question = html.escape(shown, quote=False)
 
     if parts[index] == "part2":
         text = t("speaking.cue_card", lang, question=question)
@@ -315,7 +321,7 @@ async def _ask_current_question(message: Message, state: FSMContext, lang: str) 
 )
 async def receive_answer(message: Message, state: FSMContext, lang: str) -> None:
     try:
-        _, filename, saved_path = await extract_audio_from_message(
+        content, filename, saved_path = await extract_audio_from_message(
             message, message.bot, message.from_user.id, lang
         )
     except UnsupportedInputError as e:
@@ -325,6 +331,20 @@ async def receive_answer(message: Message, state: FSMContext, lang: str) -> None
         logger.warning("Audio download failed for user %s: %s", message.from_user.id, e)
         key = "input.file_too_big" if "too big" in str(e).lower() else "writing.could_not_read"
         await message.answer(t(key, lang))
+        return
+    # Heard before it is taken (2026-11-15): a video without sound, or one answer of half an hour, used to be
+    # accepted and fail the whole check later (Whisper takes up to ~13 minutes) - with every answer lost.
+    try:
+        seconds = wav_seconds(await to_wav16k(content, filename))
+    except (RuntimeError, EOFError, wave.Error):
+        logger.warning("Answer unreadable for user %s (%s)", message.from_user.id, filename)
+        await message.answer(t("speaking.answer_no_sound", lang))
+        return
+    if seconds < MIN_ANSWER_SECONDS:
+        await message.answer(t("speaking.answer_no_sound", lang))
+        return
+    if seconds > MAX_ANSWER_MINUTES * 60:
+        await message.answer(t("speaking.answer_too_long", lang, length=one.clock(seconds), max=MAX_ANSWER_MINUTES))
         return
 
     async with _user_locks[message.from_user.id]:

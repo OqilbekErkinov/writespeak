@@ -36,6 +36,7 @@ from bot.keyboards.main_menu_kb import BTN_GROUP_EN, BTN_GROUP_RU, BTN_GROUP_UZ,
 from bot.keyboards.payment_kb import buy_coins_kb
 from bot.states.group_states import GroupStates
 from bot.utils import crm_events
+from bot.utils.crm import redis
 from bot.utils.cabinet_auth import cabinet_login_url
 from bot.utils.group_invite import center_invite_link, invite_link
 from bot.utils.messages import show_screen
@@ -49,6 +50,9 @@ from services.storage.file_storage import read_file
 
 logger = logging.getLogger(__name__)
 router = Router(name="group")
+
+# The daily limit a group's sponsorship starts with (checks per student per day; the teacher can change it)
+DEFAULT_SPONSOR_LIMIT = 3
 
 RECENT_WORKS = 6
 SEND_PAUSE = 0.05
@@ -659,6 +663,9 @@ async def do_gift(callback: CallbackQuery, lang: str) -> None:
     group = await _managed(callback, group_id, lang)
     if group is None or await _payer_or_alert(callback, group, lang) is None:
         return
+    if not await _once(callback):
+        await callback.answer()
+        return
     async with get_session() as session:
         credited = await crud.gift_coins(session, group=group, student_ids=[student_id], amount=amount)
     if not credited:
@@ -674,11 +681,23 @@ async def do_gift(callback: CallbackQuery, lang: str) -> None:
     await crm_events.coins_gifted(group.name, callback.from_user, credited, amount)
 
 
+async def _once(callback: CallbackQuery) -> bool:
+    """A gift's confirmation button works once (2026-11-15: a double tap gave every student the coins twice)."""
+    try:
+        return bool(await redis().set(f"gift:done:{callback.message.chat.id}:{callback.message.message_id}",
+                                      "1", nx=True, ex=86400))
+    except Exception:  # noqa: BLE001 - Redis away: the gift goes on (the balance check still holds)
+        return True
+
+
 @router.callback_query(F.data.startswith(kb.CB_GIFT_ALL_DO_PREFIX))
 async def do_gift_all(callback: CallbackQuery, lang: str) -> None:
     group_id, amount = _ints(callback.data, kb.CB_GIFT_ALL_DO_PREFIX)
     group = await _managed(callback, group_id, lang)
     if group is None or await _payer_or_alert(callback, group, lang) is None:
+        return
+    if not await _once(callback):
+        await callback.answer()
         return
     async with get_session() as session:
         members = await crud.get_group_members(session, group.id)
@@ -753,8 +772,14 @@ async def toggle_sponsor(callback: CallbackQuery, lang: str) -> None:
     if group is None or await _payer_or_alert(callback, group, lang) is None:
         return
     await callback.answer()
+    turning_on = not group.sponsor_checks
+    changes = {"sponsor_checks": turning_on}
+    if turning_on and group.daily_limit is None:
+        # switched on with a daily limit (2026-11-15: unlimited by default, one student could spend the
+        # teacher's coins all day) - the teacher can set any other, "∞" included, right below
+        changes["daily_limit"] = DEFAULT_SPONSOR_LIMIT
     async with get_session() as session:
-        await crud.update_group(session, group.id, sponsor_checks=not group.sponsor_checks)
+        await crud.update_group(session, group.id, **changes)
     await _settings_screen(callback, group, lang)
 
 

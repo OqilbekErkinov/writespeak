@@ -14,7 +14,7 @@ from datetime import datetime
 
 from sqlalchemy import select
 
-from bot.utils import crm, crm_events
+from bot.utils import balance, crm, crm_events
 from db import crud
 from db.database import get_session
 from db.models import PracticeQuestion
@@ -64,8 +64,17 @@ async def main() -> None:
     crm.install_error_forwarding("importer")  # errors to the admins' group and the panel (bot/utils/crm.py)
     await asyncio.sleep(FIRST_RUN_DELAY)
     while True:
-        result = await run_once()
-        await crm_events.import_done(result)  # the run's OpenAI spend, to the daily totals
+        # Not while the OpenAI credit is out (checks are paused then too); a failed run is logged and waits for
+        # the next one - it used to end the process, and the restart ran (and paid for) the import again at
+        # once (2026-11-15).
+        if await balance.credit_paused():
+            logger.info("Practice import skipped: the OpenAI credit is out")
+        else:
+            try:
+                result = await run_once()
+                await crm_events.import_done(result)  # the run's OpenAI spend, to the daily totals
+            except Exception:  # noqa: BLE001
+                logger.exception("Practice import run failed - the next one in %s h", INTERVAL_HOURS)
         await asyncio.sleep(INTERVAL_HOURS * 3600)
 
 
