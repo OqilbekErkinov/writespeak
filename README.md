@@ -139,7 +139,7 @@ tekshiruv = 5 000 so'm" edi). 2026-11-15 dan har bir tekshiruv bir xil narxda (a
 - Coin baholash boshlanganda ushlab turiladi va hisobot saqlanmasa qaytariladi (yakunlanmagan tekshiruv bepul), muddati tugamaydi.
 - Paketlar: 10 / 25 / 50 / 100 / 200 coin — 10 000 / 23 000 / 45 000 / 88 000 / 170 000 so'm.
   O'qituvchi va markazlarga qo'shimcha: 500 / 1 000 / 2 500 / 5 000 coin — 400 000 / 780 000 /
-  1 875 000 / 3 750 000 so'm (markaz coini 750 so'mdan arzon emas; talabalar tekshiruvini guruh to'laganda shu balansdan yechiladi).
+  1 900 000 / 3 750 000 so'm (markaz coini 750 so'mdan arzon emas; talabalar tekshiruvini guruh to'laganda shu balansdan yechiladi).
 - Referal: taklif qilingan do'st **birinchi marta coin sotib olganda** ikkalasiga
   **`REFERRAL_COINS`** (standart: 5) coin.
 - Cheksiz oylik obuna endi sotilmaydi; faol obunalar muddati tugaguncha ishlaydi.

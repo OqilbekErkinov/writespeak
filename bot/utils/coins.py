@@ -14,7 +14,7 @@ Measured AI cost per check (7 days to 2026-11-15, $1 = 12 014 so'm): Writing
 Task 1 ~2 400 so'm (worst seen ~3 700), Task 2 ~2 100, Speaking 1 400-1 600.
 At 5 coins the dearest, Task 1, costs 3 750 so'm on the cheapest center coin
 (750): ~36% left on average, ~0 in the worst case - which is why no pack sells
-a coin below 750 so'm.
+a coin below 750 so'm (2500 coins at 760, so the biggest pack stays the cheapest).
 """
 from __future__ import annotations
 
@@ -41,7 +41,7 @@ COIN_PACKS: tuple[tuple[int, int], ...] = (
 CENTER_PACKS: tuple[tuple[int, int], ...] = (
     (500, 400_000),
     (1000, 780_000),
-    (2500, 1_875_000),
+    (2500, 1_900_000),
     (5000, 3_750_000),  # 750 so'm a coin, the floor
 )
 ALL_PACKS = dict((*COIN_PACKS, *CENTER_PACKS))
