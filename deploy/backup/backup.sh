@@ -36,6 +36,7 @@ DB_CONTAINER=writespeak-db-1
 REDIS_CONTAINER=writespeak-redis-1
 PG_IMAGE=pgvector/pgvector:pg16
 DISK_ALERT=85
+KEEP_UPLOADS_DAYS=30
 KEEP_DAILY=14
 KEEP_WEEKLY=8
 KEEP_MONTHLY=12
@@ -155,7 +156,15 @@ prune "$DEST/monthly" "$KEEP_MONTHLY"
 
 echo "$(date '+%F %T') OK $TS db=$(du -h "$FINAL/db.dump" | cut -f1) files=$(du -h "$FINAL/storage.tar.gz" | cut -f1) redis=$(du -h "$FINAL/redis.rdb" | cut -f1) restore-check: $restored"
 
-# 7. The disk: a full one stops Postgres and Redis, and the bot with them.
+# 7. Retention (the user, 2026-11-15: "1 month"): the students' own uploads - their photos, voices,
+#    recordings, documents - go after KEEP_UPLOADS_DAYS, once tonight's backup holds them. The PDF reports
+#    (reports/), the Practice and assignment pictures (practice/) and the chart keys (chart_keys/) stay.
+#    A failure here never fails the backup.
+removed=$(find "$APP/data/storage" -mindepth 3 -path "*/uploads/*" -type f -mtime +"$KEEP_UPLOADS_DAYS" -print -delete \
+  2>/dev/null | wc -l) || removed="?"
+echo "$(date '+%F %T') retention: $removed upload(s) older than $KEEP_UPLOADS_DAYS days removed"
+
+# 8. The disk: a full one stops Postgres and Redis, and the bot with them.
 used=$(df --output=pcent / | tail -1 | tr -dc '0-9')
 if [ -n "$used" ] && [ "$used" -ge "$DISK_ALERT" ]; then
   echo "$(date '+%F %T') disk ${used}% full"

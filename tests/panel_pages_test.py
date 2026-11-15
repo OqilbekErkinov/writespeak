@@ -144,14 +144,21 @@ async def checks_modals(owner: httpx.AsyncClient) -> None:
     from db.database import get_session
     from db.models import SpeakingPart, SpeakingSubmission
 
+    recording = Path("/tmp/panel_pages_test.mp3")
+    recording.write_bytes(b"ID3 test")  # the Audio button shows only while the recording is on the disk
     async with get_session() as session:
         session.add(SpeakingSubmission(user_id=5550001, part=SpeakingPart.part3, overall_band=6.0, question_text="Q",
                                        criteria_scores={"FC": 6, "LR": 6, "GRA": 5.5, "Pronunciation": 6},
-                                       audio_file_path="/tmp/none.mp3"))
+                                       audio_file_path=str(recording)))
+        session.add(SpeakingSubmission(user_id=5550001, part=SpeakingPart.part1, overall_band=6.0, question_text="Q",
+                                       criteria_scores={"FC": 6, "LR": 6, "GRA": 6, "Pronunciation": 6},
+                                       audio_file_path="/tmp/gone-after-a-month.mp3"))
         await session.commit()
     html = (await owner.get("/checks")).text
     check("the checks page: one marking window, one listening window, no inline form", 'id="mkModal"' in html
           and 'id="auModal"' in html and 't-form' not in html and "t-open" in html and "a-open" in html)
+    check("a recording past the month's retention: no Audio button for it", html.count("a-open btn") == 0
+          and html.count('class="btn btn-sm a-open"') == 1, html.count('class="btn btn-sm a-open"'))
     check("the admin's marking window carries the bot's bands", "&#34;GRA&#34;: 5.5" in html or '"GRA": 5.5' in html
           or "\\u0022GRA\\u0022: 5.5" in html, "")
     r = await owner.post("/checks/s/999999/teacher", data={"FC": "7", "LR": "7", "GRA": "7", "P": "x", "back": "/checks"})

@@ -13,6 +13,7 @@ when (bot/utils/activity.py). Times are shown in Tashkent time.
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 import statistics
 from collections import Counter
 from datetime import datetime, timedelta, timezone
@@ -151,7 +152,8 @@ def _check_row(sub, kind: str) -> dict:
         # the teachers' bands (bot/utils/teacher_bands.py) and how far the bot is from them
         "teacher": sub.teacher_bands, "criteria_scores": sub.criteria_scores or {},
         "diff": teacher_bands.difference(kind, sub.overall_band, sub.criteria_scores, sub.teacher_bands),
-        "audio": kind == "s" and bool(getattr(sub, "audio_file_path", None)),
+        # the recording itself (kept a month: deploy/backup/backup.sh retention) - no "Audio" button once gone
+        "audio": kind == "s" and bool(getattr(sub, "audio_file_path", None)) and Path(sub.audio_file_path).exists(),
         "fields": [(key, label, (sub.teacher_bands or {}).get("bands", {}).get(key))
                    for key, _, label in teacher_bands.CRITERIA[kind]],
         "bot": teacher_bands.bot_bands(kind, sub.criteria_scores),  # the bot's bands by the teachers' keys
