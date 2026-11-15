@@ -11,7 +11,9 @@ Zaxiralar har kuni 03:50 (Toshkent) da `deploy/backup/backup.sh` tomonidan olina
 | Kompyuter: `D:\Backups\WriteSpeak\monthly\` | har oyning birinchi nusxasi, doimiy |
 
 Har bir papkada: `db.dump` (baza), `storage.tar.gz` (yuklangan fayllar, PDF
-hisobotlar, savol rasmlari), `env` (`.env` nusxasi — bot token va kalitlar),
+hisobotlar, savol rasmlari, ustozlar anchorlari `calibration/`, guruh sozlamasi `crm.json`),
+`redis.rdb` (Redis: OpenAI xarajat daftari, balans hisoblagichi, test rejimi),
+`ledger.txt` (xarajat daftari oddiy matnda), `env` (`.env` nusxasi — bot token va kalitlar),
 `SHA256SUMS`. Log: serverda `/var/log/writespeak-backup.log`, kompyuterda
 `D:\Backups\WriteSpeak\pull.log`. Zaxira xato bersa, adminlarga Telegram
 xabari keladi.
@@ -37,6 +39,16 @@ bilan alohida bazaga tiklab, kerakli qatorlarni ko'chiring.
 
 ```bash
 tar -xzf $B/storage.tar.gz -C /opt/writespeak/data   # data/storage va data/books
+```
+
+## 2a. Redis'ni tiklash (xarajat daftari, balans, test rejimi)
+
+```bash
+cd /opt/writespeak
+docker compose stop bot admin_web importer
+docker compose stop redis
+docker run --rm -v writespeak_redisdata:/data -v $B:/b alpine sh -c 'cp /b/redis.rdb /data/dump.rdb && rm -f /data/appendonly.aof && rm -rf /data/appendonlydir'
+docker compose start redis bot admin_web importer
 ```
 
 ## 3. `.env` ni tiklash
