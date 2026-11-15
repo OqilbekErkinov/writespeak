@@ -28,7 +28,7 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy import text as sql_text
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, query_expression, relationship
 
 EMBEDDING_DIM = 1536  # text-embedding-3-small
 
@@ -184,6 +184,11 @@ class WritingSubmission(Base):
     # Since 2026-10-16: {"model_answer": {"source", "aimed_at", "provisional",
     # "shows", "writer", "reference_ids"}, "resubmission_of"} - see bot/handlers/writing.py.
     report_data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Filled only by a query that asks for them (webapp/insights.py _light, 2026-11-15): the check's cost and how
+    # it was paid, read out of report_data by Postgres - the panel's lists no longer load the whole JSON (the
+    # model answers, the transcripts, the chart sheet) of every check.
+    cost_usd: Mapped[float | None] = query_expression()
+    paid_mode: Mapped[str | None] = query_expression()
 
     feedback_pdf_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     practice_question_id: Mapped[int | None] = mapped_column(
@@ -229,6 +234,11 @@ class SpeakingSubmission(Base):
     # Since 2026-10-13: {"number", "metrics", "audio_hash", "transcripts",
     # "questions", "model_answers"} - see bot/handlers/speaking.py.
     report_data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Filled only by a query that asks for them (webapp/insights.py _light, 2026-11-15): the check's cost and how
+    # it was paid, read out of report_data by Postgres - the panel's lists no longer load the whole JSON (the
+    # model answers, the transcripts, the chart sheet) of every check.
+    cost_usd: Mapped[float | None] = query_expression()
+    paid_mode: Mapped[str | None] = query_expression()
 
     feedback_pdf_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     practice_question_id: Mapped[int | None] = mapped_column(

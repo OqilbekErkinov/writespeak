@@ -168,7 +168,7 @@
         <div class="f-form-h">➖ Xarajat</div>
         <select name="category" aria-label="Xarajat turi">{% for k, v in f.expense_names.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
         <input type="text" name="amount" inputmode="numeric" placeholder="Summa, so'm" required aria-label="Summa">
-        <input type="date" name="day" value="{{ f.today }}" max="{{ f.today }}" aria-label="Kun">
+        <input type="date" name="day" value="{{ f.today }}" min="2025-01-01" max="{{ f.today }}" aria-label="Kun">
         <input type="text" name="note" placeholder="Izoh (ixtiyoriy)" maxlength="300" aria-label="Izoh">
         <button type="submit" class="btn btn-bad">Xarajat qo'shish</button>
       </form>
@@ -177,7 +177,7 @@
         <div class="f-form-h">➕ Tushum</div>
         <select name="category" aria-label="Tushum turi">{% for k, v in f.income_names.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
         <input type="text" name="amount" inputmode="numeric" placeholder="Summa, so'm" required aria-label="Summa">
-        <input type="date" name="day" value="{{ f.today }}" max="{{ f.today }}" aria-label="Kun">
+        <input type="date" name="day" value="{{ f.today }}" min="2025-01-01" max="{{ f.today }}" aria-label="Kun">
         <input type="text" name="note" placeholder="Izoh (ixtiyoriy)" maxlength="300" aria-label="Izoh">
         <button type="submit" class="btn btn-good">Tushum qo'shish</button>
       </form>
@@ -303,7 +303,7 @@
   @media (max-width: 560px) { .f-forms { grid-template-columns: 1fr; } .f-big { font-size: 28px; } }
 </style>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js" integrity="sha384-NrKB+u6Ts6AtkIhwPixiKTzgSKNblyhlk0Sohlgar9UHUBzai/sgnNNWWd291xqt" crossorigin="anonymous"></script>
 <script>
   (function () {
     const C = {{ chart | tojson }};

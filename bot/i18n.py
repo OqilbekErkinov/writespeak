@@ -395,6 +395,7 @@ _T: dict[str, dict[str, str]] = {
         "главное меню\n/cancel — отменить текущее действие\n/help — эта справка\n\nВопросы и проблемы — через "
         "«💬 Связь с админом».",
     },
+    "check.report_resent": {"uz": "📄 Hisobotingiz qayta yuborildi.", "ru": "📄 Ваш отчёт отправлен повторно."},
     "check.still_failed": {
         "uz": "Hozircha tekshiruv yana yakunlanmadi. Bir necha daqiqadan so'ng qayta urinib ko'ring — javobingiz "
         "saqlangan.",
@@ -1293,9 +1294,9 @@ _T: dict[str, dict[str, str]] = {
     },
     "group.cabinet_text": {
         "uz": "🖥 <b>Web-kabinet</b> — guruhlaringiz, talabalar jadvali, vazifalar natijalari va hisobotlar "
-        "katta ekranda.\n\nHavola 10 daqiqa amal qiladi va faqat siz uchun.",
+        "katta ekranda.\n\nHavola 5 daqiqa amal qiladi, bir marta ochiladi va faqat siz uchun.",
         "ru": "🖥 <b>Веб-кабинет</b> — ваши группы, таблица учеников, результаты заданий и отчёты на "
-        "большом экране.\n\nСсылка действует 10 минут и только для вас.",
+        "большом экране.\n\nСсылка действует 5 минут, открывается один раз и только для вас.",
     },
     "quota.sponsored_note": {
         "uz": "🏫 Bu tekshiruvni o'qituvchingiz yoki o'quv markazingiz to'laydi.",

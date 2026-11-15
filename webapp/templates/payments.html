@@ -56,7 +56,11 @@
       </td>
       <td>
         {% if r.status.value == "pending" %}
-        <form class="inline" method="post" action="/payments/{{ r.id }}/approve">
+        {# no receipt yet: approving is still possible (cash, a transfer checked elsewhere) - but never by mistake #}
+        <form class="inline" method="post" action="/payments/{{ r.id }}/approve"
+              {% if not r.receipt_file_id %}data-confirm="Chek yuborilmagan — baribir tasdiqlansinmi?"
+              data-confirm-text="{{ r.coins }} coin foydalanuvchiga qo'shiladi. Pul kelganini boshqa yo'l bilan tekshirgan bo'lsangizgina tasdiqlang."
+              data-confirm-ok="Baribir tasdiqlash" data-tone="warn"{% endif %}>
           <button type="submit" class="btn btn-good">Tasdiqlash</button>
         </form>
         <form class="inline" method="post" action="/payments/{{ r.id }}/reject">
@@ -64,7 +68,10 @@
         </form>
         {% elif r.status.value == "approved" %}
         <form class="inline" method="post" action="/payments/{{ r.id }}/test"
-              title="{{ 'Haqiqiy deb belgilash: tushumga kiradi' if r.is_test else 'Sinov deb belgilash: tushumga kirmaydi' }}">
+              title="{{ 'Haqiqiy deb belgilash: tushumga kiradi' if r.is_test else 'Sinov deb belgilash: tushumga kirmaydi' }}"
+              {% if not r.is_test %}data-confirm="Test deb belgilansinmi?"
+              data-confirm-text="Faqat hisob o'zgaradi: to'lov tushumga kirmaydi. Berilgan coinlar (va taklif bonusi) foydalanuvchida qoladi — kerak bo'lsa ularni foydalanuvchi sahifasida alohida ayiring."
+              data-confirm-ok="Test deb belgilash" data-tone="warn"{% endif %}>
           <button type="submit" class="btn btn-sm">{{ "Haqiqiy" if r.is_test else "Test" }}</button>
         </form>
         {% endif %}

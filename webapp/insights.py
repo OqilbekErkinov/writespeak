@@ -17,8 +17,8 @@ import statistics
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import func, select
-from sqlalchemy.orm import load_only
+from sqlalchemy import func, inspect, select
+from sqlalchemy.orm import load_only, with_expression
 
 from bot.config import settings
 from bot.utils import runtime, teacher_bands
@@ -97,14 +97,19 @@ def day_start_utc(days_back: int = 0) -> datetime:
 
 
 def _cost(sub) -> float:
-    """The check's OpenAI cost in dollars (services/ai/usage.summary in report_data)."""
+    """The check's OpenAI cost in dollars (services/ai/usage.summary in report_data) - read by Postgres when the
+    row came through _light (report_data not loaded)."""
+    if "report_data" in inspect(sub).unloaded:
+        return float(sub.cost_usd or 0.0)
     cost = (sub.report_data or {}).get("cost") or {}
     return float(cost.get("total_usd") or cost.get("usd") or 0.0)
 
 
 def _paid_mode(sub) -> str:
-    paid = (sub.report_data or {}).get("paid_with") or {}
-    mode = paid.get("mode")
+    if "report_data" in inspect(sub).unloaded:
+        mode = sub.paid_mode
+    else:
+        mode = ((sub.report_data or {}).get("paid_with") or {}).get("mode")
     if mode is None:
         return "guruh to'ladi" if sub.paid_by_id else "—"
     return PAID_NAMES.get(mode, mode)
@@ -118,12 +123,18 @@ def _criteria(scores: dict | None) -> str:
 
 
 def _light(model):
-    """Only the columns a check's row needs - not the essay, transcript or marks."""
+    """Only the columns a check's row needs - not the essay, transcript or marks, and of report_data only its
+    cost and payment mode, read by Postgres (`.options(*_light(Model))`)."""
     kind = model.task_type if model is WritingSubmission else model.part
     extra = (model.audio_file_path,) if model is SpeakingSubmission else ()
-    return load_only(model.id, model.user_id, kind, model.overall_band, model.criteria_scores, model.coins_spent,
-                     model.report_data, model.feedback_pdf_path, model.practice_question_id,
-                     model.assignment_part_id, model.paid_by_id, model.created_at, model.teacher_bands, *extra)
+    cost = model.report_data["cost"]
+    return (
+        load_only(model.id, model.user_id, kind, model.overall_band, model.criteria_scores, model.coins_spent,
+                  model.feedback_pdf_path, model.practice_question_id, model.assignment_part_id, model.paid_by_id,
+                  model.created_at, model.teacher_bands, model.is_test, *extra),
+        with_expression(model.cost_usd, func.coalesce(cost["total_usd"].as_float(), cost["usd"].as_float(), 0.0)),
+        with_expression(model.paid_mode, model.report_data["paid_with"]["mode"].as_string()),
+    )
 
 
 def _check_row(sub, kind: str) -> dict:
@@ -144,6 +155,7 @@ def _check_row(sub, kind: str) -> dict:
         "fields": [(key, label, (sub.teacher_bands or {}).get("bands", {}).get(key))
                    for key, _, label in teacher_bands.CRITERIA[kind]],
         "bot": teacher_bands.bot_bands(kind, sub.criteria_scores),  # the bot's bands by the teachers' keys
+        "is_test": bool(sub.is_test),
     }
 
 
@@ -230,10 +242,10 @@ async def user_profile(session, user_id: int) -> dict | None:
     referrals = (await session.execute(
         select(User).where(User.referred_by == user_id).order_by(User.created_at.desc()))).scalars().all()
     writings = (await session.execute(
-        select(WritingSubmission).options(_light(WritingSubmission)).where(WritingSubmission.user_id == user_id)
+        select(WritingSubmission).options(*_light(WritingSubmission)).where(WritingSubmission.user_id == user_id)
         .order_by(WritingSubmission.created_at.desc()))).scalars().all()
     speakings = (await session.execute(
-        select(SpeakingSubmission).options(_light(SpeakingSubmission)).where(SpeakingSubmission.user_id == user_id)
+        select(SpeakingSubmission).options(*_light(SpeakingSubmission)).where(SpeakingSubmission.user_id == user_id)
         .order_by(SpeakingSubmission.created_at.desc()))).scalars().all()
     payments = (await session.execute(
         select(PaymentRequest).where(PaymentRequest.user_id == user_id)
@@ -354,7 +366,7 @@ async def all_checks(session, kind: str, period: str, limit: int = 300, marked: 
     since = {"today": day_start_utc(), "7d": now() - timedelta(days=7), "30d": now() - timedelta(days=30)}.get(period)
     rows = []
     if kind in ("all", "w"):
-        stmt = (select(WritingSubmission).options(_light(WritingSubmission))
+        stmt = (select(WritingSubmission).options(*_light(WritingSubmission))
                 .order_by(WritingSubmission.created_at.desc()).limit(limit))
         if since:
             stmt = stmt.where(WritingSubmission.created_at >= since)
@@ -362,7 +374,7 @@ async def all_checks(session, kind: str, period: str, limit: int = 300, marked: 
             stmt = stmt.where(WritingSubmission.teacher_bands.isnot(None))
         rows += [_check_row(x, "w") for x in (await session.execute(stmt)).scalars()]
     if kind in ("all", "s"):
-        stmt = (select(SpeakingSubmission).options(_light(SpeakingSubmission))
+        stmt = (select(SpeakingSubmission).options(*_light(SpeakingSubmission))
                 .order_by(SpeakingSubmission.created_at.desc()).limit(limit))
         if since:
             stmt = stmt.where(SpeakingSubmission.created_at >= since)
@@ -418,8 +430,8 @@ async def dashboard(session) -> dict:
     today = day_start_utc()
     users = (await session.execute(select(User))).scalars().all()
     real = [u for u in users if u.id not in settings.admin_ids]
-    writings = (await session.execute(select(WritingSubmission).options(_light(WritingSubmission)))).scalars().all()
-    speakings = (await session.execute(select(SpeakingSubmission).options(_light(SpeakingSubmission)))).scalars().all()
+    writings = (await session.execute(select(WritingSubmission).options(*_light(WritingSubmission)))).scalars().all()
+    speakings = (await session.execute(select(SpeakingSubmission).options(*_light(SpeakingSubmission)))).scalars().all()
     payments = (await session.execute(select(PaymentRequest))).scalars().all()
     # real money only: a payment approved to try the bot out is no revenue (is_test, 2026-11-14)
     approved = [p for p in payments if p.status == PaymentStatus.approved and p.reviewed_at and not p.is_test]

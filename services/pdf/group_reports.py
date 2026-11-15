@@ -22,6 +22,7 @@ from openpyxl.utils import get_column_letter  # noqa: E402
 from weasyprint import HTML  # noqa: E402
 
 from db.crud import criteria_averages, criteria_tip, summarize_works  # noqa: E402
+from services.excel import safe_row  # noqa: E402
 from services.pdf.report_builder import TEMPLATE_DIR, _env  # noqa: E402
 
 _TASHKENT = timedelta(hours=5)
@@ -130,7 +131,7 @@ def _sheet(wb: Workbook, title: str, headers: list[str], rows: list[list], first
         cell.font, cell.fill = _HEADER_FONT, _HEADER_FILL
         cell.alignment = Alignment(vertical="center", wrap_text=True)
     for row in rows:
-        ws.append(row)
+        ws.append(safe_row(row))  # a student's name never becomes a formula (services/excel.py)
     ws.freeze_panes = "B2"
     for index, header in enumerate(headers, start=1):
         width = max([len(str(header))] + [len(str(r[index - 1])) for r in rows if index - 1 < len(r) and r[index - 1] is not None])

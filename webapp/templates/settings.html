@@ -96,6 +96,17 @@
   </div>
 </div>
 
+<div class="card">
+  <h2>Xavfsizlik</h2>
+  <p class="hint" style="margin:-8px 0 14px">Panelga kirish 7 kun amal qiladi. Telefon yoki kompyuter yo'qolsa, parol
+    boshqalarga ma'lum bo'lib qolsa — hamma qurilmalardan chiqaring: siz ham, barcha adminlar va ustozlar ham qaytadan
+    login qiladi.</p>
+  <form method="post" action="/settings/signout-all" data-confirm="Hamma qurilmalardan chiqarilsinmi?"
+        data-confirm-text="Siz ham, barcha adminlar va ustozlar ham qaytadan login qilishi kerak bo'ladi." data-confirm-ok="Hammasini chiqarish" data-tone="danger">
+    <button type="submit" class="btn btn-bad">🔒 Hamma qurilmalardan chiqish</button>
+  </form>
+</div>
+
 {% if env_on %}
 <p class="hint">ℹ️ Server sozlamalarida (.env) ham CHECKS_ONLY_FOR ro'yxati bor. Bu sahifadagi sozlama undan ustun turadi;
   .env dagi ro'yxat faqat Redis ma'lumotlari yo'qolsa ishlatiladi.</p>

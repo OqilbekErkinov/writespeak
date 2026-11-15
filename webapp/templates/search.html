@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Qidiruv — Bandzilla Admin{% endblock %}
+{% block content %}
+<h1>Qidiruv</h1>
+<form method="get" action="/search" class="q-form">
+  <input type="text" name="q" value="{{ q }}" placeholder="Ism, @username, Telegram ID yoki #raqam (tekshiruv, to'lov)" aria-label="Qidiruv" autofocus>
+  <button type="submit" class="btn btn-good">Qidirish</button>
+</form>
+{% if q %}
+<p class="hint">«{{ q }}» bo'yicha {{ total }} ta natija.</p>
+
+{% if found.users %}
+<div class="card">
+  <h2>Foydalanuvchilar <span class="muted num">{{ found.users|length }}</span></h2>
+  <div class="table-scroll"><table>
+    {% for u in found.users %}
+    <tr>
+      <td><a class="who" href="/users/{{ u.id }}"><span class="ava">{{ (u.full_name or "?")[:1] }}</span>
+        <span style="min-width:0"><span class="nm">{{ u.full_name }}</span><br><span class="sub">{{ "@" ~ u.username if u.username else "username yo'q" }} · {{ u.id }}</span></span></a></td>
+      <td class="num">{{ u.coin_balance }} coin</td>
+      <td class="muted">{{ u.role.value }}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+</div>
+{% endif %}
+
+{% if found.checks %}
+<div class="card">
+  <h2>Tekshiruvlar</h2>
+  <div class="table-scroll"><table>
+    {% for c in found.checks %}
+    <tr>
+      <td class="strong">{{ c.label }} <span class="muted">#{{ c.id }}</span></td>
+      <td>{% if c.user %}<a href="/users/{{ c.user.id }}">{{ c.user.full_name }}</a>{% else %}{{ c.user_id }}{% endif %}</td>
+      <td class="num">{{ c.when }}</td>
+      <td>{% if c.band is not none %}<span class="band-chip">{{ "%.1f"|format(c.band) }}</span>{% endif %}</td>
+      <td>{% if c.pdf %}<a class="btn btn-sm" href="/reports/{{ c.kind }}/{{ c.id }}.pdf" target="_blank">PDF</a>{% endif %}
+        <a class="btn btn-sm" href="/checks#c-{{ c.kind }}{{ c.id }}">Ro'yxatda</a></td>
+    </tr>
+    {% endfor %}
+  </table></div>
+</div>
+{% endif %}
+
+{% if found.payments %}
+<div class="card">
+  <h2>To'lovlar</h2>
+  <div class="table-scroll"><table>
+    {% for r in found.payments %}
+    <tr>
+      <td class="strong">To'lov #{{ r.p.id }}</td>
+      <td>{% if r.user %}<a href="/users/{{ r.user.id }}">{{ r.user.full_name }}</a>{% else %}{{ r.p.user_id }}{% endif %}</td>
+      <td class="num">{{ r.when }}</td>
+      <td class="num">{{ r.p.coins }} coin · {{ "{:,}".format(r.p.amount).replace(",", " ") }} so'm</td>
+      <td>{{ r.p.status.value }}{% if r.p.is_test %} · test{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+</div>
+{% endif %}
+
+{% if not total %}<div class="empty">Hech narsa topilmadi.</div>{% endif %}
+{% endif %}
+
+<style>
+  .q-form { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+  .q-form input { flex: 1 1 320px; }
+  a.who:hover { text-decoration: none; }
+</style>
+{% endblock %}

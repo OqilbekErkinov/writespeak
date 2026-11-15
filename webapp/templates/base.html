@@ -127,6 +127,12 @@
   html.side-mini { --side-w: 76px; }
   html.side-mini .side-fold svg { transform: rotate(180deg); }
   .fly-h, .out-ic { display: none; }
+  /* the search box (webapp/search.py) */
+  .side-search { margin: 0 14px 10px; }
+  .side-search input { width: 100%; padding: 8px 12px; border: 1px solid rgba(255,255,255,0.14); border-radius: 12px;
+    background: rgba(255,255,255,0.06); color: #fff; font: 600 13px/1.3 var(--font); }
+  .side-search input::placeholder { color: rgba(255,255,255,0.45); }
+  .side-search input:focus { outline: none; border-color: var(--lime); box-shadow: 0 0 0 3px rgba(91,242,166,0.25); }
 
   /* shared bits of the user pages and the dashboard */
   .ava { display: inline-grid; place-items: center; flex: none; width: 34px; height: 34px; border-radius: 50%;
@@ -297,6 +303,7 @@
     html.side-mini .brand .tag { display: none; }
     html.side-mini .tw-chip { justify-content: center; margin: 0 12px 10px; padding: 7px 0; font-size: 16px; }
     html.side-mini .tw-chip span { display: none; }
+    html.side-mini .side-search { display: none; }
     html.side-mini .side-nav { overflow: visible; padding: 4px 10px 16px; }
     html.side-mini .si, html.side-mini .sg > summary { position: relative; justify-content: center; gap: 0; padding: 10px 0; font-size: 0; }
     html.side-mini .sg > summary .car { display: none; }
@@ -356,7 +363,7 @@
 <body>
   {% set nav = request.state.nav if request.state.nav is defined else {} %}
   {% set g_users = active in ('users', 'support', 'broadcast') %}
-  {% set g_checks = active in ('checks', 'questions', 'charts') %}
+  {% set g_checks = active in ('checks', 'checks_stopped', 'questions', 'charts') %}
   {% set g_centers = active in ('teachers', 'groups') %}
   {% set g_money = active in ('finance', 'payments') %}
   {% set g_admin = active in ('errors', 'settings', 'admins', 'audit') %}
@@ -374,6 +381,9 @@
     {% if nav.window %}
     <a class="tw-chip" href="{{ '/settings' if nav.owner else '#' }}" title="Faqat sinovchilar va adminlar tekshira oladi">🧪 <span>Test rejimi yoqilgan</span></a>
     {% endif %}
+    <form class="side-search" method="get" action="/search" role="search">
+      <input type="text" name="q" placeholder="🔎 Ism, @user, ID, #raqam" aria-label="Qidiruv" value="{{ q if active == 'search' else '' }}">
+    </form>
     <nav class="side-nav">
       <a class="si {{ 'active' if active == 'dashboard' }}" href="/" data-tip="Dashboard"><span class="ic">🏠</span>Dashboard</a>
 
@@ -392,6 +402,7 @@
         <div class="sub">
           <div class="fly-h">Tekshiruvlar</div>
           <a href="/checks" class="{{ 'active' if active == 'checks' }}">Barcha tekshiruvlar</a>
+          <a href="/checks/stopped" class="{{ 'active' if active == 'checks_stopped' }}">To'xtagan tekshiruvlar</a>
           <a href="/questions" class="{{ 'active' if active == 'questions' }}">Practice savollari</a>
           <a href="/charts" class="{{ 'active' if active == 'charts' }}">Grafik kalitlari{% if nav.charts %}<span class="nb" title="tekshirilmagan">{{ nav.charts }}</span>{% endif %}</a>
         </div>

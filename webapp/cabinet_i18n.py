@@ -72,7 +72,7 @@ TEXTS: dict[str, dict[str, str]] = {
         "mock_note": "Umumiy ball — Writing (T1 + 2×T2)/3 va Speaking o'rtachasidan; Listening va Reading kirmaydi.",
         "expired_h1": "Kirish havolasi eskirgan",
         "expired_text": "Kabinetga kirish uchun botda <b>🏫 Guruh → 🖥 Web-kabinet</b> tugmasini bosing — "
-                        "yangi havola 10 daqiqa amal qiladi.",
+                        "yangi havola 5 daqiqa amal qiladi.",
         "open_bot": "Botni ochish",
     },
     "ru": {
@@ -140,7 +140,7 @@ TEXTS: dict[str, dict[str, str]] = {
         "mock_note": "Итоговый балл — из Writing (T1 + 2×T2)/3 и среднего Speaking; Listening и Reading не входят.",
         "expired_h1": "Ссылка для входа устарела",
         "expired_text": "Чтобы войти в кабинет, нажмите в боте <b>🏫 Группа → 🖥 Веб-кабинет</b> — "
-                        "новая ссылка действует 10 минут.",
+                        "новая ссылка действует 5 минут.",
         "open_bot": "Открыть бота",
     },
     "en": {
@@ -209,7 +209,7 @@ TEXTS: dict[str, dict[str, str]] = {
                      "Listening and Reading aren't included.",
         "expired_h1": "The sign-in link has expired",
         "expired_text": "To open the cabinet, tap <b>🏫 Group → 🖥 Web cabinet</b> in the bot — "
-                        "the new link works for 10 minutes.",
+                        "the new link works for 5 minutes.",
         "open_bot": "Open the bot",
     },
 }

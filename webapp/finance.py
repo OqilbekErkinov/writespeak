@@ -37,6 +37,7 @@ from db.models import (
     WritingSubmission,
 )
 from webapp import insights, panel
+from services.excel import safe_row
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +46,7 @@ templates = None  # set by webapp/main.py
 
 TASHKENT = timedelta(hours=5)
 PERIODS = {"month": "Bu oy", "prev": "O'tgan oy", "30d": "30 kun", "all": "Hammasi"}
+EARLIEST_DAY = date(2025, 1, 1)  # no money entry before the business began
 
 # What the hand-entered money is (FinanceEntry.category)
 EXPENSES = {
@@ -151,9 +153,9 @@ async def overview(session, period: str) -> dict:
         .scalars().all()
     users = (await session.execute(select(User))).scalars().all()
     by_id = {u.id: u for u in users}
-    writings = (await session.execute(select(WritingSubmission).options(insights._light(WritingSubmission))))\
+    writings = (await session.execute(select(WritingSubmission).options(*insights._light(WritingSubmission))))\
         .scalars().all()
-    speakings = (await session.execute(select(SpeakingSubmission).options(insights._light(SpeakingSubmission))))\
+    speakings = (await session.execute(select(SpeakingSubmission).options(*insights._light(SpeakingSubmission))))\
         .scalars().all()
     checks = [("w", x) for x in writings] + [("s", x) for x in speakings]
     spend = await ledger()
@@ -326,7 +328,8 @@ async def finance_add(request: Request, kind: str = Form(...), category: str = F
         when = date.fromisoformat(day) if day else today()
     except ValueError:
         when = today()
-    when = min(when, today())
+    # within the business's life: a typo like 0024-11-14 made the month table loop over 24 000 months
+    when = max(min(when, today()), EARLIEST_DAY)
     async with get_session() as session:
         session.add(FinanceEntry(kind=kind, category=category, amount=int(value), day=when,
                                  note=(note or "").strip()[:300] or None, created_by=panel.admin_name(request)))
@@ -403,7 +406,7 @@ async def finance_export(request: Request):
             c.fill = PatternFill("solid", fgColor="062018")
             c.alignment = Alignment(vertical="center", wrap_text=True)
         for row in rows:
-            ws.append(row)
+            ws.append(safe_row(row))  # names and notes never become formulas (services/excel.py)
         for i, h in enumerate(headers, 1):
             width = max([len(str(h))] + [len(str(r[i - 1] if r[i - 1] is not None else "")) for r in rows[:500]])
             ws.column_dimensions[ws.cell(1, i).column_letter].width = min(max(10, width + 2), 45)

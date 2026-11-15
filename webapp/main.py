@@ -19,13 +19,14 @@ import html
 import json
 import logging
 import time
+from urllib.parse import urlparse
 from pathlib import Path
 
 from aiogram import Bot
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from fastapi import FastAPI, File, Form, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -38,7 +39,8 @@ from db.models import PaymentRequest, PaymentStatus, PracticeModule, SpeakingSub
 from services.storage.file_storage import delete_file, save_practice_image
 
 logger = logging.getLogger(__name__)
-app = FastAPI(title="Bandzilla Admin")
+# No /docs, /redoc or /openapi.json (2026-11-15: they showed the whole route map to anyone).
+app = FastAPI(title="Bandzilla Admin", docs_url=None, redoc_url=None, openapi_url=None)
 
 
 @app.middleware("http")
@@ -46,7 +48,19 @@ async def admin_session(request: Request, call_next):
     """Signs out a web admin who was disabled or got a new password, and
     counts the top bar's badges (unread support messages, payments waiting,
     ...). Added before SessionMiddleware, so it runs inside it and sees the
-    session."""
+    session.
+
+    A state-changing request (POST...) made by another site's page is refused (CSRF, the 2026-11-15
+    audit: the cookie's SameSite=Lax let the sibling domain's pages through): the browser's Origin must be
+    this host, and Sec-Fetch-Site must not say cross-site or same-site."""
+    if request.method not in ("GET", "HEAD", "OPTIONS"):
+        origin = request.headers.get("origin")
+        fetch_site = request.headers.get("sec-fetch-site")
+        if fetch_site in ("cross-site", "same-site") or (
+                origin and origin != "null" and urlparse(origin).netloc != request.headers.get("host")):
+            logger.warning("Cross-site %s %s refused (origin %s, %s)", request.method, request.url.path, origin,
+                           fetch_site)
+            return PlainTextResponse("Forbidden: cross-site request", status_code=403)
     if request.session.get("logged_in"):
         if not await panel.session_valid(request):
             request.session.clear()
@@ -67,7 +81,7 @@ app.add_middleware(
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
 # Teachers' web cabinet (/cabinet, its own sign-in from the bot) - see webapp/cabinet.py.
-from webapp import cabinet, insights, panel  # noqa: E402
+from webapp import cabinet, insights, panel, sessions  # noqa: E402
 
 cabinet.templates = templates
 app.include_router(cabinet.router)
@@ -84,6 +98,16 @@ from webapp import finance  # noqa: E402
 
 finance.templates = templates
 app.include_router(finance.router)
+# The checks behind the scenes: running now, stopped ones; resend a report, mark a test (2026-11-15).
+from webapp import checks_ops  # noqa: E402
+
+checks_ops.templates = templates
+app.include_router(checks_ops.router)
+# One search box: users, checks, payments (2026-11-15).
+from webapp import search  # noqa: E402
+
+search.templates = templates
+app.include_router(search.router)
 
 
 @app.on_event("startup")
@@ -131,7 +155,7 @@ async def login_form(request: Request):
 @app.post("/login")
 async def login_submit(request: Request, username: str = Form(...), password: str = Form(...)):
     ip = _client_ip(request)
-    if _too_many_attempts(ip):
+    if _too_many_attempts(ip) or await sessions.too_many_fails(ip, username.strip()):
         return templates.TemplateResponse(
             request,
             "login.html",
@@ -140,11 +164,11 @@ async def login_submit(request: Request, username: str = Form(...), password: st
         )
     found = await panel.authenticate(username.strip(), password)
     if found is not None:
-        request.session.clear()  # a fresh session for every sign-in
-        request.session.update(logged_in=True, **found)
+        await sessions.issue(request, found)  # a fresh session for every sign-in, its id kept on the server
         await panel.audit(found["admin"], "login", details=ip)
         return RedirectResponse("/", status_code=303)
     _record_failure(ip)
+    await sessions.failed(ip, username.strip())
     await panel.audit("—", "login_failed", details=f"{ip} · {username.strip()[:50]}")
     return templates.TemplateResponse(
         request, "login.html", {"error": "Login yoki parol noto'g'ri."}, status_code=401
@@ -153,7 +177,7 @@ async def login_submit(request: Request, username: str = Form(...), password: st
 
 @app.get("/logout")
 async def logout(request: Request):
-    request.session.clear()
+    await sessions.end(request)  # the server forgets this sign-in too: a copied cookie stops working
     return RedirectResponse("/login", status_code=303)
 
 
@@ -261,9 +285,14 @@ async def checks_page(request: Request, kind: str = "all", period: str = "all", 
     flash = {"saved": "Ustoz bahosi saqlandi.", "cleared": "Ustoz bahosi olib tashlandi.",
              "approved": "Ustoz bahosi anchor sifatida tasdiqlandi — Speaking baholashiga namuna bo'ladi.",
              "unapproved": "Ustoz bahosi anchor'lardan olindi.",
+             "resent": "Hisobot o'quvchiga qayta yuborildi.",
+             "notsent": "Hisobot yuborilmadi — o'quvchi botni bloklagan bo'lishi mumkin.",
+             "nopdf": "Bu tekshiruvning PDF hisoboti topilmadi.",
+             "marked_test": "Tekshiruv test deb belgilandi: o'quvchi progressiga va anchor'larga kirmaydi.",
+             "marked_real": "Tekshiruv haqiqiy deb belgilandi.",
              "bad": "Har bir mezonga 0-9 oralig'ida band kiriting (masalan 6 yoki 6.5)."}.get(done)
     return templates.TemplateResponse(request, "checks.html", {
-        "active": "checks", **data, "tb": tb == "1", "flash": flash, "flash_bad": done == "bad",
+        "active": "checks", **data, "tb": tb == "1", "flash": flash, "flash_bad": done in ("bad", "notsent", "nopdf"),
         "teacher_view": panel.is_teacher(request), "owner": panel.is_owner(request)})
 
 
@@ -385,7 +414,7 @@ async def payments_page(request: Request, status: str | None = None):
 # Receipt images by payment request id - a receipt never changes, so the
 # Telegram download happens once per image (the newest RECEIPT_CACHE kept).
 _receipts: dict[int, bytes] = {}
-RECEIPT_CACHE = 60
+RECEIPT_CACHE = 250  # the payments page shows up to 200 receipts
 
 
 async def _download_receipt(file_id: str) -> bytes | None:

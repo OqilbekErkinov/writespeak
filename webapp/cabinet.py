@@ -4,7 +4,7 @@ the old writespeak.uz/cabinet links 301 there).
 
 Sign-in is one tap from the bot's "Web-kabinet" button: it opens
 /cabinet/login with a token signed by the web session secret
-(bot/utils/cabinet_auth.py), valid for 10 minutes. The session then holds
+(bot/utils/cabinet_auth.py), valid for 5 minutes and once. The session then holds
 `cabinet_uid`, kept apart from the admin login (and the cookie is per host).
 
 A teacher sees the groups they manage - their own, and for a center owner
@@ -16,19 +16,24 @@ In the teacher's bot language (uz/ru/en - webapp/cabinet_i18n.py).
 from __future__ import annotations
 
 import asyncio
+import logging
+import time
+from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 
 from bot.i18n import LANGS
-from bot.utils.cabinet_auth import read_login_token
+from bot.utils.cabinet_auth import LOGIN_TTL, read_login_token
+from bot.utils.crm import redis
 from db import crud
 from db.crud import CRITERIA_LABELS
 from db.database import get_session
 from services.pdf.group_reports import band_chart, build_group_excel, build_group_pdf, build_parent_report_pdf
 from webapp.cabinet_i18n import TEXTS, cabinet_lang
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/cabinet")
 templates = None  # set by webapp.main (shared Jinja2Templates)
 
@@ -59,7 +64,14 @@ def _render(request: Request, name: str, context: dict, status_code: int = 200):
 
 
 def _uid(request: Request) -> int | None:
+    """The signed-in teacher - for a week after the sign-in at most (2026-11-15: the cookie used to roll on
+    for ever)."""
+    if time.time() - int(request.session.get("cabinet_at") or 0) > CABINET_MAX_AGE:
+        return None
     return request.session.get("cabinet_uid")
+
+
+CABINET_MAX_AGE = 7 * 24 * 3600
 
 
 async def _group_or_none(request: Request, group_id: int):
@@ -79,9 +91,16 @@ def _login_redirect() -> RedirectResponse:
 
 @router.get("/login")
 async def login(request: Request, token: str = ""):
-    uid = read_login_token(token)
-    if uid is None:
+    found = read_login_token(token)
+    if found is None:
         return _login_redirect()
+    uid, jti = found
+    # a sign-in link works once (2026-11-15): a forwarded one, or one read from a log, opens nothing
+    try:
+        if not await redis().set(f"cabinet:jti:{jti}", str(uid), nx=True, ex=LOGIN_TTL + 60):
+            return _login_redirect()
+    except Exception:  # noqa: BLE001 - Redis away: the signature and the 5 minutes still hold
+        logger.warning("Cabinet link %s… not marked as used", jti[:6], exc_info=True)
     async with get_session() as session:
         user = await crud.get_user(session, uid)
         groups = await crud.get_managed_groups(session, uid)
@@ -89,6 +108,7 @@ async def login(request: Request, token: str = ""):
     if user is None or (not groups and center is None):
         return _login_redirect()
     request.session["cabinet_uid"] = uid
+    request.session["cabinet_at"] = int(time.time())
     request.session["cabinet_name"] = user.full_name
     request.session["cabinet_lang"] = cabinet_lang(user.language)
     return RedirectResponse("/cabinet/", status_code=303)
@@ -213,7 +233,7 @@ async def report_pdf(request: Request, kind: str, submission_id: int):
         return _login_redirect()
     async with get_session() as session:
         path = await crud.get_member_report_pdf(session, uid, kind, submission_id)
-    if path is None:
+    if path is None or not Path(path).exists():  # a report file gone from the disk: 404, not a 500
         return Response(status_code=404)
     return FileResponse(path, media_type="application/pdf", filename=f"Bandzilla_report_{kind}{submission_id}.pdf")
 

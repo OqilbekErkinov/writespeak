@@ -48,6 +48,7 @@ from db.models import (
     WebAdmin,
 )
 from webapp import insights
+from services.excel import safe as excel_safe
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -153,7 +154,13 @@ _valid_cache: dict[str, tuple[float, str | None]] = {}  # username -> (checked a
 
 async def session_valid(request: Request) -> bool:
     """False for a web admin who was disabled or given a new password since
-    signing in (checked at most every 15 seconds)."""
+    signing in (checked at most every 15 seconds) - and for anyone whose
+    sign-in the server no longer has (logged out, signed out everywhere,
+    older than a week: webapp/sessions.py)."""
+    from webapp import sessions
+
+    if not await sessions.valid(request):
+        return False
     if is_owner(request):
         return True
     username = request.session.get("admin") or ""
@@ -190,7 +197,8 @@ async def nav_counts(request: Request) -> dict:
             out["support"] = (await session.execute(select(func.count()).select_from(SupportMessage).where(
                 SupportMessage.direction == "in", SupportMessage.read.is_(False)))).scalar() or 0
             out["payments"] = (await session.execute(select(func.count()).select_from(PaymentRequest).where(
-                PaymentRequest.status == PaymentStatus.pending))).scalar() or 0
+                PaymentRequest.status == PaymentStatus.pending,
+                PaymentRequest.receipt_file_id.is_not(None)))).scalar() or 0  # a pack tapped, no receipt: nothing to decide
             out["charts"] = (await session.execute(select(func.count()).select_from(ChartKey).where(
                 ChartKey.status == "auto"))).scalar() or 0
         out["window"] = await runtime.window_on()
@@ -259,6 +267,24 @@ async def settings_page(request: Request, done: str | None = None):
         "openai": await balance.openai_status(), "credit_paused": await balance.credit_paused(),
         "azure": await balance.azure_status(),
     })
+
+
+@router.post("/settings/signout-all")
+async def settings_signout_all(request: Request):
+    """Every sign-in to the panel ends - the owner's, every admin's and teacher's (a lost laptop, a shared
+    password): each has to sign in again."""
+    if (r := guard(request, owner=True)) is not None:
+        return r
+    from webapp import sessions
+
+    async with get_session() as session:
+        logins = [settings.web_admin_username, *(await session.execute(select(WebAdmin.username))).scalars().all()]
+    ended = 0
+    for login in logins:
+        ended += await sessions.end_all(login)
+    await audit(request, "signout_all", details=f"{ended} ta sessiya")
+    await sessions.end(request)
+    return RedirectResponse("/login", status_code=303)
 
 
 @router.post("/settings/balance")
@@ -510,15 +536,18 @@ async def support_file(request: Request, message_id: int):
         m = await session.get(SupportMessage, message_id)
     if m is None or not m.file_id:
         return Response(status_code=404)
-    bot = Bot(settings.telegram_bot_token)
-    try:
-        file = await bot.get_file(m.file_id)
-        data = (await bot.download_file(file.file_path)).read()
-    except Exception:  # noqa: BLE001
-        return Response(status_code=404)
-    finally:
-        await bot.session.close()
-    return Response(data, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=86400"})
+    # a photo sent before the move to @bandzilla_bot belongs to the old bot's token (2026-11-15: it 404'd)
+    for token in filter(None, (settings.telegram_bot_token, settings.moved_bot_token)):
+        bot = Bot(token)
+        try:
+            file = await bot.get_file(m.file_id)
+            data = (await bot.download_file(file.file_path)).read()
+            return Response(data, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=86400"})
+        except Exception:  # noqa: BLE001
+            continue
+        finally:
+            await bot.session.close()
+    return Response(status_code=404)
 
 
 # --- 4. errors -----------------------------------------------------------------------------------------------
@@ -603,10 +632,8 @@ async def user_block(request: Request, user_id: int, action: str = Form(...)):
 
 def _cell(value):
     """A value Excel won't run: names and texts come from Telegram users, so a
-    leading = + - @ (a formula) is quoted."""
-    if isinstance(value, str) and value[:1] in ("=", "+", "-", "@", "\t", "\r"):
-        return "'" + value
-    return value
+    leading = + - @ (a formula) is quoted (services/excel.py)."""
+    return excel_safe(value)
 
 
 def _xlsx(title: str, headers: list[str], rows: list[list]) -> Response:
@@ -692,7 +719,7 @@ async def admins_page(request: Request, done: str | None = None):
         return r
     async with get_session() as session:
         admins = (await session.execute(select(WebAdmin).order_by(WebAdmin.created_at))).scalars().all()
-    password = request.session.pop("new_password", None)
+    password = await _take_new_password(request)
     flash = {"created": "Admin qo'shildi.", "reset": "Yangi parol berildi.", "toggled": "Holat o'zgartirildi.",
              "exists": "Bu login band.", "bad": "Login: 3-30 ta lotin harfi, raqam yoki _ ."}.get(done or "")
     for a in admins:
@@ -718,9 +745,27 @@ async def admins_create(request: Request, username: str = Form(...), name: str =
         session.add(WebAdmin(username=username, name=name.strip()[:100] or username, password_hash=hash_password(password),
                              role="teacher" if role == "teacher" else "admin"))
         await session.commit()
-    request.session["new_password"] = {"username": username, "password": password}
+    await _keep_new_password(request, username, password)
     await audit(request, "admin_created", details=username + (" (ustoz)" if role == "teacher" else ""))
     return RedirectResponse("/admins?done=created", status_code=303)
+
+
+async def _keep_new_password(request: Request, username: str, password: str) -> None:
+    """A new admin's password, shown once on the next page: kept on the server for 5 minutes under a random
+    reference - never in the session cookie (signed, not encrypted: 2026-11-15)."""
+    ref = secrets.token_urlsafe(12)
+    await crm.redis().set(f"panel:newpw:{ref}", json.dumps({"username": username, "password": password}), ex=300)
+    request.session["new_password_ref"] = ref
+
+
+async def _take_new_password(request: Request) -> dict | None:
+    ref = request.session.pop("new_password_ref", None)
+    if not ref:
+        return None
+    key = f"panel:newpw:{ref}"
+    raw = await crm.redis().get(key)
+    await crm.redis().delete(key)
+    return json.loads(raw) if raw else None
 
 
 @router.post("/admins/{admin_id}/{action}")
@@ -734,12 +779,19 @@ async def admins_change(request: Request, admin_id: int, action: str):
         if action == "reset":
             password = secrets.token_urlsafe(10)
             a.password_hash = hash_password(password)
-            request.session["new_password"] = {"username": a.username, "password": password}
+            new_password = password
         else:
             a.active = not a.active
+            new_password = None
         username, active = a.username, a.active
         await session.commit()
     _valid_cache.pop(username, None)
+    if new_password is not None:
+        await _keep_new_password(request, username, new_password)
+    if action == "reset" or not active:
+        from webapp import sessions
+
+        await sessions.end_all(username)  # a new password or a switched-off admin: every sign-in of theirs ends
     await audit(request, "admin_password_reset" if action == "reset" else ("admin_enabled" if active else "admin_disabled"),
                 details=username)
     return RedirectResponse(f"/admins?done={'reset' if action == 'reset' else 'toggled'}", status_code=303)
@@ -757,6 +809,8 @@ ACTION_NAMES = {
     "admin_enabled": "Adminni yoqdi", "admin_disabled": "Adminni o'chirdi", "export": "Excel yuklab oldi",
     "errors_cleared": "Xatolarni tozaladi", "center_created": "Markaz yaratdi", "center_deleted": "Markazni o'chirdi",
     "teacher_revoked": "O'qituvchilikni oldi", "finance_entry": "Moliyaga yozuv qo'shdi",
+    "signout_all": "Hamma qurilmalardan chiqardi", "report_resent": "Hisobotni qayta yubordi",
+    "check_test": "Tekshiruvni test deb belgiladi", "check_real": "Tekshiruvni haqiqiy deb belgiladi",
     "finance_entry_deleted": "Moliyadan yozuvni o'chirdi",
 }
 

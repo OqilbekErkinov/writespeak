@@ -28,11 +28,12 @@ def check(name: str, ok, detail="") -> None:
 PAGES = {"/": "dashboard", "/users": "users", "/checks": "checks", "/payments": "payments", "/support": "support",
          "/groups": "groups", "/teachers": "teachers", "/questions": "questions", "/charts": "charts",
          "/broadcast": "broadcast", "/errors": "errors", "/settings": "settings", "/admins": "admins", "/audit": "audit",
-         "/finance": "finance", "/finance?p=all": "finance_all", "/finance?p=prev": "finance_prev"}
+         "/finance": "finance", "/finance?p=all": "finance_all", "/finance?p=prev": "finance_prev",
+         "/checks/stopped": "checks_stopped", "/search?q=a": "search"}
 GROUP = {"users": "users", "support": "users", "broadcast": "users", "checks": "checks", "questions": "checks",
          "charts": "checks", "teachers": "centers", "groups": "centers", "errors": "admin", "settings": "admin",
          "admins": "admin", "audit": "admin", "payments": "money", "finance": "money", "finance_all": "money",
-         "finance_prev": "money"}
+         "finance_prev": "money", "checks_stopped": "checks"}
 
 
 async def main() -> None:

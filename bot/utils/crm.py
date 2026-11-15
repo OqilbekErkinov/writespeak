@@ -512,23 +512,55 @@ class _ErrorForwarder(logging.Handler):
             again = seen[1] if seen is not None else 0
             self.seen[key] = [now, 0]
             exc = logging.Formatter().formatException(record.exc_info) if record.exc_info else record.exc_text
-            asyncio.run_coroutine_threadsafe(log_error(record, again, exc), self.loop)
-            asyncio.run_coroutine_threadsafe(_post_error(error_card(record, again, exc)), self.loop)
+            # the bot token sits in a failed file download's URL, a key or a DSN in a traceback: never shown
+            # on the panel or in the group (2026-11-15)
+            exc, message = redact(exc), redact(record.getMessage())
+            asyncio.run_coroutine_threadsafe(log_error(record, again, exc, message), self.loop)
+            asyncio.run_coroutine_threadsafe(_post_error(error_card(record, again, exc, message)), self.loop)
         except Exception:  # noqa: BLE001 - logging must never fail
             pass
+
+
+_SECRET_PATTERNS = (
+    re.compile(r"\d{6,12}:[A-Za-z0-9_-]{30,}"),  # a Telegram bot token (also inside .../bot<token>/...)
+    re.compile(r"sk-[A-Za-z0-9_-]{16,}"),  # OpenAI keys
+    re.compile(r"(?<=://)[^:/@\s]+:[^@/\s]+(?=@)"),  # user:password in a DSN / URL
+)
+
+
+def _secret_values() -> list[str]:
+    """The .env values that must never be shown: every token, key, secret and password setting."""
+    values = []
+    for name, value in settings.model_dump().items():
+        if isinstance(value, str) and len(value) >= 12 and any(w in name for w in ("token", "key", "secret",
+                                                                                  "password")):
+            values.append(value)
+    return values
+
+
+def redact(text: str | None) -> str | None:
+    """`text` with every secret replaced by «***»."""
+    if not text:
+        return text
+    for value in _secret_values():
+        text = text.replace(value, "***")
+    for pattern in _SECRET_PATTERNS:
+        text = pattern.sub("***", text)
+    return text
 
 
 ERRORS_LOG_KEY = "errors:log"  # the web panel's errors page (webapp/panel.py), newest first
 ERRORS_LOG_CAP = 500
 
 
-async def log_error(record: logging.LogRecord, again: int, exc: str | None) -> None:
+async def log_error(record: logging.LogRecord, again: int, exc: str | None, message: str | None = None) -> None:
     """Keeps an error for the web panel's errors page - the last
     ERRORS_LOG_CAP of them, with or without the admins' group."""
     try:
         entry = {
             "at": record.created, "level": record.levelname, "logger": record.name, "line": record.lineno,
-            "process": PROCESS, "message": record.getMessage()[:2000], "again": again,
+            "process": PROCESS, "message": (message if message is not None else redact(record.getMessage()))[:2000],
+            "again": again,
             "exc": (exc or "")[-4000:],
         }
         pipe = redis().pipeline()
@@ -551,8 +583,8 @@ async def _post_error(text: str) -> None:
     await post("errors", text)
 
 
-def error_card(record: logging.LogRecord, again: int, exc: str | None) -> str:
-    message = record.getMessage()
+def error_card(record: logging.LogRecord, again: int, exc: str | None, message: str | None = None) -> str:
+    message = message if message is not None else redact(record.getMessage())
     lines = []
     if "insufficient_quota" in f"{message}\n{exc or ''}":
         lines.append("🚨 <b>OpenAI balansi tugadi!</b> Tekshiruvlar ishlamayapti - platform.openai.com da "

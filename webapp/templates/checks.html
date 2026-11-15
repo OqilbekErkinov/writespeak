@@ -57,7 +57,7 @@
     <tr id="c-{{ c.kind }}{{ c.id }}">
       <td class="num">{{ c.when }}</td>
       <td>{% if teacher_view %}<span class="nm">{{ c.user.full_name if c.user else c.user_id }}</span>{% elif c.user %}<a class="who" href="/users/{{ c.user.id }}"><span class="ava">{{ (c.user.full_name or "?")[:1] }}</span><span class="nm">{{ c.user.full_name }}</span></a>{% else %}{{ c.user_id }}{% endif %}</td>
-      <td class="strong">{{ c.label }} <span class="muted">#{{ c.id }}</span>{% if c.practice %} <span class="muted">· Practice</span>{% endif %}{% if c.assignment %} <span class="muted">· vazifa</span>{% endif %}</td>
+      <td class="strong">{{ c.label }} <span class="muted">#{{ c.id }}</span>{% if c.practice %} <span class="muted">· Practice</span>{% endif %}{% if c.is_test and not teacher_view %} <span class="pill pill-warn" title="O'quvchi progressiga va anchor'larga kirmaydi">test</span>{% endif %}{% if c.assignment %} <span class="muted">· vazifa</span>{% endif %}</td>
       {% if not teacher_view %}
       <td>{% if c.band is not none %}<span class="band-chip {{ 'hi' if c.band >= 7 else ('lo' if c.band < 5.5 else '') }}">{{ "%.1f"|format(c.band) }}</span>{% else %}—{% endif %}</td>
       <td class="muted" style="font-size:12.5px">{{ c.criteria }}</td>
@@ -95,7 +95,12 @@
       <td style="white-space:nowrap">
         {% if c.kind == "w" %}<a class="btn btn-sm" href="/checks/w/{{ c.id }}/answer" target="_blank">Javob</a>{% endif %}
         {% if c.audio %}<button type="button" class="btn btn-sm a-open" data-audio='{{ {"src": "/audio/s/" ~ c.id, "title": c.label ~ " #" ~ c.id, "who": who, "when": c.when}|tojson }}'>🎧 Audio</button>{% endif %}
-        {% if c.pdf and not teacher_view %}<a class="btn btn-sm" href="/reports/{{ c.kind }}/{{ c.id }}.pdf" target="_blank">PDF</a>{% endif %}
+        {% if c.pdf and not teacher_view %}<a class="btn btn-sm" href="/reports/{{ c.kind }}/{{ c.id }}.pdf" target="_blank">PDF</a>
+        <form method="post" action="/checks/{{ c.kind }}/{{ c.id }}/resend" class="inline" data-confirm="Hisobot o'quvchiga qayta yuborilsinmi?"
+              data-confirm-text="PDF hisobot {{ who }} ga Telegram'da yuboriladi." data-confirm-ok="Yuborish" data-tone="good">
+          <input type="hidden" name="back" value="{{ back }}"><button type="submit" class="btn btn-sm" title="Hisobotni o'quvchiga qayta yuborish">📤</button></form>{% endif %}
+        {% if not teacher_view %}<form method="post" action="/checks/{{ c.kind }}/{{ c.id }}/test" class="inline">
+          <input type="hidden" name="back" value="{{ back }}"><button type="submit" class="btn btn-sm" title="{% if c.is_test %}Haqiqiy deb belgilash{% else %}Test deb belgilash: o'quvchi progressiga va anchor'larga kirmaydi{% endif %}">{{ "↩︎" if c.is_test else "🧪" }}</button></form>{% endif %}
       </td>
     </tr>
     {% endfor %}
