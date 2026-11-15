@@ -93,12 +93,15 @@ async def main() -> None:
     new_bot = Bot(settings.telegram_bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     old_bot = (Bot(settings.moved_bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
                if settings.moved_bot_token else None)
+    from bot.utils.crm import redis
+
     try:
         stats = await run(send, new_bot, old_bot)
     finally:
         await new_bot.session.close()
         if old_bot is not None:
             await old_bot.session.close()
+        await redis().aclose()  # before the loop ends: no "Event loop is closed" noise under the result
     if "refused" in stats:
         print(stats["refused"])
         sys.exit(1)
