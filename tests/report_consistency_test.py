@@ -189,8 +189,9 @@ def main() -> int:
         return pages[0]
 
     low = page(7.0, 8.0)
-    check("badge: scored below its aim shows its own score", ">Scored<" in low and "<b>7.0</b>" in low
-          and "Aimed at" not in low)
+    check("badge: always the aim, never our scorer's reading of the answer (the owner, 2026-11-16: 'Scored 8.5' "
+          "for an 8.0 student read as no better than theirs)", ">Aimed at<" in low and "<b>8.0</b>" in low
+          and ">Scored<" not in low)
     high = page(8.5, 8.0)
     check("badge: reaching its aim shows 'Aimed at'", ">Aimed at<" in high and "<b>8.0</b>" in high)
     check("badge: no score yet shows 'Aimed at'", ">Aimed at<" in page(None, 8.0))
@@ -443,9 +444,9 @@ def rulings(page) -> None:
 
     nine = essay_marking.build_report("task2", "Q. Discuss.", ESSAY, feedback([], [], [], "x"),
                                       bands={"TR_or_TA": 9, "CC": 9, "LR": 9, "GRA": 9})
-    html = page(None, 9.0, nine, alternative=True)
-    check("a report already at this level (8.5+) is told so, with one paragraph another way - never a 'better' "
-          "model answer (2026-10-29)", ">Band 9.0<" in html and "Your answer is already at this level" in html
+    html = page(8.5, 9.0, nine)
+    check("a Band 9 report gets a full model answer aimed at 9.0 (2026-11-16; no 'one paragraph another way')",
+          ">Aimed at<" in html and "<b>9.0</b>" in html and "already at this level" not in html
           and ">Scored<" not in html)
     check("...and at Band 9 it says 'the top band', with no next target",
           "The top band" in html and "Next target" not in html)

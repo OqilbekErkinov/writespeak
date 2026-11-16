@@ -1867,6 +1867,81 @@ def model_answer_bands() -> None:
           and SpeakingNeeds(overall=7.5, bands={}, priorities=[]).aim == 8.0)
 
 
+def model_answer_full_at_every_band() -> None:
+    """2026-11-16 (the owner): 8.0, 8.5 and 9.0 all get a FULL Band 9 model answer (no "one paragraph written
+    another way" from 8.5), 7.0-7.5 a Band 8 one, lower a Band 7 one - Writing and Speaking alike; the self-check
+    still writes a weak answer once more, its score is never the badge."""
+    import asyncio
+
+    from services.ai import sample_bank, speaking_answers, speaking_grader
+
+    def writing_run(overall: float, scores: list[float]):
+        calls: list[tuple[float, bool]] = []
+        marks = iter(scores)
+
+        async def fake_write(*args, **kwargs):
+            calls.append((args[3], bool(kwargs.get("alternative", False))))
+            return [f"answer {len(calls)} paragraph one", f"answer {len(calls)} paragraph two"], [], []
+
+        async def fake_score(*args, **kwargs):
+            return next(marks)
+
+        async def fake_review(*args, **kwargs):
+            return None
+
+        saved = (sample_bank._write, sample_bank.quality_problem, writing_grader.score_writing, sample_bank.load_library)
+        sample_bank._write, sample_bank.quality_problem, writing_grader.score_writing = fake_write, fake_review, fake_score
+        sample_bank.load_library = lambda: []
+        try:
+            needs = sample_bank.Needs(overall=overall, bands={}, priorities=[], essay="My own essay.")
+            return asyncio.run(sample_bank.build_model_answer("task2", "Discuss both views.", needs=needs)), calls
+        finally:
+            sample_bank._write, sample_bank.quality_problem, writing_grader.score_writing, sample_bank.load_library = saved
+
+    for overall, aim in ((8.0, 9.0), (8.5, 9.0), (9.0, 9.0), (7.0, 8.0), (7.5, 8.0), (6.5, 7.0), (5.0, 7.0)):
+        answer, calls = writing_run(overall, [aim, aim])
+        check(f"Writing {overall}: a full answer aimed at {aim} (never one paragraph another way)",
+              answer.band == aim and not answer.alternative and len(answer.paragraphs) == 2
+              and calls and calls[0] == (aim, False), (answer.band, answer.alternative, calls))
+    answer, calls = writing_run(9.0, [8.5])
+    check("a 9.0 student, the answer read as 8.5 by our careful scorer: kept, not written again for nothing",
+          len(calls) == 1 and answer.band == 9.0, calls)
+    answer, calls = writing_run(8.0, [8.0, 8.5])
+    check("an 8.0 student, the Band 9 answer read as 8.0: written once more, the better one kept, still 'Aimed "
+          "at 9.0'", len(calls) == 2 and answer.paragraphs[0].startswith("answer 2") and answer.band == 9.0, calls)
+
+    # Speaking: every question its answer at the aim, 8.5 and 9.0 included
+    targets = [speaking_answers.Target(label=f"Q{i}", qids=[f"q{i}"], part="part1", question=f"Question number {i}?",
+                                       student_answer="I really like it because it is useful for me.")
+               for i in (1, 2, 3)]
+
+    async def fake_write_one(t, band, profile, references, needs=None, note=""):
+        return f"Here is a model answer for {t.label} with its own words {t.label.lower()}.", []
+
+    async def fake_quality(pairs):
+        return {}
+
+    async def fake_score_text(part, qa):
+        return 8.5
+
+    saved = (speaking_answers.load_library, speaking_answers._write_one, speaking_answers._quality_check,
+             speaking_answers.repeated_phrases, speaking_grader.score_answers_text)
+    speaking_answers.load_library = lambda: []
+    speaking_answers._write_one, speaking_answers._quality_check = fake_write_one, fake_quality
+    speaking_answers.repeated_phrases = lambda *a, **k: {}
+    speaking_grader.score_answers_text = fake_score_text
+    try:
+        for overall, aim in ((9.0, 9.0), (8.5, 9.0), (8.0, 9.0), (7.5, 8.0), (6.0, 7.0)):
+            out = asyncio.run(speaking_answers.build_model_answers(
+                targets, speaking_answers.Needs(overall=overall, bands={}, priorities=[])))
+            check(f"Speaking {overall}: every question its model answer, aimed at {aim}",
+                  [a["label"] for a in out] == ["Q1", "Q2", "Q3"] and all(a["band"] == aim for a in out)
+                  and not any(a["alternative"] for a in out), [(a["label"], a["band"], a["alternative"]) for a in out])
+    finally:
+        (speaking_answers.load_library, speaking_answers._write_one, speaking_answers._quality_check,
+         speaking_answers.repeated_phrases, speaking_grader.score_answers_text) = saved
+
+
 if __name__ == "__main__":
     writing()
     round2()
@@ -1882,6 +1957,7 @@ if __name__ == "__main__":
     short_speaking_samples()
     speaking_azure_and_slips()
     model_answer_bands()
+    model_answer_full_at_every_band()
     writing_label_repetition()
     checklist_and_band9_samples()
     per_criterion_range()

@@ -80,9 +80,9 @@ TASK_TYPES = {"task1": "task1_academic", "task2": "task2"}  # bot task -> librar
 # Task 2 since 2026-10-17: 300-340 (aim 320) - a fuller answer shows the
 # student more clearly what each part of the question needs (the user's call).
 WORD_RANGE = {"task2": (300, 340), "task1_academic": (170, 200)}
-# From 8.5 the student is already at the model answer's level (the academic lead, 2026-10-29): one
-# paragraph written another way - Task 1 its overview, Task 2 one body paragraph - not a weaker full answer.
-ALTERNATIVE_FROM = 8.5
+# 2026-10-29 (the academic lead): from 8.5 only one paragraph written another way. Gone 2026-11-16 (the owner):
+# 8.0, 8.5 and 9.0 all get a full Band 9 answer, as the aim rule says (scoring.aim_band). _write still takes
+# `alternative` (ALTERNATIVE_RANGE) - nothing asks for it now.
 ALTERNATIVE_RANGE = {"task2": (90, 140), "task1_academic": (40, 75)}
 COPY_NGRAM = 8  # a shared run of this many words counts as a copied sentence
 SAME_QUESTION_RATIO = 0.9
@@ -1441,21 +1441,16 @@ async def build_model_answer(
     log["aimed_at"] = band
     if needs is not None:
         log["priorities"] = [p["title"] for p in needs.priorities]
-    if needs is not None and needs.overall >= ALTERNATIVE_FROM:
-        # already at this level: one paragraph written another way, no full (and maybe weaker) answer
-        paragraphs, problems, shows = await _write(question, lib_task, prompt_images, band, profile, references,
-                                                   needs=needs, sheet=sheet, visual=visual, alternative=True,
-                                                   avoid=avoid)
-        log.update(problems=problems, alternative=True, words=sum(count_words(p) for p in paragraphs),
-                   openers=openers(paragraphs), source="ai_generated", score=None)
-        logger.info("Model answer (alternative paragraph): %s", json.dumps(log, ensure_ascii=False))
-        return ModelAnswer(question=question, paragraphs=paragraphs, band=band, shows=shows, log=log,
-                           alternative=True)
+    # 2026-11-16 (the owner): a full answer at the aim for every band - 8.5 and 9.0 included, no single
+    # paragraph "written another way"
     paragraphs, problems, shows = await _write(question, lib_task, prompt_images, band, profile, references,
                                                needs=needs, sheet=sheet, visual=visual, avoid=avoid)
     log["problems"] = problems
     kept_score = None
-    floor = max(band - SELF_CHECK_MARGIN, needs.overall if needs is not None else 0.0)  # never under the student
+    # Written once more when our scorer reads it more than half a band under the aim. Not "never under the
+    # student" any more (2026-11-16): the badge shows the aim, not this score, and our scorer is careful at the
+    # top (a real Band 9 essay got 8.0, #128) - a 9.0 student's floor of 9.0 made every answer a second write.
+    floor = band - SELF_CHECK_MARGIN
     subtype = log.get("subtype") or regex_subtype(question, lib_task)
     # The self-check score and the reviewer read the first answer at the same time (2026-11-10: one after the
     # other they took a minute of every report). The decisions are the same as before: a low score gets one

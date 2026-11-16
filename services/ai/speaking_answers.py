@@ -72,7 +72,6 @@ PART2_MIN_WORDS = round(PART2_MIN_SECONDS / 60 * WORDS_PER_MINUTE) + 5
 # about as long as the candidate's own answer (the academic lead, 2026-10-29), within these bounds
 OWN_LENGTH = 0.2
 LENGTH_BOUNDS = {"part1": (30, 110), "part2": (PART2_MIN_WORDS, 340), "part3": (50, 170)}
-ALTERNATIVE_FROM = 8.5  # already at this level: one answer said another way, not a full set
 DEFAULT_BAND = 7.5  # without the student's results
 SELF_CHECK_MARGIN = 0.5
 REUSE_LIMIT = 0.35  # share of the answer's 4-word runs that may come from the student's transcript
@@ -577,11 +576,8 @@ async def build_model_answers(targets: list[Target], needs: Needs | None = None,
     from services.ai.speaking_grader import score_answers_text  # the heavier module
 
     log: dict = {"answers": {}}
-    alternative = needs is not None and needs.overall >= ALTERNATIVE_FROM and len(targets) > 1
-    if alternative:
-        # already at this level (2026-10-29): one answer said another way - the longest one they gave
-        targets = [max(targets, key=lambda t: count_words(t.student_answer))]
-        log["alternative"] = targets[0].label
+    # 2026-10-29 to 2026-11-16, from 8.5 only one answer was said another way; now (the owner) every question gets
+    # its model answer at the aim - Band 9 from 8.0 up (aim_band), 8.5 and 9.0 included
     library = []
     try:
         library = load_library()
@@ -724,7 +720,7 @@ async def build_model_answers(targets: list[Target], needs: Needs | None = None,
             "band": a.band if a else band,
             "source": "published_reference" if a else "ai_generated",
             "shows": shows.get(t.label, []),
-            "alternative": needs is not None and needs.overall >= ALTERNATIVE_FROM,
+            "alternative": False,  # the template's "said another way" view - not used since 2026-11-16
         })
         log["answers"].setdefault(t.label, {})["words"] = words
     logger.info("Speaking model answers: %s", json.dumps(log, ensure_ascii=False))

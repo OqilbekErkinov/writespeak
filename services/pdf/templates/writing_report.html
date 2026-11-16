@@ -167,10 +167,10 @@
 <div class="mhead">
   <div><h2 id="s-model">Model answer</h2>
   <div class="sub" style="margin:0">{% if answer.alternative %}Your answer is already at this level - here is one paragraph written another way, for comparison.{% else %}An answer to your exact question{{ ", built around your priorities" if report.priorities }}. Compare it with your own {{ piece }}.{% endif %}</div></div>
-  {# 2026-10-29: never weaker than the student - from 8.5 one paragraph written another way;
-     a score is shown only when it reaches the aim, and never one below the student's band #}
+  {# 2026-11-16 (the owner): the badge is the aim - 9.0 from 8.0 up, 8.0 for 7.0-7.5, 7.0 below (scoring.aim_band);
+     our own scorer's reading of the answer (it is careful at the top: "Scored 8.5" for a 9.0 answer to an 8.0
+     student) is only used to write a weak answer once more, never shown. `alternative` is from before: unused. #}
   {% if answer.alternative %}<div class="bandbadge already"><span>Your {{ piece }} is</span><b>Band {{ "%.1f"|format(report.overall_band) }}</b></div>
-  {% elif answer.score is not none and answer.score < answer.band and answer.score >= report.overall_band %}<div class="bandbadge"><span>Scored</span><b>{{ "%.1f"|format(answer.score) }}</b></div>
   {% else %}<div class="bandbadge"><span>Aimed at</span><b>{{ "%.1f"|format(answer.band) }}</b></div>{% endif %}
 </div>
 <div class="qbox"><div class="ql">Question</div><div class="qt">{{ question }}</div>{% for img in chart_images %}<img class="qimg" src="{{ img }}">{% endfor %}</div>
