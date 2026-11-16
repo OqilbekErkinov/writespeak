@@ -209,6 +209,7 @@ EN: dict[str, str] = {
     "acc.btn_stats": "📊 Statistics",
     "acc.btn_lang": "🌐 Til / Язык / Language",
     "acc.btn_support": "💬 Contact admin",
+    "pay.request_expired": "⌛ This payment request has expired: no receipt came within 24 hours.\n\nPick the pack again 👇 If you've already made the transfer, pick the same pack and send this receipt.",
     "acc.btn_back_main": "⬅️ Main menu",
     "acc.btn_back": "⬅️ My account",
     "acc.btn_back_topup": "⬅️ Back",

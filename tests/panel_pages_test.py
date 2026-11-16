@@ -98,7 +98,10 @@ async def finance_checks(owner: httpx.AsyncClient) -> None:
         session.add(PaymentRequest(user_id=5550001, coins=50, amount=45000, status=PaymentStatus.approved, reviewed_at=now))
         session.add(PaymentRequest(user_id=5550001, coins=10, amount=10000, status=PaymentStatus.approved, reviewed_at=now,
                                    is_test=True))
-        session.add(PaymentRequest(user_id=5550001, coins=25, amount=23000, status=PaymentStatus.pending))
+        session.add(PaymentRequest(user_id=5550001, coins=25, amount=23000, status=PaymentStatus.pending,
+                                   receipt_file_id="receipt-x"))
+        # a pack tapped, no receipt: nothing to decide - not "pending" in any count (2026-11-16)
+        session.add(PaymentRequest(user_id=5550001, coins=10, amount=10000, status=PaymentStatus.pending))
         await session.commit()
     r = await owner.post("/finance/entry", data={"kind": "expense", "category": "server", "amount": "120 000",
                                                  "day": today.isoformat(), "note": "VPS", "back": "/finance?p=month"})

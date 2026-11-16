@@ -22,7 +22,7 @@
           <span class="s-top"><span class="nm">{{ u.full_name }}</span>
             <span class="sub">{{ "@" ~ u.username if u.username else u.id }}</span>
             <time>{{ x.ago }}</time></span>
-          <span class="s-last">{% if x.m.direction == "out" %}<span class="muted">Siz{% if x.m.admin %} ({{ x.m.admin }}){% endif %}:</span> {% endif %}{% if x.m.kind != "text" %}{{ {"photo": "🖼 Rasm", "voice": "🎤 Ovozli xabar", "video": "🎬 Video", "video_note": "⏺ Video xabar", "audio": "🎵 Audio", "document": "📎 Fayl", "sticker": "Stiker", "animation": "GIF"}.get(x.m.kind, x.m.kind) }}{{ " · " if x.m.text }}{% endif %}{{ (x.m.text or "")[:140] }}</span>
+          <span class="s-last">{% if x.m.direction == "out" %}<span class="muted">Siz{% if x.m.admin %} ({{ x.m.admin }}){% endif %}:</span> {% endif %}{% if x.m.kind != "text" %}{{ {"closed": "✓ javob shart emas deb yopildi", "photo": "🖼 Rasm", "voice": "🎤 Ovozli xabar", "video": "🎬 Video", "video_note": "⏺ Video xabar", "audio": "🎵 Audio", "document": "📎 Fayl", "sticker": "Stiker", "animation": "GIF"}.get(x.m.kind, x.m.kind) }}{{ " · " if x.m.text }}{% endif %}{{ (x.m.text or "")[:140] }}</span>
         </span>
         {% if x.unread %}<span class="s-badge">{{ x.unread }}</span>{% elif x.m.direction == "in" %}<span class="pill pill-warn">javob kutmoqda</span>{% endif %}
       </a>

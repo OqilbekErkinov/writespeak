@@ -533,7 +533,9 @@ async def dashboard(session) -> dict:
         f["ago"] = ago(f["at"])
 
     top = Counter(x.user_id for _, x in checks if between(x.created_at, month)).most_common(6)
-    pending = sorted((p for p in payments if p.status == PaymentStatus.pending), key=lambda p: p.created_at, reverse=True)
+    # a receipt sent, no decision yet - as the nav badge and the daily report count it (2026-11-16: a pack tapped
+    # with no receipt counted here)
+    pending = sorted((p for p in payments if crud.awaits_decision(p)), key=lambda p: p.created_at, reverse=True)
     testers = await runtime.testers()  # the panel's switch, else .env
 
     return {

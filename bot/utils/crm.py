@@ -242,6 +242,7 @@ async def run_sender(bot: Bot) -> None:
             if time.monotonic() - last_daily_check > 60:
                 last_daily_check = time.monotonic()
                 try:
+                    await crm_events.reminders_due(bot)  # payments, support, balance DMs (never raises, 2026-11-16)
                     await crm_events.daily_report_if_due()
                     await crm_events.teacher_report_if_due()
                     report_failures = 0

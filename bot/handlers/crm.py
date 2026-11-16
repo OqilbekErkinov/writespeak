@@ -258,6 +258,9 @@ async def answer_student(message: Message, bot: Bot) -> None:
         return
     problem = await _deliver(bot, user_id, message)
     if problem:
+        # not delivered, but read: the panel's unread count drops (a delivered answer does it as it is saved,
+        # support_log.save - 2026-11-16: an answer from the group left the student's messages unread)
+        await support_log.mark_read(user_id)
         await message.reply(problem)
         return
     try:

@@ -393,8 +393,10 @@ async def user_message(request: Request, user_id: int, text: str = Form(""), bac
     admin = panel.admin_name(request)
     await crm.post("support", f"✉️ <b>Web paneldan javob</b> ({html.escape(admin)}) → {who} (<code>{user_id}</code>) · "
                               f"{status}\n\n{html.escape(text, quote=False)}")
-    if sent:
+    if sent:  # saved as the answer, which marks the student's messages read (support_log.save)
         await support_log.save(user_id, "out", text=text, via="web", admin=admin)
+    else:  # not delivered, but read (2026-11-16: a reply from the profile page left them unread)
+        await support_log.mark_read(user_id)
     await panel.audit(request, "message", user_id, details=f"{status} · {text[:300]}")
     return RedirectResponse(f"{page}?sent={int(sent)}" + ("" if back == "support" else "#message"), status_code=303)
 

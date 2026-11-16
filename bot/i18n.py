@@ -875,6 +875,15 @@ _T: dict[str, dict[str, str]] = {
     "acc.btn_stats": {"uz": "📊 Statistika", "ru": "📊 Статистика"},
     "acc.btn_lang": {"uz": "🌐 Til / Язык / Language", "ru": "🌐 Til / Язык / Language"},
     "acc.btn_support": {"uz": "💬 Admin bilan aloqa", "ru": "💬 Связь с админом"},
+    # a receipt for a pack tapped over a day ago with none sent (db/crud.py PAYMENT_NO_RECEIPT_TTL, 2026-11-16):
+    # the packs follow
+    "pay.request_expired": {
+        "uz": "⌛ Bu to'lov so'rovining muddati o'tgan: chek 24 soat ichida yuborilmagan edi.\n\n"
+        "Paketni qaytadan tanlang 👇 Pulni o'tkazib bo'lgan bo'lsangiz, xuddi shu paketni tanlang va shu chekni "
+        "yuboring.",
+        "ru": "⌛ Срок этого запроса на оплату истёк: чек не был отправлен в течение 24 часов.\n\n"
+        "Выберите пакет заново 👇 Если вы уже перевели деньги, выберите тот же пакет и отправьте этот чек.",
+    },
     "acc.btn_back_main": {"uz": "⬅️ Asosiy menyu", "ru": "⬅️ Главное меню"},
     "acc.btn_back": {"uz": "⬅️ Hisobim", "ru": "⬅️ Профиль"},
     "acc.btn_back_topup": {"uz": "⬅️ Orqaga", "ru": "⬅️ Назад"},
