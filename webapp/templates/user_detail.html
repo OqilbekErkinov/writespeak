@@ -22,6 +22,7 @@
         {% if st.online %}<span><span class="dot"></span> hozir botda</span>{% else %}<span>Oxirgi faollik: <b>{{ st.last_active }}</b></span>{% endif %}
         <span>Qo'shildi: <b>{{ st.joined }}</b> ({{ st.joined_ago }})</span>
         <span>{% if referrer %}Taklif qilgan: <a href="/users/{{ referrer.id }}">{{ referrer.full_name }}</a>{% else %}O'zi kelgan{% endif %}</span>
+        {% if source %}<span>Manba: <a href="/users?s=src:{{ source.key|urlencode }}" title="Shu manbadan kelganlar">{% if source.is_link %}🔗 {% endif %}{{ source.label }}</a></span>{% endif %}
       </div>
     </div>
   </div>

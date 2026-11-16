@@ -146,6 +146,10 @@ class User(Base):
         BigInteger, ForeignKey("users.id"), nullable=True
     )
     referral_rewarded: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # Where they came from (2026-11-16, migration 0028): set once from the first /start's link - a panel-made
+    # src_<name>, or "referral" / "gift" / "group" / "center" / "direct" / "other" (bot/utils/signup_source.py)
+    # - and never changed. NULL for the users from before it (the panel's "noma'lum").
+    source: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     # UI language - "uz" or "ru" (see bot/i18n.py). Chosen once at first
     # /start (bot/handlers/start.py) and changeable from "Hisobim".
     language: Mapped[str] = mapped_column(String(5), default="uz", server_default="uz")

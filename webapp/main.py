@@ -114,6 +114,10 @@ from webapp import search  # noqa: E402
 
 search.templates = templates
 app.include_router(search.router)
+# Where users come from, the funnel and the cohorts (2026-11-16) - webapp/analytics.py, its templates from here.
+from webapp import analytics  # noqa: E402
+
+app.include_router(analytics.router)
 
 
 @app.on_event("startup")

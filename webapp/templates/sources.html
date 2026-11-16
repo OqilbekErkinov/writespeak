@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% block title %}Manbalar — Bandzilla Admin{% endblock %}
+{% block wrapclass %}wide{% endblock %}
+{% block content %}
+<h1>📣 Manbalar</h1>
+<p class="hint" style="margin:-12px 0 18px;max-width:860px">Foydalanuvchilar botga qayerdan kelgani. Manba odam botni
+  <b>birinchi marta</b> ochgan havoladan bir marta yoziladi va keyin o'zgarmaydi.</p>
+
+<div class="card" id="builder">
+  <h2>🔗 Havola yasash</h2>
+  <form method="get" action="/sources#builder" class="src-form" id="srcForm"
+        data-base="https://t.me/{{ bot }}?start={{ prefix }}" data-max="{{ max_name }}">
+    <input type="text" name="name" id="srcName" value="{{ built.typed if built else '' }}" maxlength="200"
+           placeholder="Masalan: instagram_bio" aria-label="Manba nomi" autocomplete="off" spellcheck="false">
+    <button type="submit" class="btn btn-primary">Havola yasash</button>
+  </form>
+  <div class="src-out" id="srcOut"{% if not (built and built.link) %} hidden{% endif %}>
+    <code id="srcLink">{{ built.link if built and built.link else "" }}</code>
+    <button type="button" class="btn btn-sm" id="srcCopy" data-copy="{{ built.link if built and built.link else '' }}">📋 Nusxa olish</button>
+  </div>
+  <div class="error src-err" id="srcErr"{% if not (built and built.error) %} hidden{% endif %}>{{ built.error if built and built.error else "" }}</div>
+  <ul class="src-how">
+    <li>Har bir kanalga <b>alohida havola</b> qiling: Instagram bio — <code>instagram_bio</code>, Telegram kanaldagi
+      post — <code>tg_kanal_post</code>, markazning afishasi — <code>afisha_chilonzor</code>. Shunda qaysi biri odam
+      olib kelayotgani pastdagi jadvalda alohida ko'rinadi.</li>
+    <li>Havolani o'sha joyga qo'ying (bio, post, afishadagi QR kod). Uni bosib botni birinchi marta ochganlar shu nom
+      bilan sanaladi. Botda oldin bo'lgan odam bossa, manbai o'zgarmaydi — birinchi kelgan joyi qoladi.</li>
+    <li>Nom: lotin harflari, raqamlar va <code>_</code>, {{ max_name }} belgigacha. Katta harflar kichik bo'ladi,
+      bo'shliq va boshqa belgilar <code>_</code> ga aylanadi. Havola hech qayerda saqlanmaydi — nusxa olib
+      ishlatavering, birinchi odam kelishi bilan jadvalda paydo bo'ladi.</li>
+  </ul>
+</div>
+
+<div class="card">
+  <h2>Manba bo'yicha</h2>
+  {% if d.rows %}
+  <div class="table-scroll">
+  <table class="src-table">
+    <tr>
+      <th>Manba</th><th class="r">Ro'yxatdan o'tgan</th><th class="r">7 kun</th><th class="r">30 kun</th>
+      <th class="r">Tekshiruv qilgan</th><th class="r">To'lov qilgan</th>
+      {% if finance %}<th class="r">Tushum, so'm</th>{% endif %}<th></th>
+    </tr>
+    {% for r in d.rows %}
+    <tr>
+      <td class="strong">{% if r.is_link %}🔗 <code>{{ r.key }}</code>{% else %}{{ r.label }}{% endif %}</td>
+      <td class="r num"><a href="/users?s=src:{{ r.key|urlencode }}" title="Ro'yxatda ko'rish">{{ r.signups }}</a></td>
+      <td class="r num">{{ r.d7 or "—" }}</td>
+      <td class="r num">{{ r.d30 or "—" }}</td>
+      <td class="r num"><b class="strong">{{ r.checked_pct }}%</b> <span class="muted">· {{ r.checked }}</span></td>
+      <td class="r num"><b class="strong">{{ r.paid_pct }}%</b> <span class="muted">· {{ r.paid }}</span></td>
+      {% if finance %}<td class="r num">{{ r.revenue_str if r.revenue else "—" }}</td>{% endif %}
+      <td class="r">{% if r.link %}<button type="button" class="btn btn-sm" data-copy="{{ r.link }}" title="{{ r.link }}">📋 Havola</button>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    <tr class="src-total">
+      <td class="strong">Jami</td>
+      <td class="r num strong">{{ d.total.signups }}</td>
+      <td class="r num">{{ d.total.d7 }}</td>
+      <td class="r num">{{ d.total.d30 }}</td>
+      <td class="r num"><b class="strong">{{ d.total.checked_pct }}%</b> <span class="muted">· {{ d.total.checked }}</span></td>
+      <td class="r num"><b class="strong">{{ d.total.paid_pct }}%</b> <span class="muted">· {{ d.total.paid }}</span></td>
+      {% if finance %}<td class="r num strong">{{ d.total.revenue_str }}</td>{% endif %}
+      <td></td>
+    </tr>
+  </table>
+  </div>
+  {% else %}
+  <div class="empty">Hali hech kim yo'q.</div>
+  {% endif %}
+  <p class="hint src-note">
+    <b>Hisobga olinmagan:</b> {{ d.left_out.admins }} admin va {{ d.left_out.teachers }} o'qituvchi (guruh va markaz
+    akkauntlari) — ularning tekshiruv va to'lovlari ham; test tekshiruvlar va test to'lovlar.
+    «Tekshiruv qilgan» — kamida bitta tekshiruvi bor; «To'lov qilgan» — kamida bitta to'lovi tasdiqlangan (kutilayotgan
+    va rad etilgan to'lovlar sanalmaydi). «Noma'lum» — 2026-11-16 gacha qo'shilganlar: o'shanda manba yozilmas edi.
+    {% if not finance %}Tushum ustuni faqat «💰 Moliya» ruxsati bor adminlarga ko'rinadi.{% endif %}
+  </p>
+</div>
+
+<style>
+  .src-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .src-form input[type=text] { width: 340px; }
+  .src-out { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 14px; padding: 12px 14px;
+    border-radius: 12px; background: var(--mint-2); border: 1px solid var(--border); }
+  .src-out code { font-size: 14px; font-weight: 700; color: var(--ink); word-break: break-all; }
+  .src-err { margin: 14px 0 0; padding: 10px 14px; }
+  .src-how { margin: 16px 0 0; padding-left: 20px; color: var(--ink-soft); font-size: 13.5px; max-width: 900px; }
+  .src-how li { margin-bottom: 6px; }
+  .src-how code, .src-table code { background: var(--mint-2); padding: 1px 6px; border-radius: 6px; font-size: 12.5px; color: var(--ink); }
+  .src-table th.r, .src-table td.r { text-align: right; white-space: nowrap; }
+  .src-total td { border-top: 2px solid var(--border); background: var(--paper); }
+  .src-note { margin-top: 14px; max-width: 980px; }
+  @media (max-width: 560px) { .src-form input[type=text] { width: 100%; } }
+</style>
+<script>
+  (function () {
+    // The same name as the server makes (bot/utils/signup_source.py slug), as it is typed
+    var form = document.getElementById("srcForm"), input = document.getElementById("srcName");
+    var out = document.getElementById("srcOut"), link = document.getElementById("srcLink");
+    var err = document.getElementById("srcErr"), copy = document.getElementById("srcCopy");
+    var base = form.dataset.base, max = parseInt(form.dataset.max, 10), reserved = {{ reserved_json|safe }};
+
+    function slug(s) {
+      s = (s || "").trim().toLowerCase().replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, "");
+      return s.slice(0, max).replace(/^_+|_+$/g, "");
+    }
+    function show() {
+      var typed = input.value.trim(), name = slug(typed);
+      err.hidden = true; out.hidden = true;
+      if (!typed) return;
+      if (!name) { err.textContent = "Nomda kamida bitta lotin harfi yoki raqam bo'lsin (a-z, 0-9, _)."; err.hidden = false; return; }
+      if (reserved.indexOf(name) >= 0) { err.textContent = "«" + name + "» — botning o'z manba nomi, boshqa nom tanlang."; err.hidden = false; return; }
+      link.textContent = base + name; copy.dataset.copy = base + name; copy.textContent = "📋 Nusxa olish"; out.hidden = false;
+    }
+    input.addEventListener("input", show);
+    form.addEventListener("submit", function (e) { e.preventDefault(); show(); });
+
+    function copied(btn) { var was = btn.textContent; btn.textContent = "✓ Nusxa olindi"; setTimeout(function () { btn.textContent = was; }, 1600); }
+    document.querySelectorAll("[data-copy]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var text = btn.dataset.copy;
+        if (!text) return;
+        if (navigator.clipboard && window.isSecureContext) {
+          navigator.clipboard.writeText(text).then(function () { copied(btn); }, function () { fallback(text, btn); });
+        } else { fallback(text, btn); }
+      });
+    });
+    function fallback(text, btn) {
+      var ta = document.createElement("textarea");
+      ta.value = text; ta.setAttribute("readonly", ""); ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand("copy"); copied(btn); } catch (e) { window.prompt("Nusxa oling:", text); }
+      document.body.removeChild(ta);
+    }
+  })();
+</script>
+{% endblock %}
