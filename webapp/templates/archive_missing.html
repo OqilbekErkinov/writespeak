@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}{{ "W" if kind.slug == "writing" else "S" }}{{ id }} — Arxiv{% endblock %}
+{% block content %}
+{% include "_archive_style.html" %}
+{% set back = "/archive/" ~ kind.slug ~ ("?" ~ query if query else "") %}
+<div class="a-nav"><a href="{{ back }}">← {{ "Writing" if kind.slug == "writing" else "Speaking" }} arxivi</a></div>
+{% if bare %}
+{# the full page could not be built for this row (logged): the check's own fields, as they are #}
+<div class="a-note bad">Bu tekshiruvning to'liq sahifasini ko'rsatib bo'lmadi — quyida uning asosiy ma'lumotlari.</div>
+<div class="card">
+  <h2>#{{ sub.id }} · {{ when }} · <a href="/users/{{ sub.user_id }}">{{ sub.user_id }}</a></h2>
+  <p><b>Bot bahosi:</b> {{ "%.1f"|format(band) if band is not none else "—" }}
+    {% for c in criteria[:4] %} · {{ c.short }} {{ "%g"|format(c.band) if c.band is not none else "—" }}{% endfor %}</p>
+  {% if sub.feedback_pdf_path %}<p><a class="btn" href="/reports/{{ kind.code }}/{{ sub.id }}.pdf" target="_blank">📄 PDF hisobot</a></p>{% endif %}
+  {% if kind.slug == "writing" %}
+  <h3>Savol</h3><div class="a-text a-q">{{ sub.prompt_text or "—" }}</div>
+  <h3>Javob</h3><div class="a-text">{{ sub.answer_text or "—" }}</div>
+  {% else %}
+  <h3>Savol</h3><div class="a-text a-q">{{ sub.question_text or "—" }}</div>
+  <h3>Transkript</h3><div class="a-text">{{ sub.transcript_text or "—" }}</div>
+  {% endif %}
+</div>
+{% else %}
+<div class="card"><div class="empty">{{ "Writing" if kind.slug == "writing" else "Speaking" }} tekshiruvi #{{ id }} topilmadi.</div></div>
+{% endif %}
+{% endblock %}

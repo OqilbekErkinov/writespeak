@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}S{{ sub.id }} · {{ label }} — Arxiv{% endblock %}
+{% block content %}
+{% include "_archive_style.html" %}
+{% include "_archive_head.html" %}
+
+<nav class="a-toc" aria-label="Bo'limlar">
+  <a href="#yozuv">Yozuv</a>
+  <a href="#savollar">Savollar va javoblar <span>{{ qa|length }}</span></a>
+  <a href="#xatolar">Xatolar <span>{{ mistakes|length }}</span></a>
+  <a href="#talaffuz">Talaffuz</a>
+  <a href="#lugat">Lug'at <span>{{ vocabulary|length }}</span></a>
+  <a href="#pdf">PDF</a>
+</nav>
+
+<div class="a-grid">
+  <div class="a-main">
+    <section class="card" id="yozuv">
+      <h2>🎧 O'quvchining yozuvi{% if one %} <span class="muted">bitta yozuvdan savollarga bo'lingan</span>{% endif %}</h2>
+      {% if audio.ok %}
+      <div class="a-audio">
+        <audio id="aPlayer" controls preload="metadata" src="{{ audio.url }}">Brauzeringiz audioni ijro eta olmaydi — <a href="{{ audio.url }}">yuklab oling</a>.</audio>
+        <div class="a-ainfo"><span>{{ audio.ext }} · {{ audio.size }}</span>
+          {% if one and one.seconds %}<span>{{ (one.seconds // 60)|int }}:{{ "%02d"|format((one.seconds % 60)|int) }} · {{ one.pieces or 1 }} bo'lak</span>{% endif %}
+          <a href="{{ audio.url }}" download style="margin-left:auto">⬇ Yuklab olish</a></div>
+      </div>
+      {% if qa|length > 1 and not one %}<p class="hint">Javoblar ketma-ket bitta faylga qo'shilgan: Q1 dan boshlab tartib bilan.</p>{% endif %}
+      {% else %}
+      <div class="a-gone">🎧 <span>{% if audio.recorded %}Yozuv serverda yo'q: o'quvchilarning ovozli javoblari {{ 30 }} kun saqlanadi{% if age %}, bu tekshiruv {{ age }} bo'lgan{% endif %}. Transkript, baholar va PDF hisobot quyida saqlanib qolgan.{% else %}Bu tekshiruvda yozuv saqlanmagan.{% endif %}</span></div>
+      {% endif %}
+      {% if one and one.missing %}<p class="hint">Javob berilmagan savollar: {{ one.missing|join(" · ") }}</p>{% endif %}
+    </section>
+
+    <div id="savollar">
+    {% for q in qa %}
+    <section class="card a-qa" id="q{{ loop.index }}">
+      <div class="a-qa-h">
+        <span class="a-ql">{{ q.label }}</span>
+        {% if q.part %}<span class="a-qp">{{ q.part }}</span>{% endif %}
+        <span class="muted" style="font-size:12.5px">{{ q.words }} so'z</span>
+        {% for p in q.pieces %}{% if audio.ok %}<button type="button" class="btn btn-sm a-play" data-start="{{ p.start }}" data-end="{{ p.end }}" title="Yozuvning shu qismini tinglash">▶ {{ p.label }}</button>{% endif %}{% endfor %}
+      </div>
+      <div class="a-qa-b">
+        <div>
+          <h3>Savol</h3>
+          <div class="a-text a-q">{{ q.question or "—" }}</div>
+        </div>
+        <div>
+          <h3 style="display:flex;align-items:center;gap:8px">O'quvchi aytgani (transkript)
+            {% if q.marked %}<button type="button" class="btn btn-sm a-toggle" aria-pressed="false" data-target="said{{ loop.index }}" style="margin-left:auto;text-transform:none;letter-spacing:0">Xatolarni belgilash</button>{% endif %}</h3>
+          {% if q.said %}
+          <div class="a-text a-said" data-v="said{{ loop.index }}-plain">{{ q.said }}</div>
+          {% if q.marked %}<div class="a-text a-said" data-v="said{{ loop.index }}-marked" hidden>{{ q.marked }}</div>{% endif %}
+          {% else %}<div class="empty" style="padding:8px 0;text-align:left">Transkript saqlanmagan.</div>{% endif %}
+        </div>
+        {% if q.mistakes %}
+        <div>
+          <h3>Xatolar <span class="muted">{{ q.mistakes|length }}</span></h3>
+          {% with list_ = q.mistakes %}{% include "_archive_mistakes.html" %}{% endwith %}
+        </div>
+        {% endif %}
+        {% for m in q.models %}
+        <div class="a-model">
+          <h3>✨ Namuna javob{% if m.aimed_at is not none %} · Band {{ "%.1f"|format(m.aimed_at) }}{% endif %} <span class="muted" style="text-transform:none;letter-spacing:0">· {{ m.words }} so'z{% if m.source %} · {{ {"ai_generated": "AI yozgan", "published_reference": "kitobdan", "human_reviewed": "ustoz tekshirgan"}.get(m.source, m.source) }}{% endif %}</span></h3>
+          <div class="a-text">{{ m.text or "—" }}</div>
+          {% if m.voice_url %}<audio controls preload="none" src="{{ m.voice_url }}" title="Namuna javobning ovozi (Telegram'dagi nusxa)"></audio>
+          {% else %}<p class="hint" style="margin:6px 0 0">🔊 Ovozi yaratilmagan — o'quvchi uni botda so'ramagan.</p>{% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+    {% else %}
+    <section class="card"><div class="empty">Savollar saqlanmagan.</div></section>
+    {% endfor %}
+    </div>
+
+    {% if other_models %}
+    <section class="card">
+      <h2>✨ Boshqa namuna javoblar</h2>
+      {% for m in other_models %}
+      <div class="a-model" style="margin-bottom:10px">
+        <h3>{{ m.label or "Namuna" }}{% if m.aimed_at is not none %} · Band {{ "%.1f"|format(m.aimed_at) }}{% endif %}</h3>
+        <div class="a-text">{{ m.text or "—" }}</div>
+        {% if m.voice_url %}<audio controls preload="none" src="{{ m.voice_url }}"></audio>{% endif %}
+      </div>
+      {% endfor %}
+    </section>
+    {% endif %}
+
+    <section class="card" id="xatolar">
+      <h2>Xatolar <span class="muted num">{{ mistakes|length }}</span></h2>
+      {% set placed = mistakes|length - other_mistakes|length %}
+      {% if placed %}<p class="hint" style="margin:-6px 0 12px">{{ placed }} tasi yuqorida, o'z savoli ostida{% if other_mistakes %}; qolgani shu yerda{% endif %}.</p>{% endif %}
+      {% if other_mistakes %}
+      {% with list_ = other_mistakes %}{% include "_archive_mistakes.html" %}{% endwith %}
+      {% elif not placed %}
+      {% include "_archive_mistakes.html" %}
+      {% endif %}
+    </section>
+
+    <section class="card" id="lugat">
+      <h2>Lug'at <span class="muted num">{{ vocabulary|length }}</span></h2>
+      {% include "_archive_vocab.html" %}
+    </section>
+
+    {% include "_archive_pdf.html" %}
+  </div>
+
+  <aside class="a-side">
+    <section class="card" id="talaffuz">
+      <h2>🗣 Talaffuz (Azure)</h2>
+      {% if pron.rows %}
+      <div class="a-bars">
+        {% for name, v in pron.rows %}
+        <div class="a-bar"><span>{{ name }}</span><span class="t"><i class="{{ 'lo' if v is not none and v < 60 }}" style="width: {{ (v or 0)|round(1) }}%"></i></span><b>{{ "%.0f"|format(v) if v is not none else "—" }}</b></div>
+        {% endfor %}
+      </div>
+      <p class="hint">0–100 ball{% if pron.seconds %}, {{ pron.seconds|round(1) }} s baholangan{% endif %}. Pronunciation bandi shu o'lchovdan{% if pron.measured is sameas false %} — <b>taxminiy</b>{% endif %}.</p>
+      {% else %}
+      <p class="muted" style="margin:0">{% if pron.measured is sameas false %}Azure bu safar ishlamagan — Pronunciation bandi taxminiy.{% else %}Azure ballari saqlanmagan (2026-11-13 dan oldingi tekshiruv yoki o'lchanmagan).{% endif %}</p>
+      {% endif %}
+    </section>
+
+    {% if metrics %}
+    <section class="card">
+      <h2>⏱ Nutq ko'rsatkichlari</h2>
+      <dl class="a-dl">{% for label, value in metrics.rows %}<dt>{{ label }}</dt><dd class="num">{{ value }}</dd>{% endfor %}</dl>
+      {% if metrics.fillers %}<p class="hint">{{ metrics.fillers|join(" · ") }}</p>{% endif %}
+    </section>
+    {% endif %}
+
+    {% include "_archive_side.html" %}
+  </aside>
+</div>
+{% include "_archive_script.html" %}
+{% endblock %}

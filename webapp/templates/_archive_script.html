@@ -1,0 +1,44 @@
+<script>
+(function () {
+  /* "mark the mistakes": the text exactly as sent, or with each numbered mistake marked */
+  document.querySelectorAll(".a-toggle").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var on = b.getAttribute("aria-pressed") !== "true", key = b.dataset.target;
+      b.setAttribute("aria-pressed", on ? "true" : "false");
+      b.textContent = on ? "Asl matn" : "Xatolarni belgilash";
+      document.querySelectorAll('[data-v="' + key + '-plain"]').forEach(function (x) { x.hidden = on; });
+      document.querySelectorAll('[data-v="' + key + '-marked"]').forEach(function (x) { x.hidden = !on; });
+    });
+  });
+  /* the PDF inside the page, loaded only when asked for */
+  document.querySelectorAll(".a-embed").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var box = document.getElementById("aFrame"), open = box.hidden;
+      if (open && !box.firstChild) {
+        var f = document.createElement("iframe");
+        f.src = b.dataset.src; f.title = "PDF hisobot";
+        box.appendChild(f);
+      }
+      box.hidden = !open;
+      b.setAttribute("aria-expanded", open ? "true" : "false");
+      b.textContent = open ? "Yopish" : "👁 Shu yerda ko'rish";
+    });
+  });
+  /* a Speaking answer's piece of the recording: from its start, paused at its end */
+  var player = document.getElementById("aPlayer"), stopAt = null;
+  if (player) {
+    player.addEventListener("timeupdate", function () {
+      if (stopAt !== null && player.currentTime >= stopAt) { player.pause(); stopAt = null; }
+    });
+    player.addEventListener("seeking", function () { if (stopAt !== null && player.currentTime > stopAt) stopAt = null; });
+    document.querySelectorAll(".a-play").forEach(function (b) {
+      b.addEventListener("click", function () {
+        stopAt = b.dataset.end ? +b.dataset.end : null;
+        player.currentTime = +b.dataset.start || 0;
+        player.play();
+        player.closest(".card").scrollIntoView({ behavior: "smooth", block: "nearest" });
+      });
+    });
+  }
+})();
+</script>

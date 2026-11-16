@@ -1,0 +1,79 @@
+{# The head of a check's archive page (webapp/archive.py _header): the way back and to the neighbours, the
+   student, the bot's bands (and a teacher's), and the facts - where the question came from, how it was paid. #}
+{% set w = kind.slug == "writing" %}
+{% set back = "/archive/" ~ kind.slug ~ ("?" ~ query if query else "") %}
+{% set qs = "?" ~ query if query else "" %}
+<div class="a-nav">
+  <a href="{{ back }}#a-{{ sub.id }}">← {{ "Writing" if w else "Speaking" }} arxivi</a>
+  <div class="a-step">
+    {% if newer %}<a class="btn btn-sm" href="/archive/{{ kind.slug }}/{{ newer }}{{ qs }}" rel="prev" title="Undan keyingi (yangiroq) tekshiruv">← Yangiroq #{{ newer }}</a>{% else %}<span class="btn btn-sm" aria-disabled="true" disabled>← Yangiroq</span>{% endif %}
+    {% if older %}<a class="btn btn-sm" href="/archive/{{ kind.slug }}/{{ older }}{{ qs }}" rel="next" title="Undan oldingi (eskiroq) tekshiruv">Eskiroq #{{ older }} →</a>{% else %}<span class="btn btn-sm" aria-disabled="true" disabled>Eskiroq →</span>{% endif %}
+  </div>
+</div>
+{% if hold %}<div class="a-note">To'xtagan tekshiruvning o'zi hisobot saqlamagan — bu o'quvchining undan keyingi {{ "Writing" if w else "Speaking" }} tekshiruvi.</div>{% endif %}
+{% if failed %}<div class="a-note bad">Bu tekshiruvning ba'zi qismlarini ko'rsatib bo'lmadi ({{ failed|join(", ") }}) — qolgani quyida.</div>{% endif %}
+
+<section class="a-hero">
+  <div style="min-width:0">
+    <div class="a-kind">{{ "✍️ Writing" if w else "🎙 Speaking" }} · arxiv</div>
+    <h1>{{ label }} <span class="muted">#{{ sub.id }}</span></h1>
+    <div class="a-chips">
+      {% if is_test %}<span class="a-chip y" title="O'quvchi progressiga va anchor'larga kirmaydi">🧪 test</span>{% else %}<span class="a-chip">haqiqiy tekshiruv</span>{% endif %}
+      {% if source.practice %}<span class="a-chip">📝 Practice</span>{% endif %}
+      {% if source.assignment %}<span class="a-chip">🏫 guruh vazifasi</span>{% endif %}
+      {% if source.mock %}<span class="a-chip">🎯 mock test</span>{% endif %}
+      {% if resubmission_of %}<span class="a-chip" title="Deyarli o'sha javob qayta yuborilgan">↩︎ #{{ resubmission_of }} ga o'xshash</span>{% endif %}
+      {% if number %}<span class="a-chip" title="O'quvchining shu turdagi nechanchi sessiyasi">{{ number }}-sessiya</span>{% endif %}
+      {% if teacher %}<span class="a-chip g">👩‍🏫 ustoz baholagan</span>{% endif %}
+    </div>
+    <div class="a-student">
+      <span class="ava">{{ ((user.full_name if user else "") or "?")[:1] }}</span>
+      <div style="min-width:0">
+        {% if user %}<b><a href="/users/{{ user.id }}" style="color:#fff">{{ user.full_name }}</a></b>
+        <span>{% if user.username %}<a href="https://t.me/{{ user.username }}" target="_blank" rel="noopener">@{{ user.username }}</a> · {% endif %}ID <span class="num">{{ user.id }}</span> · <a href="/archive/{{ kind.slug }}?q={{ user.id }}&amp;test=1">uning barcha {{ "Writing" if w else "Speaking" }} ishlari</a></span>
+        {% else %}<b>Foydalanuvchi topilmadi</b><span>ID <span class="num">{{ sub.user_id }}</span></span>{% endif %}
+        <span style="display:block;margin-top:2px">🕒 {{ when }} <span style="opacity:.7">· {{ ago }}</span> (Toshkent vaqti)</span>
+      </div>
+    </div>
+  </div>
+  <div class="a-ring" style="--deg: {{ ((band or 0) / 9 * 360)|round(1) }}deg" title="Botning umumiy bahosi">
+    <div><b>{{ "%.1f"|format(band) if band is not none else "—" }}</b><span>bot bahosi</span></div>
+  </div>
+</section>
+
+<div class="a-crits">
+  {% for c in criteria[:4] %}
+  {% set mark = teacher.bands.get(c.key) if teacher else none %}
+  {% set d = teacher.diff.criteria.get(c.key) if teacher and teacher.diff else none %}
+  <div class="a-cr">
+    <div class="k">{{ c.short }}</div>
+    <div class="b">{{ "%g"|format(c.band) if c.band is not none else "—" }}</div>
+    <div class="nm">{{ c.name }}</div>
+    {% if teacher %}<div class="tb">👩‍🏫 ustoz <b>{{ "%g"|format(mark) if mark is not none else "—" }}</b>{% if d is not none %} · <span class="{{ 'neg' if d <= -0.5 else 'pos' if d >= 0.5 else '' }}">bot {{ "%+g"|format(d) }}</span>{% endif %}</div>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% if criteria|length > 4 %}<p class="hint" style="margin:-6px 0 14px">Boshqa saqlangan baholar: {% for c in criteria[4:] %}{{ c.short }} {{ "%g"|format(c.band) }}{{ ", " if not loop.last }}{% endfor %}</p>{% endif %}
+
+<dl class="card a-facts">
+  <div><dt>Savol qayerdan</dt><dd>
+    {% if source.practice %}{% set p = source.practice %}📝 Practice savoli <a href="/questions?module={{ p.module }}#q{{ p.id }}">#{{ p.id }}</a>{% if p.q and p.q.topic %} · {{ p.q.topic }}{% endif %}{% if p.channel %} <span class="muted">· {{ p.channel }}</span>{% endif %}{% if not p.q %} <span class="muted">(o'chirilgan)</span>{% endif %}
+    {% elif source.assignment %}{% set a = source.assignment %}🏫 {% if a.a %}«{{ a.a.title }}» <span class="muted">· {{ "mock test" if a.a.kind == "mock" else "uy vazifasi" }}</span>{% else %}vazifa <span class="muted">(o'chirilgan)</span>{% endif %}
+      {% if a.group %}<br>guruh «{{ a.group.name }}»{% if a.teacher %} · o'qituvchi <a href="/users/{{ a.teacher.id }}">{{ a.teacher.full_name }}</a>{% endif %}{% if a.center %} · markaz «{{ a.center.name }}»{% endif %}{% endif %}
+    {% else %}✏️ O'quvchining o'z savoli{% endif %}
+    {% if source.mock %}<br>🎯 Mock test #{{ source.mock.session.id }} <span class="muted">· {{ "tugatilgan" if source.mock.status == "completed" else "tugatilmagan" }}</span>{% endif %}
+    {% if w %}<br><span class="muted">savol: {{ prompt_source or "—" }} · javob: {{ answer_source or "—" }}</span>{% endif %}
+  </dd></div>
+  <div><dt>To'lov</dt><dd>{% if paid.coins %}<b>{{ paid.coins }} coin</b>{% else %}coin olinmagan{% endif %}{% if paid.mode and paid.mode not in ("—", "coin") %} <span class="muted">· {{ paid.mode }}</span>{% endif %}
+    {% if payer %}<br>to'ladi: <a href="/users/{{ payer.id }}">{{ payer.full_name }}</a>{% elif sub.paid_by_id %}<br>to'ladi: <span class="num">{{ sub.paid_by_id }}</span>{% endif %}</dd></div>
+  <div><dt>OpenAI xarajati</dt><dd><b class="num">{{ "$%.4f"|format(cost.total) if cost.total else "—" }}</b>{% if cost.calls %} <span class="muted">· {{ cost.calls }} ta so'rov</span>{% endif %}
+    {% if seconds is not none %}<br><span class="muted">o'quvchi {{ (seconds // 60)|int }}:{{ "%02d"|format((seconds % 60)|int) }} kutdi</span>{% endif %}</dd></div>
+  <div><dt>Hisobot</dt><dd>{% if pdf %}<a href="{{ pdf.url }}" target="_blank">📄 PDF ochish</a> <span class="muted">· {{ pdf.size }}</span>{% elif pdf_recorded %}<span class="muted">PDF fayli topilmadi</span>{% else %}<span class="muted">PDF yo'q</span>{% endif %}
+    {% if resubmission_of %}<br><a href="/archive/{{ kind.slug }}/{{ resubmission_of }}">↩︎ #{{ resubmission_of }}</a> <span class="muted">— deyarli o'sha javob</span>{% endif %}</dd></div>
+  {% if teacher %}
+  <div><dt>Ustoz bahosi</dt><dd><b>{{ "%.1f"|format(teacher.overall) if teacher.overall is not none else "—" }}</b>
+    {% if teacher.diff and teacher.diff.overall is not none %} <span class="{{ 'neg' if teacher.diff.overall <= -1 else 'pos' if teacher.diff.overall >= 1 else 'muted' }}">· bot {{ "%+.1f"|format(teacher.diff.overall) }}</span>{% endif %}
+    <br><span class="muted">{{ teacher.by or "—" }}{% if teacher.at %} · {{ teacher.at }}{% endif %}{% if teacher.role == "teacher" %} · {{ "⚓ anchor" if teacher.approved else "⏳ tasdiq kutmoqda" }}{% endif %}</span>
+    {% if teacher.note %}<br>«{{ teacher.note }}»{% endif %}</dd></div>
+  {% endif %}
+</dl>

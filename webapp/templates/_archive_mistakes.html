@@ -1,0 +1,24 @@
+{# The numbered mistakes ({n, wrong, correct, why, crit, unclear, meant}) - or an older check's sentence notes (old) #}
+{% set items = list_ if list_ is defined else mistakes %}
+{% if items %}
+<ol class="a-mist">
+  {% for m in items %}
+  <li>
+    <span class="a-n">{{ m.n }}</span>
+    <div>
+      {% if m.old %}
+      <div class="a-old {{ m.color }}">«{{ m.wrong }}»</div>
+      {% if m.why %}<div class="a-why">{{ m.why }}</div>{% endif %}
+      {% else %}
+      <div class="a-fix"><s>{{ m.wrong or "—" }}</s> → <b>{{ m.correct if m.correct else "(olib tashlash)" }}</b>{% if m.crit %}<span class="a-ct" title="Mezon">{{ m.crit }}</span>{% endif %}</div>
+      {% if m.why %}<div class="a-why">{{ m.why }}</div>{% endif %}
+      {% if m.unclear and m.meant %}<div class="a-meant">Ma'nosi noaniq — ehtimol: «{{ m.meant }}»</div>{% endif %}
+      {% endif %}
+    </div>
+  </li>
+  {% endfor %}
+</ol>
+{% if items[0].old %}<p class="hint">Eski formatdagi izohlar (raqamli xatolar 2026-oktabrdan beri saqlanadi): yashil — yaxshi, sariq — yaxshilasa bo'ladi, to'q sariq — xato.</p>{% endif %}
+{% elif list_ is not defined %}
+<div class="empty">{% if sub.annotations is none or sub.annotations == [] %}Bot xato topmagan yoki bu tekshiruvda xatolar saqlanmagan.{% else %}Xato yo'q.{% endif %}</div>
+{% endif %}

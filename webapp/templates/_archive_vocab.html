@@ -1,0 +1,6 @@
+{% if vocabulary %}
+<div class="table-scroll"><table class="a-vocab">
+  <tr><th>So'z / ibora</th><th>Ma'nosi</th><th>Misol</th></tr>
+  {% for v in vocabulary %}<tr><td>{{ v.term }}</td><td>{{ v.meaning or "—" }}</td><td class="muted">{{ v.example or "—" }}</td></tr>{% endfor %}
+</table></div>
+{% else %}<div class="empty">Lug'at saqlanmagan.</div>{% endif %}

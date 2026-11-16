@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}{{ "Writing" if kind.slug == "writing" else "Speaking" }} arxivi — Bandzilla Admin{% endblock %}
+{% block content %}
+{% set writing = kind.slug == "writing" %}
+{% include "_archive_style.html" %}
+<div class="a-top">
+  <div>
+    <h1 style="margin:0">{{ "✍️ Writing arxivi" if writing else "🎙 Speaking arxivi" }}</h1>
+    <p class="hint">Har bir tekshiruv ichidagi hamma narsa: savol{{ " va uning rasmlari" if writing else "lar" }},
+      o'quvchining {{ "javobi" if writing else "yozuvi va aytgani" }}, botning bahosi, xatolar va PDF hisobot. Eng yangisi tepada.</p>
+  </div>
+  <nav class="a-switch" aria-label="Arxiv turi">
+    <a href="/archive/writing" class="{{ 'on' if writing }}">✍️ Writing</a>
+    <a href="/archive/speaking" class="{{ '' if writing else 'on' }}">🎙 Speaking</a>
+  </nav>
+</div>
+{% if hold %}<div class="a-note">To'xtagan tekshiruvning hisoboti saqlanmagan — quyida shu o'quvchining {{ "Writing" if writing else "Speaking" }} tekshiruvlari.</div>{% endif %}
+
+<form class="card a-filter" method="get" action="/archive/{{ kind.slug }}" role="search">
+  <div class="a-f-row">
+    <label class="a-f-q"><span>Qidiruv</span>
+      <input type="text" name="q" value="{{ f.q }}" placeholder="Ism, @username, Telegram ID yoki #raqam" aria-label="Qidiruv"></label>
+    <label><span>Sanadan</span><input type="date" name="from" value="{{ f.start.isoformat() if f.start else '' }}"></label>
+    <label><span>Sanagacha</span><input type="date" name="to" value="{{ f.end.isoformat() if f.end else '' }}"></label>
+    <label><span>{{ "Task" if writing else "Part" }}</span>
+      <select name="sub" aria-label="{{ 'Task' if writing else 'Part' }}">
+        <option value="">Hammasi</option>
+        {% for key, label in kind.subs.items() %}<option value="{{ key }}" {{ 'selected' if f.sub == key }}>{{ label }}</option>{% endfor %}
+      </select></label>
+    <label><span>Band (dan)</span>
+      <select name="bmin" aria-label="Eng past band">
+        <option value="">—</option>
+        {% for b in bands %}<option value="{{ '%g'|format(b) }}" {{ 'selected' if f.bmin == b }}>{{ "%.1f"|format(b) }}</option>{% endfor %}
+      </select></label>
+    <label><span>Band (gacha)</span>
+      <select name="bmax" aria-label="Eng yuqori band">
+        <option value="">—</option>
+        {% for b in bands %}<option value="{{ '%g'|format(b) }}" {{ 'selected' if f.bmax == b }}>{{ "%.1f"|format(b) }}</option>{% endfor %}
+      </select></label>
+  </div>
+  <div class="a-f-foot">
+    <div class="filters" style="margin:0">{% for p in periods %}<a href="/archive/{{ kind.slug }}?{{ p.query }}" class="{{ 'active' if p.on }}">{{ p.label }}</a>{% endfor %}</div>
+    <label class="a-chk" title="O'quvchi progressiga kirmaydigan sinov tekshiruvlari"><input type="checkbox" name="test" value="1" {{ 'checked' if f.test }}> Test tekshiruvlar ham</label>
+    <span class="a-f-btns">
+      {% if f.any or f.test %}<a class="btn" href="/archive/{{ kind.slug }}">Tozalash</a>{% endif %}
+      <button type="submit" class="btn btn-good">🔎 Qidirish</button>
+    </span>
+  </div>
+</form>
+
+<div class="a-sum">
+  <div><b class="num">{{ total }}</b><span>tekshiruv{{ " (filtr bo'yicha)" if f.any else "" }}</span></div>
+  <div><b class="num">{{ "%.2f"|format(avg) if avg is not none else "—" }}</b><span>o'rtacha band</span></div>
+  <div><b class="num">{{ coins }}</b><span>coin sarflangan</span></div>
+  <div><b class="num">{{ page }}<small class="muted"> / {{ pages }}</small></b><span>sahifa · {{ 50 }} tadan</span></div>
+</div>
+
+<div class="card a-table">
+  {% if rows %}
+  <div class="table-scroll"><table>
+    <tr><th>#</th><th>Sana</th><th>O'quvchi</th><th>{{ "Task" if writing else "Part" }}</th><th>Band</th><th>Mezonlar</th>
+      <th class="r">{{ "So'z" if writing else "Davomiyligi" }}</th><th class="r">Coin</th><th class="r">AI</th><th>Ichida</th></tr>
+    {% for c in rows %}
+    <tr class="row-link" data-href="{{ c.url }}" id="a-{{ c.id }}">
+      <td class="num"><a class="a-id" href="{{ c.url }}">#{{ c.id }}</a></td>
+      <td class="num nowrap">{{ c.when }}</td>
+      <td>{% if c.user %}<a class="who a-who" href="/users/{{ c.user.id }}"><span class="ava">{{ (c.user.full_name or "?")[:1] }}</span>
+        <span style="min-width:0"><span class="nm">{{ c.user.full_name }}</span><span class="sub">{{ "@" ~ c.user.username if c.user.username else c.user.id }}</span></span></a>
+        {% else %}<span class="muted num">{{ c.user_id }}</span>{% endif %}</td>
+      <td class="a-type"><b>{{ c.sub }}</b>{% if c.is_test %} <span class="pill pill-warn">test</span>{% endif %}{% if c.practice %}<span class="a-tag">Practice</span>{% endif %}{% if c.assignment %}<span class="a-tag">vazifa</span>{% endif %}
+        {% if c.prompt %}<div class="a-prompt" title="{{ c.prompt }}">{{ c.prompt }}</div>{% endif %}</td>
+      <td>{% if c.band is not none %}<span class="band-chip {{ 'hi' if c.band >= 7 else ('lo' if c.band < 5.5 else '') }}">{{ "%.1f"|format(c.band) }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+      <td><div class="a-crit">{% for k in c.crit[:4] %}<span class="a-cp" title="{{ k.name }}"><i>{{ k.short }}</i>{{ "%g"|format(k.band) if k.band is not none else "—" }}</span>{% endfor %}</div></td>
+      <td class="r num nowrap">{% if writing %}{{ c.words }}{% else %}{{ c.duration }}{% if c.spoken %}<div class="muted" style="font-size:12px">{{ c.spoken }} so'z</div>{% endif %}{% endif %}</td>
+      <td class="r num">{{ c.coins or "—" }}</td>
+      <td class="r num nowrap">{{ "$%.3f"|format(c.cost) if c.cost else "—" }}</td>
+      <td class="a-icons">{% if writing and c.images %}<span title="Rasmlar bor">🖼</span>{% endif %}{% if c.audio %}<span title="Yozuv bor">🎧</span>{% endif %}{% if c.pdf_ok %}<span title="PDF hisobot">📄</span>{% endif %}{% if c.teacher %}<span title="Ustoz baholagan">👩‍🏫</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  {% else %}
+  <div class="empty">{{ "Bu filtr bo'yicha tekshiruv topilmadi." if f.any else "Hali tekshiruv yo'q." }}{% if not f.test %} <a href="/archive/{{ kind.slug }}?{{ f.query(test=1) }}">Test tekshiruvlar bilan qidirish</a>{% endif %}</div>
+  {% endif %}
+</div>
+
+{% if pages > 1 %}
+<nav class="a-pages" aria-label="Sahifalar">
+  {% if page > 1 %}<a href="/archive/{{ kind.slug }}?{{ f.query(page=page - 1) }}" rel="prev">‹ Oldingi</a>{% endif %}
+  {% for n in window %}{% if n is none %}<span>…</span>{% else %}<a href="/archive/{{ kind.slug }}?{{ f.query(page=n) }}" class="{{ 'on' if n == page }}"{% if n == page %} aria-current="page"{% endif %}>{{ n }}</a>{% endif %}{% endfor %}
+  {% if page < pages %}<a href="/archive/{{ kind.slug }}?{{ f.query(page=page + 1) }}" rel="next">Keyingi ›</a>{% endif %}
+</nav>
+{% endif %}
+
+<script>
+  /* a row opens its check (a link inside it - the student - keeps its own way) */
+  document.querySelectorAll("tr.row-link").forEach(function (tr) {
+    tr.addEventListener("click", function (e) {
+      if (e.target.closest("a")) return;
+      if (e.ctrlKey || e.metaKey) { window.open(tr.dataset.href, "_blank"); return; }
+      window.location = tr.dataset.href;
+    });
+  });
+</script>
+{% endblock %}

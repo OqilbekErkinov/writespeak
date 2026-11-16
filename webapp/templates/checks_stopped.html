@@ -54,7 +54,7 @@
       <td><span class="pill {{ r.tone }}">{{ r.label }}</span></td>
       <td class="muted s-reason" title="{{ r.h.reason or '' }}">{{ (r.h.reason or "—")[:140] }}</td>
       <td class="r num">{% if r.h.coins %}{{ r.h.coins }} <span class="muted">qaytdi</span>{% else %}—{% endif %}</td>
-      <td>{% if r.later %}<span class="pill pill-good">✓ hisobot oldi</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+      <td style="white-space:nowrap">{% if r.later %}<a class="pill pill-good" href="/archive/hold/{{ r.h.id }}" title="Keyin olgan hisobotini arxivda ochish">✓ hisobot oldi ↗</a>{% else %}<a class="btn btn-sm" href="/archive/hold/{{ r.h.id }}" title="O'quvchining tekshiruvlari arxivda">🗂 Arxiv</a>{% endif %}</td>
     </tr>
     {% endfor %}
   </table></div>
