@@ -330,11 +330,13 @@ async def refuse(card: Message, state: FSMContext, failed_state, lang: str, text
 
 async def _paywall(card: Message, state: FSMContext, failed_state, lang: str, coins: int, balance) -> None:
     from bot.keyboards.payment_kb import buy_coins_kb  # noqa: PLC0415
-    from bot.utils.quota import price_list  # noqa: PLC0415
+    from bot.utils.quota import carry_over_note, price_list  # noqa: PLC0415
 
     logger.info("Check refused for user %s: %s coins needed, %s there", card.chat.id, coins, balance)
+    # the coins already there carry over to the pack (2026-11-16): "3 coin + 10 coin = 13 coin = 2 checks"
     await refuse(card, state, failed_state, lang,
-                 t("quota.paywall", lang, price=coins, balance=balance or 0) + "\n\n" + price_list(lang),
+                 t("quota.paywall", lang, price=coins, balance=balance or 0)
+                 + carry_over_note(balance or 0, coins, lang) + "\n\n" + price_list(lang),
                  buy_coins_kb(lang))
 
 
