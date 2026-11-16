@@ -93,6 +93,12 @@ class Settings(BaseSettings):
     # practise" and "Intonation" and marks Pronunciation "(estimated)".
     azure_speech_key: str = ""
     azure_speech_region: str = ""
+    # The most Azure requests in flight at once, over every running check (2026-11-16: each Speaking check sends
+    # ~4 at once, so launch volume on the free F0 tier brought 429s).
+    azure_max_parallel: int = 8
+    # One check's whole Pronunciation assessment at most this long: past it the check goes on with the
+    # estimated band (as when Azure fails) instead of using up the check's deadline after OpenAI was paid.
+    azure_timeout_seconds: float = 120.0
 
     # --- Speaking model answers (services/ai/speaking_answers.py) ---
     # True = a session question that matches a book question exactly is answered

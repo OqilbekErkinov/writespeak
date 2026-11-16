@@ -15,6 +15,11 @@ failed check later.
 
 `extract_audio_from_message` covers Speaking answers (voice, video note,
 audio/video file, forwarded audio).
+
+A download that meets a network error or a timeout is tried once more; one
+that still fails - or a file we can't store (the disk) - is ReceiveFailed,
+and the student is asked to send it again, their flow left as it was
+(2026-11-16: a voice answer was lost without a word).
 """
 from __future__ import annotations
 
@@ -23,8 +28,9 @@ import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import aiohttp
 from aiogram import Bot
-from aiogram.exceptions import TelegramBadRequest
+from aiogram.exceptions import TelegramBadRequest, TelegramNetworkError, TelegramRetryAfter, TelegramServerError
 from aiogram.types import Message
 
 from bot.i18n import t
@@ -49,6 +55,16 @@ class UnsupportedInputError(Exception):
     handler can politely ask the user to resend it."""
 
 
+class ReceiveFailed(Exception):
+    """The student's file could not be downloaded from Telegram (tried twice) or stored - already logged; the
+    handler asks for it again (input.voice_not_received / input.file_not_received)."""
+
+
+_NETWORK = (TelegramNetworkError, TelegramServerError, asyncio.TimeoutError, aiohttp.ClientError)
+RETRY_PAUSE = 2.0  # seconds before the second try of a download
+MAX_RETRY_AFTER = 30  # Telegram's flood control asking for longer: not waited for
+
+
 @dataclass
 class ExtractedInput:
     text: str
@@ -59,9 +75,34 @@ class ExtractedInput:
 
 
 async def _download(bot: Bot, file_id: str) -> bytes:
-    file = await bot.get_file(file_id)
-    buf = await bot.download_file(file.file_path)
-    return buf.read()
+    """The file's bytes - once more after a pause on a network error or a timeout. A TelegramBadRequest (too
+    big, ...) goes to the caller as it is; a download that fails twice is ReceiveFailed."""
+    for attempt in (1, 2):
+        try:
+            file = await bot.get_file(file_id)
+            buf = await bot.download_file(file.file_path)
+            return buf.read()
+        except (TelegramRetryAfter, *_NETWORK) as e:
+            wait = e.retry_after + 1 if isinstance(e, TelegramRetryAfter) else RETRY_PAUSE
+            if attempt == 2 or wait > MAX_RETRY_AFTER:
+                logger.exception("Download of a file failed twice (%r)", e)
+                raise ReceiveFailed(repr(e)) from e
+            logger.warning("Download of a file failed (%r) - trying again", e)
+            await asyncio.sleep(wait)
+    raise AssertionError("unreachable")
+
+
+def _store(user_id: int, content: bytes, extension: str) -> str:
+    """save_upload, a failure to store (the disk full, ...) as ReceiveFailed."""
+    try:
+        return save_upload(user_id, content, extension)
+    except OSError as e:
+        logger.exception("Upload of user %s not stored", user_id)
+        raise ReceiveFailed(repr(e)) from e
+
+
+def _not_received(message: Message, lang: str) -> str:
+    return t("input.voice_not_received" if _audio_like(message)[0] else "input.file_not_received", lang)
 
 
 async def read_text_input(message: Message, lang: str, ocr_mode: str = "verbatim") -> ExtractedInput | None:
@@ -88,6 +129,8 @@ async def read_text_input(message: Message, lang: str, ocr_mode: str = "verbatim
     except TelegramBadRequest as e:
         logger.warning("Download failed for user %s: %s", message.from_user.id, e)
         error = t("input.file_too_big" if "too big" in str(e).lower() else "writing.could_not_read", lang)
+    except ReceiveFailed:  # logged where it happened
+        error = _not_received(message, lang)
     except Exception as e:
         if is_image_error(e):  # OpenAI couldn't open the picture: the sender can fix that
             logger.warning("The vision model turned an image of user %s down: %s", message.from_user.id, e)
@@ -128,13 +171,20 @@ async def read_images(message: Message, lang: str) -> list[str] | None:
             else:
                 continue
             image_bytes, _, image_ext = await asyncio.to_thread(_prepare_image, content, lang)
-            paths.append(save_upload(m.from_user.id, image_bytes, image_ext))
+            paths.append(_store(m.from_user.id, image_bytes, image_ext))
     except UnsupportedInputError as e:
         await message.answer(str(e))
         return None
     except TelegramBadRequest as e:
         logger.warning("Chart download failed for user %s: %s", message.from_user.id, e)
         await message.answer(t("input.file_too_big" if "too big" in str(e).lower() else "writing.could_not_read", lang))
+        return None
+    except ReceiveFailed:  # logged where it happened; the step waits for the picture again
+        await message.answer(t("input.file_not_received", lang))
+        return None
+    except Exception:  # noqa: BLE001 - never a silent step (2026-11-16)
+        logger.exception("Chart of user %s not read", message.from_user.id)
+        await message.answer(t("writing.could_not_read", lang))
         return None
     if not paths:
         await message.answer(t("writing.chart_photo_only", lang))
@@ -173,14 +223,14 @@ async def _extract_one(
     if message.photo:
         content = await _download(bot, message.photo[-1].file_id)  # highest resolution
         image_bytes, image_mime, image_ext = await asyncio.to_thread(_prepare_image, content, lang)
-        saved_path = save_upload(user_id, image_bytes, image_ext)
+        saved_path = _store(user_id, image_bytes, image_ext)
         text = await extract_text_from_image(image_bytes, mime_type=image_mime, mode=ocr_mode)
         return _join(caption, text), SourceType.photo, saved_path, True
 
     audio_file_id, audio_name = _audio_like(message)
     if audio_file_id:
         content = await _download(bot, audio_file_id)
-        saved_path = save_upload(user_id, content, _safe_suffix(audio_name))
+        saved_path = _store(user_id, content, _safe_suffix(audio_name))
         text = await transcribe_mp3(await ensure_mp3(content, audio_name))
         return _join(caption, text), SourceType.audio, saved_path, False
 
@@ -192,7 +242,7 @@ async def _extract_one(
         content = await _download(bot, doc.file_id)
 
         if ext == ".pdf" or mime == "application/pdf":
-            saved_path = save_upload(user_id, content, ".pdf")
+            saved_path = _store(user_id, content, ".pdf")
             try:
                 text = await extract_text_from_pdf(content)
             except TooManyPages as e:
@@ -200,19 +250,19 @@ async def _extract_one(
             return _join(caption, text), SourceType.pdf, saved_path, False
 
         if ext == ".docx" or mime == DOCX_MIME:
-            saved_path = save_upload(user_id, content, ".docx")
+            saved_path = _store(user_id, content, ".docx")
             text = await asyncio.to_thread(extract_text_from_docx, content)
             return _join(caption, text), SourceType.docx, saved_path, False
 
         if ext == ".txt" or mime == "text/plain":
-            saved_path = save_upload(user_id, content, ".txt")
+            saved_path = _store(user_id, content, ".txt")
             text = content.decode("utf-8", errors="replace").strip()
             return _join(caption, text), SourceType.text, saved_path, False
 
         if _is_image_document(doc):
             # A photo sent "as a file" (uncompressed) - common from desktop.
             image_bytes, image_mime, image_ext = await asyncio.to_thread(_prepare_image, content, lang)
-            saved_path = save_upload(user_id, image_bytes, image_ext)
+            saved_path = _store(user_id, image_bytes, image_ext)
             text = await extract_text_from_image(image_bytes, mime_type=image_mime, mode=ocr_mode)
             return _join(caption, text), SourceType.photo, saved_path, True
 
@@ -276,11 +326,12 @@ async def extract_audio_from_message(
 ) -> tuple[bytes, str, str]:
     """Returns (raw_audio_bytes, original_filename, saved_file_path). Accepts
     voice notes, video notes (round videos), audio/video files, and
-    forwarded audio of any of the above."""
+    forwarded audio of any of the above. ReceiveFailed: not downloaded (tried
+    twice) or not stored - the student sends it again."""
     file_id, filename = _audio_like(message)
     if file_id is None:
         raise UnsupportedInputError(t("speaking.audio_only", lang))
 
     content = await _download(bot, file_id)
-    saved_path = save_upload(user_id, content, _safe_suffix(filename))
+    saved_path = _store(user_id, content, _safe_suffix(filename))
     return content, filename, saved_path

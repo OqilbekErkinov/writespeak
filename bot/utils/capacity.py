@@ -78,6 +78,7 @@ class Governor:
     cap_read_at: float = -1e9
     changed: asyncio.Event | None = None
     rate_limited_total: int = 0
+    closed: bool = False  # the bot is shutting down: nothing more is admitted (close())
 
     # --- the limits -------------------------------------------------------------------------------------
 
@@ -155,14 +156,15 @@ class Governor:
     # --- the gate ---------------------------------------------------------------------------------------
 
     async def acquire(self, ticket: object) -> None:
-        """Waits for this check's turn (first come, first served); its place: position(ticket)."""
+        """Waits for this check's turn (first come, first served); its place: position(ticket). Once the gate is
+        closed (a shutdown) nobody's turn comes: the queued checks wait to be stopped with the process."""
         await self.refresh_cap()
         self.queue.append(ticket)
         try:
             while True:
                 room = self.limit() - self.running
                 place = self.queue.index(ticket)
-                if place < room and self.openai_short() is None:
+                if not self.closed and place < room and self.openai_short() is None:
                     break
                 event = self._event()
                 event.clear()
@@ -179,6 +181,13 @@ class Governor:
 
     def release(self) -> None:
         self.running = max(0, self.running - 1)
+        self._poke()
+
+    def close(self) -> None:
+        """At shutdown (bot/utils/check_guard.py drain(), 2026-11-16): no queued check is admitted any more -
+        it would spend OpenAI money minutes before the process stops and the result is thrown away. Its hold
+        stays for the next start, which gives the coins back and offers "try again"."""
+        self.closed = True
         self._poke()
 
     def position(self, ticket: object) -> int:

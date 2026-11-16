@@ -16,6 +16,11 @@ taken when grading starts, atomically, and given back unless the report is
 saved (bot/utils/check_guard.py, since 2026-11-15) - so an abandoned or
 failed attempt still costs nothing, and two checks can never share one
 price. A student whose check is being graded is told to wait (Quota.busy).
+
+The FSM data's price and payer are only what the student was shown: the
+moment the coins are held they are decided again (fresh_quota, 2026-11-16).
+A sponsor that could not pay is told, and so is its student
+(bot/utils/sponsor_alerts.py).
 """
 from __future__ import annotations
 
@@ -41,6 +46,7 @@ class Quota:
     price: int = 0  # coins this check costs
     balance: int | None = None  # the student's coins, when they pay themselves
     busy: bool = False  # another check of theirs is being graded (bot/utils/check_guard.py)
+    paused: bool = False  # checks are paused for them - a test window, OpenAI's credit gone (quota.paused)
 
 
 async def check_quota(user_id: int, kind: str, assignment_group_id: int | None = None) -> Quota:
@@ -56,19 +62,41 @@ async def check_quota(user_id: int, kind: str, assignment_group_id: int | None =
     if await runtime.window_on():
         # Test window: the testers check free of charge, nobody else at all.
         # Nothing is changed in the database, so ending it restores everyone.
-        return Quota(not await runtime.checks_paused_for(user_id), False, price=price)
+        paused = await runtime.checks_paused_for(user_id)
+        return Quota(not paused, False, price=price, paused=paused)
     if await runtime.checks_paused_for(user_id):  # OpenAI's credit is gone (bot/utils/balance.py): quota.paused
-        return Quota(False, False, price=price)
+        return Quota(False, False, price=price, paused=True)
     async with get_session() as session:
         if await crud.has_active_subscription(session, user_id):
             return Quota(True, False, price=price)
         checks = FULL_TEST_CHECKS if kind == "speaking_full" else 1
-        payer_id = await crud.find_sponsor(session, user_id, assignment_group_id, coins=price, checks=checks)
-        if payer_id is not None:
-            return Quota(True, True, payer_id=payer_id, price=price)
-        user = await crud.get_user(session, user_id)
-        balance = user.coin_balance if user is not None else 0
-        return Quota(balance >= price, balance >= price, price=price, balance=balance)
+        pick = await crud.pick_sponsor(session, user_id, assignment_group_id, coins=price, checks=checks)
+        if pick.payer_id is not None:
+            quota = Quota(True, True, payer_id=pick.payer_id, price=price)
+        else:
+            user = await crud.get_user(session, user_id)
+            balance = user.coin_balance if user is not None else 0
+            quota = Quota(balance >= price, balance >= price, price=price, balance=balance)
+    # a sponsor that could not pay (or soon can't) is told, and so is its student - in the background
+    from bot.utils import sponsor_alerts  # noqa: PLC0415
+
+    sponsor_alerts.after_quota(user_id, pick, price)
+    return quota
+
+
+async def fresh_quota(user_id: int, kind: str, data: dict) -> Quota:
+    """The check about to start, priced again the moment its coins are held (bot/utils/check_guard.py begin,
+    2026-11-16): the FSM data's spend_credit/payer_id were written when the task was chosen and live 30
+    days - a "try again" days later charged a sponsor the student had left (or who stopped paying, or used
+    up the day's limit), and a flow started in a test window stayed free after it. The same kind, the same
+    assignment's group (from data["assignment_part_id"]); its own check is not written yet, so `busy` means
+    another one."""
+    group_id = None
+    if data.get("assignment_part_id"):
+        async with get_session() as session:
+            found = await crud.get_part(session, data["assignment_part_id"])
+        group_id = found[1].group_id if found else None
+    return await check_quota(user_id, kind, group_id)
 
 
 def check_price(data: dict, kind: str) -> int:

@@ -104,11 +104,12 @@ async def main() -> None:
     bot.session.middleware(SkipStaleAnswers())  # a button pressed during a deploy still does its job
     dp = build_dispatcher()
 
-    from bot.utils import capacity, check_guard, crm
+    from bot.utils import capacity, check_guard, crm, sponsor_alerts
     from bot.utils.checks_back import notify_back
     from bot.utils.group_scheduler import run_group_jobs
     from bot.utils.vocab_reminders import run_vocab_reminders
 
+    sponsor_alerts.use(bot)  # a sponsor out of coins is told by this bot (bot/utils/quota.py check_quota)
     logger.info("Starting Bandzilla bot (polling mode)")
     # The messages sent while the bot was down (a deploy) are handled now, not dropped: an essay or a voice
     # answer sent during a restart used to vanish without a reply (until 2026-11-15).

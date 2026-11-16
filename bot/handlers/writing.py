@@ -30,7 +30,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from aiogram import F, Router
-from aiogram.exceptions import TelegramBadRequest
+from aiogram.exceptions import TelegramAPIError
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State
 from aiogram.types import BufferedInputFile, CallbackQuery, Message
@@ -539,11 +539,9 @@ async def _ask_chart_again(processing_msg: Message, state: FSMContext, data: dic
 
 
 async def _edit_or_send(msg: Message, text: str, markup=None) -> None:
-    """The check's card becomes `text` - or, when it is gone (the student deleted it), a new message."""
-    try:
-        await msg.edit_text(text, reply_markup=markup)
-    except TelegramBadRequest:
-        await msg.answer(text, reply_markup=markup)
+    """The check's card becomes `text` - or, when it is gone (the student deleted it), a new message. Never
+    raises (guard.show, 2026-11-16: a network error here used to escape past the failure path)."""
+    await guard.show(msg, text, markup)
 
 
 async def _failed(message: Message, state: FSMContext, lang: str, card: Message, hold: guard.Hold, data: dict,
@@ -556,10 +554,33 @@ async def _failed(message: Message, state: FSMContext, lang: str, card: Message,
         await _edit_or_send(card, t("check.failed_lost", lang) + note)
     elif await guard.owns(state, hold):
         await state.set_state(WritingStates.failed)
+        await guard.park(message.chat.id, state)  # "try again" survives a top-up's own steps (C3)
         await _edit_or_send(card, t("check.failed", lang) + note, guard.retry_kb(lang, hold.id))
     else:
         await _edit_or_send(card, t("check.failed_lost", lang) + note)
     await stickers.send(message.bot, message.chat.id, "oops")
+
+
+async def _failed_early(message: Message, state: FSMContext, lang: str, card: Message | None,
+                        error: BaseException, coins_back: int = 0) -> None:
+    """A step before grading failed - the database or Redis away, Telegram down (2026-11-16: it escaped to
+    aiogram, the card said "analysing…" for good and the state stayed `processing`). Nothing is charged
+    (`coins_back`: a hold already taken, given back): the check moves to `failed` with "🔁 Try again" while
+    the answer is in the FSM data, else the student is asked to send it again. `card`: the check's card,
+    None when there is none yet (a new message then)."""
+    logger.error("Writing check of user %s could not start: %s", message.chat.id, _reason(error), exc_info=error)
+    target = card or message
+    note = ("\n\n" + t("check.coins_back", lang, coins=coins_back)) if coins_back else ""
+    try:
+        data = await state.get_data()
+        if data.get("answer_text") and data.get("task_type") and not data.get("mock_session_id"):
+            await guard.refuse(target, state, WritingStates.failed, lang, t("check.failed", lang) + note,
+                               edit=card is not None)
+            return
+        await state.clear()
+    except Exception:  # noqa: BLE001 - the FSM is away too: at least the student hears it
+        logger.warning("FSM of user %s not updated after a failed start", message.chat.id, exc_info=True)
+    await guard.show(target, t("check.failed_lost", lang) + note, edit=card is not None)
 
 
 def _reason(e: BaseException) -> str:
@@ -595,63 +616,84 @@ async def _repeat_of(user_id: int, task_type: str, answer_text: str):
 
 
 async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
-    data = await state.get_data()
+    # Every step before grading is guarded (2026-11-16): a database or Redis error there moves the check to
+    # `failed` with "🔁 Try again" (_failed_early) instead of a card saying "analysing…" for good.
     user_id = message.chat.id
-    # Text pasted from a PDF: lines broken mid-sentence joined, page headers
-    # and footers left out - and every count, mark and check made on that.
-    cleaned, footers = clean_pasted(data["answer_text"])
-    if cleaned != data["answer_text"]:
-        data["answer_text"] = cleaned
-        await state.update_data(answer_text=cleaned)
+    try:
+        data = await state.get_data()
+        # Text pasted from a PDF: lines broken mid-sentence joined, page headers
+        # and footers left out - and every count, mark and check made on that.
+        cleaned, footers = clean_pasted(data["answer_text"])
+        if cleaned != data["answer_text"]:
+            data["answer_text"] = cleaned
+            await state.update_data(answer_text=cleaned)
 
-    # The very same essay again gets its saved report, not a new (differently
-    # scored) check - reports #14 and #15 were one essay graded 8.0 and 8.5,
-    # with "progress" between them.
-    # A test run (scripts/live_check.py) is always graded anew, costs nothing and is
-    # kept apart: no progress, word bank, chart key or admins' card from it.
-    test_run = bool(data.get("test_run"))
-    same, similar, numbers = (None, None, {}) if test_run else \
-        await _repeat_of(user_id, data["task_type"], data["answer_text"])
-    # Admins and testers are asked first: mark it again (to see a marking change) or send the saved report.
-    # Everyone else gets the saved report, as before.
-    choice = data.get("repeat_choice") or {}
-    fresh = same is not None and choice.get("id") == same.id and bool(choice.get("new"))
-    if fresh:
-        logger.info("Writing resubmission by user %s: same text as submission %s, marked again on request",
-                    user_id, same.id)
-        same = None
-    elif same is not None and same.feedback_pdf_path and Path(same.feedback_pdf_path).exists() \
-            and choice.get("id") != same.id and not data.get("mock_session_id") and await runtime.may_recheck(user_id):
-        await state.update_data(repeat_of=same.id)
-        await state.set_state(WritingStates.confirming_recheck)
-        await message.answer(t("writing.recheck_ask", lang, number=numbers[same.id], band=same.overall_band),
-                             reply_markup=recheck_kb(lang))
-        return
-    if same is not None and same.feedback_pdf_path and Path(same.feedback_pdf_path).exists():
-        logger.info("Writing resubmission by user %s: same text as submission %s", user_id, same.id)
-        await message.answer_document(
-            BufferedInputFile(read_file(same.feedback_pdf_path), filename=report_filename("writing", same.task_type)),
-            caption=with_ai_note(t("writing.resubmitted", lang, number=numbers[same.id], band=same.overall_band), lang),
-            reply_markup=share_card_kb("writing", same.id, lang),
-        )
-        if data.get("mock_session_id"):
-            await record_mock_test_part(message, state, submission_id=same.id, submission_type="writing",
-                                        band=same.overall_band)
-        else:
-            await state.clear()
-            await message.answer(t("nav.what_next", lang), reply_markup=_after_result_kb(data, lang))
-        await crm_events.check_repeated("w", user_id, same.id)
+        # The very same essay again gets its saved report, not a new (differently
+        # scored) check - reports #14 and #15 were one essay graded 8.0 and 8.5,
+        # with "progress" between them.
+        # A test run (scripts/live_check.py) is always graded anew, costs nothing and is
+        # kept apart: no progress, word bank, chart key or admins' card from it.
+        test_run = bool(data.get("test_run"))
+        same, similar, numbers = (None, None, {}) if test_run else \
+            await _repeat_of(user_id, data["task_type"], data["answer_text"])
+        # Admins and testers are asked first: mark it again (to see a marking change) or send the saved report.
+        # Everyone else gets the saved report, as before.
+        choice = data.get("repeat_choice") or {}
+        fresh = same is not None and choice.get("id") == same.id and bool(choice.get("new"))
+        if fresh:
+            logger.info("Writing resubmission by user %s: same text as submission %s, marked again on request",
+                        user_id, same.id)
+            same = None
+        elif same is not None and same.feedback_pdf_path and Path(same.feedback_pdf_path).exists() \
+                and choice.get("id") != same.id and not data.get("mock_session_id") \
+                and await runtime.may_recheck(user_id):
+            await state.update_data(repeat_of=same.id)
+            await state.set_state(WritingStates.confirming_recheck)
+            await message.answer(t("writing.recheck_ask", lang, number=numbers[same.id], band=same.overall_band),
+                                 reply_markup=recheck_kb(lang))
+            return
+        if same is not None and same.feedback_pdf_path and Path(same.feedback_pdf_path).exists():
+            logger.info("Writing resubmission by user %s: same text as submission %s", user_id, same.id)
+            # a failure sending it: "🔁 Try again" (the answer is still in the FSM data) sends it then
+            await message.answer_document(
+                BufferedInputFile(read_file(same.feedback_pdf_path), filename=report_filename("writing", same.task_type)),
+                caption=with_ai_note(t("writing.resubmitted", lang, number=numbers[same.id], band=same.overall_band), lang),
+                reply_markup=share_card_kb("writing", same.id, lang),
+            )
+            try:  # sent: what follows never turns it into a failed check
+                if data.get("mock_session_id"):
+                    await record_mock_test_part(message, state, submission_id=same.id, submission_type="writing",
+                                                band=same.overall_band)
+                else:
+                    await state.clear()
+                    await message.answer(t("nav.what_next", lang), reply_markup=_after_result_kb(data, lang))
+                await crm_events.check_repeated("w", user_id, same.id)
+            except Exception:  # noqa: BLE001
+                logger.exception("Writing resubmission of user %s: the steps after the saved report failed", user_id)
+            return
+        started = time.monotonic()
+    except Exception as e:  # noqa: BLE001
+        await _failed_early(message, state, lang, None, e)
         return
 
-    started = time.monotonic()
-    processing_msg = await message.answer(t("writing.grading_in_progress", lang))
-    # One check at a time, its coins taken now and given back unless the report is saved
-    # (bot/utils/check_guard.py) - refused: the card says why, with "🔁 Try again" (the answer is kept).
-    hold = await guard.begin(processing_msg, state, data, module="w", kind=writing_kind(data["task_type"]),
-                             lang=lang, failed_state=WritingStates.failed)
-    if hold is None:
+    try:
+        processing_msg = await message.answer(t("writing.grading_in_progress", lang))
+    except TelegramAPIError as e:  # Telegram away: no card to show, the flow still leaves `processing`
+        await _failed_early(message, state, lang, None, e)
         return
-    data = await state.get_data()  # with its check_token (and the payer begin() settled on)
+    hold = None
+    try:
+        # One check at a time, its coins taken now and given back unless the report is saved
+        # (bot/utils/check_guard.py) - refused: the card says why, with "🔁 Try again" (the answer is kept).
+        hold = await guard.begin(processing_msg, state, data, module="w", kind=writing_kind(data["task_type"]),
+                                 lang=lang, failed_state=WritingStates.failed)
+        if hold is None:
+            return
+        data = await state.get_data()  # with its check_token (and the payer begin() settled on)
+    except Exception as e:  # noqa: BLE001 - a hold already taken gives its coins back first
+        refunded = await guard.end(hold, _reason(e)) if hold is not None else False
+        await _failed_early(message, state, lang, processing_msg, e, hold.coins if refunded else 0)
+        return
     # the waiting message, alive (bot/utils/progress.py)
     card = live.begin(processing_msg, lang, "writing_task1" if data["task_type"] == "task1" else "writing")
     calls: list = []
@@ -887,16 +929,14 @@ async def _deliver_writing(message, state, lang, data, hold, submission, report,
     elif data["task_type"] == "task1" and not prompt_images:
         caption += "\n\n" + t("writing.chart_not_checked", lang)
     await live.end(card)
-    try:
-        await processing_msg.delete()
-    except TelegramBadRequest:
-        pass  # the student deleted the card meanwhile
     await stickers.send(message.bot, user_id, stickers.for_result(report.overall_band, found))  # the Gotcha moment
-    await guard.deliver(lambda: message.answer_document(
+    sent = await guard.deliver(lambda: message.answer_document(
         BufferedInputFile(pdf_bytes, filename=report_filename("writing", data["task_type"])),
         caption=with_ai_note(caption, lang),
         reply_markup=share_card_kb("writing", submission.id, lang),
     ), f"writing report {submission.id}")
+    # the card goes only now the report is there; not delivered: the card says it is saved, with its button
+    await guard.report_sent(processing_msg, sent, lang, "writing", submission.id)
 
     if data.get("mock_session_id"):
         await record_mock_test_part(
