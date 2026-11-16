@@ -1891,9 +1891,9 @@ _T: dict[str, dict[str, str]] = {
     # the story card under every report (bot/handlers/share.py, 2026-11-16): kind words only
     "story.caption": {
         "uz": "📸 Natijangiz story uchun tayyor!\n\nRasmni saqlab, Instagram story'ga joylang va bizni "
-              "qo'llab-quvvatlang — @{instagram} ni belgilashni unutmang 💚",
+              "qo'llab-quvvatlang — Instagram'dagi {instagram} sahifamizni belgilashni unutmang 💚",
         "ru": "📸 Ваш результат готов для сторис!\n\nСохраните картинку, выложите её в Instagram stories и "
-              "поддержите нас — отметьте @{instagram} 💚",
+              "поддержите нас — отметьте наш Instagram {instagram} 💚",
     },
     "story.again": {"uz": "🎨 Boshqa dizayn", "ru": "🎨 Другой дизайн"},
     "story.instagram_btn": {"uz": "📸 Instagram'da bizni kuzating", "ru": "📸 Мы в Instagram"},

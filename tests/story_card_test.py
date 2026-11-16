@@ -55,7 +55,7 @@ def unit() -> None:
 
     from services.image import story_card as sc
 
-    # every design, both modules, every language, a low and a top band: a 1080x1920 picture
+    # every design, both modules, every language, a low and a top band: a 1080x1350 (4:5) picture
     bad = []
     for design, (module, task, scores), lang, band in itertools.product(
             sc.DESIGNS, [("writing", "task1", WRITING), ("writing", "task2", WRITING), ("speaking", "part2", SPEAKING)],
@@ -63,9 +63,9 @@ def unit() -> None:
         png, used = sc.build_story_card(module=module, task=task, band=band, criteria=scores, lang=lang, design=design,
                                         seed=1)
         im = Image.open(io.BytesIO(png))
-        if used != design or im.size != (1080, 1920) or im.format != "PNG":
+        if used != design or im.size != (1080, 1350) or im.format != "PNG":
             bad.append((design, module, lang, band, im.size))
-    check(f"all {len(sc.DESIGNS)} designs x writing/speaking x uz/ru/en x low/top bands: a 1080x1920 PNG", not bad, bad)
+    check(f"all {len(sc.DESIGNS)} designs x writing/speaking x uz/ru/en x low/top bands: a 1080x1350 PNG", not bad, bad)
 
     # the next card never repeats the previous design; over many cards every design shows up
     seen, repeats, prev = set(), 0, None
@@ -130,8 +130,10 @@ async def bot_side() -> None:
           len(photos) == 1 and photos[0].chat_id == uid and "story" in photos[0].caption
           and f"ref_{uid}" in photos[0].caption, [p.caption for p in photos])
     rows = photos[0].reply_markup.inline_keyboard if photos else []
-    check("...asks to post it on Instagram and support us, naming @bandzilla_uz",
-          photos and "Instagram" in photos[0].caption and "@bandzilla_uz" in photos[0].caption, photos[0].caption)
+    check("...asks to post it on Instagram and support us; @bandzilla_uz links to the Instagram page, not to the "
+          "Telegram account of that name", photos and "Instagram" in photos[0].caption
+          and '<a href="https://www.instagram.com/bandzilla_uz/">@bandzilla_uz</a>' in photos[0].caption,
+          photos[0].caption)
     check("...a button to our Instagram, then '🎨 Boshqa dizayn' (the same result, another design)",
           len(rows) == 2 and rows[0][0].url == "https://www.instagram.com/bandzilla_uz/"
           and rows[1][0].callback_data == f"share:writing:{sub.id}" and "dizayn" in rows[1][0].text)

@@ -30,6 +30,12 @@ LAST_KEY = "story:last:{}"  # + user id: the design of their last card, so the n
 LAST_TTL = 90 * 86400
 
 
+def instagram_link() -> str:
+    """@bandzilla_uz as a link to our Instagram (the owner, 2026-11-16): a bare @name in a Telegram message opens
+    the Telegram account of that name - our channel - not the Instagram page."""
+    return f'<a href="{instagram_url()}">@{settings.instagram_username}</a>'
+
+
 def story_kb(kind: str, submission_id: int, lang: str) -> InlineKeyboardMarkup:
     """Under the card: our Instagram (the owner, 2026-11-16: "post it and support us" - a bot can't open
     Instagram's story editor with the picture, so the button opens the app on our page), and another design of
@@ -65,7 +71,7 @@ async def _send(bot: Bot, user_id: int, kind: str, submission, lang: str) -> Non
     png = await _render(kind, submission, user_id, lang)
     await bot.send_photo(
         user_id, BufferedInputFile(png, filename="bandzilla_story.png"),
-        caption=t("story.caption", lang, instagram=settings.instagram_username) + "\n\n"
+        caption=t("story.caption", lang, instagram=instagram_link()) + "\n\n"
         + t("share.invite_line", lang, link=referral_link(user_id)),
         reply_markup=story_kb(kind, submission.id, lang),
     )

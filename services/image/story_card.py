@@ -1,12 +1,12 @@
-"""The story card (the owner, 2026-11-16): after every check the student gets a picture of their result to post
-as an Instagram / Telegram story - 1080x1920, the overall band and the four criteria, a kind word that fits the
-result, and a different design each time (seven layouts in the Bandzilla brand, each with its own mascot mood).
+"""The result card (the owner, 2026-11-16): after every check the student gets a picture of their result to post
+on Instagram (a post, or a story) or Telegram - 1080x1350 (4:5; the first 1080x1920 looked too tall in a
+chat), the overall band and the four criteria, a kind word that fits the result, and a different design each
+time (seven layouts in the Bandzilla brand, each with its own mascot mood).
 
 Never harsh: no "mistakes", no "low" - the words only encourage (the owner: "qattiq so'zlarni ishlatmagin,
 muloyim so'zlar bo'lsin"). The student's name is not printed - the card shows the result, not the person.
 
-Everything important stays inside the story safe zone (SAFE_TOP..SAFE_BOTTOM): Instagram and Telegram draw
-their own bars over the top and bottom ~200 px. Fonts: the brand's variable TTFs in fonts/ (Unbounded, Manrope,
+Fonts: the brand's variable TTFs in fonts/ (Unbounded, Manrope,
 Caveat; SIL OFL). Manrope has no ʻ/ʼ glyphs, so Uzbek text uses ‘ and ’. No emoji - none of the fonts has them.
 
     png, design = build_story_card(module="writing", task="task2", band=6.5,
@@ -28,8 +28,7 @@ _HERE = Path(__file__).parent
 _FONTS = _HERE / "fonts"
 _ASSETS = _HERE / "assets"
 
-W, H = 1080, 1920
-SAFE_TOP, SAFE_BOTTOM = 210, 1700
+W, H = 1080, 1350  # 4:5 - an Instagram post, and it sits well in a story too (the owner, 2026-11-16)
 PAD = 88
 
 INK = (6, 32, 24)
@@ -314,90 +313,87 @@ def _ring(img: Image.Image, cx: int, cy: int, r: int, width: int, value: float, 
     img.alpha_composite(layer)
 
 
-FOOTER_Y = 1490
+FOOTER_Y = 1130  # the footer block (call to action, the bot, our Instagram/Telegram) runs to ~FOOTER_Y + 170
 
 
 def _footer(img: Image.Image, words: dict, bot: str, fg, sub, accent_bg, accent_fg, y: int = FOOTER_Y) -> None:
     """The call to action, the same place on every design: a line, the bot's name in a pill, and our Instagram
-    and Telegram channel under it (the owner, 2026-11-16) - all above the stories' reply bar."""
+    and Telegram channel under it (the owner, 2026-11-16)."""
     d = ImageDraw.Draw(img)
-    _text(d, W / 2, y, words["footer"], _fit(d, words["footer"], "Manrope", 34, 600, W - 2 * PAD), sub, anchor="m")
-    _pill(img, W / 2, y + 58, f"@{bot}", _font("Unbounded", 38, 700), accent_fg, accent_bg, pad_x=44, pad_y=24)
+    _text(d, W / 2, y, words["footer"], _fit(d, words["footer"], "Manrope", 30, 600, W - 2 * PAD), sub, anchor="m")
+    _pill(img, W / 2, y + 48, f"@{bot}", _font("Unbounded", 34, 700), accent_fg, accent_bg, pad_x=40, pad_y=21)
     d = ImageDraw.Draw(img)
-    _text(d, W / 2, y + 170, words["follow"], _fit(d, words["follow"], "Manrope", 30, 700, W - 2 * PAD), fg,
+    _text(d, W / 2, y + 146, words["follow"], _fit(d, words["follow"], "Manrope", 28, 700, W - 2 * PAD), fg,
           anchor="m")
 
 
-def _header(img: Image.Image, logo: str, words: dict, day: str, fg, y: int = SAFE_TOP) -> None:
-    mark = _sized_w(logo, 330)
+def _header(img: Image.Image, logo: str, words: dict, day: str, fg, y: int = 64) -> None:
+    mark = _sized_w(logo, 300)
     _paste(img, mark, PAD, y)
     d = ImageDraw.Draw(img)
-    _text(d, W - PAD, y + 20, day, _font("Manrope", 30, 700), fg, anchor="r")
+    _text(d, W - PAD, y + 18, day, _font("Manrope", 28, 700), fg, anchor="r")
 
 
 # --- the designs -------------------------------------------------------------------------------------------------
-# Each draws the whole card from `c` (a dict: band, rows, cheer, best, label, words, day, bot, mascot) on a fresh
-# 1080x1920 image.
+# Each draws the whole 1080x1350 card from `c` (a dict: band, rows, cheer, best, label, words, day, bot, mascot).
 
 
 def _d_ink_scales(c: dict) -> Image.Image:
     img = Image.new("RGBA", (W, H), INK)
     _scales(img, INK_2, (18, 58, 45))
-    _glow(img, (W - 140, 640), 360, SKIN, 60)
+    _glow(img, (W - 140, 430), 300, SKIN, 60)
     w = c["words"]
     _header(img, "logo-on-dark", w, c["day"], (170, 205, 190))
     d = ImageDraw.Draw(img)
-    _pill(img, PAD, 350, c["label"].upper(), _font("Manrope", 30, 800), INK, LIME, anchor="l")
-    _text(d, PAD, 470, c["cheer"], _fit(d, c["cheer"], "Caveat", 92, 700, W - 2 * PAD), LIME)
-    _text(d, PAD, 610, w["overall"].upper(), _font("Manrope", 30, 800), (170, 205, 190), spacing=4)
-    big = _fit(d, _band(c["band"]), "Unbounded", 300, 800, W - 2 * PAD - 330, min_size=200)  # clear of the mascot
-    _text(d, PAD - 12, 664, _band(c["band"]), big, WHITE)
-    pet = _sized(c["mascot"], 470)
-    _paste(img, pet, W - pet.width - 40, 520)
-    y = 1010
+    _pill(img, PAD, 150, c["label"].upper(), _font("Manrope", 28, 800), INK, LIME, anchor="l")
+    _text(d, PAD, 236, c["cheer"], _fit(d, c["cheer"], "Caveat", 80, 700, W - 2 * PAD), LIME)
+    _text(d, PAD, 340, w["overall"].upper(), _font("Manrope", 28, 800), (170, 205, 190), spacing=4)
+    big = _fit(d, _band(c["band"]), "Unbounded", 250, 800, W - 2 * PAD - 320, min_size=180)  # clear of the mascot
+    _text(d, PAD - 10, 386, _band(c["band"]), big, WHITE)
+    pet = _sized(c["mascot"], 380)
+    _paste(img, pet, W - pet.width - 50, 300)
+    y = 712
     for short, full, v in c["rows"]:
         d = ImageDraw.Draw(img)
-        _text(d, PAD, y, full, _font("Manrope", 34, 700), WHITE)
-        _text(d, W - PAD, y - 4, _band(v), _font("Unbounded", 44, 700), LIME, anchor="r")
-        _bar(img, PAD, y + 54, W - 2 * PAD, 16, v, (30, 70, 55), LIME)
-        y += 104
+        _text(d, PAD, y, full, _font("Manrope", 30, 700), WHITE)
+        _text(d, W - PAD, y - 4, _band(v), _font("Unbounded", 38, 700), LIME, anchor="r")
+        _bar(img, PAD, y + 46, W - 2 * PAD, 14, v, (30, 70, 55), LIME)
+        y += 92
     _footer(img, w, c["bot"], WHITE, (170, 205, 190), LIME, INK)
     return img
 
 
 def _d_lime_pop(c: dict) -> Image.Image:
     img = Image.new("RGBA", (W, H), LIME)
-    zz = _asset("zigzag-ink")
-    for y0 in (0, H - zz.height):
-        _paste(img, zz if y0 else zz.rotate(180), 0, y0)
+    zz = _sized_w("zigzag-ink", W)
+    zz = zz.resize((W, 56))
+    _paste(img, zz.rotate(180), 0, 0)
+    _paste(img, zz, 0, H - zz.height)
     w = c["words"]
-    _header(img, "logo-on-lime", w, c["day"], INK)
+    _header(img, "logo-on-lime", w, c["day"], INK, y=92)
     d = ImageDraw.Draw(img)
-    _text(d, W / 2, 360, c["label"].upper(), _font("Manrope", 34, 800), INK, anchor="m", spacing=5)
-    # the band in a big ink disc, the mascot leaning on it
-    cx, cy, r = W // 2 - 70, 720, 250
-    _shadow(img, (cx - r, cy - r, cx + r, cy + r), r, blur=28, alpha=70, offset=16)
+    _text(d, W / 2, 196, c["label"].upper(), _font("Manrope", 30, 800), INK, anchor="m", spacing=5)
+    cx, cy, r = W // 2 - 70, 450, 200
+    _shadow(img, (cx - r, cy - r, cx + r, cy + r), r, blur=26, alpha=70, offset=14)
     disc = _layer()
     ImageDraw.Draw(disc).ellipse((cx - r, cy - r, cx + r, cy + r), fill=INK)
     img.alpha_composite(disc)
     d = ImageDraw.Draw(img)
-    _text(d, cx, cy - 150, w["overall"].upper(), _font("Manrope", 26, 800), LIME, anchor="m", spacing=3)
-    big = _font("Unbounded", 190, 800)
-    _text(d, cx, cy - 92, _band(c["band"]), big, WHITE, anchor="m")
-    pet = _sized(c["mascot"], 330)
-    _paste(img, pet, cx + r - 40, cy - 40, rotate=-8)
+    _text(d, cx, cy - 118, w["overall"].upper(), _font("Manrope", 24, 800), LIME, anchor="m", spacing=3)
+    _text(d, cx, cy - 72, _band(c["band"]), _font("Unbounded", 150, 800), WHITE, anchor="m")
+    pet = _sized(c["mascot"], 270)
+    _paste(img, pet, cx + r - 30, cy - 20, rotate=-8)
     d = ImageDraw.Draw(img)
-    _text(d, W / 2, 1050, c["cheer"], _fit(d, c["cheer"], "Unbounded", 50, 700, W - 2 * PAD), INK, anchor="m")
-    # 2x2 tiles
-    tw, th, gap = (W - 2 * PAD - 28) // 2, 150, 22
+    _text(d, W / 2, 722, c["cheer"], _fit(d, c["cheer"], "Unbounded", 44, 700, W - 2 * PAD), INK, anchor="m")
+    tw, th, gap = (W - 2 * PAD - 24) // 2, 118, 18
     for i, (short, full, v) in enumerate(c["rows"]):
-        x = PAD + (i % 2) * (tw + gap)
-        y = 1120 + (i // 2) * (th + gap)
-        _rrect(img, (x, y, x + tw, y + th), 36, INK)
+        x = PAD + (i % 2) * (tw + gap + 6)
+        y = 790 + (i // 2) * (th + gap)
+        _rrect(img, (x, y, x + tw, y + th), 30, INK)
         d = ImageDraw.Draw(img)
-        _text(d, x + 34, y + 32, full, _fit(d, full, "Manrope", 28, 700, tw - 68), (170, 230, 200))
-        _text(d, x + 34, y + 74, _band(v), _font("Unbounded", 54, 800), LIME)
-    _footer(img, w, c["bot"], INK, (6, 32, 24), INK, LIME)
+        _text(d, x + 30, y + 24, full, _fit(d, full, "Manrope", 26, 700, tw - 60), (170, 230, 200))
+        _text(d, x + 30, y + 62, _band(v), _font("Unbounded", 46, 800), LIME)
+    _footer(img, w, c["bot"], INK, (6, 32, 24), INK, LIME, y=1096)
     return img
 
 
@@ -407,58 +403,57 @@ def _d_paper_ring(c: dict) -> Image.Image:
     w = c["words"]
     _header(img, "logo-on-light", w, c["day"], (88, 115, 103))
     d = ImageDraw.Draw(img)
-    _text(d, W / 2, 360, w["title"].upper(), _font("Manrope", 32, 800), MOSS, anchor="m", spacing=5)
-    _text(d, W / 2, 420, c["label"], _font("Unbounded", 44, 700), INK, anchor="m")
-    cx, cy, r = W // 2, 790, 270
-    _ring(img, cx, cy, r, 40, c["band"], (214, 236, 225), SKIN)
+    _text(d, W / 2, 158, w["title"].upper(), _font("Manrope", 28, 800), MOSS, anchor="m", spacing=5)
+    _text(d, W / 2, 204, c["label"], _font("Unbounded", 40, 700), INK, anchor="m")
+    cx, cy, r = W // 2, 478, 210
+    _ring(img, cx, cy, r, 34, c["band"], (214, 236, 225), SKIN)
     d = ImageDraw.Draw(img)
-    _text(d, cx, cy - 140, w["overall"], _font("Manrope", 30, 700), (88, 115, 103), anchor="m")
-    _text(d, cx, cy - 86, _band(c["band"]), _font("Unbounded", 170, 800), INK, anchor="m")
-    _text(d, cx, cy + 110, "/ 9.0", _font("Manrope", 34, 700), (120, 150, 136), anchor="m")
-    pet = _sized(c["mascot"], 250)
-    _paste(img, pet, cx + r - 70, cy + r - 250)
+    _text(d, cx, cy - 112, w["overall"], _font("Manrope", 28, 700), (88, 115, 103), anchor="m")
+    _text(d, cx, cy - 66, _band(c["band"]), _font("Unbounded", 136, 800), INK, anchor="m")
+    _text(d, cx, cy + 90, "/ 9.0", _font("Manrope", 30, 700), (120, 150, 136), anchor="m")
+    pet = _sized(c["mascot"], 210)
+    _paste(img, pet, cx + r - 50, cy + r - 205)
     d = ImageDraw.Draw(img)
-    _text(d, W / 2, 1110, c["cheer"], _fit(d, c["cheer"], "Caveat", 86, 700, W - 2 * PAD), MOSS, anchor="m")
-    y = 1220
+    _text(d, W / 2, 742, c["cheer"], _fit(d, c["cheer"], "Caveat", 76, 700, W - 2 * PAD), MOSS, anchor="m")
+    half = (W - 2 * PAD) // 2
     for i, (short, full, v) in enumerate(c["rows"]):
-        x = PAD + (i % 2) * ((W - 2 * PAD) // 2 + 10)
-        yy = y + (i // 2) * 120
-        _rrect(img, (x, yy, x + (W - 2 * PAD) // 2 - 10, yy + 100), 50, WHITE, outline=(205, 228, 216), width=3)
+        x = PAD + (i % 2) * (half + 10)
+        yy = 846 + (i // 2) * 108
+        _rrect(img, (x, yy, x + half - 10, yy + 88), 44, WHITE, outline=(205, 228, 216), width=3)
         d = ImageDraw.Draw(img)
-        _text(d, x + 36, yy + 34, short, _font("Unbounded", 34, 700), MOSS)
-        _text(d, x + (W - 2 * PAD) // 2 - 46, yy + 30, _band(v), _font("Unbounded", 40, 800), INK, anchor="r")
+        _text(d, x + 34, yy + 30, short, _font("Unbounded", 30, 700), MOSS)
+        _text(d, x + half - 44, yy + 26, _band(v), _font("Unbounded", 36, 800), INK, anchor="r")
     _footer(img, w, c["bot"], INK, (88, 115, 103), INK, LIME)
     return img
 
 
 def _d_night_glow(c: dict) -> Image.Image:
     img = _gradient((4, 22, 17), (10, 92, 58))
-    _glow(img, (160, 520), 300, LIME, 70)
-    _glow(img, (W - 120, 1220), 340, SKIN, 80)
+    _glow(img, (160, 360), 260, LIME, 70)
+    _glow(img, (W - 120, 860), 300, SKIN, 80)
     w = c["words"]
     _header(img, "logo-on-dark", w, c["day"], (170, 215, 195))
     d = ImageDraw.Draw(img)
-    _text(d, W / 2, 380, c["label"].upper(), _font("Manrope", 32, 800), LIME, anchor="m", spacing=6)
-    # a glass panel with the band
-    box = (PAD, 450, W - PAD, 900)
-    _rrect(img, box, 56, (255, 255, 255, 26), outline=(255, 255, 255, 60), width=2)
-    pet = _sized(c["mascot"], 250)
-    _paste(img, pet, W - PAD - pet.width + 40, 900 - pet.height + 70, rotate=-6)
+    _text(d, W / 2, 168, c["label"].upper(), _font("Manrope", 30, 800), LIME, anchor="m", spacing=6)
+    box = (PAD, 226, W - PAD, 566)
+    _rrect(img, box, 50, (255, 255, 255, 26), outline=(255, 255, 255, 60), width=2)
+    pet = _sized(c["mascot"], 210)
+    _paste(img, pet, W - PAD - pet.width + 40, 566 - pet.height + 60, rotate=-6)
     d = ImageDraw.Draw(img)
-    _text(d, W / 2, 500, w["overall"].upper(), _font("Manrope", 28, 800), (190, 230, 212), anchor="m", spacing=4)
-    _text(d, W / 2, 560, _band(c["band"]), _font("Unbounded", 250, 800), WHITE, anchor="m")
-    _text(d, W / 2, 1000, c["cheer"], _fit(d, c["cheer"], "Unbounded", 50, 700, W - 2 * PAD), WHITE, anchor="m")
+    _text(d, W / 2, 266, w["overall"].upper(), _font("Manrope", 26, 800), (190, 230, 212), anchor="m", spacing=4)
+    _text(d, W / 2, 316, _band(c["band"]), _font("Unbounded", 200, 800), WHITE, anchor="m")
+    _text(d, W / 2, 648, c["cheer"], _fit(d, c["cheer"], "Unbounded", 46, 700, W - 2 * PAD), WHITE, anchor="m")
     if c["best"]:
-        _text(d, W / 2, 1076, c["best"], _fit(d, c["best"], "Manrope", 32, 600, W - 2 * PAD), (190, 230, 212),
+        _text(d, W / 2, 712, c["best"], _fit(d, c["best"], "Manrope", 30, 600, W - 2 * PAD), (190, 230, 212),
               anchor="m")
     tw, gap = (W - 2 * PAD - 3 * 20) // 4, 20
     for i, (short, full, v) in enumerate(c["rows"]):
         x = PAD + i * (tw + gap)
-        _rrect(img, (x, 1180, x + tw, 1420), 34, (255, 255, 255, 30), outline=(255, 255, 255, 70), width=2)
+        _rrect(img, (x, 790, x + tw, 1010), 32, (255, 255, 255, 30), outline=(255, 255, 255, 70), width=2)
         d = ImageDraw.Draw(img)
-        _text(d, x + tw / 2, 1224, short, _font("Unbounded", 30, 700), LIME, anchor="m")
-        _text(d, x + tw / 2, 1290, _band(v), _font("Unbounded", 52, 800), WHITE, anchor="m")
-        _bar(img, x + 28, 1378, tw - 56, 10, v, (255, 255, 255, 50), LIME)
+        _text(d, x + tw / 2, 832, short, _font("Unbounded", 28, 700), LIME, anchor="m")
+        _text(d, x + tw / 2, 890, _band(v), _font("Unbounded", 48, 800), WHITE, anchor="m")
+        _bar(img, x + 26, 970, tw - 52, 10, v, (255, 255, 255, 50), LIME)
     _footer(img, w, c["bot"], WHITE, (190, 230, 212), LIME, INK)
     return img
 
@@ -466,29 +461,29 @@ def _d_night_glow(c: dict) -> Image.Image:
 def _d_split(c: dict) -> Image.Image:
     img = Image.new("RGBA", (W, H), INK)
     top = _layer()
-    ImageDraw.Draw(top).polygon([(0, 0), (W, 0), (W, 900), (0, 1080)], fill=LIME)
+    ImageDraw.Draw(top).polygon([(0, 0), (W, 0), (W, 600), (0, 740)], fill=LIME)
     img.alpha_composite(top)
-    zz = _sized_w("zigzag-lime", W)
+    zz = _sized_w("zigzag-lime", W).resize((W, 56))
     w = c["words"]
     _header(img, "logo-on-lime", w, c["day"], INK)
     d = ImageDraw.Draw(img)
-    _text(d, PAD, 380, w["title"], _font("Manrope", 36, 800), INK)
-    _text(d, PAD, 440, c["label"], _font("Unbounded", 54, 700), INK)
-    _text(d, PAD - 14, 540, _band(c["band"]),
-          _fit(d, _band(c["band"]), "Unbounded", 330, 800, W - 2 * PAD - 360, min_size=220), INK)
-    pet = _sized(c["mascot"], 420)
-    _paste(img, pet, W - pet.width - 50, 560)
+    _text(d, PAD, 160, w["title"], _font("Manrope", 32, 800), INK)
+    _text(d, PAD, 212, c["label"], _font("Unbounded", 48, 700), INK)
+    _text(d, PAD - 12, 300, _band(c["band"]),
+          _fit(d, _band(c["band"]), "Unbounded", 270, 800, W - 2 * PAD - 340, min_size=190), INK)
+    pet = _sized(c["mascot"], 340)
+    _paste(img, pet, W - pet.width - 50, 296)
     d = ImageDraw.Draw(img)
-    _text(d, PAD, 1096, c["cheer"], _fit(d, c["cheer"], "Caveat", 92, 700, W - 2 * PAD), LIME)
-    y = 1204
+    _text(d, PAD, 760, c["cheer"], _fit(d, c["cheer"], "Caveat", 84, 700, W - 2 * PAD), LIME)
+    y = 856
     for short, full, v in c["rows"]:
         d = ImageDraw.Draw(img)
-        _text(d, PAD, y, short, _font("Unbounded", 36, 800), LIME)
-        _text(d, PAD + 130, y + 4, full, _font("Manrope", 32, 600), (190, 225, 210))
-        _text(d, W - PAD, y - 2, _band(v), _font("Unbounded", 40, 800), WHITE, anchor="r")
-        y += 58
+        _text(d, PAD, y, short, _font("Unbounded", 32, 800), LIME)
+        _text(d, PAD + 120, y + 4, full, _font("Manrope", 30, 600), (190, 225, 210))
+        _text(d, W - PAD, y - 2, _band(v), _font("Unbounded", 36, 800), WHITE, anchor="r")
+        y += 50
     _paste(img, zz, 0, H - zz.height)
-    _footer(img, w, c["bot"], WHITE, (170, 205, 190), LIME, INK)
+    _footer(img, w, c["bot"], WHITE, (170, 205, 190), LIME, INK, y=1104)
     return img
 
 
@@ -496,39 +491,38 @@ def _d_certificate(c: dict) -> Image.Image:
     img = Image.new("RGBA", (W, H), INK)
     _scales(img, INK_2, (18, 58, 45), r=52)
     w = c["words"]
-    card = (64, 250, W - 64, 1430)
-    _shadow(img, card, 48, blur=34, alpha=140, offset=24)
-    _rrect(img, card, 48, PAPER)
-    # a dashed inner frame
+    card = (64, 70, W - 64, 1060)
+    _shadow(img, card, 44, blur=30, alpha=140, offset=20)
+    _rrect(img, card, 44, PAPER)
     d = ImageDraw.Draw(img)
-    x0, y0, x1, y1 = card[0] + 26, card[1] + 26, card[2] - 26, card[3] - 26
+    x0, y0, x1, y1 = card[0] + 24, card[1] + 24, card[2] - 24, card[3] - 24
     for x in range(x0 + 30, x1 - 30, 28):
         d.line((x, y0, x + 14, y0), fill=(160, 205, 182), width=3)
         d.line((x, y1, x + 14, y1), fill=(160, 205, 182), width=3)
     for y in range(y0 + 30, y1 - 30, 28):
         d.line((x0, y, x0, y + 14), fill=(160, 205, 182), width=3)
         d.line((x1, y, x1, y + 14), fill=(160, 205, 182), width=3)
-    mark = _sized_w("logo-on-light", 300)
-    _paste(img, mark, W / 2 - mark.width / 2, 330)
+    mark = _sized_w("logo-on-light", 270)
+    _paste(img, mark, W / 2 - mark.width / 2, 126)
     d = ImageDraw.Draw(img)
-    _text(d, W / 2, 470, w["title"].upper(), _font("Manrope", 30, 800), MOSS, anchor="m", spacing=6)
-    _text(d, W / 2, 526, c["label"], _font("Unbounded", 46, 700), INK, anchor="m")
-    burst = _sized_w("burst", 400)
-    bx, by = W / 2 - burst.width / 2, 590
-    _paste(img, burst, bx, by)
+    _text(d, W / 2, 240, w["title"].upper(), _font("Manrope", 28, 800), MOSS, anchor="m", spacing=6)
+    _text(d, W / 2, 290, c["label"], _font("Unbounded", 42, 700), INK, anchor="m")
+    burst = _sized_w("burst", 340)
+    by = 360
+    _paste(img, burst, W / 2 - burst.width / 2, by)
     d = ImageDraw.Draw(img)
-    _text(d, W / 2, by + burst.height / 2 - 74, _band(c["band"]), _font("Unbounded", 136, 800), INK, anchor="m")
-    _text(d, W / 2, 1020, c["cheer"], _fit(d, c["cheer"], "Caveat", 78, 700, W - 2 * PAD - 80), MOSS, anchor="m")
-    y = 1140
+    _text(d, W / 2, by + burst.height / 2 - 58, _band(c["band"]), _font("Unbounded", 110, 800), INK, anchor="m")
+    _text(d, W / 2, 680, c["cheer"], _fit(d, c["cheer"], "Caveat", 72, 700, W - 2 * PAD - 80), MOSS, anchor="m")
+    y = 790
     for short, full, v in c["rows"]:
         d = ImageDraw.Draw(img)
-        _text(d, 150, y, full, _font("Manrope", 32, 700), INK)
-        _text(d, W - 150, y - 2, _band(v), _font("Unbounded", 36, 800), MOSS, anchor="r")
-        d.line((150, y + 50, W - 150, y + 50), fill=(214, 234, 224), width=2)
-        y += 64
-    pet = _sized(c["mascot"], 230)
-    _paste(img, pet, W - 64 - pet.width + 40, 250 - 120, rotate=8)
-    _footer(img, w, c["bot"], WHITE, (170, 205, 190), LIME, INK)
+        _text(d, 150, y, full, _font("Manrope", 30, 700), INK)
+        _text(d, W - 150, y - 2, _band(v), _font("Unbounded", 34, 800), MOSS, anchor="r")
+        d.line((150, y + 48, W - 150, y + 48), fill=(214, 234, 224), width=2)
+        y += 60
+    pet = _sized(c["mascot"], 200)
+    _paste(img, pet, W - 64 - pet.width + 40, 6, rotate=8)  # on the card's top corner, its head inside the picture
+    _footer(img, w, c["bot"], WHITE, (170, 205, 190), LIME, INK, y=1120)
     return img
 
 
@@ -536,36 +530,33 @@ def _d_bento(c: dict) -> Image.Image:
     img = Image.new("RGBA", (W, H), INK)
     w = c["words"]
     _header(img, "logo-on-dark", w, c["day"], (170, 205, 190))
-    g = 24
+    g = 22
     L, R = PAD - 30, W - PAD + 30
     mid = (L + R) // 2
-    # the big band tile (lime) and the mascot tile (moss)
-    _rrect(img, (L, 330, mid + 120, 820), 48, LIME)
-    _rrect(img, (mid + 120 + g, 330, R, 820), 48, MOSS)
+    _rrect(img, (L, 142, mid + 120, 520), 44, LIME)
+    _rrect(img, (mid + 120 + g, 142, R, 520), 44, MOSS)
     d = ImageDraw.Draw(img)
-    _text(d, L + 50, 380, c["label"].upper(), _fit(d, c["label"].upper(), "Manrope", 28, 800, mid + 40 - L - 50), INK,
+    _text(d, L + 46, 186, c["label"].upper(), _fit(d, c["label"].upper(), "Manrope", 26, 800, mid + 40 - L - 46), INK,
           spacing=3)
-    _text(d, L + 40, 470, _band(c["band"]), _font("Unbounded", 220, 800), INK)
-    _text(d, L + 50, 742, w["overall"], _font("Manrope", 30, 700), (20, 70, 50))
-    pet = _sized(c["mascot"], 330)
+    _text(d, L + 38, 262, _band(c["band"]), _font("Unbounded", 180, 800), INK)
+    _text(d, L + 46, 466, w["overall"], _font("Manrope", 28, 700), (20, 70, 50))
+    pet = _sized(c["mascot"], 280)
     cw = R - (mid + 120 + g)
-    _paste(img, pet, mid + 120 + g + (cw - pet.width) / 2, 820 - pet.height - 20)
-    # the cheer tile
-    _rrect(img, (L, 820 + g, R, 1030), 48, (20, 58, 45))
+    _paste(img, pet, mid + 120 + g + (cw - pet.width) / 2, 520 - pet.height - 20)
+    _rrect(img, (L, 520 + g, R, 690), 44, (20, 58, 45))
     d = ImageDraw.Draw(img)
-    _text(d, W / 2, 900, c["cheer"], _fit(d, c["cheer"], "Caveat", 86, 700, R - L - 80), LIME, anchor="m")
-    # four criteria tiles
+    _text(d, W / 2, 592, c["cheer"], _fit(d, c["cheer"], "Caveat", 76, 700, R - L - 80), LIME, anchor="m")
     tw = (R - L - g) // 2
     colors = [(255, 255, 255), MINT, MINT, (255, 255, 255)]
     for i, (short, full, v) in enumerate(c["rows"]):
         x = L + (i % 2) * (tw + g)
-        y = 1050 + (i // 2) * (170 + g)
-        _rrect(img, (x, y, x + tw, y + 170), 40, colors[i])
+        y = 712 + (i // 2) * (160 + g)
+        _rrect(img, (x, y, x + tw, y + 160), 36, colors[i])
         d = ImageDraw.Draw(img)
-        _text(d, x + 40, y + 32, full, _fit(d, full, "Manrope", 28, 700, tw - 80), (60, 95, 80))
-        _text(d, x + 40, y + 84, _band(v), _font("Unbounded", 56, 800), INK)
-        _bar(img, x + 200, y + 106, tw - 240, 12, v, (210, 228, 219), SKIN)
-    _footer(img, w, c["bot"], WHITE, (170, 205, 190), LIME, INK)
+        _text(d, x + 36, y + 30, full, _fit(d, full, "Manrope", 26, 700, tw - 72), (60, 95, 80))
+        _text(d, x + 36, y + 78, _band(v), _font("Unbounded", 52, 800), INK)
+        _bar(img, x + 190, y + 100, tw - 226, 12, v, (210, 228, 219), SKIN)
+    _footer(img, w, c["bot"], WHITE, (170, 205, 190), LIME, INK, y=1124)
     return img
 
 
