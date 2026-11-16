@@ -114,6 +114,14 @@ _T: dict[str, dict[str, str]] = {
     "check.report_resend_btn": {"uz": "📄 Hisobotni olish", "ru": "📄 Получить отчёт"},
     # under the payment approval: the check that stopped for want of coins goes on (check_guard.parked_keyboard)
     "check.continue_btn": {"uz": "🔁 Tekshiruvni davom ettirish", "ru": "🔁 Продолжить проверку"},
+    # "🔁 Try again" pressed while a receipt is awaited (2026-11-16): bringing the check back would end the
+    # payment step, so the student finishes that first (the approval then offers check.continue_btn)
+    "check.finish_payment_first": {
+        "uz": "💳 Hozir to'lov chekini yuborish bosqichidasiz. Avval chekni yuboring — to'lov tasdiqlangach "
+              "«🔁 Tekshiruvni davom ettirish» tugmasi keladi. Bekor qilish: /menu",
+        "ru": "💳 Сейчас вы на шаге отправки чека. Сначала отправьте чек — после подтверждения оплаты придёт кнопка "
+              "«🔁 Продолжить проверку». Отменить: /menu",
+    },
     "input.voice_not_received": {
         "uz": "⚠️ Ovozli xabaringizni qabul qila olmadim. Iltimos, uni qaytadan yuboring — qolgan hammasi saqlangan.",
         "ru": "⚠️ Не удалось получить ваше голосовое сообщение. Пожалуйста, отправьте его ещё раз — всё остальное "

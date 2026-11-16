@@ -982,6 +982,29 @@ async def c3_parked(w: World) -> None:
     check("C3 parked_keyboard: '🔁 Continue my check' with the stopped check's own retry button",
           kb is not None and continue_data == token and "davom ettirish" in kb.inline_keyboard[0][0].text,
           continue_data)
+    # merged with the payments work (2026-11-16): never over a receipt step; the approval offers the button
+    from bot.handlers import payments as pay
+    from bot.states.payment_states import PaymentStates
+    from db import crud as db_crud
+    from db.database import get_session as db_session
+
+    await st.set_state(PaymentStates.awaiting_receipt)
+    GRADED.clear()
+    out = await w.press(uid, continue_data)
+    alerts = [c.text for c in out if type(c).__name__ == "AnswerCallbackQuery" and getattr(c, "show_alert", False)]
+    check("C3 'Continue' pressed at the receipt step: told to send the receipt first, the payment step kept",
+          alerts and "chekni yuboring" in alerts[0] and await st.get_state() == PaymentStates.awaiting_receipt.state
+          and not GRADED, alerts)
+    await st.clear()
+    async with db_session() as s:
+        req = await db_crud.create_payment_request(s, user_id=uid, coins=10, amount=10_000)
+        await db_crud.set_payment_receipt(s, req.id, "file-c3", "uniq-c3")
+        decision = await db_crud.decide_payment_request(s, req.id, approve=True, admin_id=111)
+    start_at = len(w.session.calls)
+    await pay.notify_decision(w.bot, decision)
+    approval = [c for c in w.session.calls[start_at:] if type(c).__name__ == "SendMessage" and c.chat_id == uid]
+    check("C3 the payment approval message carries '🔁 Continue my check'",
+          approval and continue_data in buttons(approval), [buttons(approval)])
     await set_coins(uid, 20)  # the top-up approved
     GRADED.clear()
     out = await w.press(uid, continue_data)

@@ -29,6 +29,7 @@ EN: dict[str, str] = {
     "check.report_undelivered": "✅ <b>Your report is ready and saved</b>, but Telegram couldn't deliver it just now.\nTap the button below to get it again. It's always in «👤 My account» → «📜 History» too.",
     "check.report_resend_btn": "📄 Get my report",
     "check.continue_btn": "🔁 Continue my check",
+    "check.finish_payment_first": "💳 You are at the receipt step now. Send the receipt first — once the payment is approved, a «🔁 Continue my check» button comes. To cancel: /menu",
     "input.voice_not_received": "⚠️ I couldn't receive your voice message. Please send it again — everything else is kept.",
     "input.file_not_received": "⚠️ I couldn't receive your photo or file. Please send it again.",
     "sponsor.payer_empty": "⚠️ <b>Your coins have run out</b>\nA student of your group «{group}» started a check, but your balance is {balance} coin — one check is {price} coin. For now your students have to pay with their own coins.\n\nTop up in «👤 My account» → «💳 Top up».",

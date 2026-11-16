@@ -19,6 +19,7 @@ from aiogram.types import CallbackQuery
 
 from bot.handlers import speaking, writing
 from bot.i18n import t
+from bot.states.payment_states import PaymentStates
 from bot.states.speaking_states import SpeakingStates
 from bot.states.writing_states import WritingStates
 from bot.utils import check_guard as guard
@@ -49,6 +50,11 @@ async def _from_parked(callback: CallbackQuery, state: FSMContext, token: str, l
         current = await state.get_state()
         if current in PROCESSING:
             await callback.answer(re.sub(r"<[^>]+>", "", t("check.busy", lang)), show_alert=True)
+            return None, None
+        if current == PaymentStates.awaiting_receipt.state:
+            # never over a payment waiting for its receipt (2026-11-16): the photo sent next would reach
+            # nothing - the approval offers "🔁 Continue my check" afterwards
+            await callback.answer(t("check.finish_payment_first", lang), show_alert=True)
             return None, None
         if current != copy["state"] or (await state.get_data()).get("check_token") != token:
             if await guard.restore(user_id, state, token) is None:

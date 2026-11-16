@@ -489,7 +489,11 @@ async def approval_keyboard(decision: crud.PaymentDecision, lang: str) -> Inline
     share button today), so another button joins in one place."""
     if decision.request.kind == PaymentKind.gift and decision.gift is not None:
         return gift_share_kb(gift_link(decision.gift.code), decision.gift.coins, lang)
-    return None
+    # a check that stopped for want of coins (bot/utils/check_guard.py park(), 2026-11-16): "🔁 Continue my
+    # check" right under the approval - the answer is not sent again
+    from bot.utils import check_guard  # noqa: PLC0415 - check_guard imports the payments keyboards' world
+
+    return await check_guard.parked_keyboard(decision.request.user_id, lang)
 
 
 def rejection_text(request: PaymentRequest, lang: str) -> str:
