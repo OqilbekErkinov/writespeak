@@ -18,7 +18,7 @@ from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton
 from bot.config import settings
 from bot.i18n import t
 from bot.keyboards.account_kb import referral_link
-from bot.keyboards.share_kb import CB_SHARE_PREFIX
+from bot.keyboards.share_kb import CB_SHARE_PREFIX, instagram_url
 from db import crud
 from db.database import get_session
 from services.image.story_card import build_story_card
@@ -31,9 +31,13 @@ LAST_TTL = 90 * 86400
 
 
 def story_kb(kind: str, submission_id: int, lang: str) -> InlineKeyboardMarkup:
-    """Under the card: another design of the same result."""
-    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
-        text=t("story.again", lang), callback_data=f"{CB_SHARE_PREFIX}{kind}:{submission_id}")]])
+    """Under the card: our Instagram (the owner, 2026-11-16: "post it and support us" - a bot can't open
+    Instagram's story editor with the picture, so the button opens the app on our page), and another design of
+    the same result."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=t("story.instagram_btn", lang), url=instagram_url())],
+        [InlineKeyboardButton(text=t("story.again", lang), callback_data=f"{CB_SHARE_PREFIX}{kind}:{submission_id}")],
+    ])
 
 
 async def _render(kind: str, submission, user_id: int, lang: str) -> bytes:
@@ -49,7 +53,7 @@ async def _render(kind: str, submission, user_id: int, lang: str) -> bytes:
     png, design = await asyncio.to_thread(
         build_story_card, module=kind, task=task, band=float(submission.overall_band),
         criteria=dict(submission.criteria_scores or {}), lang=lang, bot_username=settings.telegram_bot_username,
-        avoid=avoid)
+        social=settings.instagram_username, avoid=avoid)
     try:
         await redis().set(key, design, ex=LAST_TTL)
     except Exception:  # noqa: BLE001
@@ -61,7 +65,8 @@ async def _send(bot: Bot, user_id: int, kind: str, submission, lang: str) -> Non
     png = await _render(kind, submission, user_id, lang)
     await bot.send_photo(
         user_id, BufferedInputFile(png, filename="bandzilla_story.png"),
-        caption=t("story.caption", lang) + "\n\n" + t("share.invite_line", lang, link=referral_link(user_id)),
+        caption=t("story.caption", lang, instagram=settings.instagram_username) + "\n\n"
+        + t("share.invite_line", lang, link=referral_link(user_id)),
         reply_markup=story_kb(kind, submission.id, lang),
     )
 

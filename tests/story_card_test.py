@@ -129,9 +129,19 @@ async def bot_side() -> None:
     check("after a report: the story card goes as a photo, with the kind caption and the referral link",
           len(photos) == 1 and photos[0].chat_id == uid and "story" in photos[0].caption
           and f"ref_{uid}" in photos[0].caption, [p.caption for p in photos])
-    check("...with '🎨 Boshqa dizayn' (the same result, another design)",
-          photos and photos[0].reply_markup.inline_keyboard[0][0].callback_data == f"share:writing:{sub.id}"
-          and "dizayn" in photos[0].reply_markup.inline_keyboard[0][0].text)
+    rows = photos[0].reply_markup.inline_keyboard if photos else []
+    check("...asks to post it on Instagram and support us, naming @bandzilla_uz",
+          photos and "Instagram" in photos[0].caption and "@bandzilla_uz" in photos[0].caption, photos[0].caption)
+    check("...a button to our Instagram, then '🎨 Boshqa dizayn' (the same result, another design)",
+          len(rows) == 2 and rows[0][0].url == "https://www.instagram.com/bandzilla_uz/"
+          and rows[1][0].callback_data == f"share:writing:{sub.id}" and "dizayn" in rows[1][0].text)
+
+    from bot.keyboards.share_kb import share_card_kb
+
+    kb = share_card_kb("writing", sub.id, "uz").inline_keyboard
+    check("under every report: the story button, and our Telegram channel and Instagram",
+          kb[0][0].callback_data == f"share:writing:{sub.id}" and [b.url for b in kb[1]] ==
+          ["https://t.me/bandzilla_uz", "https://www.instagram.com/bandzilla_uz/"])
 
     # the button: another design than the last one, every time
     from aiogram import Dispatcher

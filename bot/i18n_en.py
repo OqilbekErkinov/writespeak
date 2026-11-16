@@ -521,6 +521,9 @@ EN: dict[str, str] = {
     "share.not_found": "This result wasn't found.",
     "share.caption": "Share your result with your friends! 🦖📤",
     "share.button": "📸 Story image",
-    "story.caption": "📸 Your result is ready for a story! Share it so your friends see it too 🦖",
+    "story.caption": "📸 Your result is ready for a story!\n\nSave the picture, post it to your Instagram story and support us — tag @{instagram} 💚",
     "story.again": "🎨 Another design",
+    "story.instagram_btn": "📸 Follow us on Instagram",
+    "social.telegram": "📣 Telegram channel",
+    "social.instagram": "📸 Instagram",
 }

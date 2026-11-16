@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     admin_telegram_ids: str  # comma-separated, parsed via admin_ids property
     # No leading @ - used to build referral links (bot/handlers/referral.py).
     telegram_bot_username: str = "bandzilla_bot"
+    # Our Instagram and Telegram channel (the owner, 2026-11-16): on the story card, under its caption, and as
+    # buttons under every report (bot/handlers/share.py, bot/keyboards/share_kb.py)
+    instagram_username: str = "bandzilla_uz"
+    telegram_channel: str = "bandzilla_uz"
     # Signs group/center invite links (bot/utils/group_invite.py); empty = the
     # bot token. Since the move to @bandzilla_bot (2026-10-17) it is the old
     # bot's token, so the links and QR codes handed out before keep working.

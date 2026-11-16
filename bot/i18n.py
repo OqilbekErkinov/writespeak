@@ -1890,10 +1890,16 @@ _T: dict[str, dict[str, str]] = {
     "share.button": {"uz": "📸 Story uchun rasm", "ru": "📸 Картинка для сторис"},
     # the story card under every report (bot/handlers/share.py, 2026-11-16): kind words only
     "story.caption": {
-        "uz": "📸 Natijangiz story uchun tayyor! Joylang — do'stlaringiz ham ko'rsin 🦖",
-        "ru": "📸 Ваш результат готов для сторис! Поделитесь — пусть друзья тоже увидят 🦖",
+        "uz": "📸 Natijangiz story uchun tayyor!\n\nRasmni saqlab, Instagram story'ga joylang va bizni "
+              "qo'llab-quvvatlang — @{instagram} ni belgilashni unutmang 💚",
+        "ru": "📸 Ваш результат готов для сторис!\n\nСохраните картинку, выложите её в Instagram stories и "
+              "поддержите нас — отметьте @{instagram} 💚",
     },
     "story.again": {"uz": "🎨 Boshqa dizayn", "ru": "🎨 Другой дизайн"},
+    "story.instagram_btn": {"uz": "📸 Instagram'da bizni kuzating", "ru": "📸 Мы в Instagram"},
+    # under every report (bot/keyboards/share_kb.py, the owner, 2026-11-16): our channel and Instagram
+    "social.telegram": {"uz": "📣 Telegram kanal", "ru": "📣 Telegram-канал"},
+    "social.instagram": {"uz": "📸 Instagram", "ru": "📸 Instagram"},
 }
 
 for _key, _text in EN.items():

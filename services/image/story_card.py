@@ -54,6 +54,7 @@ _WORDS = {
         "even": "Barcha mezonlar bir tekis",
         "footer": "IELTS Writing va Speaking’ni tekshiring",
         "scored": "IELTS’ning 4 mezoni bo‘yicha",
+        "follow": "Instagram va Telegram: @{handle}",
         "cheers": {
             "top": ["Ajoyib natija!", "Bu — yuksak daraja!", "Mukammallikka juda yaqin!", "Zo‘r ish, tabriklaymiz!"],
             "high": ["Juda yaxshi natija!", "Maqsad sari ishonchli qadam", "Zo‘r! Yuqori ball juda yaqin",
@@ -73,6 +74,7 @@ _WORDS = {
         "even": "Все критерии ровно",
         "footer": "Проверьте свой IELTS Writing и Speaking",
         "scored": "По 4 критериям IELTS",
+        "follow": "Instagram и Telegram: @{handle}",
         "cheers": {
             "top": ["Отличный результат!", "Это высокий уровень!", "Почти идеально!", "Блестящая работа!"],
             "high": ["Очень хороший результат!", "Уверенный шаг к цели", "Высокий балл совсем близко",
@@ -92,6 +94,7 @@ _WORDS = {
         "even": "All criteria even",
         "footer": "Check your IELTS Writing & Speaking",
         "scored": "Scored on the 4 IELTS criteria",
+        "follow": "Instagram & Telegram: @{handle}",
         "cheers": {
             "top": ["Outstanding result!", "This is a high level!", "So close to perfect!", "Brilliant work!"],
             "high": ["A really good result!", "A confident step to my goal", "A top band is close!",
@@ -311,11 +314,18 @@ def _ring(img: Image.Image, cx: int, cy: int, r: int, width: int, value: float, 
     img.alpha_composite(layer)
 
 
-def _footer(img: Image.Image, words: dict, bot: str, fg, sub, accent_bg, accent_fg, y: int = 1560) -> None:
-    """The call to action, the same place on every design: a line, and the bot's name in a pill."""
+FOOTER_Y = 1490
+
+
+def _footer(img: Image.Image, words: dict, bot: str, fg, sub, accent_bg, accent_fg, y: int = FOOTER_Y) -> None:
+    """The call to action, the same place on every design: a line, the bot's name in a pill, and our Instagram
+    and Telegram channel under it (the owner, 2026-11-16) - all above the stories' reply bar."""
     d = ImageDraw.Draw(img)
     _text(d, W / 2, y, words["footer"], _fit(d, words["footer"], "Manrope", 34, 600, W - 2 * PAD), sub, anchor="m")
     _pill(img, W / 2, y + 58, f"@{bot}", _font("Unbounded", 38, 700), accent_fg, accent_bg, pad_x=44, pad_y=24)
+    d = ImageDraw.Draw(img)
+    _text(d, W / 2, y + 170, words["follow"], _fit(d, words["follow"], "Manrope", 30, 700, W - 2 * PAD), fg,
+          anchor="m")
 
 
 def _header(img: Image.Image, logo: str, words: dict, day: str, fg, y: int = SAFE_TOP) -> None:
@@ -344,13 +354,13 @@ def _d_ink_scales(c: dict) -> Image.Image:
     _text(d, PAD - 12, 664, _band(c["band"]), big, WHITE)
     pet = _sized(c["mascot"], 470)
     _paste(img, pet, W - pet.width - 40, 520)
-    y = 1040
+    y = 1010
     for short, full, v in c["rows"]:
         d = ImageDraw.Draw(img)
         _text(d, PAD, y, full, _font("Manrope", 34, 700), WHITE)
         _text(d, W - PAD, y - 4, _band(v), _font("Unbounded", 44, 700), LIME, anchor="r")
         _bar(img, PAD, y + 54, W - 2 * PAD, 16, v, (30, 70, 55), LIME)
-        y += 112
+        y += 104
     _footer(img, w, c["bot"], WHITE, (170, 205, 190), LIME, INK)
     return img
 
@@ -377,17 +387,17 @@ def _d_lime_pop(c: dict) -> Image.Image:
     pet = _sized(c["mascot"], 330)
     _paste(img, pet, cx + r - 40, cy - 40, rotate=-8)
     d = ImageDraw.Draw(img)
-    _text(d, W / 2, 1060, c["cheer"], _fit(d, c["cheer"], "Unbounded", 50, 700, W - 2 * PAD), INK, anchor="m")
+    _text(d, W / 2, 1050, c["cheer"], _fit(d, c["cheer"], "Unbounded", 50, 700, W - 2 * PAD), INK, anchor="m")
     # 2x2 tiles
-    tw, th, gap = (W - 2 * PAD - 28) // 2, 160, 26
+    tw, th, gap = (W - 2 * PAD - 28) // 2, 150, 22
     for i, (short, full, v) in enumerate(c["rows"]):
         x = PAD + (i % 2) * (tw + gap)
-        y = 1150 + (i // 2) * (th + gap)
+        y = 1120 + (i // 2) * (th + gap)
         _rrect(img, (x, y, x + tw, y + th), 36, INK)
         d = ImageDraw.Draw(img)
         _text(d, x + 34, y + 32, full, _fit(d, full, "Manrope", 28, 700, tw - 68), (170, 230, 200))
-        _text(d, x + 34, y + 80, _band(v), _font("Unbounded", 56, 800), LIME)
-    _footer(img, w, c["bot"], INK, (6, 32, 24), INK, LIME, y=1560)
+        _text(d, x + 34, y + 74, _band(v), _font("Unbounded", 54, 800), LIME)
+    _footer(img, w, c["bot"], INK, (6, 32, 24), INK, LIME)
     return img
 
 
@@ -449,7 +459,7 @@ def _d_night_glow(c: dict) -> Image.Image:
         _text(d, x + tw / 2, 1224, short, _font("Unbounded", 30, 700), LIME, anchor="m")
         _text(d, x + tw / 2, 1290, _band(v), _font("Unbounded", 52, 800), WHITE, anchor="m")
         _bar(img, x + 28, 1378, tw - 56, 10, v, (255, 255, 255, 50), LIME)
-    _footer(img, w, c["bot"], WHITE, (190, 230, 212), LIME, INK, y=1560)
+    _footer(img, w, c["bot"], WHITE, (190, 230, 212), LIME, INK)
     return img
 
 
@@ -469,16 +479,16 @@ def _d_split(c: dict) -> Image.Image:
     pet = _sized(c["mascot"], 420)
     _paste(img, pet, W - pet.width - 50, 560)
     d = ImageDraw.Draw(img)
-    _text(d, PAD, 1120, c["cheer"], _fit(d, c["cheer"], "Caveat", 96, 700, W - 2 * PAD), LIME)
-    y = 1250
+    _text(d, PAD, 1096, c["cheer"], _fit(d, c["cheer"], "Caveat", 92, 700, W - 2 * PAD), LIME)
+    y = 1204
     for short, full, v in c["rows"]:
         d = ImageDraw.Draw(img)
         _text(d, PAD, y, short, _font("Unbounded", 36, 800), LIME)
         _text(d, PAD + 130, y + 4, full, _font("Manrope", 32, 600), (190, 225, 210))
         _text(d, W - PAD, y - 2, _band(v), _font("Unbounded", 40, 800), WHITE, anchor="r")
-        y += 70
+        y += 58
     _paste(img, zz, 0, H - zz.height)
-    _footer(img, w, c["bot"], WHITE, (170, 205, 190), LIME, INK, y=1570)
+    _footer(img, w, c["bot"], WHITE, (170, 205, 190), LIME, INK)
     return img
 
 
@@ -486,7 +496,7 @@ def _d_certificate(c: dict) -> Image.Image:
     img = Image.new("RGBA", (W, H), INK)
     _scales(img, INK_2, (18, 58, 45), r=52)
     w = c["words"]
-    card = (64, 250, W - 64, 1470)
+    card = (64, 250, W - 64, 1430)
     _shadow(img, card, 48, blur=34, alpha=140, offset=24)
     _rrect(img, card, 48, PAPER)
     # a dashed inner frame
@@ -503,22 +513,22 @@ def _d_certificate(c: dict) -> Image.Image:
     d = ImageDraw.Draw(img)
     _text(d, W / 2, 470, w["title"].upper(), _font("Manrope", 30, 800), MOSS, anchor="m", spacing=6)
     _text(d, W / 2, 526, c["label"], _font("Unbounded", 46, 700), INK, anchor="m")
-    burst = _sized_w("burst", 420)
-    bx, by = W / 2 - burst.width / 2, 600
+    burst = _sized_w("burst", 400)
+    bx, by = W / 2 - burst.width / 2, 590
     _paste(img, burst, bx, by)
     d = ImageDraw.Draw(img)
     _text(d, W / 2, by + burst.height / 2 - 74, _band(c["band"]), _font("Unbounded", 136, 800), INK, anchor="m")
-    _text(d, W / 2, 1050, c["cheer"], _fit(d, c["cheer"], "Caveat", 80, 700, W - 2 * PAD - 80), MOSS, anchor="m")
-    y = 1180
+    _text(d, W / 2, 1020, c["cheer"], _fit(d, c["cheer"], "Caveat", 78, 700, W - 2 * PAD - 80), MOSS, anchor="m")
+    y = 1140
     for short, full, v in c["rows"]:
         d = ImageDraw.Draw(img)
         _text(d, 150, y, full, _font("Manrope", 32, 700), INK)
         _text(d, W - 150, y - 2, _band(v), _font("Unbounded", 36, 800), MOSS, anchor="r")
-        d.line((150, y + 52, W - 150, y + 52), fill=(214, 234, 224), width=2)
-        y += 66
+        d.line((150, y + 50, W - 150, y + 50), fill=(214, 234, 224), width=2)
+        y += 64
     pet = _sized(c["mascot"], 230)
     _paste(img, pet, W - 64 - pet.width + 40, 250 - 120, rotate=8)
-    _footer(img, w, c["bot"], WHITE, (170, 205, 190), LIME, INK, y=1560)
+    _footer(img, w, c["bot"], WHITE, (170, 205, 190), LIME, INK)
     return img
 
 
@@ -549,13 +559,13 @@ def _d_bento(c: dict) -> Image.Image:
     colors = [(255, 255, 255), MINT, MINT, (255, 255, 255)]
     for i, (short, full, v) in enumerate(c["rows"]):
         x = L + (i % 2) * (tw + g)
-        y = 1054 + (i // 2) * (190 + g)
-        _rrect(img, (x, y, x + tw, y + 190), 40, colors[i])
+        y = 1050 + (i // 2) * (170 + g)
+        _rrect(img, (x, y, x + tw, y + 170), 40, colors[i])
         d = ImageDraw.Draw(img)
-        _text(d, x + 40, y + 36, full, _fit(d, full, "Manrope", 28, 700, tw - 80), (60, 95, 80))
-        _text(d, x + 40, y + 92, _band(v), _font("Unbounded", 60, 800), INK)
-        _bar(img, x + 200, y + 116, tw - 240, 12, v, (210, 228, 219), SKIN)
-    _footer(img, w, c["bot"], WHITE, (170, 205, 190), LIME, INK, y=1530)
+        _text(d, x + 40, y + 32, full, _fit(d, full, "Manrope", 28, 700, tw - 80), (60, 95, 80))
+        _text(d, x + 40, y + 84, _band(v), _font("Unbounded", 56, 800), INK)
+        _bar(img, x + 200, y + 106, tw - 240, 12, v, (210, 228, 219), SKIN)
+    _footer(img, w, c["bot"], WHITE, (170, 205, 190), LIME, INK)
     return img
 
 
@@ -564,12 +574,13 @@ _DRAW = {"ink_scales": _d_ink_scales, "lime_pop": _d_lime_pop, "paper_ring": _d_
 
 
 def build_story_card(*, module: str, task: str, band: float, criteria: dict, lang: str = "uz",
-                     bot_username: str = "bandzilla_bot", design: str | None = None, avoid: str | None = None,
-                     seed: int | None = None, day: date | None = None) -> tuple[bytes, str]:
+                     bot_username: str = "bandzilla_bot", social: str = "bandzilla_uz", design: str | None = None,
+                     avoid: str | None = None, seed: int | None = None, day: date | None = None) -> tuple[bytes, str]:
     """The card as PNG bytes, and the design used. `design`: a fixed one (tests, previews); else a random one,
     never `avoid` (the student's previous card) so the next one always looks different. `seed`: repeatable."""
     rnd = random.Random(seed)
-    words = _WORDS.get(lang, _WORDS["uz"])
+    words = dict(_WORDS.get(lang, _WORDS["uz"]))
+    words["follow"] = words["follow"].format(handle=social)  # our Instagram and Telegram channel
     level = tier(band)
     rows = _criteria(module, task, criteria or {})
     if design not in _DRAW:
