@@ -122,6 +122,28 @@ class Settings(BaseSettings):
     # --- Coins & payments (bot/utils/coins.py: what each check and pack costs) ---
     # Coins every new user gets once, on signup.
     welcome_coins: int = 8
+    # Re-engagement reminders (bot/utils/nudges.py, 2026-11-16, approved by the owner): a student who has not
+    # used the free check gets one message nudge_signup_first_hours and one nudge_signup_second_hours after
+    # signup; one whose last check was nudge_lapsed_first_days / nudge_lapsed_second_days ago gets one each,
+    # with their weakest criterion. Only between nudge_from_hour and nudge_to_hour Tashkent time, never in a
+    # test window or a pause, at most nudge_per_second messages a second. false switches them off.
+    nudges_enabled: bool = True
+    nudge_signup_first_hours: int = 24
+    nudge_signup_second_hours: int = 72
+    nudge_lapsed_first_days: int = 7
+    nudge_lapsed_second_days: int = 14
+    # A step whose time came while the bot slept (quiet hours, a deploy) may still go this long after it; later
+    # it is skipped - so nobody gets a "24 h" message on day 5, or two steps at once.
+    nudge_late_hours: int = 48
+    nudge_from_hour: int = 10
+    nudge_to_hour: int = 20
+    nudge_per_second: float = 15.0
+    nudge_every_minutes: int = 10  # how often the due reminders are looked for
+    nudge_min_gap_hours: int = 20  # two reminders to one student at least this far apart
+    nudge_skip_active_minutes: int = 60  # a student using the bot right now is not interrupted (tried later)
+    # Text sent outside any flow that looks like an essay - this many words or more, English (bot/handlers/
+    # fallback.py's smart entry): "Task 1 or Task 2?", the text kept as the answer.
+    smart_entry_min_words: int = 60
     # Coins the inviter and the invited user each get on the invited user's
     # first approved purchase.
     referral_coins: int = 5

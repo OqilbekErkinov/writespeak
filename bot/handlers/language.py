@@ -13,6 +13,7 @@ from aiogram.types import BufferedInputFile, CallbackQuery
 
 from bot.config import settings
 from bot.i18n import LANGS, t
+from bot.keyboards.entry_kb import onboarding_kb
 from bot.keyboards.lang_kb import CB_LANG_CHANGE_PREFIX, CB_LANG_ONBOARD_PREFIX
 from bot.keyboards.main_menu_kb import main_menu_kb
 from bot.utils import gifts, stickers
@@ -70,7 +71,9 @@ async def onboard_set_language(callback: CallbackQuery) -> None:
     # them on real IELTS tasks, not on a try-out sentence.
     await callback.message.answer(t("start.welcome_coins", lang, coins=settings.welcome_coins, price=TYPICAL_CHECK))
     await _step("tip sticker", stickers.send(callback.bot, user_id, "maslahat"))
-    await callback.message.answer(t("start.real_task", lang))
+    # The last step ends with a way in (2026-11-16: it had no button, and new students stalled here) - each
+    # opens as a new message, so this tip stays in the chat.
+    await callback.message.answer(t("start.real_task", lang), reply_markup=onboarding_kb(lang))
     # Joined a group through an invite link before picking the language
     # (bot/handlers/start.py): confirm it now, in their language.
     await _step("group notice", _group_notice(callback, lang))

@@ -2,8 +2,11 @@
 and its packs, and the history five works to a page."""
 from __future__ import annotations
 
+from urllib.parse import urlencode
+
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
+from bot.config import settings
 from bot.i18n import t
 from bot.keyboards.group_kb import CB_REQUEST
 from bot.keyboards.lang_kb import CB_LANG_CHANGE_PREFIX
@@ -22,6 +25,10 @@ CB_HISTORY_PREFIX = "acc:hist:"  # + page (0-based)
 CB_STATS = "acc:stats"
 CB_LANG = "acc:lang"
 CB_NOOP = "acc:noop"
+# The re-engagement reminders (bot/utils/nudges.py, 2026-11-16): "🔕 Eslatmalarni o'chirish" under a reminder,
+# and the on/off switch in the hub
+CB_NUDGES_OFF = "acc:nudges:off"
+CB_NUDGES_TOGGLE = "acc:nudges:toggle"
 
 HISTORY_PAGE = 5
 
@@ -30,11 +37,25 @@ def _b(text: str, data: str) -> InlineKeyboardButton:
     return InlineKeyboardButton(text=text, callback_data=data)
 
 
-def account_kb(lang: str) -> InlineKeyboardMarkup:
+def referral_link(user_id: int) -> str:
+    """The student's invite link: whoever starts the bot through it is theirs (bot/handlers/start.py's ref_<id>)."""
+    return f"https://t.me/{settings.telegram_bot_username}?start=ref_{user_id}"
+
+
+def invite_button(user_id: int, lang: str) -> InlineKeyboardButton:
+    """"🎁 Do'stni taklif qilish": Telegram's share screen with the invite link and a short line (2026-11-16)."""
+    url = "https://t.me/share/url?" + urlencode({"url": referral_link(user_id), "text": t("acc.invite_text", lang)})
+    return InlineKeyboardButton(text=t("acc.btn_invite", lang), url=url)
+
+
+def account_kb(lang: str, user_id: int, reminders_on: bool = True) -> InlineKeyboardMarkup:
+    reminders = t("nudge.btn_off" if reminders_on else "nudge.btn_on", lang)
     return InlineKeyboardMarkup(inline_keyboard=[
         [_b(t("acc.btn_topup", lang), CB_TOPUP), _b(t("acc.btn_gift", lang), CB_GIFT)],
         [_b(t("acc.btn_history", lang), f"{CB_HISTORY_PREFIX}0"), _b(t("acc.btn_stats", lang), CB_STATS)],
+        [invite_button(user_id, lang)],
         [_b(t("acc.btn_lang", lang), CB_LANG), _b(t("acc.btn_support", lang), CB_SUPPORT_WRITE)],
+        [_b(reminders, CB_NUDGES_TOGGLE)],
         [_b(t("acc.btn_back_main", lang), CB_BACK_MAIN)],
     ])
 

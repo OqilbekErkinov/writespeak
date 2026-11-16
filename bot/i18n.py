@@ -160,13 +160,14 @@ _T: dict[str, dict[str, str]] = {
         "Завтра лимит обновится.",
     },
     # --- Payments (bot/handlers/payments.py, bot/keyboards/payment_kb.py) ---
+    # "= N tekshiruv" since 2026-11-16 (bot/keyboards/payment_kb.py pack_button)
     "pay.pack_button": {
-        "uz": "🟡 {coins} coin — {price} so'm",
-        "ru": "🟡 {coins} coin — {price} сум",
+        "uz": "🟡 {coins} coin = {checks} tekshiruv — {price} so'm",
+        "ru": "🟡 {coins} coin — {price} сум · проверок: {checks}",
     },
     "pay.pack_button_discount": {
-        "uz": "🟡 {coins} coin — {price} so'm (−{off}%)",
-        "ru": "🟡 {coins} coin — {price} сум (−{off}%)",
+        "uz": "🟡 {coins} coin = {checks} tekshiruv — {price} so'm (−{off}%)",
+        "ru": "🟡 {coins} coin — {price} сум (−{off}%) · проверок: {checks}",
     },
     "pay.center_packs_header": {
         "uz": "🏫 O'quv markazlar va o'qituvchilar uchun:",
@@ -850,6 +851,136 @@ _T: dict[str, dict[str, str]] = {
         "ru": "🎁 <b>Вам подарок — {coins} coin!</b>\n\nCoin — валюта Bandzilla: каждая проверка стоит "
               "<b>{price} coin</b>: Writing Task 1, Task 2 или любая часть Speaking. Первая проверка — за "
               "подарочные coin, бесплатно.\n\nЦены и пополнение — в разделе <b>👤 Профиль</b>.",
+    },
+    # --- Growth: ways into a check (2026-11-16; bot/keyboards/entry_kb.py, bot/utils/nudges.py, fallback.py) ---
+    "entry.btn_practice": {"uz": "📝 Tayyor savol tanlash", "ru": "📝 Выбрать готовый вопрос"},
+    # re-engagement reminders (bot/utils/nudges.py): not used the free check (24 h, 72 h after signup)...
+    "nudge.free_first": {
+        "uz": "🎁 <b>Bepul tekshiruvingiz sizni kutyapti!</b>\n\nBalansingizda <b>{balance} coin</b> bor — birinchi "
+              "tekshiruv shu hisobdan, bepul. Writing yoki Speaking javobingizni yuboring: 2–4 daqiqada band, har bir "
+              "xatoning izohi va model javob tayyor bo'ladi 👇",
+        "ru": "🎁 <b>Ваша бесплатная проверка ждёт!</b>\n\nНа балансе <b>{balance} coin</b> — первая проверка за их "
+              "счёт, бесплатно. Отправьте ответ по Writing или Speaking: через 2–4 минуты — балл, разбор каждой "
+              "ошибки и модельный ответ 👇",
+    },
+    "nudge.free_second": {
+        "uz": "⏳ <b>Sovg'a coinlaringiz hali joyida</b> — {balance} coin, birinchi tekshiruv bepul.\n\nSavolingiz "
+              "yo'qmi? «📝 Tayyor savol tanlash»da imtihonda tushgan savollar bor: bittasiga javob bering — "
+              "xatolaringizni topib, ballni qanday ko'tarishni ko'rsataman 🦖",
+        "ru": "⏳ <b>Подарочные coin всё ещё ждут</b> — {balance} coin, первая проверка бесплатно.\n\nНет вопроса? "
+              "В «📝 Выбрать готовый вопрос» — реальные вопросы с экзаменов: ответьте на один, и я найду ошибки и "
+              "покажу, как поднять балл 🦖",
+    },
+    # ...and the last check 7 / 14 days ago ({weakest}: nudge.weakest and a blank line, or nothing)
+    "nudge.lapsed_first": {
+        "uz": "👋 <b>{days} kundan beri tekshiruv bo'lmadi</b> — mashqni davom ettiramizmi?\n\n{weakest}Yangi javob "
+              "yuboring — o'sishingizni hisobotda ko'rasiz 👇",
+        "ru": "👋 <b>Уже {days} дн. без проверок</b> — продолжим тренировку?\n\n{weakest}Отправьте новый ответ — "
+              "рост будет виден в отчёте 👇",
+    },
+    "nudge.lapsed_second": {
+        "uz": "🦖 <b>{days} kun bo'ldi!</b> IELTS'da ballni muntazam mashq eng tez ko'taradi.\n\n{weakest}Bugun "
+              "bitta javob yuboring 👇",
+        "ru": "🦖 <b>Прошло {days} дн.!</b> Быстрее всего балл в IELTS растёт от регулярной практики.\n\n{weakest}"
+              "Отправьте сегодня один ответ 👇",
+    },
+    "nudge.weakest": {
+        "uz": "📉 Oxirgi tekshiruvlaringizda eng zaif mezoningiz — <b>{label}</b> (o'rtacha {avg:.1f}).\n💡 {tip}",
+        "ru": "📉 Самый слабый критерий в последних проверках — <b>{label}</b> (в среднем {avg:.1f}).\n💡 {tip}",
+    },
+    "nudge.low_balance": {
+        "uz": "🟡 Balansingizda <b>{balance} coin</b>, tekshiruv — {price} coin. Paketlar {pack} coin'dan "
+              "boshlanadi, qolgan coinlaringiz ham ularga qo'shiladi.",
+        "ru": "🟡 На балансе <b>{balance} coin</b>, проверка — {price} coin. Пакеты — от {pack} coin, остаток "
+              "добавится к ним.",
+    },
+    "nudge.btn_off": {"uz": "🔕 Eslatmalarni o'chirish", "ru": "🔕 Отключить напоминания"},
+    "nudge.btn_on": {"uz": "🔔 Eslatmalarni yoqish", "ru": "🔔 Включить напоминания"},
+    "nudge.off_done": {
+        "uz": "🔕 Eslatmalar o'chirildi. Qayta yoqish: <b>👤 Hisobim</b> → «🔔 Eslatmalarni yoqish».",
+        "ru": "🔕 Напоминания отключены. Включить снова: <b>👤 Профиль</b> → «🔔 Включить напоминания».",
+    },
+    "nudge.off_toast": {"uz": "🔕 Eslatmalar o'chirildi", "ru": "🔕 Напоминания отключены"},
+    "nudge.on_toast": {"uz": "🔔 Eslatmalar yoqildi", "ru": "🔔 Напоминания включены"},
+    # under a report (bot/utils/nudges.py what_next): the coins left
+    "next.balance_ok": {
+        "uz": "🟡 Balansingizda <b>{balance} coin</b> — yana <b>{checks}</b> ta tekshiruvga yetadi.",
+        "ru": "🟡 На балансе <b>{balance} coin</b> — осталось проверок: <b>{checks}</b>.",
+    },
+    "next.balance_low": {
+        "uz": "🟡 Balansingizda <b>{balance} coin</b> qoldi — keyingi tekshiruv <b>{price} coin</b>. Hisobni "
+              "to'ldiring: qolgan coinlaringiz ham paketga qo'shiladi.",
+        "ru": "🟡 На балансе осталось <b>{balance} coin</b> — следующая проверка стоит <b>{price} coin</b>. "
+              "Пополните баланс: остаток добавится к пакету.",
+    },
+    # the paywall (bot/utils/quota.py send_paywall): the coins left are not lost
+    "quota.carry_over": {
+        "uz": "💡 Qolgan coinlaringiz yo'qolmaydi, paketga qo'shiladi: <b>{balance} coin + {pack} coin = {total} coin "
+              "= {checks} tekshiruv</b>.",
+        "ru": "💡 Остаток не пропадает, а добавляется к пакету: <b>{balance} coin + {pack} coin = {total} coin</b> "
+              "(проверок: {checks}).",
+    },
+    # the smart entry (bot/handlers/fallback.py): something sent outside any flow
+    "smart.essay_offer": {
+        "uz": "📝 Bu Writing javobiga o'xshaydi (<b>{words}</b> so'z). Qaysi topshiriq uchun?\n\nTanlang — "
+              "javobingizni saqlab qo'yaman, keyin faqat savolni yuborasiz 👇",
+        "ru": "📝 Похоже на ответ по Writing (слов: <b>{words}</b>). Для какого задания?\n\nВыберите — я сохраню "
+              "ваш ответ, останется отправить только вопрос 👇",
+    },
+    "smart.file_offer": {
+        "uz": "📎 Rasm yoki faylni oldim. Bu Writing savoli yoki javobingizmi? Topshiriqni tanlang — nimani "
+              "yuborishni aytaman 👇\n\n<i>To'lov cheki bo'lsa: «👤 Hisobim» → «💳 Hisobni to'ldirish»da paketni "
+              "tanlang, keyin chekni yuboring.</i>",
+        "ru": "📎 Получил фото или файл. Это вопрос или ваш ответ по Writing? Выберите задание — подскажу, что "
+              "отправить 👇\n\n<i>Если это чек об оплате: «👤 Профиль» → «💳 Пополнить баланс», выберите пакет, "
+              "затем отправьте чек.</i>",
+    },
+    "smart.voice_offer": {
+        "uz": "🎙 Ovozli javobingizni oldim. Speaking'ning qaysi qismi?\n\n<b>Part 2</b> bo'lsa, shu yozuvni javob "
+              "sifatida saqlayman — faqat cue card'ni yuborasiz 👇",
+        "ru": "🎙 Получил ваш голосовой ответ. Какая часть Speaking?\n\nЕсли это <b>Part 2</b>, я сохраню запись как "
+              "ответ — останется отправить cue card 👇",
+    },
+    "smart.writing_kept": {
+        "uz": "✅ Javobingiz saqlandi (<b>{words}</b> so'z). Endi shu javob yozilgan topshiriqning <b>savolini</b> "
+              "yuboring — keyin darhol tekshiraman.",
+        "ru": "✅ Ответ сохранён (слов: <b>{words}</b>). Теперь отправьте <b>вопрос</b> задания, на который он "
+              "написан, — и я сразу проверю.",
+    },
+    "smart.writing_file": {
+        "uz": "Avval topshiriqning <b>savolini</b> yuboring (o'sha rasmni qayta yuborsangiz ham bo'ladi) — keyin "
+              "javobingizni so'rayman.",
+        "ru": "Сначала отправьте <b>вопрос</b> задания (можно ту же фотографию ещё раз) — потом я попрошу ваш ответ.",
+    },
+    "smart.voice_kept": {
+        "uz": "✅ Yozuvingiz saqlandi. Endi <b>cue card</b>ni (savolni) yuboring — keyin darhol tekshiraman.",
+        "ru": "✅ Запись сохранена. Теперь отправьте <b>cue card</b> (вопрос) — и я сразу проверю.",
+    },
+    "smart.voice_again": {
+        "uz": "Avval savollarni yuboring — keyin javobingizni <b>qayta</b> yuborasiz: har bir savolga alohida yoki "
+              "hammasini bitta yozuvda.",
+        "ru": "Сначала отправьте вопросы — затем отправьте ответ <b>ещё раз</b>: на каждый вопрос отдельно или всё "
+              "одной записью.",
+    },
+    "smart.gone": {
+        "uz": "⌛ Avvalgi xabaringiz endi saqlanmagan — savoldan keyin javobni <b>qayta</b> yuboring.",
+        "ru": "⌛ Прежнее сообщение больше не хранится — после вопроса отправьте ответ <b>ещё раз</b>.",
+    },
+    "smart.same_as_answer": {
+        "uz": "🙂 Bu — saqlangan javobingiz. Endi topshiriqning <b>savolini</b> yuboring.",
+        "ru": "🙂 Это ваш сохранённый ответ. Теперь отправьте <b>вопрос</b> задания.",
+    },
+    # the referral link in a share card's caption (bot/handlers/share.py) - it travels with every forward
+    "share.invite_line": {
+        "uz": "🦖 IELTS Writing va Speaking'ingizni Bandzilla'da tekshiring — birinchi tekshiruv bepul:\n{link}",
+        "ru": "🦖 Проверьте свой IELTS Writing и Speaking в Bandzilla — первая проверка бесплатно:\n{link}",
+    },
+    "acc.btn_invite": {"uz": "🎁 Do'stni taklif qilish", "ru": "🎁 Пригласить друга"},
+    "acc.invite_text": {
+        "uz": "IELTS'ga tayyorlanyapsizmi? Bandzilla 🦖 Writing va Speaking'ingizni 2–4 daqiqada tekshiradi: band, "
+              "har bir xato izohi va model javob. Birinchi tekshiruv bepul!",
+        "ru": "Готовитесь к IELTS? Bandzilla 🦖 проверит ваш Writing и Speaking за 2–4 минуты: балл, разбор каждой "
+              "ошибки и модельный ответ. Первая проверка бесплатно!",
     },
     "start.real_task": {
         "uz": "⚠️ <b>Muhim maslahat</b>\n\nSovg'a coinlarni shunchaki sinab ko'rish uchun tasodifiy matn yoki bir-ikki "

@@ -29,6 +29,12 @@ history (progress page), resubmissions (the same recordings again get their
 saved report back, free; near-identical answers are labelled, with no
 progress shown), the report, the voice messages.
 
+From the smart entry (bot/handlers/fallback.py, 2026-11-16): a Part 2 talk
+sent outside any flow is kept ("kept_voice") while the cue card is asked,
+then graded as its answer (start_part, _use_kept_voice). A Part 1/3 voice is
+not kept: which of a set's questions it answers can't be known before the set
+is in, so the part starts and the answers are sent again.
+
 `lang` (bot/i18n.py) is only auto-injected by AccessControlMiddleware into
 top-level handlers - the internal helpers below take it as an explicit
 parameter instead, since they're plain function calls within the same turn,
@@ -94,7 +100,7 @@ from bot.utils.messages import show_screen, strip_buttons
 from bot.utils.mock_test_flow import record_mock_test_part
 from bot.utils.report_names import report_filename, with_ai_note
 from bot.utils import check_guard as guard
-from bot.utils import crm_events, stickers
+from bot.utils import crm_events, nudges, stickers
 from bot.utils import progress as live
 from bot.utils.coins import speaking_kind
 from bot.utils.quota import check_quota, free_check_note, payment_of, send_paywall
@@ -146,20 +152,29 @@ async def back_to_speaking_menu(callback: CallbackQuery, state: FSMContext, lang
 @router.callback_query(F.data.in_(PART_CALLBACKS))
 async def choose_part(callback: CallbackQuery, state: FSMContext, lang: str) -> None:
     await callback.answer()
+    await start_part(callback, state, PART_CALLBACKS[callback.data], lang)
 
-    quota = await check_quota(callback.from_user.id, speaking_kind(PART_CALLBACKS[callback.data]))
+
+async def start_part(callback: CallbackQuery, state: FSMContext, part: str, lang: str,
+                     kept_voice: str | None = None, note: str = "") -> bool:
+    """The part's "send the question" step, in place of the callback's message. Also the smart entry's hand-off
+    (bot/handlers/fallback.py, 2026-11-16): `kept_voice` - a Part 2 talk sent outside any flow (its message, as
+    JSON) - is the answer once the cue card is in (_use_kept_voice); `note` (HTML, ending in a blank line) heads
+    the step. False when the check can't start now (the paywall or the pause note was sent)."""
+    quota = await check_quota(callback.from_user.id, speaking_kind(part))
     if not quota.allowed:
         await send_paywall(callback.message, lang, quota)
-        return
+        return False
 
     # See the matching comment in bot/handlers/writing.py's choose_task.
     await state.clear()
-    await state.update_data(part=PART_CALLBACKS[callback.data], spend_credit=quota.spend_credit, payer_id=quota.payer_id)
+    await state.update_data(part=part, spend_credit=quota.spend_credit, payer_id=quota.payer_id,
+                            **({"kept_voice": kept_voice} if kept_voice else {}))
     await state.set_state(SpeakingStates.awaiting_question)
-    await show_screen(
-        callback, free_check_note(quota, lang) + t("speaking.send_question", lang),
-        send_question_kb(lang, CB_SPEAKING_MENU),
-    )
+    # a ready question from Practice too (2026-11-16) - not with a kept talk: it has its own cue card
+    markup = back_kb(lang, CB_SPEAKING_MENU) if kept_voice else send_question_kb(lang, CB_SPEAKING_MENU, part)
+    await show_screen(callback, free_check_note(quota, lang) + note + t("speaking.send_question", lang), markup)
+    return True
 
 
 @router.callback_query(F.data == CB_FULL_TEST)
@@ -226,6 +241,8 @@ async def start_question_set(
     if data.get("rec_path"):  # a recording came first and its questions couldn't be heard - here they are
         await state.set_state(SpeakingStates.processing)
         await _checked(message, state, lang, lambda hold, card: _split_recording(message, state, lang, card, hold))
+        return
+    if data.get("kept_voice") and await _use_kept_voice(message, state, lang):
         return
     if _offers_one_recording(data):
         await _choose_mode(message, state, lang)
@@ -316,32 +333,30 @@ async def _ask_current_question(message: Message, state: FSMContext, lang: str) 
     await state.update_data(question_msg_id=sent.message_id)
 
 
-@router.message(
-    SpeakingStates.awaiting_answer,
-    F.voice | F.video_note | F.audio | F.video | F.document,
-)
-async def receive_answer(message: Message, state: FSMContext, lang: str) -> None:
+async def _received_answer(message: Message, lang: str) -> dict | None:
+    """One answer's recording, downloaded, stored and heard: {"path", "filename"} - or None, the student told
+    why (the flow is left as it is, so the same answer sent again goes on)."""
     try:
         content, filename, saved_path = await extract_audio_from_message(
             message, message.bot, message.from_user.id, lang
         )
     except UnsupportedInputError as e:
         await message.answer(str(e))
-        return
+        return None
     except TelegramBadRequest as e:
         logger.warning("Audio download failed for user %s: %s", message.from_user.id, e)
         key = "input.file_too_big" if "too big" in str(e).lower() else "writing.could_not_read"
         await message.answer(t(key, lang))
-        return
+        return None
     except ReceiveFailed:
         # not downloaded (tried twice) or not stored - logged there; the state is left as it is, so the same
         # answer sent again goes on (2026-11-16: the recording was lost without a reply)
         await message.answer(t("input.voice_not_received", lang))
-        return
+        return None
     except Exception:  # noqa: BLE001
         logger.exception("Answer of user %s not received", message.from_user.id)
         await message.answer(t("input.voice_not_received", lang))
-        return
+        return None
     # Heard before it is taken (2026-11-15): a video without sound, or one answer of half an hour, used to be
     # accepted and fail the whole check later (Whisper takes up to ~13 minutes) - with every answer lost.
     try:
@@ -349,16 +364,54 @@ async def receive_answer(message: Message, state: FSMContext, lang: str) -> None
     except (RuntimeError, EOFError, wave.Error):
         logger.warning("Answer unreadable for user %s (%s)", message.from_user.id, filename)
         await message.answer(t("speaking.answer_no_sound", lang))
-        return
+        return None
     except Exception:  # noqa: BLE001 - our side (a temporary file, ffmpeg itself): the answer is asked again
         logger.exception("Answer of user %s not measured", message.from_user.id)
         await message.answer(t("input.voice_not_received", lang))
-        return
+        return None
     if seconds < MIN_ANSWER_SECONDS:
         await message.answer(t("speaking.answer_no_sound", lang))
-        return
+        return None
     if seconds > MAX_ANSWER_MINUTES * 60:
         await message.answer(t("speaking.answer_too_long", lang, length=one.clock(seconds), max=MAX_ANSWER_MINUTES))
+        return None
+    return {"path": saved_path, "filename": filename}
+
+
+async def _use_kept_voice(message: Message, state: FSMContext, lang: str) -> bool:
+    """The Part 2 talk the smart entry kept (bot/handlers/fallback.py, 2026-11-16), now that its cue card is in:
+    heard and measured like an answer sent under the cue card, then graded - True. False when it can't be used
+    (the student was told why): the cue card is then asked as usual and the talk is sent again."""
+    async with _user_locks[message.chat.id]:
+        data = await state.get_data()
+        raw = data.get("kept_voice")
+        if not raw:
+            return False
+        await state.update_data(kept_voice=None)
+        if data.get("part") != "part2" or len(data.get("questions") or []) != 1:
+            return False  # one cue card, one talk - nothing else maps a recording to its question cleanly
+        await state.set_state(SpeakingStates.processing)  # nothing else is taken for this step meanwhile
+    try:
+        voice = Message.model_validate_json(raw).as_(message.bot)
+    except Exception:  # noqa: BLE001
+        logger.warning("Kept Part 2 talk of user %s unreadable", message.chat.id, exc_info=True)
+        await message.answer(t("smart.gone", lang))
+        return False
+    answer = await _received_answer(voice, lang)
+    if answer is None:
+        return False
+    await state.update_data(answers=[answer], q_index=1)
+    await _run_grading(message, state, lang)
+    return True
+
+
+@router.message(
+    SpeakingStates.awaiting_answer,
+    F.voice | F.video_note | F.audio | F.video | F.document,
+)
+async def receive_answer(message: Message, state: FSMContext, lang: str) -> None:
+    answer = await _received_answer(message, lang)
+    if answer is None:
         return
 
     async with _user_locks[message.from_user.id]:
@@ -370,7 +423,7 @@ async def receive_answer(message: Message, state: FSMContext, lang: str) -> None
             # deploy): one question in `question_text`, no answers yet.
             data = {**data, "questions": [data.get("question_text", "")], "q_index": 0}
             await state.update_data(questions=data["questions"], q_index=0)
-        answers = [*data.get("answers", []), {"path": saved_path, "filename": filename}]
+        answers = [*data.get("answers", []), answer]
         next_index = data["q_index"] + 1
         await state.update_data(answers=answers, q_index=next_index)
 
@@ -470,7 +523,8 @@ async def _send_saved_report(message: Message, state: FSMContext, data: dict, ea
                                         band=earlier.overall_band)
         else:
             await state.clear()
-            await message.answer(t("nav.what_next", lang), reply_markup=_after_result_kb(data, lang))
+            await nudges.what_next(message, lang, speaking_kind(data["part"]), data,
+                                   _after_result_kb(data, lang))  # with the coins left (2026-11-16)
     except Exception:  # noqa: BLE001
         logger.exception("Speaking resubmission of user %s: the steps after the saved report failed", message.chat.id)
     return True
@@ -794,7 +848,8 @@ async def _grade(
         )
     elif await guard.owns(state, hold):  # not when they started something else meanwhile
         await state.clear()
-        await message.answer(t("nav.what_next", lang), reply_markup=_after_result_kb(data, lang))
+        await nudges.what_next(message, lang, speaking_kind(part), data,
+                               _after_result_kb(data, lang))  # with the coins left (2026-11-16)
     if not test_run:
         await crm_events.check_done("s", submission.id)
 

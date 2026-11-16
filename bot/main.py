@@ -104,7 +104,7 @@ async def main() -> None:
     bot.session.middleware(SkipStaleAnswers())  # a button pressed during a deploy still does its job
     dp = build_dispatcher()
 
-    from bot.utils import capacity, check_guard, crm, sponsor_alerts
+    from bot.utils import capacity, check_guard, crm, nudges, sponsor_alerts
     from bot.utils.checks_back import notify_back
     from bot.utils.group_scheduler import run_group_jobs
     from bot.utils.vocab_reminders import run_vocab_reminders
@@ -136,6 +136,7 @@ async def main() -> None:
         asyncio.create_task(check_guard.run_sweeper(bot, dp.storage)),
         asyncio.create_task(crm.run_heartbeat()),  # deploy/watchdog/watchdog.sh watches it
         asyncio.create_task(capacity.run_publisher()),  # the check gate's state, for the panel
+        asyncio.create_task(nudges.run_nudges(bot)),  # re-engagement reminders (bot/utils/nudges.py)
     ]
     try:
         await dp.start_polling(bot)

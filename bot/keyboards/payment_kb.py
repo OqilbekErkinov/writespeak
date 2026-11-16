@@ -6,7 +6,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from bot.config import settings
 from bot.i18n import t
 from bot.keyboards.support_kb import CB_SUPPORT_WRITE
-from bot.utils.coins import CENTER_PACKS, COIN_PACKS, discount_percent
+from bot.utils.coins import CENTER_PACKS, COIN_PACKS, TYPICAL_CHECK, discount_percent
 
 CB_BUY_PREFIX = "buy:"  # + coins of the pack
 CB_GIFT_BUY_PREFIX = "giftbuy:"  # + coins of the pack bought as a gift (bot/handlers/payments.py)
@@ -33,13 +33,15 @@ REJECT_REASONS: dict[str, str] = {
 
 
 def pack_button(coins: int, price: int, lang: str, prefix: str = CB_BUY_PREFIX) -> InlineKeyboardButton:
-    """A pack: for the buyer (CB_BUY_PREFIX) or as a gift (CB_GIFT_BUY_PREFIX)."""
+    """A pack: for the buyer (CB_BUY_PREFIX) or as a gift (CB_GIFT_BUY_PREFIX) - with how many checks it is
+    (2026-11-16: "25 coin" alone said nothing to a student who thinks in checks)."""
     from bot.utils.quota import format_som  # local import: avoids a circular import with quota.py
 
     off = discount_percent(coins, price, settings.coin_price)
     key = "pay.pack_button_discount" if off else "pay.pack_button"
     return InlineKeyboardButton(
-        text=t(key, lang, coins=coins, price=format_som(price), off=off), callback_data=f"{prefix}{coins}"
+        text=t(key, lang, coins=coins, checks=coins // TYPICAL_CHECK, price=format_som(price), off=off),
+        callback_data=f"{prefix}{coins}",
     )
 
 

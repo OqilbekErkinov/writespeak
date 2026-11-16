@@ -374,7 +374,10 @@ async def main() -> int:
           and button_texts(told[0].reply_markup) == ["📸 Отправить чек заново", "💬 Связь с админом"],
           [c.text for c in told])
 
-    # an approval: every copy cleared too, the student told as before (no buttons under coins)
+    # an approval: every copy cleared too, the student told as before - since 2026-11-16 with "✍️ Writing" /
+    # "🎙 Speaking" under it when no check waits for the coins (tests/growth_test.py)
+    from bot.keyboards.entry_kb import CB_OPEN_SPEAKING, CB_OPEN_WRITING
+
     areq, acards = await receipt_photo(ST, "ux-photo-a", "UX-PA")
     before = (await get(DbUser, ST)).coin_balance
     out = await press(333, f"pay_approve:{areq.id}", card(333, acards[333]))
@@ -383,11 +386,12 @@ async def main() -> int:
     check("✅: coins added, every copy '✅ Tasdiqlandi — Admin333', the student told",
           (await get(DbUser, ST)).coin_balance == before + 10 and set(caps) == set(ADMINS)
           and all("✅ Tasdiqlandi — Admin333" in c for c in caps.values())
-          and len(told) == 1 and "tasdiqlandi" in told[0].text and told[0].reply_markup is None, (caps, told))
+          and len(told) == 1 and "tasdiqlandi" in told[0].text
+          and buttons(told[0].reply_markup) == [CB_OPEN_WRITING, CB_OPEN_SPEAKING], (caps, told))
     async with get_session() as s:
         decision = crud.PaymentDecision(await s.get(PaymentRequest, areq.id), True)
-    check("approval_keyboard: none under a coins approval (the one place an approval's buttons are built)",
-          await pay.approval_keyboard(decision, "uz") is None)
+    check("approval_keyboard: Writing/Speaking under a coins approval with nothing parked (built in one place)",
+          buttons(await pay.approval_keyboard(decision, "uz")) == [CB_OPEN_WRITING, CB_OPEN_SPEAKING])
 
     # a card sent before the ids were kept (no Redis entry): the tapped copy is still cleared
     oreq, ocards = await receipt_photo(ST, "ux-photo-o", "UX-PO")

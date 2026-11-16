@@ -7,6 +7,7 @@ from aiogram.types import BufferedInputFile, CallbackQuery
 
 from bot.config import settings
 from bot.i18n import t
+from bot.keyboards.account_kb import referral_link
 from bot.keyboards.share_kb import CB_SHARE_PREFIX
 from db import crud
 from db.database import get_session
@@ -48,7 +49,9 @@ async def send_share_card(callback: CallbackQuery, lang: str) -> None:
         mistakes=mistakes,
         lang=lang,
     )
+    # The student's referral link under the card (2026-11-16): a forward carries its caption, so every friend it
+    # reaches can open the bot as their invitee (bot/keyboards/account_kb.py referral_link).
     await callback.message.answer_photo(
         BufferedInputFile(png_bytes, filename="band_score.png"),
-        caption=t("share.caption", lang),
+        caption=t("share.caption", lang) + "\n\n" + t("share.invite_line", lang, link=referral_link(user_id)),
     )
