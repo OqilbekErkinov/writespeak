@@ -16,6 +16,14 @@ adds the message to a Redis list. The bot process sends them in order
 messages a minute in one group), so a burst never fails and a restart loses
 nothing that was queued. What the messages say is built in
 bot/utils/crm_events.py.
+
+Two lanes (2026-11-16, before the launch): payments, students' messages,
+errors, the reports, teachers and backups (HI_TOPICS) go through HI_QUEUE,
+always sent before the normal lane (new users, the checks' cards, their
+costs) - a burst of checks no longer holds a payment back for tens of
+minutes. Each lane is trimmed on its own, and a trimmed message is told
+(_report_trims). An ERROR log line becomes a card in ⚠️ Xatolar, its
+repeats folded into one "×N" card per 10 minutes (Fold, _ErrorForwarder).
 """
 from __future__ import annotations
 
@@ -24,6 +32,7 @@ import html
 import json
 import logging
 import re
+import sys
 import time
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -73,10 +82,17 @@ TOPIC_WORDS: dict[str, tuple[str, ...]] = {
     "support": ("murojaat", "murojat", "aloqa", "support"),
 }
 
-QUEUE = "crm:queue"
+QUEUE = "crm:queue"  # the normal lane: new users, the checks' cards, their costs
+# The high lane, always sent first (2026-11-16, before the launch): at PAUSE a message and ~2 messages a check, a
+# burst of checks put payments, students' messages and alerts tens of minutes behind the checks' cards. A
+# message's lane follows its topic, so a card and its later edits stay in order.
+HI_QUEUE = "crm:queue:hi"
+HI_TOPICS = frozenset({"errors", "payments", "support", "daily", "teachers", "backup"})
 PAUSE = 3.1  # seconds between messages
 KEEP = 180 * 24 * 3600  # how long a sent message's id is remembered (edits, replies)
-MAX_QUEUE = 5000
+MAX_QUEUE = 5000  # each lane is trimmed (oldest first) to its own cap
+MAX_HI = 3000
+TRIMMED_KEY = "crm:trimmed"  # lane -> messages trimmed away since the sender last said so (never silent)
 TEXT_LIMIT, CAPTION_LIMIT = 4096, 1024
 TZ = timezone(timedelta(hours=5), "Tashkent")  # no DST in Uzbekistan
 CBU_URL = "https://cbu.uz/uz/arkhiv-kursov-valyut/json/USD/"
@@ -211,11 +227,31 @@ async def edit(key: str, topic: str, text: str) -> None:
     await _push({"op": "edit", "key": key, "topic": topic, "text": text})
 
 
+def lane(topic: str | None) -> str:
+    """The queue a topic's messages go through (HI_QUEUE is sent first)."""
+    return HI_QUEUE if topic in HI_TOPICS else QUEUE
+
+
+async def queued() -> dict[str, int]:
+    """How many messages wait in each lane: {"hi": n, "normal": n}."""
+    r = redis()
+    return {"hi": int(await r.llen(HI_QUEUE)), "normal": int(await r.llen(QUEUE))}
+
+
 async def _push(job: dict) -> None:
+    key = lane(job.get("topic"))
+    cap = MAX_HI if key == HI_QUEUE else MAX_QUEUE
     try:
         r = redis()
-        await r.rpush(QUEUE, json.dumps({k: v for k, v in job.items() if v is not None}, ensure_ascii=False))
-        await r.ltrim(QUEUE, -MAX_QUEUE, -1)
+        async with r.pipeline(transaction=True) as pipe:
+            pipe.rpush(key, json.dumps({k: v for k, v in job.items() if v is not None}, ensure_ascii=False))
+            pipe.ltrim(key, -cap, -1)
+            length, _ = await pipe.execute()
+        if length > cap:
+            # the oldest went: counted, and the sender tells the admins (_report_trims) - a lost payment card
+            # or alert must never pass unnoticed (2026-11-16)
+            await r.hincrby(TRIMMED_KEY, key, int(length) - cap)
+            logger.warning("Admins' group: the %s lane is full (%d) - its oldest message dropped", key, cap)
     except Exception as e:  # noqa: BLE001
         logger.warning("Admins' group: could not queue a message (%r)", e)
 
@@ -230,15 +266,27 @@ async def support_user(chat_id: int, message_id: int) -> int | None:
 
 
 async def run_sender(bot: Bot) -> None:
-    """Sends the queued messages; also saves the OpenAI spend to the day's
-    totals and posts the daily report once a day (bot/utils/crm_events.py)."""
+    """Sends the queued messages - the high lane first; also saves the OpenAI spend to the day's
+    totals, posts the daily report once a day (bot/utils/crm_events.py) and, every WATCH_EVERY seconds, runs
+    the checks' watch (_watch: the day's spend cap, a long queue, folded costs, trimmed lanes)."""
+    global _bot
     from bot.utils import balance, crm_events
 
-    last_daily_check = last_probe = 0.0
+    _bot = bot  # direct alerts from the rest of this process (tell_admins)
+    try:
+        moved = await _sort_lanes()
+        if moved:
+            logger.info("Admins' group: %d queued message(s) moved to the high lane", moved)
+    except Exception as e:  # noqa: BLE001 - they are sent from the normal lane then
+        logger.warning("Admins' group: the queued messages were not sorted into lanes (%r)", e)
+    last_daily_check = last_probe = last_watch = 0.0
     failures = report_failures = 0
     while True:
         try:
             await flush_spent()
+            if time.monotonic() - last_watch > WATCH_EVERY:
+                last_watch = time.monotonic()
+                await _watch(bot)
             if time.monotonic() - last_daily_check > 60:
                 last_daily_check = time.monotonic()
                 try:
@@ -261,8 +309,8 @@ async def run_sender(bot: Bot) -> None:
             if not cfg:
                 await asyncio.sleep(5)
                 continue
-            item = await redis().blpop([QUEUE], timeout=3)
-            if item is not None and await _deliver_with_retries(bot, cfg, json.loads(item[1])) == "waiting":
+            item = await redis().blpop([HI_QUEUE, QUEUE], timeout=3)  # the high lane first, whenever it has any
+            if item is not None and await _deliver_with_retries(bot, cfg, json.loads(item[1]), item[0]) == "waiting":
                 continue  # the group can't be reached: not a healthy turn (no beat, the count stays)
             # a whole turn went well (2026-11-16: the count was reset at the top of every turn before, so it
             # never reached its limit and the direct alert below could not fire)
@@ -286,6 +334,9 @@ SENDER_ALERT_AFTER = 10  # consecutive failures of the sender loop before the ad
 REPORT_ALERT_AFTER = 3  # the daily/teachers' report failing this many minutes in a row: told directly
 WAIT_ALERT_AFTER = 600  # seconds the group has been unreachable before the admins are told directly
 DIRECT_ALERT_EVERY = 3600  # one direct alert of a kind an hour at most
+WATCH_EVERY = 30  # seconds between the sender's watch turns (_watch)
+WATCH_ALERT_AFTER = 5  # the watch failing this many turns in a row: told directly
+NORMAL_TRIM_EVERY = 600  # seconds between two cards about the normal lane's trimmed messages
 
 # The sender's own beat (2026-11-16): written after every turn that went well - a message delivered, or nothing
 # to send. /healthz (webapp/main.py) reports "down: group" when it is older than SENDER_STALE, so UptimeRobot
@@ -308,10 +359,10 @@ async def _beat() -> None:
         pass
 
 
-async def _alert_admins(bot: Bot, kind: str, text: str) -> None:
-    """A message straight to the bot admins, not through the group: for when the group itself is the problem.
-    One of a kind an hour. Never raises."""
-    if time.monotonic() - _direct_sent.get(kind, -DIRECT_ALERT_EVERY) < DIRECT_ALERT_EVERY:
+async def _alert_admins(bot: Bot, kind: str, text: str, every: float = DIRECT_ALERT_EVERY) -> None:
+    """A message straight to the bot admins, not through the group: for when the group itself is the problem,
+    or an alert that must not wait in its queue. One of a kind every `every` seconds. Never raises."""
+    if time.monotonic() - _direct_sent.get(kind, -every) < every:
         return
     _direct_sent[kind] = time.monotonic()
     logger.warning("Admins told directly (%s): %s", kind, re.sub(r"<[^>]+>", "", text)[:200])
@@ -320,6 +371,121 @@ async def _alert_admins(bot: Bot, kind: str, text: str) -> None:
             await bot.send_message(admin_id, text)
         except Exception:  # noqa: BLE001
             pass
+
+
+_bot: Bot | None = None  # the sender's bot (run_sender): direct alerts from anywhere in the bot process
+_background: set[asyncio.Task] = set()
+
+
+def spawn(coro) -> asyncio.Task | None:
+    """Runs `coro` in the background, kept referenced until it ends (an unreferenced task may be collected
+    mid-way). Never raises."""
+    try:
+        task = asyncio.get_running_loop().create_task(coro)
+    except Exception:  # noqa: BLE001 - no loop: nothing to run it on
+        coro.close()
+        return None
+    _background.add(task)
+    task.add_done_callback(_background.discard)
+    return task
+
+
+def use_bot(bot: Bot) -> None:
+    """The bot direct alerts go out with, before the sender runs (check_guard.recover at start-up)."""
+    global _bot
+    _bot = _bot or bot
+
+
+def tell_admins(kind: str, text: str, every: float = DIRECT_ALERT_EVERY) -> None:
+    """A direct message to the bot admins from anywhere in the bot process (2026-11-16: the spend cap, a burst
+    of failed checks, a long queue) - sent in the background, so a check never waits for it; one of a kind
+    every `every` seconds. Nothing in a process that runs no sender (the panel, the importer)."""
+    if _bot is not None:
+        spawn(_alert_admins(_bot, kind, text, every))
+
+
+async def settle_background() -> None:
+    """Waits for the background sends (tests; the shutdown)."""
+    while _background:
+        await asyncio.gather(*list(_background), return_exceptions=True)
+
+
+# The messages queued before the lanes (2026-11-16) all sit in the normal lane: the high lane's topics are
+# moved to it once, in their order, when the sender starts - so a payment waiting there is not sent after its
+# own later edit.
+_SORT_LANES = """
+local items = redis.call('LRANGE', KEYS[1], 0, -1)
+local keep, moved = {}, 0
+for _, item in ipairs(items) do
+  local ok, job = pcall(cjson.decode, item)
+  if ok and type(job) == 'table' and type(job['topic']) == 'string'
+      and string.find(ARGV[1], ',' .. job['topic'] .. ',', 1, true) then
+    redis.call('RPUSH', KEYS[2], item)
+    moved = moved + 1
+  else
+    keep[#keep + 1] = item
+  end
+end
+if moved > 0 then
+  redis.call('DEL', KEYS[1])
+  for _, item in ipairs(keep) do redis.call('RPUSH', KEYS[1], item) end
+end
+return moved
+"""
+
+
+async def _sort_lanes() -> int:
+    return int(await redis().eval(_SORT_LANES, 2, QUEUE, HI_QUEUE, "," + ",".join(sorted(HI_TOPICS)) + ","))
+
+
+_watch_failures = 0
+_last_normal_trim = 0.0
+
+
+async def _watch(bot: Bot) -> None:
+    """The sender's watch turn (every WATCH_EVERY s): the day's OpenAI spend against its cap, checks waiting
+    long in the queue, the per-check cost cards folded while the queue was long (bot/utils/cost_guard.py),
+    and the messages a full lane dropped. A turn that keeps failing is told directly. Never raises."""
+    global _watch_failures
+    from bot.utils import cost_guard  # noqa: PLC0415 - it imports this module
+
+    try:
+        await cost_guard.watch()
+        await _report_trims(bot)
+        _watch_failures = 0
+    except Exception as e:  # noqa: BLE001
+        _watch_failures += 1
+        logger.warning("Admins' group: the watch turn failed (%r)", e)
+        if _watch_failures >= WATCH_ALERT_AFTER:
+            await _alert_admins(bot, "watch", "⚠️ Bandzilla: xarajat va navbat nazorati ishlamayapti "
+                                f"({_watch_failures} marta ketma-ket): {html.escape(repr(e))[:300]}")
+
+
+async def _report_trims(bot: Bot) -> None:
+    """A full lane dropped its oldest messages (_push): the high lane's loss is told at once - in the group and
+    directly - the normal lane's every NORMAL_TRIM_EVERY seconds at most."""
+    global _last_normal_trim
+    r = redis()
+    hi = int(await r.hget(TRIMMED_KEY, HI_QUEUE) or 0)
+    if hi:
+        await r.hincrby(TRIMMED_KEY, HI_QUEUE, -hi)
+        text = (f"🚨 <b>Adminlar guruhi navbati to'lib ketdi:</b> muhim bo'limlarning (to'lovlar, murojaatlar, "
+                f"xatolar) eng eski <b>{hi}</b> ta xabari o'chib ketdi (navbatda {MAX_HI} tadan ortig'i "
+                "saqlanmaydi). Guruh ishlayotganini va bot admin ekanini tekshiring; to'lovlarni admin "
+                "paneldan ko'ring.")
+        logger.warning("Admins' group: %d high-lane message(s) were dropped by the cap", hi)
+        await _alert_admins(bot, "trim_hi", "⚠️ Bandzilla: " + text, every=600)
+        if await r.llen(HI_QUEUE) < MAX_HI:  # a lane still full would drop one more for this very card
+            await post("errors", text)
+    if time.monotonic() - _last_normal_trim < NORMAL_TRIM_EVERY:
+        return
+    normal = int(await r.hget(TRIMMED_KEY, QUEUE) or 0)
+    if normal:
+        _last_normal_trim = time.monotonic()
+        await r.hincrby(TRIMMED_KEY, QUEUE, -normal)
+        await post("errors", f"⚠️ Adminlar guruhi navbati uzun: yangi foydalanuvchi va tekshiruv kartalaridan eng "
+                             f"eskilari — <b>{normal}</b> ta — yuborilmay o'chdi (navbatda {MAX_QUEUE} tadan "
+                             "ortig'i saqlanmaydi). Ular admin panelda bor.")
 
 HEARTBEAT_KEY = "health:bot"  # deploy/watchdog/watchdog.sh alerts when it is older than its expiry
 HEARTBEAT_EVERY = 60
@@ -351,12 +517,14 @@ async def credit_back(bot: Bot, entered: bool = False) -> None:
         await post("errors", f"🔔 Kutib turgan {sent} kishiga «Bandzilla yana ishlayapti» xabari yuborildi.")
 
 
-async def _deliver_with_retries(bot: Bot, cfg: dict, job: dict) -> str:
-    """'sent', 'waiting' (the bot is not in the group: the message went back to the head of the queue), or
-    'dropped'. A message lost for good, or a group unreachable for long, is told to the admins directly
-    (2026-11-16: before, only a log line nobody sees said so)."""
+async def _deliver_with_retries(bot: Bot, cfg: dict, job: dict, source: str | None = None) -> str:
+    """'sent', 'waiting' (the bot is not in the group: the message went back to the head of its lane - `source`,
+    the lane it was taken from; by its topic when not given), or 'dropped'. A message lost for good, or a group
+    unreachable for long, is told to the admins directly (2026-11-16: before, only a log line nobody sees said
+    so)."""
     global _waiting_since
     topic = job.get("topic", "")
+    source = source or lane(topic)
     for attempt in range(5):
         try:
             if await _deliver(bot, cfg, job) == "no_topic":
@@ -378,11 +546,11 @@ async def _deliver_with_retries(bot: Bot, cfg: dict, job: dict) -> str:
             if job.get("op") != "copy" and any(s in reason for s in ("not a member", "kicked", "chat not found")):
                 # The bot isn't in the group (yet) - a new bot before it's added:
                 # the message waits at the head of the queue.
-                await _wait_for_group(job, e)
+                await _wait_for_group(job, e, source)
                 if _waiting_since is None:
                     _waiting_since = time.monotonic()
                 elif time.monotonic() - _waiting_since > WAIT_ALERT_AFTER:
-                    waiting = await redis().llen(QUEUE)
+                    waiting = sum((await queued()).values())
                     await _alert_admins(bot, "group_gone", (
                         "⚠️ Bandzilla: bot adminlar guruhiga yoza olmayapti "
                         f"({html.escape(str(e))[:200]}). Botni guruhga qayta qo'shing va admin qiling — "
@@ -410,9 +578,11 @@ async def _deliver_with_retries(bot: Bot, cfg: dict, job: dict) -> str:
 _last_wait_log = 0.0
 
 
-async def _wait_for_group(job: dict, error: Exception) -> None:
+async def _wait_for_group(job: dict, error: Exception, source: str | None = None) -> None:
+    """The message back at the head of the lane it came from (each lane keeps its order; the high lane's are
+    still the first tried once the group is back)."""
     global _last_wait_log
-    await redis().lpush(QUEUE, json.dumps(job, ensure_ascii=False))
+    await redis().lpush(source or lane(job.get("topic")), json.dumps(job, ensure_ascii=False))
     if time.monotonic() - _last_wait_log > 600:
         _last_wait_log = time.monotonic()
         logger.warning("Admins' group: the bot isn't in the group (%s) - messages wait until it is added", error)
@@ -555,18 +725,87 @@ async def usd_rate() -> float:
 # --- Errors -------------------------------------------------------------------------------------
 
 
+class Fold:
+    """The same thing again within `window` seconds is counted instead of posted (2026-11-16: a repeat within
+    10 minutes used to vanish - not posted, not on the panel's errors page, not counted, and the "again" count
+    showed only if it came back after the 10 minutes - so 40 failures looked like 1). When a window that saw
+    repeats ends, `summary(entry)` runs once and the next window starts at once: a burst that goes on gives one
+    summary per window, never a card per line; a window that saw none ends quietly, and the next one is posted
+    in full again. `entry`: {"key", "head" (the first one's details), "n" repeats, "items" (the first ITEMS
+    repeats' details), "sums" (the repeats' numbers added up), "since", "last" (epoch seconds)}. On the event
+    loop's thread only."""
+
+    ITEMS = 12
+
+    def __init__(self, window: float, summary):
+        self.window = window
+        self.summary = summary
+        self.open: dict = {}
+
+    def hit(self, key, head=None, item=None, add: dict | None = None) -> bool:
+        """True: the first in its window - post it in full; False: counted for the window's summary (`add`'s
+        numbers summed into its "sums")."""
+        entry = self.open.get(key)
+        if entry is None:
+            self._start(key, head)
+            return True
+        entry["n"] += 1
+        entry["last"] = time.time()
+        if item is not None and len(entry["items"]) < self.ITEMS:
+            entry["items"].append(item)
+        for name, value in (add or {}).items():
+            entry["sums"][name] = entry["sums"].get(name, 0) + value
+        return False
+
+    def _start(self, key, head) -> None:
+        self.open[key] = {"key": key, "head": head, "n": 0, "items": [], "sums": {}, "since": time.time(),
+                          "last": None}
+        asyncio.get_running_loop().call_later(self.window, self._close, key)
+
+    def _close(self, key) -> None:
+        entry = self.open.pop(key, None)
+        if entry is None or not entry["n"]:
+            return
+        self._start(key, entry["head"])  # it goes on: folded into the next window's summary
+        spawn(self._summarise(entry))
+
+    async def _summarise(self, entry: dict) -> None:
+        try:
+            await self.summary(entry)
+        except Exception:  # noqa: BLE001 - this module's own log lines never reach the group
+            logger.warning("Admins' group: a repeats summary was not sent", exc_info=True)
+
+
+def _minutes(seconds: float) -> int:
+    return max(1, round(seconds / 60))
+
+
+COUNT_FLUSH = 2.0  # seconds: the day's error count is added up in Redis this often at most
+
+
 class _ErrorForwarder(logging.Handler):
-    """ERROR log lines - and the Flex fallback warnings - to the ⚠️ topic:
-    the same line from the same place at most once every REPEAT seconds,
-    saying how many more times it came in between."""
+    """ERROR log lines - and the Flex fallback warnings - to the ⚠️ topic and the panel's errors page: the same
+    line from the same place once in full, its repeats folded (Fold: one "×N in the last 10 minutes" card - and
+    errors-page entry - per window that had any). Every ERROR line counts in the day's error count (the daily
+    report), the folded ones too.
+
+    An error logged inside a running check (bot/utils/check_incidents.py running()) waits CLAIM_WAIT seconds:
+    when the check ends because of that very exception, its incident card says it all - the reason, the stage,
+    where in the code - and this card is not sent (one card per failed check, the owner's request
+    2026-11-16); the errors page keeps its traceback either way."""
 
     REPEAT = 600
+    CLAIM_WAIT = 20.0
     WARNINGS_FROM = {"services.ai.openai_client"}
 
     def __init__(self, loop: asyncio.AbstractEventLoop):
         super().__init__(logging.WARNING)
         self.loop = loop
-        self.seen: dict[tuple, list] = {}
+        self.fold = Fold(self.REPEAT, self._summary)
+        self.deferred: dict[int, tuple] = {}  # id(exception) -> (exception, record, exc text, message)
+        self.claimed: dict[int, tuple] = {}  # id(exception) -> (exception, when): an incident card covers it
+        self.counts: dict[str, int] = {}  # Tashkent day -> errors not yet added to its count
+        self._count_due = False
 
     def emit(self, record: logging.LogRecord) -> None:
         if record.name.startswith("bot.utils.crm"):
@@ -574,21 +813,113 @@ class _ErrorForwarder(logging.Handler):
         if record.levelno < logging.ERROR and record.name not in self.WARNINGS_FROM:
             return
         try:
-            key = (record.name, record.lineno, str(record.msg))
-            now = time.monotonic()
-            seen = self.seen.get(key)
-            if seen is not None and now - seen[0] < self.REPEAT:
-                seen[1] += 1
-                return
-            again = seen[1] if seen is not None else 0
-            self.seen[key] = [now, 0]
             exc = logging.Formatter().formatException(record.exc_info) if record.exc_info else record.exc_text
             # the bot token sits in a failed file download's URL, a key or a DSN in a traceback: never shown
             # on the panel or in the group (2026-11-15)
             exc, message = redact(exc), redact(record.getMessage())
-            asyncio.run_coroutine_threadsafe(log_error(record, again, exc, message), self.loop)
-            asyncio.run_coroutine_threadsafe(_post_error(error_card(record, again, exc, message)), self.loop)
+            error = None
+            if record.levelno >= logging.ERROR and _in_check():
+                # the exception it is about - also for a plain logger.error() inside an `except` (the deadline)
+                error = record.exc_info[1] if record.exc_info else sys.exc_info()[1]
+            self.loop.call_soon_threadsafe(self._handle, record, exc, message, error)
         except Exception:  # noqa: BLE001 - logging must never fail
+            pass
+
+    # --- on the event loop's thread ---
+
+    def _handle(self, record: logging.LogRecord, exc: str | None, message: str, error) -> None:
+        if record.levelno >= logging.ERROR:
+            self._count(record)
+        if error is not None:
+            key = id(error)
+            if self._claimed(key, error):
+                spawn(log_error(record, 0, exc, message))
+                return
+            self.deferred[key] = (error, record, exc, message)
+            self.loop.call_later(self.CLAIM_WAIT, self._release, key)
+            return
+        self._forward(record, exc, message)
+
+    def _forward(self, record: logging.LogRecord, exc: str | None, message: str) -> None:
+        head = {"name": record.name, "line": record.lineno, "level": record.levelname, "levelno": record.levelno,
+                "message": message, "created": record.created, "exc": exc}
+        if not self.fold.hit((record.name, record.lineno, str(record.msg)), head):
+            return  # counted: the window's summary says how many
+        spawn(log_error(record, 0, exc, message))
+        spawn(_post_error(error_card(record, 0, exc, message)))
+
+    def _claimed(self, key: int, error) -> bool:
+        found = self.claimed.get(key)
+        return found is not None and found[0] is error
+
+    def _release(self, key: int) -> None:
+        found = self.deferred.pop(key, None)
+        if found is None:
+            return
+        error, record, exc, message = found
+        if self._claimed(key, error):
+            spawn(log_error(record, 0, exc, message))
+            return
+        self._forward(record, exc, message)
+
+    def claim(self, error: BaseException) -> None:
+        """A check's incident card covers `error`: its log line goes to the errors page only."""
+        now = time.monotonic()
+        self.claimed = {k: v for k, v in self.claimed.items() if now - v[1] < self.CLAIM_WAIT * 3}
+        self.claimed[id(error)] = (error, now)
+        found = self.deferred.pop(id(error), None)
+        if found is not None and found[0] is error:
+            _, record, exc, message = found
+            spawn(log_error(record, 0, exc, message))
+
+    def _count(self, record: logging.LogRecord) -> None:
+        day = datetime.fromtimestamp(record.created, TZ).date().isoformat()
+        self.counts[day] = self.counts.get(day, 0) + 1
+        if not self._count_due:
+            self._count_due = True
+            self.loop.call_later(COUNT_FLUSH, lambda: spawn(self.flush_counts()))
+
+    async def flush_counts(self) -> None:
+        counts, self.counts, self._count_due = self.counts, {}, False
+        if not counts:
+            return
+        try:
+            async with redis().pipeline(transaction=False) as pipe:
+                for day, n in counts.items():
+                    pipe.incrby(f"crm:errors:{day}", n)
+                    pipe.expire(f"crm:errors:{day}", 60 * 24 * 3600)
+                await pipe.execute()
+        except Exception:  # noqa: BLE001 - added with the next error's count
+            for day, n in counts.items():
+                self.counts[day] = self.counts.get(day, 0) + n
+
+    async def _summary(self, entry: dict) -> None:
+        head, n = entry["head"], entry["n"]
+        minutes = _minutes(self.fold.window)
+        await _log_entry({
+            "at": entry.get("last") or time.time(), "level": head["level"], "logger": head["name"],
+            "line": head["line"], "process": PROCESS, "again": n,
+            "message": f"×{n} oxirgi {minutes} daqiqada: {head['message']}"[:2000], "exc": "",
+        })
+        await _post_error(error_summary_card(head, n, entry["since"], entry.get("last"), minutes))
+
+
+_forwarder: _ErrorForwarder | None = None
+
+
+def _in_check() -> bool:
+    """A check is running in this context (bot/utils/check_incidents.py - only in the bot process)."""
+    incidents = sys.modules.get("bot.utils.check_incidents")
+    return bool(incidents is not None and incidents.running() is not None)
+
+
+def claim_error(error: BaseException | None) -> None:
+    """A check's incident card is about `error` (bot/utils/check_incidents.py): the error card its log line
+    would make is not sent (the line stays on the errors page). On the event loop's thread."""
+    if error is not None and _forwarder is not None:
+        try:
+            _forwarder.claim(error)
+        except Exception:  # noqa: BLE001
             pass
 
 
@@ -627,13 +958,16 @@ ERRORS_LOG_CAP = 500
 async def log_error(record: logging.LogRecord, again: int, exc: str | None, message: str | None = None) -> None:
     """Keeps an error for the web panel's errors page - the last
     ERRORS_LOG_CAP of them, with or without the admins' group."""
+    await _log_entry({
+        "at": record.created, "level": record.levelname, "logger": record.name, "line": record.lineno,
+        "process": PROCESS, "message": (message if message is not None else redact(record.getMessage()))[:2000],
+        "again": again,
+        "exc": (exc or "")[-4000:],
+    })
+
+
+async def _log_entry(entry: dict) -> None:
     try:
-        entry = {
-            "at": record.created, "level": record.levelname, "logger": record.name, "line": record.lineno,
-            "process": PROCESS, "message": (message if message is not None else redact(record.getMessage()))[:2000],
-            "again": again,
-            "exc": (exc or "")[-4000:],
-        }
         pipe = redis().pipeline()
         pipe.lpush(ERRORS_LOG_KEY, json.dumps(entry, ensure_ascii=False))
         pipe.ltrim(ERRORS_LOG_KEY, 0, ERRORS_LOG_CAP - 1)
@@ -643,19 +977,12 @@ async def log_error(record: logging.LogRecord, again: int, exc: str | None, mess
 
 
 async def _post_error(text: str) -> None:
-    if not ready():
-        return
-    try:
-        key = f"crm:errors:{local_now().date().isoformat()}"
-        await redis().incr(key)
-        await redis().expire(key, 60 * 24 * 3600)
-    except Exception:  # noqa: BLE001
-        pass
-    await post("errors", text)
+    """(The day's error count is the forwarder's: every ERROR line, the folded ones too.)"""
+    if ready():
+        await post("errors", text)
 
 
-def error_card(record: logging.LogRecord, again: int, exc: str | None, message: str | None = None) -> str:
-    message = message if message is not None else redact(record.getMessage())
+def _banners(message: str, exc: str | None) -> list[str]:
     lines = []
     if "insufficient_quota" in f"{message}\n{exc or ''}":
         lines.append("🚨 <b>OpenAI balansi tugadi!</b> Tekshiruvlar ishlamayapti - platform.openai.com da "
@@ -664,6 +991,24 @@ def error_card(record: logging.LogRecord, again: int, exc: str | None, message: 
         lines.append("🚨 <b>Azure (Pronunciation) ishlamayapti!</b> Speaking tekshiruvlari davom etyapti, lekin "
                      "talaffuz o'lchanmayapti - Pronunciation bandi taxminiy qo'yilmoqda. portal.azure.com da "
                      "kalit, oylik limit va to'lovni tekshiring (sababi pastda).\n")
+    return lines
+
+
+def error_summary_card(head: dict, n: int, since: float, last: float | None, minutes: int) -> str:
+    """The repeats of one error line in a window (Fold): how many, from when to when."""
+    span = "–".join(datetime.fromtimestamp(t, TZ).strftime("%H:%M") for t in (since, last or time.time()))
+    icon = "❌" if head.get("levelno", logging.ERROR) >= logging.ERROR else "⚠️"
+    lines = [line.strip() for line in _banners(head["message"], head.get("exc"))]
+    lines.append(f"🔁 {icon} <b>×{n}</b> — oxirgi {minutes} daqiqada yana · <code>{html.escape(head['name'])}</code>")
+    lines.append(html.escape(head["message"][:400], quote=False))
+    lines.append(f"<i>Bir xil xato ({span}): to'liq kartasi avvalroq yuborilgan, bu oraliqdagilari alohida "
+                 "yuborilmadi. Har biri admin paneldagi «Xatolar» sahifasida bor.</i>")
+    return "\n".join(lines)
+
+
+def error_card(record: logging.LogRecord, again: int, exc: str | None, message: str | None = None) -> str:
+    message = message if message is not None else redact(record.getMessage())
+    lines = _banners(message, exc)
     icon = "❌" if record.levelno >= logging.ERROR else "⚠️"
     when = datetime.fromtimestamp(record.created, TZ).strftime("%d.%m %H:%M:%S")
     lines.append(f"{icon} <b>{record.levelname}</b> · <code>{html.escape(record.name)}</code> · {when}")
@@ -684,6 +1029,7 @@ PROCESS = "bot"  # which process an error came from, on the panel's errors page
 def install_error_forwarding(process: str = "bot") -> None:
     """Called once from inside the running event loop of a process (the bot,
     the importer, the web panel)."""
-    global PROCESS
+    global PROCESS, _forwarder
     PROCESS = process
-    logging.getLogger().addHandler(_ErrorForwarder(asyncio.get_running_loop()))
+    _forwarder = _ErrorForwarder(asyncio.get_running_loop())
+    logging.getLogger().addHandler(_forwarder)

@@ -32,12 +32,16 @@ Before the launch (2026-11-16):
   student on the card (until then its `finally` refunded it, and nobody was told).
 - a check refused or stopped with "🔁 Try again" also leaves its FSM data in Redis for 7 days (park()): a
   top-up's own steps wipe the FSM state, and "try again" after the approval found nothing.
+- the admins' group hears of every check that stops - once, with the reason classified from the exception
+  end() was called with (sys.exc_info()), the stage and the refund - and of a restart's interrupted checks
+  (bot/utils/check_incidents.py); a report saved but not delivered is said on the check's own card.
 """
 from __future__ import annotations
 
 import asyncio
 import json
 import logging
+import sys
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -64,6 +68,7 @@ from bot.config import settings
 from bot.i18n import t
 from bot.keyboards.my_works_kb import CB_DOWNLOAD_PREFIX
 from bot.keyboards.nav_kb import CB_BACK_MAIN
+from bot.utils import check_incidents
 from db.database import get_session
 from db.models import CheckHold, User
 
@@ -95,6 +100,14 @@ class Hold:
     persisted: bool = True  # False for a test run (scripts/live_check.py): nothing written, nothing charged
     started: float = field(default_factory=time.monotonic)
     saved: bool = False  # the report is saved (and paid): a later error is only a delivery problem
+    # what the admins' group is told about it (bot/utils/check_incidents.py, 2026-11-16)
+    stage: str = "start"  # start -> queue -> grading -> delivery
+    notes: list = field(default_factory=list)  # what went worse than it should (Azure failed, not delivered...)
+    calls: list | None = None  # its OpenAI calls (services/ai/usage.py meter)
+    reported: bool = False  # its incident is told: one card a check
+    card_done: bool = False  # its own card in the module's topic carried the notes (crm_events.check_done)
+    delivery_error: BaseException | None = None  # why deliver() last gave a send up
+    ended: bool = False
 
     @property
     def sponsor_id(self) -> int | None:
@@ -233,7 +246,8 @@ async def deliver(send, what: str) -> bool:
     """Sends part of a finished check (its report, its voices, its card): Telegram's flood control is waited
     out as it asks (TelegramRetryAfter), a network or server error is tried again after 3, 10 and 30 s; a
     bad request (or a blocked bot) is never tried again. False when it did not go - the report is saved
-    either way and stays in "My works"."""
+    either way and stays in "My works". The last failure is kept on the running check (check_incidents): a
+    report that did not go says why on the check's card in the group."""
     errors = floods = 0
     while True:
         try:
@@ -243,24 +257,29 @@ async def deliver(send, what: str) -> bool:
             floods += 1
             if floods > FLOOD_TRIES or e.retry_after + 1 > MAX_FLOOD_WAIT:
                 logger.error("%s not sent: Telegram's flood control asks to wait %s s", what, e.retry_after)
+                check_incidents.not_sent(e)
                 return False
             logger.warning("%s: Telegram's flood control - waiting %s s", what, e.retry_after + 1)
             await asyncio.sleep(e.retry_after + 1)
-        except TelegramBadRequest:
+        except TelegramBadRequest as e:
             logger.exception("%s not sent", what)
+            check_incidents.not_sent(e)
             return False
         except TelegramForbiddenError as e:
             logger.warning("%s not sent: %s", what, e)  # the student blocked the bot
+            check_incidents.not_sent(e)
             return False
         except _TRANSIENT as e:
             if isinstance(e, TelegramEntityTooLarge) or errors >= len(DELIVERY_WAITS):
                 logger.exception("%s not sent", what)
+                check_incidents.not_sent(e)
                 return False
             logger.warning("%s not sent (%r) - trying again in %s s", what, e, DELIVERY_WAITS[errors])
             await asyncio.sleep(DELIVERY_WAITS[errors])
             errors += 1
-        except Exception:  # noqa: BLE001 - never retried: not a network problem
+        except Exception as e:  # noqa: BLE001 - never retried: not a network problem
             logger.exception("%s not sent", what)
+            check_incidents.not_sent(e)
             return False
 
 
@@ -283,6 +302,7 @@ async def report_sent(card: Message, sent: bool, lang: str, kind: str, submissio
     now that the report is there (until 2026-11-16 it was deleted first: a failed send left the student, who
     had paid, with nothing). A report that would not go - saved and paid - turns the card into "ready and
     saved, Telegram did not deliver it", with a button that sends the saved report again."""
+    check_incidents.delivered(sent)  # an undelivered report is said on the check's card in the group
     if sent:
         try:
             await card.delete()
@@ -353,7 +373,7 @@ async def begin(card: Message, state: FSMContext, data: dict, *, module: str, ki
     if data.get("test_run"):
         running[token] = asyncio.current_task()
         await state.update_data(check_token=token)
-        return Hold(token, user_id, module, kind, persisted=False)
+        return Hold(token, user_id, module, kind, persisted=False)  # no incidents: a test run tells nobody
     # Priced again now (2026-11-16) - before the hold is written, so its own check is never "busy" here.
     quota = await fresh_quota(user_id, kind, data)
     if not quota.allowed:
@@ -397,6 +417,8 @@ async def begin(card: Message, state: FSMContext, data: dict, *, module: str, ki
         running.pop(token, None)
         raise
     hold = Hold(token, user_id, module, kind, coins=coins, payer_id=payer)
+    # from here on this context is the check's: its OpenAI calls metered, its errors and outcome told once
+    check_incidents.attach(hold)
     try:
         await state.update_data(check_token=token, spend_credit=quota.spend_credit,
                                 payer_id=payer if payer and payer != user_id else None)
@@ -424,24 +446,38 @@ async def end(hold: Hold | None, reason: str | None = None) -> bool:
     student was never told and the card said "analysing…" for good)."""
     if hold is None:
         return False
+    # the exception being handled where end() was called (its `except`, or a `finally` it passes through): why
+    # the check stopped, for the admins' incident card (bot/utils/check_incidents.py, 2026-11-16)
+    error = sys.exc_info()[1]
     if hold.persisted and _stopped_by_shutdown():
         logger.info("Check %s stopped by the shutdown - left held for the next start", hold.id[:8])
-        return False
+        return False  # the next start's recover() tells the admins
     running.pop(hold.id, None)
     if not hold.persisted:
+        check_incidents.detach(hold)
         return False
+    why = check_incidents.explain(hold, error, reason) if not hold.reported else None
+    found: dict = {}
     try:
-        return bool(await _settle(hold.id, "refunded", reason or "not finished"))
-    except Exception:  # noqa: BLE001 - sweep() settles it later
+        coins = await _settle(hold.id, "refunded", why.stored(reason) if why else reason or "not finished", found)
+    except Exception:  # noqa: BLE001 - sweep() settles it later (and tells the admins then)
         logger.exception("Check %s not settled - the sweep will", hold.id[:8])
+        check_incidents.detach(hold)
         return False
+    state = "settled" if coins is not None else found.get("state")
+    check_incidents.detach(hold)
+    check_incidents.report(hold, why, state=state, coins=coins, payer_id=found.get("payer_id"), error=error)
+    return bool(coins)
 
 
-async def _settle(hold_id: str, outcome: str, reason: str) -> int | None:
-    """A hold still `held` closed as `outcome`, its coins given back: how many (None: it was not held)."""
+async def _settle(hold_id: str, outcome: str, reason: str, found: dict | None = None) -> int | None:
+    """A hold still `held` closed as `outcome`, its coins given back: how many (None: it was not held -
+    `found["state"]` then says what it was; `found["payer_id"]`: whose coins they were)."""
     async with get_session() as session:
         row = (await session.execute(select(CheckHold).where(CheckHold.id == hold_id).with_for_update())) \
             .scalar_one_or_none()
+        if found is not None and row is not None:
+            found.update(state=row.state, payer_id=row.payer_id)
         if row is None or row.state != "held":
             return None
         if row.coins and row.payer_id:
@@ -468,11 +504,13 @@ async def slot(hold: Hold, card=None):
     ticket = hold.id
     if card is not None:
         card.queued = lambda: governor.position(ticket)
+    hold.stage = "queue"
     try:
         await governor.acquire(ticket)
     finally:
         if card is not None:
             card.queued = None
+    hold.stage = "grading"
     try:
         yield
     finally:
@@ -520,10 +558,14 @@ async def recover(bot: Bot, storage: BaseStorage) -> int:
     from bot.states.speaking_states import SpeakingStates  # noqa: PLC0415
     from bot.states.writing_states import WritingStates  # noqa: PLC0415
 
+    from bot.utils import crm  # noqa: PLC0415
+
+    crm.use_bot(bot)  # a burst of them is told directly too, before the group's sender runs
     failed = {"w": WritingStates.failed, "s": SpeakingStates.failed}
     processing = {WritingStates.processing.state, SpeakingStates.processing.state}
     async with get_session() as session:
         rows = (await session.execute(select(CheckHold).where(CheckHold.state == "held"))).scalars().all()
+    stopped = []
     for row in rows:
         if row.id in running:  # never at start-up; only if called again later
             continue
@@ -534,10 +576,12 @@ async def recover(bot: Bot, storage: BaseStorage) -> int:
             continue
         if coins is None:
             continue
-        await tell(bot, storage, row, failed.get(row.module), processing,
-                   "check.interrupted", "check.interrupted_lost", coins)
+        retry = await tell(bot, storage, row, failed.get(row.module), processing,
+                           "check.interrupted", "check.interrupted_lost", coins)
+        stopped.append((row, coins, retry))
     if rows:
         logger.info("Recovered %d check(s) a stopped bot left running", len(rows))
+    await check_incidents.interrupted(stopped)  # one card for them all (2026-11-16: nobody was told)
     return len(rows)
 
 
@@ -554,9 +598,10 @@ async def _flood_safe(call):
 
 
 async def tell(bot: Bot, storage: BaseStorage, row: CheckHold, failed_state, processing: set[str],
-               key_retry: str, key_lost: str, coins: int) -> None:
+               key_retry: str, key_lost: str, coins: int) -> bool:
     """Tells the student their check stopped, on its card: with "try again" when their FSM state is still
-    this check's (it is then moved to the module's `failed` state, which the button needs)."""
+    this check's (it is then moved to the module's `failed` state, which the button needs). True when "try
+    again" was offered."""
     ctx = FSMContext(storage=storage, key=StorageKey(bot_id=bot.id, chat_id=row.chat_id, user_id=row.user_id))
     retry = False
     try:
@@ -574,7 +619,7 @@ async def tell(bot: Bot, storage: BaseStorage, row: CheckHold, failed_state, pro
         if row.message_id:
             await _flood_safe(lambda: bot.edit_message_text(text, chat_id=row.chat_id, message_id=row.message_id,
                                                             reply_markup=markup))
-            return
+            return retry
     except TelegramBadRequest:
         pass
     except Exception:  # noqa: BLE001
@@ -583,6 +628,7 @@ async def tell(bot: Bot, storage: BaseStorage, row: CheckHold, failed_state, pro
         await _flood_safe(lambda: bot.send_message(row.chat_id, text, reply_markup=markup))
     except Exception:  # noqa: BLE001 - blocked the bot, etc.
         logger.warning("User %s not told about check %s", row.user_id, row.id[:8], exc_info=True)
+    return retry
 
 
 async def sweep(bot: Bot, storage: BaseStorage) -> int:
@@ -609,6 +655,7 @@ async def sweep(bot: Bot, storage: BaseStorage) -> int:
                    {"w": WritingStates.failed, "s": SpeakingStates.failed}.get(row.module),
                    {WritingStates.processing.state, SpeakingStates.processing.state},
                    "check.failed", "check.failed_lost", coins)
+        await check_incidents.expired(row, coins)
     return settled
 
 

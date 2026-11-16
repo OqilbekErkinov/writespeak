@@ -83,19 +83,19 @@ async def main() -> int:
 
     s = fake_session(gone)
     bot = Bot("8888548766:TEST", session=s)
-    await crm.redis().delete(crm.QUEUE)
+    await crm.redis().delete(crm.QUEUE, crm.HI_QUEUE)
     job = {"op": "send", "topic": "errors", "text": "💳 test"}
     r1 = await crm._deliver_with_retries(bot, cfg, job)
     check("the bot removed from the group: the message waits at the head of the queue", r1 == "waiting"
-          and await crm.redis().llen(crm.QUEUE) == 1)
+          and await crm.redis().llen(crm.HI_QUEUE) == 1)  # an errors card: the high lane (2026-11-16)
     check("...no direct alert in the first minutes", not direct(s))
     crm._waiting_since = time.monotonic() - crm.WAIT_ALERT_AFTER - 5
-    await crm.redis().lpop(crm.QUEUE)
+    await crm.redis().lpop(crm.HI_QUEUE)
     r2 = await crm._deliver_with_retries(bot, cfg, job)
     told = direct(s)
     check("...unreachable for over 10 minutes: the admins told directly, how many wait", r2 == "waiting"
           and len(told) == 1 and "qayta qo'shing" in told[0] and "navbatda" in told[0], told)
-    await crm.redis().lpop(crm.QUEUE)
+    await crm.redis().lpop(crm.HI_QUEUE)
     await crm._deliver_with_retries(bot, cfg, job)
     check("...once an hour, not on every message", len(direct(s)) == 1)
 

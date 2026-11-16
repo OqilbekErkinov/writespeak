@@ -275,6 +275,23 @@ _HINTS = {
 }
 
 
+def _fell_back(error: BaseException | None, detail: str) -> None:
+    """The check goes on with the estimated band because Azure failed: its card in the admins' group says so,
+    with why (bot/utils/check_incidents.py, 2026-11-16) - timeout, 429, or down. Never raises."""
+    if error is None or isinstance(error, (TimeoutError, httpx.TimeoutException)):
+        code = "azure_timeout"
+    elif isinstance(error, httpx.HTTPStatusError) and error.response.status_code == 429:
+        code = "azure_429"
+    else:
+        code = "azure_down"
+    try:
+        from bot.utils import check_incidents
+
+        check_incidents.degraded(code, detail)
+    except Exception:  # noqa: BLE001 - a report goes out either way
+        pass
+
+
 def failure_reason(error: BaseException) -> str:
     """What went wrong, in a few words for the admins' group (never the key)."""
     if isinstance(error, httpx.HTTPStatusError):
@@ -304,12 +321,14 @@ async def assess_answers(answers: list[tuple[bytes, list, float]]) -> Assessment
                     *(_assess_clip(http, sem, wav, words, duration) for wav, words, duration in answers),
                     return_exceptions=True,
                 )
-    except TimeoutError:
+    except TimeoutError as e:
         # only this timeout: the check's own deadline arrives here as a cancellation, which is never caught
         logger.error(AZURE_DOWN, f"no result within {limit:.0f} s - Azure slow, or too many checks at once")
+        _fell_back(e, f"{limit:.0f} s ichida natija yo'q")
         return None
     except Exception as e:
         logger.error(AZURE_DOWN, failure_reason(e), exc_info=True)
+        _fell_back(e, failure_reason(e))
         return None
     good, failed = [], []
     for clip in clips:
@@ -319,6 +338,7 @@ async def assess_answers(answers: list[tuple[bytes, list, float]]) -> Assessment
             good.append(clip)
     if failed and not good:
         logger.error(AZURE_DOWN, failure_reason(failed[0]))
+        _fell_back(failed[0], failure_reason(failed[0]))
     elif failed:
         logger.error(AZURE_PARTLY, len(failed), len(clips), failure_reason(failed[0]))
     if not good:

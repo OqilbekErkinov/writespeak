@@ -79,6 +79,7 @@ class Governor:
     changed: asyncio.Event | None = None
     rate_limited_total: int = 0
     closed: bool = False  # the bot is shutting down: nothing more is admitted (close())
+    since: dict = field(default_factory=dict)  # ticket -> when it joined the queue (monotonic)
 
     # --- the limits -------------------------------------------------------------------------------------
 
@@ -160,6 +161,7 @@ class Governor:
         closed (a shutdown) nobody's turn comes: the queued checks wait to be stopped with the process."""
         await self.refresh_cap()
         self.queue.append(ticket)
+        self.since[ticket] = time.monotonic()
         try:
             while True:
                 room = self.limit() - self.running
@@ -176,6 +178,7 @@ class Governor:
         finally:
             if ticket in self.queue:
                 self.queue.remove(ticket)
+            self.since.pop(ticket, None)
         self.running += 1
         self._poke()
 
@@ -193,6 +196,16 @@ class Governor:
     def position(self, ticket: object) -> int:
         """1-based place in the queue, 0 when not waiting."""
         return self.queue.index(ticket) + 1 if ticket in self.queue else 0
+
+    def waiting_longer(self, seconds: float) -> int:
+        """How many queued checks have waited more than `seconds` (bot/utils/cost_guard.py: a long queue is
+        told to the admins, 2026-11-16)."""
+        now = time.monotonic()
+        return sum(1 for ticket in self.queue if now - self.since.get(ticket, now) > seconds)
+
+    def longest_wait(self) -> float:
+        now = time.monotonic()
+        return max((now - self.since.get(ticket, now) for ticket in self.queue), default=0.0)
 
     def state(self) -> dict:
         now = time.monotonic()

@@ -99,6 +99,18 @@ class Settings(BaseSettings):
     # One check's whole Pronunciation assessment at most this long: past it the check goes on with the
     # estimated band (as when Azure fails) instead of using up the check's deadline after OpenAI was paid.
     azure_timeout_seconds: float = 120.0
+    # --- Watching the checks and what they cost (bot/utils/cost_guard.py, bot/utils/check_incidents.py) ---
+    # One check's OpenAI cost over its kind's limit (USD) posts a 💸 card to 💰 Xarajatlar - to ⚠️ Xatolar as well
+    # over twice the limit (2026-11-16, before the launch: measured Writing $0.13-0.24, a Speaking part
+    # $0.18-0.62). The owner changes them on the panel's settings page (Redis runtime:cost_limits).
+    cost_limit_writing_task1: float = 0.40
+    cost_limit_writing_task2: float = 0.40
+    cost_limit_speaking_part: float = 0.75  # Part 1, 2 or 3 on its own
+    cost_limit_speaking_full: float = 2.00
+    # The Tashkent day's OpenAI spend (USD, every category) the owner is warned about at 80% and at 100%
+    daily_spend_cap_usd: float = 20.0
+    # A check that took longer than this many minutes, from its hold to its end, is reported as slow
+    slow_check_minutes: float = 8.0
 
     # --- Speaking model answers (services/ai/speaking_answers.py) ---
     # True = a session question that matches a book question exactly is answered
