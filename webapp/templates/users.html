@@ -20,6 +20,10 @@
   </a>
   {% endfor %}
 </div>
+{% if source %}
+<p class="u-src">📣 Manba: <b>{{ source_label }}</b> · {{ rows|length }} kishi
+  <a class="btn btn-sm" href="/users" title="Filtrni olib tashlash">✕</a> <a href="/sources">Manbalar →</a></p>
+{% endif %}
 
 <div class="card" style="padding:8px 10px">
   {% if rows %}
@@ -27,7 +31,7 @@
   <table class="u-table">
     <tr>
       <th>Foydalanuvchi</th><th>Til</th><th class="r">Coin</th><th class="r">Tekshiruv</th>
-      <th class="r">To'lagan</th><th>Qo'shilgan</th><th>Oxirgi faollik</th><th></th>
+      <th class="r">To'lagan</th><th>Qo'shilgan</th><th>Manba</th><th>Oxirgi faollik</th><th></th>
     </tr>
     {% for r in rows %}{% set u = r.user %}
     <tr class="row-link" data-href="/users/{{ u.id }}">
@@ -47,6 +51,7 @@
       <td class="r num">{% if r.checks %}<b class="strong">{{ r.checks }}</b> <span class="muted">· W{{ r.writing }} S{{ r.speaking }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
       <td class="r num">{% if r.paid %}<b class="strong">{{ r.paid_str }}</b>{% else %}<span class="muted">—</span>{% endif %}</td>
       <td class="num">{{ r.joined }}</td>
+      <td><a class="u-src-l{{ ' muted' if r.source == 'unknown' }}" href="/users?s=src:{{ r.source|urlencode }}" title="Shu manbadan kelganlar">{% if r.source_link %}🔗 {% endif %}{{ r.source_short }}</a></td>
       <td>{% if r.online %}<span class="dot"></span> <b class="strong">hozir</b>{% else %}{{ r.last_active_str }}{% endif %}</td>
       <td class="r">{% if can(request, "coins") %}<a class="btn btn-sm" href="/users/{{ u.id }}/coins" title="Coin qo'shish yoki ayirish">🟡 ±</a>{% endif %}</td>
     </tr>
@@ -70,6 +75,9 @@
   .u-table .r, .u-table th.r { text-align: right; }
   .u-table a.who:hover { text-decoration: none; }
   .u-table a.who:hover .nm { color: var(--moss); }
+  .u-src { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: -6px 0 12px; font-size: 14px; }
+  .u-table .u-src-l { font-size: 12.5px; font-weight: 700; white-space: nowrap; }
+  .u-table .u-src-l.muted { color: var(--ink-faint); font-weight: 600; }
   @media (max-width: 560px) { .u-search input[type=text] { width: 100%; } .u-search { flex: 1 1 100%; } }
 </style>
 <script>

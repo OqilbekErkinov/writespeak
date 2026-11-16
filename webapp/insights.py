@@ -22,7 +22,7 @@ from sqlalchemy import func, inspect, select
 from sqlalchemy.orm import load_only, with_expression
 
 from bot.config import settings
-from bot.utils import runtime, teacher_bands
+from bot.utils import runtime, signup_source, teacher_bands
 from bot.utils.activity import DAY_KEY, LAST_SEEN_KEY, tashkent_day
 from bot.utils.crm import redis, usd_rate
 from db import crud
@@ -189,6 +189,9 @@ SEGMENTS = {
 
 
 async def users_overview(session, q: str | None, segment: str, limit: int = 2000) -> dict:
+    """`segment`: a SEGMENTS key, or "src:<source>" - the users who came from that source (the Manbalar page's
+    links; "src:unknown" - the users from before sources were recorded, 2026-11-16)."""
+    source = segment[4:] if segment.startswith("src:") else None
     users = await crud.list_users(session, search=q, limit=limit)
     w = {uid: (n, last) for uid, n, last in (await session.execute(
         select(WritingSubmission.user_id, func.count(), func.max(WritingSubmission.created_at))
@@ -203,18 +206,21 @@ async def users_overview(session, q: str | None, segment: str, limit: int = 2000
     seen = await last_seen_map()
     today, week, online_since = day_start_utc(), now() - timedelta(days=7), now() - timedelta(minutes=15)
 
-    rows = []
-    for u in users:
+    def row(u: User) -> dict:
         wc, wl = w.get(u.id, (0, None))
         sc, sl = s.get(u.id, (0, None))
         last_active = max((d for d in (seen.get(u.id), wl, sl, u.created_at) if d), default=None)
-        rows.append({
+        return {
             "user": u, "writing": wc, "speaking": sc, "checks": wc + sc, "paid": paid.get(u.id) or 0,
             "paid_str": som(paid.get(u.id)), "joined": fmt(u.created_at, with_time=False),
             "last_active": last_active, "last_active_str": ago(last_active),
             "online": bool(seen.get(u.id) and seen[u.id] >= online_since),
             "is_teacher": u.role == UserRole.teacher, "is_admin": u.id in settings.admin_ids,
-        })
+            "source": signup_source.key(u.source), "source_short": signup_source.short_label(u.source),
+            "source_link": signup_source.is_link(u.source),
+        }
+
+    rows = [row(u) for u in users]
     tests = {
         "all": lambda r: True,
         "online": lambda r: r["online"],
@@ -227,10 +233,16 @@ async def users_overview(session, q: str | None, segment: str, limit: int = 2000
         "blocked": lambda r: r["user"].status == UserStatus.denied,
     }
     counts = {k: sum(1 for r in rows if f(r)) for k, f in tests.items()}
-    segment = segment if segment in tests else "all"
-    shown = [r for r in rows if tests[segment](r)]
+    if source is not None:
+        # by the database, not out of the newest `limit` above: an old source's users are all there
+        stored = None if source == signup_source.UNKNOWN else source
+        shown = [row(u) for u in await crud.list_users(session, search=q, limit=limit, source=stored, by_source=True)]
+    else:
+        segment = segment if segment in tests else "all"
+        shown = [r for r in rows if tests[segment](r)]
     shown.sort(key=lambda r: r["last_active"] or r["user"].created_at, reverse=True)
-    return {"rows": shown, "counts": counts, "segment": segment}
+    return {"rows": shown, "counts": counts, "segment": segment, "source": source,
+            "source_label": signup_source.label(source) if source else None}
 
 
 # --- one user's whole story ----------------------------------------------------------------------------
@@ -342,6 +354,9 @@ async def user_profile(session, user_id: int) -> dict | None:
         "gifts_bought": gifts_bought, "gifts_got": gifts_got, "adjustments": adjustments, "people": people,
         "memberships": memberships, "own_groups": own_groups, "mocks": mocks, "events": events,
         "is_admin": user.id in settings.admin_ids,
+        # where they came from (users.source, 2026-11-16): set at their first /start
+        "source": {"key": signup_source.key(user.source), "label": signup_source.label(user.source),
+                   "is_link": signup_source.is_link(user.source)},
         "stats": {
             "writing": len(writings), "speaking": len(speakings),
             "avg_w": statistics.mean(w_bands) if w_bands else None, "avg_s": statistics.mean(s_bands) if s_bands else None,

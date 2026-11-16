@@ -11,7 +11,7 @@ import secrets
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 
-from sqlalchemy import and_, case, delete, func, or_, select, update
+from sqlalchemy import Integer, and_, case, cast, delete, extract, func, literal_column, or_, select, union_all, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased, selectinload
@@ -70,12 +70,15 @@ async def create_user(
     full_name: str,
     referred_by: int | None = None,
     coins: int = 0,
+    source: str | None = None,
 ) -> User:
     """The bot is open to anyone - no admin approval gate - so every new
     signup is created active right away, with `coins` (the welcome gift).
     `referred_by` is the referrer's Telegram id from a `/start ref_<id>` deep
     link; both sides are only rewarded on this user's first approved coin
-    purchase (see decide_payment_request), not just for signing up."""
+    purchase (see decide_payment_request), not just for signing up.
+    `source`: where they came from (bot/utils/signup_source.py) - written only
+    here, with the row, so a link opened later never changes it (2026-11-16)."""
     user = User(
         id=user_id,
         username=username,
@@ -84,6 +87,7 @@ async def create_user(
         approved_at=datetime.now(timezone.utc),
         referred_by=referred_by if referred_by != user_id else None,
         coin_balance=coins,
+        source=source[:64] if source else None,
     )
     session.add(user)
     await session.commit()
@@ -2476,8 +2480,15 @@ async def count_active_subscriptions(session: AsyncSession) -> int:
     return result.scalar() or 0
 
 
-async def list_users(session: AsyncSession, search: str | None = None, limit: int = 300) -> list[User]:
+async def list_users(
+    session: AsyncSession, search: str | None = None, limit: int = 300, *, source: str | None = None,
+    by_source: bool = False,
+) -> list[User]:
+    """Newest first. `by_source`: only the users who came from `source` (users.source; None - the ones from before
+    sources were recorded, 2026-11-16) - the panel's /users?s=src:<name>."""
     stmt = select(User)
+    if by_source:
+        stmt = stmt.where(User.source.is_(None) if source is None else User.source == source)
     search = (search or "").strip()
     if search:
         conditions = [User.full_name.ilike(f"%{search}%"), User.username.ilike(f"%{search}%")]
@@ -2742,3 +2753,161 @@ async def teacher_marks_waiting(session: AsyncSession) -> int:
             .scalars().all()
         n += sum(1 for m in marks if isinstance(m, dict) and m.get("role") == "teacher" and not m.get("approved"))
     return n
+
+
+# --- The panel's business numbers: sources, funnel, cohorts (2026-11-16) ---------------------------------------
+# webapp/analytics.py's 📣 Manbalar and 📈 Voronka pages: a few aggregate queries over one row per user (signup,
+# first check, the weeks they checked in, first payment, revenue) - never a loop over the users, so 10k of them
+# stay a matter of milliseconds.
+# Counted: the students only. Not the admins (settings.admin_ids or role admin: their own tests), not the
+# teachers (role teacher: group and center accounts an admin or a center made, their checks mostly
+# demonstrations and their payments a center's, not a student's purchase) - the pages say so, with how many
+# were left out. Never a test check (is_test) or a test payment; a payment counts once approved, at its approval.
+# `now` is a parameter so the tests can pin it; the panel passes the clock.
+
+ANALYTICS_ACTIVE_WEEKS = 4  # the cohorts' "made a check in week 1..4 after signup"
+STOPPED_HOLD_STATES = ("refunded", "interrupted", "expired")  # a check that ended without its report
+_WEEK_SECONDS = 7 * 24 * 3600  # Tashkent has no DST: every week is this long
+
+
+def _counted_people(admin_ids: set[int]):
+    """The CTE of the counted users: id, created_at, source, first_check, w1..w4, first_paid, revenue.
+
+    One pass: the checks and the real payments as one stream of events, joined to the users once and grouped
+    per user - no join between two grouped subqueries, whose sizes the planner guesses wrong while a table's
+    statistics are stale (2026-11-16: a nested loop over them took 1.3 s at 10k users instead of 20 ms)."""
+    events = union_all(
+        select(WritingSubmission.user_id.label("user_id"), WritingSubmission.created_at.label("at"),
+               literal_column("'c'").label("kind"), literal_column("0").label("amount"))
+        .where(WritingSubmission.is_test.is_(False)),
+        select(SpeakingSubmission.user_id, SpeakingSubmission.created_at, literal_column("'c'"), literal_column("0"))
+        .where(SpeakingSubmission.is_test.is_(False)),
+        # a payment counts once approved, at its approval
+        select(PaymentRequest.user_id, func.coalesce(PaymentRequest.reviewed_at, PaymentRequest.created_at),
+               literal_column("'p'"), PaymentRequest.amount)
+        .where(PaymentRequest.status == PaymentStatus.approved, PaymentRequest.is_test.is_(False)),
+    ).subquery("events")
+    e = events.c
+    is_check, is_pay = e.kind == literal_column("'c'"), e.kind == literal_column("'p'")
+    # week k after signup = its days 7k .. 7k+6 (week 0, the first seven days, is the "checked within 7 days")
+    weeks = [
+        func.bool_or(and_(is_check, e.at >= User.created_at + timedelta(days=7 * k),
+                          e.at < User.created_at + timedelta(days=7 * (k + 1)))).label(f"w{k}")
+        for k in range(1, ANALYTICS_ACTIVE_WEEKS + 1)
+    ]
+    return (
+        select(User.id, User.created_at, User.source, func.min(e.at).filter(is_check).label("first_check"), *weeks,
+               func.min(e.at).filter(is_pay).label("first_paid"), func.sum(e.amount).filter(is_pay).label("revenue"))
+        .select_from(User).outerjoin(events, e.user_id == User.id)
+        .where(User.role == UserRole.student, User.id.not_in(list(admin_ids)))
+        .group_by(User.id)
+        .cte("people")
+    )
+
+
+async def analytics_left_out(session: AsyncSession, admin_ids: set[int]) -> dict:
+    """How many users the business numbers leave out: {"admins", "teachers"}."""
+    is_admin = or_(User.role == UserRole.admin, User.id.in_(list(admin_ids)))
+    row = (await session.execute(select(
+        func.count().filter(is_admin).label("admins"),
+        func.count().filter(and_(~is_admin, User.role == UserRole.teacher)).label("teachers"),
+    ).select_from(User))).mappings().one()
+    return {"admins": row["admins"] or 0, "teachers": row["teachers"] or 0}
+
+
+async def source_stats(session: AsyncSession, admin_ids: set[int], now: datetime) -> list[dict]:
+    """Per users.source (None: from before 2026-11-16): signups, how many made a check, how many paid, their
+    revenue (so'm), and the signups of the last 7 and 30 days."""
+    people = _counted_people(admin_ids)
+    p = people.c
+    rows = (await session.execute(
+        select(p.source, func.count().label("signups"), func.count(p.first_check).label("checked"),
+               func.count(p.first_paid).label("paid"), func.coalesce(func.sum(p.revenue), 0).label("revenue"),
+               func.count().filter(p.created_at >= now - timedelta(days=7)).label("d7"),
+               func.count().filter(p.created_at >= now - timedelta(days=30)).label("d30"))
+        .select_from(people).where(p.created_at <= now).group_by(p.source)
+    )).mappings().all()
+    return [dict(r) for r in rows]
+
+
+async def funnel_stats(session: AsyncSession, admin_ids: set[int], now: datetime, days: int = 30) -> dict:
+    """signup -> first check -> first payment, for everyone ("all") and for those who joined in the last `days`
+    days ("recent", with what they did up to now): signups, checked, paid, paid_checked (paid and made a check
+    too), and the median time from signup to the first check and to the first payment (timedelta, None when
+    nobody got there)."""
+    people = _counted_people(admin_ids)
+    p = people.c
+    recent = p.created_at >= now - timedelta(days=days)
+    to_check, to_pay = p.first_check - p.created_at, p.first_paid - p.created_at
+    both = and_(p.first_check.is_not(None), p.first_paid.is_not(None))
+
+    def median(value):  # NULLs (nobody got there, or outside the window) are left out by Postgres
+        return func.percentile_cont(literal_column("0.5")).within_group(value)
+
+    row = (await session.execute(select(
+        func.count().label("signups"), func.count(p.first_check).label("checked"),
+        func.count(p.first_paid).label("paid"), func.count().filter(both).label("paid_checked"),
+        median(to_check).label("to_check"), median(to_pay).label("to_pay"),
+        func.count().filter(recent).label("r_signups"),
+        func.count().filter(and_(recent, p.first_check.is_not(None))).label("r_checked"),
+        func.count().filter(and_(recent, p.first_paid.is_not(None))).label("r_paid"),
+        func.count().filter(and_(recent, both)).label("r_paid_checked"),
+        median(case((recent, to_check))).label("r_to_check"), median(case((recent, to_pay))).label("r_to_pay"),
+    ).select_from(people).where(p.created_at <= now))).mappings().one()
+    keys = ("signups", "checked", "paid", "paid_checked", "to_check", "to_pay")
+    return {"all": {k: row[k] for k in keys}, "recent": {k: row[f"r_{k}"] for k in keys}}
+
+
+async def weekly_cohorts(session: AsyncSession, admin_ids: set[int], now: datetime, weeks: int = 8) -> list[dict]:
+    """The users by their signup week (Monday to Sunday, Tashkent time), the last `weeks` weeks, oldest first:
+    {"start" (its Monday), "size", "checked7" (made a check within 7 days of signing up), "open7" (members whose 7
+    days are not over yet), "paid30", "open30", and for k in 1..4: "started<k>" (members whose week k after
+    signup has begun), "active<k>" (of them, made a check in it), "ended<k>" (members whose week k is over)}."""
+    today = (now + _TASHKENT_OFFSET).date()
+    first = today - timedelta(days=today.weekday() + 7 * (weeks - 1))
+    start = datetime(first.year, first.month, first.day, tzinfo=timezone.utc) - _TASHKENT_OFFSET
+    people = _counted_people(admin_ids)
+    # the week's number in a subquery, so the GROUP BY is a plain column (an expression holding a bound
+    # parameter, repeated in the GROUP BY, is not the same expression to Postgres)
+    in_weeks = (
+        select(people, cast(func.floor(extract("epoch", people.c.created_at - start) / _WEEK_SECONDS), Integer)
+               .label("idx"))
+        .where(people.c.created_at >= start, people.c.created_at <= now)
+        .subquery("cohort")
+    )
+    p = in_weeks.c
+    day = timedelta(days=1)
+    cols = [
+        p.idx, func.count().label("size"),
+        func.count().filter(p.first_check < p.created_at + 7 * day).label("checked7"),
+        func.count().filter(p.created_at + 7 * day > now).label("open7"),
+        func.count().filter(p.first_paid < p.created_at + 30 * day).label("paid30"),
+        func.count().filter(p.created_at + 30 * day > now).label("open30"),
+    ]
+    for k in range(1, ANALYTICS_ACTIVE_WEEKS + 1):
+        began = p.created_at + 7 * k * day <= now
+        cols += [func.count().filter(began).label(f"started{k}"),
+                 func.count().filter(and_(began, p[f"w{k}"].is_(True))).label(f"active{k}"),
+                 func.count().filter(p.created_at + 7 * (k + 1) * day <= now).label(f"ended{k}")]
+    rows = (await session.execute(select(*cols).select_from(in_weeks).group_by(p.idx))).mappings().all()
+    by_index = {r["idx"]: dict(r) for r in rows}
+    empty = {c.name: 0 for c in cols[1:]}
+    return [{**empty, **by_index.get(i, {}), "idx": i, "start": first + timedelta(days=7 * i)} for i in range(weeks)]
+
+
+async def stopped_check_groups(session: AsyncSession, admin_ids: set[int], now: datetime, days: int = 30) -> list[dict]:
+    """The checks that ended without a report (bot/utils/check_guard.py's holds: refunded - an error, its coins
+    back; interrupted - a bot restart; expired - never finished) in the last `days` days, by state and reason:
+    {"state", "reason", "n7", "n30", "coins" (given back), "last"}. The admins' own runs are left out."""
+    admins = select(User.id).where(User.role == UserRole.admin)
+    rows = (await session.execute(
+        select(CheckHold.state, CheckHold.reason, func.count().label("n30"),
+               func.count().filter(CheckHold.created_at >= now - timedelta(days=7)).label("n7"),
+               func.coalesce(func.sum(CheckHold.coins), 0).label("coins"),
+               func.max(CheckHold.created_at).label("last"))
+        .where(CheckHold.state.in_(STOPPED_HOLD_STATES), CheckHold.created_at >= now - timedelta(days=days),
+               CheckHold.created_at <= now, CheckHold.user_id.not_in(list(admin_ids)),
+               CheckHold.user_id.not_in(admins))
+        .group_by(CheckHold.state, CheckHold.reason)
+    )).mappings().all()
+    return [dict(r) for r in rows]

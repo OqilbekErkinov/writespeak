@@ -13,7 +13,13 @@ panel's link of a login to this Telegram for its sign-in codes
 are refused with a "ask your teacher for a new link" note. A coin gift's
 `gift_<code>` (bot/utils/gifts.py) is claimed at once by a user already in
 the bot, and after the language pick by a new one, whose referrer becomes
-the gift's buyer.
+the gift's buyer. And `src_<name>`: a link made on the panel's Manbalar page
+for one channel (an Instagram bio, a channel post, a poster) - it only
+names where a new user came from.
+
+A new user's row records that source once (users.source, 2026-11-16 - see
+bot/utils/signup_source.py: the src_ name, or referral / gift / group /
+center / direct / other); a returning user's /start never changes it.
 
 (A user blocked from the admin panel - UserStatus.denied, see
 bot/middlewares/access_control.py - only gets the "blocked" note here;
@@ -35,7 +41,7 @@ from bot.i18n import DEFAULT_LANG, LANGS, t
 from bot.keyboards.lang_kb import CB_LANG_ONBOARD_PREFIX, lang_picker_kb
 from bot.keyboards.main_menu_kb import main_menu_kb
 from bot.middlewares.access_control import DENIED_TEXT
-from bot.utils import crm_events, gifts, panel_access
+from bot.utils import crm_events, gifts, panel_access, signup_source
 from bot.utils.flow import leave_flow
 from bot.utils.group_invite import (
     is_center_payload,
@@ -89,8 +95,10 @@ async def cmd_start(message: Message, command: CommandObject, state: FSMContext,
                 gift = await crud.get_gift(session, gift_code)
                 if gift is not None and gift.claimed_by is None and gift.buyer_id != tg.id:
                     referrer_id = gift.buyer_id
+            # where they came from, by the link's shape alone - set with the row, so never overwritten later
             await crud.create_user(
-                session, tg.id, tg.username, tg.full_name, referred_by=referrer_id, coins=settings.welcome_coins
+                session, tg.id, tg.username, tg.full_name, referred_by=referrer_id, coins=settings.welcome_coins,
+                source=signup_source.from_payload(command.args),
             )
 
         join = await _maybe_join_group(session, command.args, user_id=tg.id)

@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% block title %}Voronka — Bandzilla Admin{% endblock %}
+{% block wrapclass %}wide{% endblock %}
+{% block content %}
+{% macro cell(c) -%}
+{%- if c is none -%}<span class="muted">—</span>
+{%- else -%}
+<span class="fn-heat" style="background: rgba(91,242,166,{{ '%.2f'|format(0.08 + (c.pct or 0) / 100 * 0.72) }})"
+      title="{{ c.n }} / {{ c.of }} kishi{{ ' · muddat hali tugamagan' if c.partial }}">{{ c.pct }}%{% if c.partial %}<sup>*</sup>{% endif %}</span>
+<span class="muted fn-of">{{ c.n }}/{{ c.of }}</span>
+{%- endif -%}
+{%- endmacro %}
+<h1>📈 Voronka</h1>
+<p class="hint fn-lead"><b>Hisobga olinmagan:</b> {{ d.left_out.admins }} admin va {{ d.left_out.teachers }} o'qituvchi
+  (guruh va markaz akkauntlari) — ularning tekshiruv va to'lovlari ham; test tekshiruvlar va test to'lovlar; tasdiqlanmagan
+  (kutilayotgan yoki rad etilgan) to'lovlar. To'lov tasdiqlangan paytida hisoblanadi. Vaqtlar Toshkent bo'yicha.</p>
+
+<div class="fn-two">
+  {% for title, f, note in [("Hamma vaqt", d.all, "barcha foydalanuvchilar"), ("So'nggi 30 kun", d.recent, "shu 30 kunda qo'shilganlar — shu paytgacha nima qilgani")] %}
+  <div class="card">
+    <h2>{{ title }} <span class="muted fn-sub">— {{ note }}</span></h2>
+    {% set top = f.steps[0].n or 1 %}
+    {% for s in f.steps %}
+    <div class="fn-step">
+      <div class="fn-step-l"><span>{{ s.label }}</span><b class="num">{{ s.n }}</b></div>
+      <div class="fn-bar"><i style="width: {{ (s.n / top * 100)|round(1) }}%"></i></div>
+      <div class="fn-step-p num">{% if loop.first %}&nbsp;{% elif s.of_all is not none %}{{ s.of_all }}% ro'yxatdan o'tganlardan{% if loop.index0 == 2 and s.of_prev is not none %} · tekshiruv qilganlarning {{ s.of_prev }}% to'lagan{% endif %}{% else %}—{% endif %}</div>
+    </div>
+    {% endfor %}
+    <div class="fn-times">
+      <div><span>Ro'yxatdan → 1-tekshiruv</span><b>{{ f.to_check }}</b></div>
+      <div><span>Ro'yxatdan → 1-to'lov</span><b>{{ f.to_pay }}</b></div>
+    </div>
+    <p class="hint">Vaqtlar — mediana: yetib borganlarning yarmi bundan tezroq.{% if f.paid_unchecked %}
+      {{ f.paid_unchecked }} kishi tekshiruv qilmasdan to'lagan.{% endif %}</p>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <h2>Haftalik kohortalar <span class="muted fn-sub">— ro'yxatdan o'tgan haftasi bo'yicha, so'nggi 8 hafta</span></h2>
+  <div class="table-scroll">
+  <table class="fn-table">
+    <tr>
+      <th>Hafta</th><th class="r">Kishi</th><th>7 kunda tekshirgan</th><th>30 kunda to'lagan</th>
+      <th>1-hafta</th><th>2-hafta</th><th>3-hafta</th><th>4-hafta</th>
+    </tr>
+    {% for c in d.cohorts %}
+    <tr>
+      <td class="strong num" style="white-space:nowrap">{{ c.label }}{% if c.current %} <span class="pill pill-good">shu hafta</span>{% endif %}</td>
+      <td class="r num strong">{{ c.size or "—" }}</td>
+      <td>{{ cell(c.checked7) }}</td>
+      <td>{{ cell(c.paid30) }}</td>
+      {% for w in c.weeks %}<td>{{ cell(w) }}</td>{% endfor %}
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+  <p class="hint">Haftalar dushanbadan yakshanbagacha. «1-hafta»…«4-hafta» — ro'yxatdan o'tgandan keyingi haftalarda
+    tekshiruv qilganlar: 1-hafta = 8–14-kunlar, 2-hafta = 15–21, 3-hafta = 22–28, 4-hafta = 29–35-kunlar (birinchi 7 kun —
+    «7 kunda tekshirgan»). Ulush o'sha haftasi boshlangan kishilardan olinadi; <b>*</b> — ba'zilari uchun muddat hali
+    tugamagan, raqam o'sishi mumkin.</p>
+</div>
+
+<div class="card">
+  <h2>⛔ To'xtagan tekshiruvlar — sababi bo'yicha</h2>
+  <div class="fn-sum">
+    <div><b class="num">{{ d.stops.n7 }}</b><span>7 kunda</span></div>
+    <div><b class="num">{{ d.stops.n30 }}</b><span>30 kunda</span></div>
+    <div><b class="num">{{ d.stops.coins }}</b><span>coin qaytarildi · 30 kun</span></div>
+  </div>
+  {% if d.stops.groups %}
+  <div class="table-scroll">
+  <table>
+    <tr><th>Sabab</th><th>Nima bo'ldi</th><th class="r">7 kun</th><th class="r">30 kun</th><th class="r">Coin qaytdi</th><th>Oxirgi marta</th><th>Namuna</th></tr>
+    {% for g in d.stops.groups %}
+    <tr>
+      <td class="strong">{{ g.label }}</td>
+      <td><span class="pill {{ g.tone }}">{{ g.state_label }}</span></td>
+      <td class="r num">{{ g.n7 or "—" }}</td>
+      <td class="r num strong">{{ g.n30 }}</td>
+      <td class="r num">{{ g.coins or "—" }}</td>
+      <td class="num" style="white-space:nowrap" title="{{ g.last_str }}">{{ g.ago }}</td>
+      <td class="muted fn-sample" title="{{ g.sample or '' }}">{{ (g.sample or "—")[:160] }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+  {% else %}<div class="empty">So'nggi 30 kunda to'xtagan tekshiruv yo'q.</div>{% endif %}
+  <p class="hint">Hisobot berilmay tugagan tekshiruvlar: xato (coini qaytarilgan), bot qayta ishga tushgani, tugallanmay
+    qolgani. Adminlarning o'z sinovlari hisobga olinmagan. Har birining tafsiloti: <a href="/checks/stopped">To'xtagan tekshiruvlar</a>.</p>
+</div>
+
+<div class="card">
+  <h2>⚠️ Eng ko'p takrorlangan xatolar</h2>
+  {% if d.errors.groups %}
+  <div class="table-scroll">
+  <table>
+    <tr><th>Joyi (logger:qator)</th><th>Daraja</th><th class="r">Necha marta</th><th>Oxirgi marta</th><th>Namuna xabar</th></tr>
+    {% for g in d.errors.groups %}
+    <tr>
+      <td class="strong fn-key"><code>{{ g.key }}</code>{% if g.processes != ["bot"] %} <span class="muted">· {{ g.processes|join(", ") }}</span>{% endif %}</td>
+      <td><span class="pill {{ 'pill-bad' if g.level == 'ERROR' else 'pill-warn' }}">{{ g.level }}</span></td>
+      <td class="r num strong">{{ g.count }}</td>
+      <td class="num" style="white-space:nowrap" title="{{ g.last_str }}">{{ g.ago }}</td>
+      <td class="muted fn-sample" title="{{ g.message }}">{{ g.message[:220] or "—" }}{% if g.exc %}<br><code class="fn-exc">{{ g.exc[:200] }}</code>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+  {% else %}<div class="empty">Xatolar jurnali bo'sh.</div>{% endif %}
+  <p class="hint">Xatolar jurnalidagi oxirgi {{ d.errors.entries }} ta yozuv ({{ d.errors.since }} dan beri), {{ d.errors.places }}
+    xil joy. «Necha marta» bir xil xato takrorlanganlarini ham sanaydi. Xabarlar jurnalda saqlangandek — maxfiy qiymatlar
+    yashirilgan. Hammasi: <a href="/errors">Xatolar</a>.</p>
+</div>
+
+<style>
+  .fn-lead { margin: -12px 0 18px; max-width: 980px; }
+  .fn-sub { font-family: var(--font); font-size: 12px; font-weight: 700; }
+  .fn-two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 18px; }
+  .fn-step { margin-bottom: 14px; }
+  .fn-step-l { display: flex; justify-content: space-between; gap: 10px; font-weight: 700; color: var(--ink); }
+  .fn-step-l b { font: 700 18px/1.2 var(--font-head); }
+  .fn-bar { height: 10px; border-radius: 100px; background: var(--mint-2); overflow: hidden; margin: 6px 0 4px; }
+  .fn-bar i { display: block; height: 100%; background: var(--skin); border-radius: 100px; min-width: 2px; }
+  .fn-step-p { font-size: 12.5px; color: var(--ink-soft); }
+  .fn-times { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 6px; }
+  .fn-times div { background: var(--paper); border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px; }
+  .fn-times span { display: block; font-size: 12px; color: var(--ink-soft); }
+  .fn-times b { font: 700 16px/1.3 var(--font-head); color: var(--ink); }
+  .fn-table td { white-space: nowrap; }
+  .fn-table th.r, .fn-table td.r, table th.r, table td.r { text-align: right; }
+  .fn-heat { display: inline-block; min-width: 50px; padding: 2px 8px; border-radius: 8px; font-weight: 800; color: var(--ink);
+    text-align: center; font-variant-numeric: tabular-nums; }
+  .fn-heat sup { font-size: 10px; margin-left: 1px; }
+  .fn-of { font-size: 11.5px; margin-left: 4px; }
+  .fn-sum { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
+  .fn-sum div { background: var(--paper); border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px; }
+  .fn-sum b { display: block; font: 700 20px/1.2 var(--font-head); color: var(--ink); }
+  .fn-sum span { font-size: 12px; color: var(--ink-soft); }
+  .fn-sample { max-width: 460px; font-size: 12.5px; word-break: break-word; }
+  .fn-key code, .fn-exc { font-size: 12px; background: var(--mint-2); padding: 1px 6px; border-radius: 6px; color: var(--ink); word-break: break-all; }
+  @media (max-width: 900px) { .fn-two { grid-template-columns: 1fr; } }
+  @media (max-width: 560px) { .fn-sum, .fn-times { grid-template-columns: 1fr; } }
+</style>
+{% endblock %}

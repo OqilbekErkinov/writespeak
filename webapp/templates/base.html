@@ -386,6 +386,8 @@
     </form>
     <nav class="side-nav">
       <a class="si {{ 'active' if active == 'dashboard' }}" href="/" data-tip="Dashboard"><span class="ic">🏠</span>Dashboard</a>
+      <a class="si {{ 'active' if active == 'sources' }}" href="/sources" data-tip="Manbalar"><span class="ic">📣</span>Manbalar</a>
+      <a class="si {{ 'active' if active == 'funnel' }}" href="/funnel" data-tip="Voronka"><span class="ic">📈</span>Voronka</a>
 
       <details class="sg {{ 'on' if g_users }}" data-group="users" {{ 'open' if g_users }}>
         <summary><span class="ic">👥</span>Foydalanuvchilar{% if nav.support %}<span class="nb" title="javob kutayotgan murojaatlar">{{ nav.support }}</span>{% endif %}<span class="car">▾</span></summary>
