@@ -234,48 +234,91 @@ async def run_sender(bot: Bot) -> None:
     totals and posts the daily report once a day (bot/utils/crm_events.py)."""
     from bot.utils import balance, crm_events
 
-    last_daily_check = last_probe = last_alert = 0.0
-    failures = 0
+    last_daily_check = last_probe = 0.0
+    failures = report_failures = 0
     while True:
         try:
             await flush_spent()
             if time.monotonic() - last_daily_check > 60:
                 last_daily_check = time.monotonic()
-                await crm_events.daily_report_if_due()
-                await crm_events.teacher_report_if_due()
+                try:
+                    await crm_events.daily_report_if_due()
+                    await crm_events.teacher_report_if_due()
+                    report_failures = 0
+                except Exception as e:  # noqa: BLE001 - its own count: the loop's next turn succeeds anyway
+                    report_failures += 1
+                    logger.warning("Admins' group: the daily/teachers' report failed (%r)", e)
+                    if report_failures >= REPORT_ALERT_AFTER:
+                        await _alert_admins(bot, "report", "⚠️ Bandzilla: kunlik hisobotni guruhga yuborib "
+                                            f"bo'lmayapti ({report_failures} marta ketma-ket): "
+                                            f"{html.escape(repr(e))[:300]}")
             if time.monotonic() - last_probe > PROBE_EVERY and await balance.credit_paused():
                 last_probe = time.monotonic()
                 if await balance.probe_credit():
                     await credit_back(bot)
-            failures = 0
             cfg = config()
             if not cfg:
                 await asyncio.sleep(5)
                 continue
             item = await redis().blpop([QUEUE], timeout=3)
-            if item is None:
-                continue
-            await _deliver_with_retries(bot, cfg, json.loads(item[1]))
+            if item is not None and await _deliver_with_retries(bot, cfg, json.loads(item[1])) == "waiting":
+                continue  # the group can't be reached: not a healthy turn (no beat, the count stays)
+            # a whole turn went well (2026-11-16: the count was reset at the top of every turn before, so it
+            # never reached its limit and the direct alert below could not fire)
+            failures = 0
+            await _beat()
         except asyncio.CancelledError:
             raise
         except Exception as e:  # noqa: BLE001
             logger.warning("Admins' group sender: %r", e)
             failures += 1
-            if failures >= SENDER_ALERT_AFTER and time.monotonic() - last_alert > 3600:
-                # this loop is how every alert reaches the group - when it keeps failing (Redis away, the
-                # daily report broken), the admins are told directly, once an hour (2026-11-15)
-                last_alert = time.monotonic()
-                for admin_id in settings.admin_ids:
-                    try:
-                        await bot.send_message(admin_id, "⚠️ Bandzilla: adminlar guruhiga xabar yuborish to'xtab "
-                                               f"qoldi ({failures} marta ketma-ket xato): {html.escape(repr(e))[:300]}")
-                    except Exception:  # noqa: BLE001
-                        pass
+            if failures >= SENDER_ALERT_AFTER:
+                # this loop is how every alert reaches the group - when it keeps failing (Redis away, a broken
+                # message), the admins are told directly, once an hour (2026-11-15)
+                await _alert_admins(bot, "sender", "⚠️ Bandzilla: adminlar guruhiga xabar yuborish to'xtab "
+                                    f"qoldi ({failures} marta ketma-ket xato): {html.escape(repr(e))[:300]}")
             await asyncio.sleep(5)
 
 
 PROBE_EVERY = 600  # seconds between test calls while checks are paused for want of OpenAI credit
 SENDER_ALERT_AFTER = 10  # consecutive failures of the sender loop before the admins are told directly
+REPORT_ALERT_AFTER = 3  # the daily/teachers' report failing this many minutes in a row: told directly
+WAIT_ALERT_AFTER = 600  # seconds the group has been unreachable before the admins are told directly
+DIRECT_ALERT_EVERY = 3600  # one direct alert of a kind an hour at most
+
+# The sender's own beat (2026-11-16): written after every turn that went well - a message delivered, or nothing
+# to send. /healthz (webapp/main.py) reports "down: group" when it is older than SENDER_STALE, so UptimeRobot
+# e-mails the owner even when the group (or Telegram for the bot) is the thing that is broken.
+SENDER_BEAT_KEY = "health:crm_sender"
+SENDER_STALE = 900
+_last_beat = 0.0
+_direct_sent: dict[str, float] = {}
+_waiting_since: float | None = None
+
+
+async def _beat() -> None:
+    global _last_beat
+    if time.monotonic() - _last_beat < 30:
+        return
+    _last_beat = time.monotonic()
+    try:
+        await redis().set(SENDER_BEAT_KEY, str(int(time.time())), ex=7 * 86400)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+async def _alert_admins(bot: Bot, kind: str, text: str) -> None:
+    """A message straight to the bot admins, not through the group: for when the group itself is the problem.
+    One of a kind an hour. Never raises."""
+    if time.monotonic() - _direct_sent.get(kind, -DIRECT_ALERT_EVERY) < DIRECT_ALERT_EVERY:
+        return
+    _direct_sent[kind] = time.monotonic()
+    logger.warning("Admins told directly (%s): %s", kind, re.sub(r"<[^>]+>", "", text)[:200])
+    for admin_id in settings.admin_ids:
+        try:
+            await bot.send_message(admin_id, text)
+        except Exception:  # noqa: BLE001
+            pass
 
 HEARTBEAT_KEY = "health:bot"  # deploy/watchdog/watchdog.sh alerts when it is older than its expiry
 HEARTBEAT_EVERY = 60
@@ -307,12 +350,22 @@ async def credit_back(bot: Bot, entered: bool = False) -> None:
         await post("errors", f"🔔 Kutib turgan {sent} kishiga «Bandzilla yana ishlayapti» xabari yuborildi.")
 
 
-async def _deliver_with_retries(bot: Bot, cfg: dict, job: dict) -> None:
+async def _deliver_with_retries(bot: Bot, cfg: dict, job: dict) -> str:
+    """'sent', 'waiting' (the bot is not in the group: the message went back to the head of the queue), or
+    'dropped'. A message lost for good, or a group unreachable for long, is told to the admins directly
+    (2026-11-16: before, only a log line nobody sees said so)."""
+    global _waiting_since
+    topic = job.get("topic", "")
     for attempt in range(5):
         try:
-            await _deliver(bot, cfg, job)
+            if await _deliver(bot, cfg, job) == "no_topic":
+                await _alert_admins(bot, f"topic:{topic}", (
+                    f"⚠️ Bandzilla: adminlar guruhida «{html.escape(str(topic))}» bo'limi yo'q — uning xabarlari "
+                    "yo'qolyapti. Guruhning General qismida /crm_setup yuboring (yo'q bo'limlarni qayta ochadi)."))
+                return "dropped"
+            _waiting_since = None
             await asyncio.sleep(PAUSE)
-            return
+            return "sent"
         except TelegramRetryAfter as e:
             await asyncio.sleep(e.retry_after + 1)
         except (TelegramNetworkError, TelegramServerError) as e:
@@ -325,17 +378,32 @@ async def _deliver_with_retries(bot: Bot, cfg: dict, job: dict) -> None:
                 # The bot isn't in the group (yet) - a new bot before it's added:
                 # the message waits at the head of the queue.
                 await _wait_for_group(job, e)
-                return
+                if _waiting_since is None:
+                    _waiting_since = time.monotonic()
+                elif time.monotonic() - _waiting_since > WAIT_ALERT_AFTER:
+                    waiting = await redis().llen(QUEUE)
+                    await _alert_admins(bot, "group_gone", (
+                        "⚠️ Bandzilla: bot adminlar guruhiga yoza olmayapti "
+                        f"({html.escape(str(e))[:200]}). Botni guruhga qayta qo'shing va admin qiling — "
+                        f"{waiting} ta xabar (to'lovlar, murojaatlar, xatolar) navbatda kutyapti."))
+                return "waiting"
             if isinstance(e, TelegramForbiddenError):
                 logger.warning("Admins' group: the bot can't post there (%s) - message dropped", e)
+                await _alert_admins(bot, "forbidden", (
+                    f"⚠️ Bandzilla: bot adminlar guruhiga yoza olmayapti ({html.escape(str(e))[:200]}) — "
+                    "xabarlar yo'qolyapti. Botni guruhda admin qiling (xabar yozish huquqi bilan)."))
                 await asyncio.sleep(PAUSE)
-                return
+                return "dropped"
             if "thread not found" in reason:
-                _forget_topic(job.get("topic", ""))
-            logger.warning("Admins' group: %s - a %s message dropped", e, job.get("topic"))
+                _forget_topic(topic)
+                await _alert_admins(bot, f"topic:{topic}", (
+                    f"⚠️ Bandzilla: adminlar guruhidagi «{html.escape(str(topic))}» bo'limi o'chirilgan. "
+                    "Guruhning General qismida /crm_setup yuboring — bo'lim qayta ochiladi."))
+            logger.warning("Admins' group: %s - a %s message dropped", e, topic)
             await asyncio.sleep(PAUSE)
-            return
-    logger.warning("Admins' group: gave up on a %s message", job.get("topic"))
+            return "dropped"
+    logger.warning("Admins' group: gave up on a %s message", topic)
+    return "dropped"
 
 
 _last_wait_log = 0.0
@@ -359,7 +427,7 @@ def _cut(text: str, limit: int) -> str:
     return html.escape(plain[: limit - 2] + "…", quote=False)
 
 
-async def _deliver(bot: Bot, cfg: dict, job: dict) -> None:
+async def _deliver(bot: Bot, cfg: dict, job: dict) -> str | None:
     chat_id = cfg["chat_id"]
     text = job.get("text") or ""
     r = redis()
@@ -387,7 +455,7 @@ async def _deliver(bot: Bot, cfg: dict, job: dict) -> None:
     thread = (cfg.get("topics") or {}).get(job.get("topic"))
     if thread is None:
         logger.info("Admins' group has no %s topic - /crm_setup makes it", job.get("topic"))
-        return
+        return "no_topic"
     where = {"message_thread_id": thread}
     kind = "t"
     if job["op"] == "copy":

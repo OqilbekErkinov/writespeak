@@ -9,6 +9,7 @@ services:
   db:
     image: pgvector/pgvector:pg16
     restart: unless-stopped
+    logging: *logging  # 2026-11-16: had no cap - its log had grown to 96 MB
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-ielts}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ielts}
@@ -23,7 +24,9 @@ services:
       #   ssh -L 5433:127.0.0.1:5433 bridgin   -> then localhost:5433
       - "127.0.0.1:5433:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ielts}"]
+      # -d: without it pg_isready asks for a database named after the user, which does not exist - Postgres
+      # logged "FATAL: database ... does not exist" every 5 seconds (2026-11-16)
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ielts} -d ${POSTGRES_DB:-ielts_bot}"]
       interval: 5s
       timeout: 5s
       retries: 10

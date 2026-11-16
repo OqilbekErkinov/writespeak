@@ -155,8 +155,9 @@ def _require_login(request: Request) -> RedirectResponse | None:
 @app.get("/healthz", include_in_schema=False)
 async def healthz():
     """For an outside uptime monitor (UptimeRobot, 2026-11-15): the host's own watchdog cannot report a dead
-    server. 200 "ok" while the bot's heartbeat is fresh and the database answers; 503 naming what is down
-    otherwise. Public, so it says nothing more."""
+    server. 200 "ok" while the bot's heartbeat is fresh, the admins' group gets its messages and the database
+    answers; 503 naming what is down otherwise ("bot", "group", "redis", "db"). Public, so it says nothing
+    more."""
     from sqlalchemy import text
 
     from bot.utils import crm
@@ -166,6 +167,11 @@ async def healthz():
         beat = await crm.redis().get(crm.HEARTBEAT_KEY)
         if not beat or time.time() - int(beat) > 3 * crm.HEARTBEAT_EVERY:
             down.append("bot")
+        # the admins' group: every alert, payment and support message goes through it (2026-11-16) - its
+        # sender beats after every turn that went well; stale = the group unreachable or the sender stuck
+        sender = await crm.redis().get(crm.SENDER_BEAT_KEY)
+        if sender and "bot" not in down and time.time() - int(sender) > crm.SENDER_STALE:
+            down.append("group")
     except Exception:  # noqa: BLE001
         down.append("redis")
     try:
