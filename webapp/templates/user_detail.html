@@ -167,7 +167,7 @@
       <td class="strong">{% if p.kind.value == "gift" %}🎁 {{ p.coins }} coin · sovg'a{% elif p.kind.value == "subscription" %}Obuna ({{ p.subscription_months }} oy){% else %}{{ p.coins }} coin{% endif %}</td>
       <td class="r num">{{ som(p.amount) }} so'm</td>
       <td>{% if p.status.value == "pending" %}<span class="pill pill-warn">kutilmoqda</span>{% elif p.status.value == "approved" %}<span class="pill pill-good">tasdiqlangan</span>{% else %}<span class="pill pill-bad">rad etilgan</span>{% endif %}</td>
-      <td>{% if p.receipt_file_id %}<a class="thumb" href="/payments/{{ p.id }}/receipt" target="_blank"><img src="/payments/{{ p.id }}/receipt" alt="Chek" loading="lazy" onerror="this.parentNode.replaceWith('—')"></a>{% else %}—{% endif %}</td>
+      <td>{% if p.receipt_file_id %}<a class="thumb" href="/payments/{{ p.id }}/receipt" target="_blank"><img src="/payments/{{ p.id }}/receipt" alt="Chek" loading="lazy" onerror="this.replaceWith('📎 fayl')" title="PDF yoki rasm fayli (2026-11-16) — ochish uchun bosing"></a>{% else %}—{% endif %}</td>
       <td class="num muted">{{ fmt(p.reviewed_at) if p.reviewed_at else "—" }}</td>
     </tr>
     {% endfor %}
