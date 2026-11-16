@@ -1,0 +1,2 @@
+# Shell scripts run on the Linux server and in the dev runner as they are in this tree: never CRLF (2026-11-16)
+*.sh text eol=lf
