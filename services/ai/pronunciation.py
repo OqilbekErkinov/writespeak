@@ -15,6 +15,15 @@ takes 30 seconds of audio at most. The result gives
 Without AZURE_SPEECH_KEY/AZURE_SPEECH_REGION `assess_answers` returns None;
 the report then hides the two pronunciation boxes and marks the
 Pronunciation band "(estimated)".
+
+Before the launch (2026-11-16): at most settings.azure_max_parallel requests
+are in flight over all running checks (each check sends ~4 at once, and the
+free F0 tier answers a crowd with 429s); a 429 or a 5xx is tried again up to
+RETRIES times, after Azure's Retry-After (capped at RETRY_WAIT_CAP seconds);
+and one check's whole assessment gets settings.azure_timeout_seconds - past
+it the check goes on with the estimated band, as when Azure is down, instead
+of spending the check's deadline after its OpenAI calls were paid for. How
+the band is computed is unchanged.
 """
 from __future__ import annotations
 
@@ -34,7 +43,9 @@ logger = logging.getLogger(__name__)
 
 CHUNK_SECONDS = 28.0
 TIMEOUT = 40
-CONCURRENCY = 4
+CONCURRENCY = 4  # one check's requests at once (all the checks together: settings.azure_max_parallel)
+RETRIES = 2  # a 429 or 5xx tried again this many times
+RETRY_WAIT_CAP = 10.0  # seconds: the longest wait before trying again, whatever Retry-After says
 HESITATIONS = {"um", "umm", "uh", "uhm", "er", "erm", "hmm", "mm", "ah", "eh"}
 
 
@@ -121,6 +132,44 @@ def _text(d: dict, key: str) -> str:
     return d.get(key) or (d.get("PronunciationAssessment") or {}).get(key) or ""
 
 
+_gate_by_loop: tuple[asyncio.AbstractEventLoop, asyncio.Semaphore] | None = None
+
+
+def _gate() -> asyncio.Semaphore:
+    """The module-wide limit of Azure requests in flight (one per event loop: a semaphore belongs to the loop
+    it first waited in)."""
+    global _gate_by_loop
+    loop = asyncio.get_running_loop()
+    if _gate_by_loop is None or _gate_by_loop[0] is not loop:
+        _gate_by_loop = (loop, asyncio.Semaphore(max(1, settings.azure_max_parallel)))
+    return _gate_by_loop[1]
+
+
+def _retry_wait(response: httpx.Response, attempt: int) -> float:
+    """Seconds before trying again: Azure's Retry-After (in seconds) when it gives one, else 1 s, 2 s, ...;
+    never more than RETRY_WAIT_CAP."""
+    try:
+        wait = float(response.headers.get("Retry-After", ""))
+    except ValueError:  # absent, or an HTTP date
+        wait = float(attempt + 1)
+    return min(max(wait, 0.0), RETRY_WAIT_CAP)
+
+
+async def _post(http: httpx.AsyncClient, wav: bytes, headers: dict) -> httpx.Response:
+    """One request under the module-wide limit; a 429 (too many at once) or a 5xx is tried again - the limit
+    is let go while waiting, so the wait holds no other check back."""
+    for attempt in range(RETRIES + 1):
+        async with _gate():
+            response = await http.post(_endpoint(), headers=headers, content=wav)
+        if attempt == RETRIES or not (response.status_code == 429 or response.status_code >= 500):
+            response.raise_for_status()
+            return response
+        wait = _retry_wait(response, attempt)
+        logger.warning("Azure assessment: HTTP %s - trying again in %.1f s", response.status_code, wait)
+        await asyncio.sleep(wait)
+    raise AssertionError("unreachable")
+
+
 async def _assess_chunk(http: httpx.AsyncClient, wav: bytes, reference: str) -> dict | None:
     params = {
         "ReferenceText": reference,
@@ -137,8 +186,7 @@ async def _assess_chunk(http: httpx.AsyncClient, wav: bytes, reference: str) -> 
         "Accept": "application/json",
         "Pronunciation-Assessment": base64.b64encode(json.dumps(params).encode()).decode(),
     }
-    response = await http.post(_endpoint(), headers=headers, content=wav)
-    response.raise_for_status()
+    response = await _post(http, wav, headers)
     data = response.json()
     if data.get("RecognitionStatus") != "Success" or not data.get("NBest"):
         logger.warning("Azure assessment: %s", data.get("RecognitionStatus"))
@@ -248,12 +296,18 @@ async def assess_answers(answers: list[tuple[bytes, list, float]]) -> Assessment
     if not configured():
         return None
     sem = asyncio.Semaphore(CONCURRENCY)
+    limit = settings.azure_timeout_seconds
     try:
-        async with httpx.AsyncClient(timeout=TIMEOUT) as http:
-            clips = await asyncio.gather(
-                *(_assess_clip(http, sem, wav, words, duration) for wav, words, duration in answers),
-                return_exceptions=True,
-            )
+        async with asyncio.timeout(limit):
+            async with httpx.AsyncClient(timeout=TIMEOUT) as http:
+                clips = await asyncio.gather(
+                    *(_assess_clip(http, sem, wav, words, duration) for wav, words, duration in answers),
+                    return_exceptions=True,
+                )
+    except TimeoutError:
+        # only this timeout: the check's own deadline arrives here as a cancellation, which is never caught
+        logger.error(AZURE_DOWN, f"no result within {limit:.0f} s - Azure slow, or too many checks at once")
+        return None
     except Exception as e:
         logger.error(AZURE_DOWN, failure_reason(e), exc_info=True)
         return None

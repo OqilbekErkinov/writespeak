@@ -103,6 +103,54 @@ _T: dict[str, dict[str, str]] = {
         "ru": "🎉 <b>Bandzilla снова работает!</b>\n\nПроверки снова открыты — отправьте ответ по Writing или "
         "Speaking, отчёт придёт через 2–4 минуты.\n\nСпасибо, что дождались! 🦖",
     },
+    # --- A check's reliability (bot/utils/check_guard.py, input_extraction.py, sponsor_alerts.py; 2026-11-16) ---
+    # the report saved but Telegram would not take it: the card says so, its button sends the saved report again
+    "check.report_undelivered": {
+        "uz": "✅ <b>Hisobotingiz tayyor va saqlandi</b>, lekin Telegram uni hozir yetkazib bera olmadi.\nQuyidagi "
+        "tugmani bosing — hisobot qayta yuboriladi. U doim «👤 Hisobim» → «📜 Tarix» bo'limida ham turadi.",
+        "ru": "✅ <b>Ваш отчёт готов и сохранён</b>, но Telegram сейчас не смог его доставить.\nНажмите кнопку ниже — "
+        "отчёт придёт повторно. Он всегда есть и в разделе «👤 Профиль» → «📜 История».",
+    },
+    "check.report_resend_btn": {"uz": "📄 Hisobotni olish", "ru": "📄 Получить отчёт"},
+    # under the payment approval: the check that stopped for want of coins goes on (check_guard.parked_keyboard)
+    "check.continue_btn": {"uz": "🔁 Tekshiruvni davom ettirish", "ru": "🔁 Продолжить проверку"},
+    "input.voice_not_received": {
+        "uz": "⚠️ Ovozli xabaringizni qabul qila olmadim. Iltimos, uni qaytadan yuboring — qolgan hammasi saqlangan.",
+        "ru": "⚠️ Не удалось получить ваше голосовое сообщение. Пожалуйста, отправьте его ещё раз — всё остальное "
+        "сохранено.",
+    },
+    "input.file_not_received": {
+        "uz": "⚠️ Rasm yoki faylingizni qabul qila olmadim. Iltimos, uni qaytadan yuboring.",
+        "ru": "⚠️ Не удалось получить ваше фото или файл. Пожалуйста, отправьте его ещё раз.",
+    },
+    # to a group's teacher / center owner whose coins pay for its students' checks (at most once a day each)
+    "sponsor.payer_empty": {
+        "uz": "⚠️ <b>Coinlaringiz tugadi</b>\n«{group}» guruhingiz o'quvchisi tekshiruv boshladi, lekin balansingizda "
+        "{balance} coin qoldi — bitta tekshiruv {price} coin. Hozircha o'quvchilar tekshiruvni o'z coinlari bilan "
+        "to'lashlari kerak.\n\nHisobni «👤 Hisobim» → «💳 Hisobni to'ldirish» bo'limida to'ldiring.",
+        "ru": "⚠️ <b>Ваши coin закончились</b>\nУченик группы «{group}» начал проверку, но на вашем балансе {balance} "
+        "coin — одна проверка стоит {price} coin. Пока ученикам приходится платить своими coin.\n\nПополните "
+        "баланс: «👤 Профиль» → «💳 Пополнить баланс».",
+    },
+    "sponsor.payer_low": {
+        "uz": "🟡 <b>Coinlaringiz kam qoldi: {balance} coin</b>\nO'quvchilaringizning tekshiruvlari to'xtab qolmasligi "
+        "uchun hisobni oldindan «👤 Hisobim» → «💳 Hisobni to'ldirish» bo'limida to'ldiring.",
+        "ru": "🟡 <b>У вас осталось мало coin: {balance}</b>\nЧтобы проверки ваших учеников не остановились, заранее "
+        "пополните баланс: «👤 Профиль» → «💳 Пополнить баланс».",
+    },
+    # to the student, at most once a day: why this check is not on the group
+    "sponsor.student_coins": {
+        "uz": "ℹ️ Guruhingiz homiysining coinlari tugadi, shuning uchun bu tekshiruv uchun o'z coinlaringiz "
+        "ishlatiladi. Homiy hisobini to'ldirgach, tekshiruvlar yana guruh hisobidan bo'ladi.",
+        "ru": "ℹ️ У спонсора вашей группы закончились coin, поэтому эта проверка оплачивается вашими coin. Когда "
+        "спонсор пополнит баланс, проверки снова будут за счёт группы.",
+    },
+    "sponsor.student_limit": {
+        "uz": "ℹ️ Guruh hisobidan bugungi tekshiruvlar limitingiz tugadi, shuning uchun bu tekshiruv uchun o'z "
+        "coinlaringiz ishlatiladi. Ertaga limit yangilanadi.",
+        "ru": "ℹ️ Ваш дневной лимит проверок за счёт группы исчерпан, поэтому эта проверка оплачивается вашими coin. "
+        "Завтра лимит обновится.",
+    },
     # --- Payments (bot/handlers/payments.py, bot/keyboards/payment_kb.py) ---
     "pay.pack_button": {
         "uz": "🟡 {coins} coin — {price} so'm",

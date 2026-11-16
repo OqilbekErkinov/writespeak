@@ -2099,31 +2099,55 @@ async def count_sponsored_today(session: AsyncSession, user_id: int, payer_id: i
     return total
 
 
-async def find_sponsor(
+@dataclass
+class SponsorPick:
+    """pick_sponsor's answer: who pays - and why the sponsors asked before could not (2026-11-16: until then a
+    sponsor out of coins was skipped without a word, so nobody told them or the student;
+    bot/utils/sponsor_alerts.py does now)."""
+    payer_id: int | None = None
+    group: Group | None = None  # the group whose payer pays
+    balance: int = 0  # that payer's coins before this check
+    skipped: tuple = ()  # (payer id, group, "coins" | "limit"): the sponsored groups that could not pay, in order
+
+
+async def pick_sponsor(
     session: AsyncSession, user_id: int, assignment_group_id: int | None = None, *, coins: int, checks: int = 1
-) -> int | None:
+) -> SponsorPick:
     """The payer who covers this student's next check (costing `coins`, and
     counting `checks` against a daily limit - a full Speaking test is 3): a
     sponsored group they are in whose payer still has the coins and whose
     daily limit isn't used up (assignments of that group are never
     limited). The assignment's own group is asked first: its homework is
     its own sponsor's, and paid by another group only within that group's
-    daily limit (2026-11-15). None if nobody does."""
+    daily limit (2026-11-15). No payer if nobody does; `skipped` says which
+    sponsors could not, and why."""
     groups = await get_member_groups(session, user_id)
     if assignment_group_id is not None:
         groups = sorted(groups, key=lambda pair: pair[0].id != assignment_group_id)
+    skipped: list[tuple[int, Group, str]] = []
     for group, _ in groups:
         if not group.sponsor_checks:
             continue
         payer_id = await get_group_payer_id(session, group)
         payer = await session.get(User, payer_id)
-        if payer is None or payer.coin_balance < coins:
+        if payer is None:
             continue
-        if assignment_group_id == group.id or group.daily_limit is None:
-            return payer_id
-        if await count_sponsored_today(session, user_id, payer_id) + checks <= group.daily_limit:
-            return payer_id
-    return None
+        if payer.coin_balance < coins:
+            skipped.append((payer_id, group, "coins"))
+            continue
+        if assignment_group_id == group.id or group.daily_limit is None or \
+                await count_sponsored_today(session, user_id, payer_id) + checks <= group.daily_limit:
+            return SponsorPick(payer_id, group, payer.coin_balance, tuple(skipped))
+        skipped.append((payer_id, group, "limit"))
+    return SponsorPick(skipped=tuple(skipped))
+
+
+async def find_sponsor(
+    session: AsyncSession, user_id: int, assignment_group_id: int | None = None, *, coins: int, checks: int = 1
+) -> int | None:
+    """The payer who covers this student's next check (pick_sponsor), None if nobody does."""
+    pick = await pick_sponsor(session, user_id, assignment_group_id, coins=coins, checks=checks)
+    return pick.payer_id
 
 
 async def sponsored_spend(session: AsyncSession, payer_id: int, since: datetime) -> int:

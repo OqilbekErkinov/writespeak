@@ -163,7 +163,18 @@ async def part1_hold() -> None:
     check("not enough coins: the paywall on the card, nothing taken", h is None and await balance(OTHER) == 3
           and "Coin yetarli emas" in card.edits[-1][0] and not await guard.busy(OTHER))
 
-    # a sponsor that ran out: the student's own coins
+    # a sponsor that ran out: the student's own coins. A real sponsored group (2026-11-16): begin() prices the
+    # check again from the database, no longer from the FSM data's payer_id
+    from db.models import Group, GroupMembership
+
+    async with get_session() as s:
+        group = Group(name="Sponsored", teacher_id=SPONSOR, sponsor_checks=True)
+        s.add(group)
+        await s.flush()
+        membership = GroupMembership(group_id=group.id, user_id=STUDENT)
+        s.add(membership)
+        await s.commit()
+        group_id, membership_id = group.id, membership.id
     st = State({"spend_credit": True, "payer_id": SPONSOR})
     h = await guard.begin(Card(STUDENT), st, st.data, module="w", kind="writing_task2", lang="uz",
                           failed_state=WritingStates.failed)
@@ -181,8 +192,12 @@ async def part1_hold() -> None:
           and await balance(SPONSOR) == 0 and await balance(STUDENT) == 15)
     await guard.end(h, "test")
     check("the sponsor's coins back too", await balance(SPONSOR) == 5)
+    async with get_session() as s:  # the group gone: the parts below are about the student's own coins
+        await s.delete(await s.get(GroupMembership, membership_id))
+        await s.delete(await s.get(Group, group_id))
+        await s.commit()
 
-    # admins may run several at once
+    # admins may run several at once (priced like anyone since 2026-11-16: the FSM data no longer decides)
     admin = next(iter(settings.admin_ids))
     async with get_session() as s:
         if await s.get(User, admin) is None:
@@ -192,7 +207,7 @@ async def part1_hold() -> None:
                            failed_state=WritingStates.failed)
     a2 = await guard.begin(Card(admin, 2), State(), {}, module="w", kind="writing_task2", lang="uz",
                            failed_state=WritingStates.failed)
-    check("an admin: two checks at once (free)", a1 is not None and a2 is not None and a1.coins == 0)
+    check("an admin: two checks at once", a1 is not None and a2 is not None)
     await guard.end(a1)
     await guard.end(a2)
 

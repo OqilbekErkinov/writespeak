@@ -85,6 +85,7 @@ from bot.keyboards.speaking_part_kb import (
 )
 from bot.states.speaking_states import SpeakingStates
 from bot.utils.input_extraction import (
+    ReceiveFailed,
     UnsupportedInputError,
     extract_audio_from_message,
     read_text_input,
@@ -332,6 +333,15 @@ async def receive_answer(message: Message, state: FSMContext, lang: str) -> None
         key = "input.file_too_big" if "too big" in str(e).lower() else "writing.could_not_read"
         await message.answer(t(key, lang))
         return
+    except ReceiveFailed:
+        # not downloaded (tried twice) or not stored - logged there; the state is left as it is, so the same
+        # answer sent again goes on (2026-11-16: the recording was lost without a reply)
+        await message.answer(t("input.voice_not_received", lang))
+        return
+    except Exception:  # noqa: BLE001
+        logger.exception("Answer of user %s not received", message.from_user.id)
+        await message.answer(t("input.voice_not_received", lang))
+        return
     # Heard before it is taken (2026-11-15): a video without sound, or one answer of half an hour, used to be
     # accepted and fail the whole check later (Whisper takes up to ~13 minutes) - with every answer lost.
     try:
@@ -339,6 +349,10 @@ async def receive_answer(message: Message, state: FSMContext, lang: str) -> None
     except (RuntimeError, EOFError, wave.Error):
         logger.warning("Answer unreadable for user %s (%s)", message.from_user.id, filename)
         await message.answer(t("speaking.answer_no_sound", lang))
+        return
+    except Exception:  # noqa: BLE001 - our side (a temporary file, ffmpeg itself): the answer is asked again
+        logger.exception("Answer of user %s not measured", message.from_user.id)
+        await message.answer(t("input.voice_not_received", lang))
         return
     if seconds < MIN_ANSWER_SECONDS:
         await message.answer(t("speaking.answer_no_sound", lang))
@@ -412,17 +426,24 @@ def _said(texts: list[str]) -> str:
 
 def _find_resubmission(sessions, audio_hash: str, transcripts: list[str] | None = None):
     """The earlier session these answers repeat: the very same recordings
-    (by fingerprint), or - with `transcripts` - answers more than 90% the same."""
+    (by fingerprint), or - with `transcripts` - answers more than 90% the same.
+    The second is a character-level comparison with up to 20 sessions of up to
+    ~10k characters - seconds of work: the handler runs it off the event loop
+    (2026-11-16: it froze every student's messages meanwhile)."""
+    if transcripts is None:
+        return next((s for s in sessions if (s.report_data or {}).get("audio_hash") == audio_hash), None)
+    matcher = difflib.SequenceMatcher(None, autojunk=False)
+    matcher.set_seq2(_said(transcripts))  # b: the new answers, as before - only the earlier session changes
     for s in sessions:
-        data = s.report_data or {}
-        if transcripts is None:
-            if data.get("audio_hash") == audio_hash:
-                return s
-            continue
-        before = data.get("transcripts")
+        before = (s.report_data or {}).get("transcripts")
         if not before or len(before) != len(transcripts):
             continue
-        if difflib.SequenceMatcher(None, _said(before), _said(transcripts), autojunk=False).ratio() > RESUBMISSION_SIMILARITY:
+        matcher.set_seq1(_said(before))
+        # real_quick_ratio() >= quick_ratio() >= ratio() (difflib's own upper bounds): one of them at or under
+        # the threshold already means "not over it" - the same decision as ratio(), without its quadratic work
+        if matcher.real_quick_ratio() <= RESUBMISSION_SIMILARITY or matcher.quick_ratio() <= RESUBMISSION_SIMILARITY:
+            continue
+        if matcher.ratio() > RESUBMISSION_SIMILARITY:
             return s
     return None
 
@@ -437,29 +458,37 @@ async def _send_saved_report(message: Message, state: FSMContext, data: dict, ea
     path = earlier.feedback_pdf_path
     if not path or not Path(path).exists():
         return False
+    # a failure sending it: the caller's "🔁 Try again" (the recordings are still in the FSM data) sends it then
     await message.answer_document(
         BufferedInputFile(read_file(path), filename=report_filename("speaking", earlier.part)),
         caption=with_ai_note(t("speaking.resubmitted", lang, number=_session_number(earlier), band=earlier.overall_band), lang),
         reply_markup=share_card_kb("speaking", earlier.id, lang),
     )
-    if data.get("mock_session_id"):
-        await record_mock_test_part(message, state, submission_id=earlier.id, submission_type="speaking",
-                                    band=earlier.overall_band)
-    else:
-        await state.clear()
-        await message.answer(t("nav.what_next", lang), reply_markup=_after_result_kb(data, lang))
+    try:  # sent: what follows never turns it into a failed check
+        if data.get("mock_session_id"):
+            await record_mock_test_part(message, state, submission_id=earlier.id, submission_type="speaking",
+                                        band=earlier.overall_band)
+        else:
+            await state.clear()
+            await message.answer(t("nav.what_next", lang), reply_markup=_after_result_kb(data, lang))
+    except Exception:  # noqa: BLE001
+        logger.exception("Speaking resubmission of user %s: the steps after the saved report failed", message.chat.id)
     return True
 
 
 async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
     """The answers sent one by one, graded: the very same recordings again get their saved report (free),
     anything else is a paid check under its hold."""
-    data = await state.get_data()
-    answers = data["answers"]
-    clips = [(read_file(a["path"]), a["filename"]) for a in answers]
-    audio_hash = _fingerprint([clip for clip, _ in clips])
-    repeated, sessions = (False, None) if data.get("test_run") else \
-        await _repeated(message, state, data, audio_hash, lang)
+    try:
+        data = await state.get_data()
+        answers = data["answers"]
+        clips = [(read_file(a["path"]), a["filename"]) for a in answers]
+        audio_hash = _fingerprint([clip for clip, _ in clips])
+        repeated, sessions = (False, None) if data.get("test_run") else \
+            await _repeated(message, state, data, audio_hash, lang)
+    except Exception as e:  # noqa: BLE001 - the database or Redis away: "try again", never a stuck flow
+        await _failed_early(message, state, lang, None, e)
+        return
     if repeated:
         return
 
@@ -478,10 +507,16 @@ async def _checked(message: Message, state: FSMContext, lang: str, run, waiting:
     (bot/utils/check_guard.py): one check at a time, its coins taken now and given back unless the report is
     saved, a place in the queue, a deadline. A failure says so on the card, with "🔁 Try again" (the
     recordings stay in the FSM data). `waiting`: the "listening…" card, if one is already shown."""
-    data = await state.get_data()
-    card_msg = waiting or await message.answer(t("speaking.grading_in_progress", lang))
-    hold = await guard.begin(card_msg, state, data, module="s", kind=speaking_kind(data["part"]), lang=lang,
-                             failed_state=SpeakingStates.failed)
+    card_msg = waiting
+    try:
+        data = await state.get_data()
+        if card_msg is None:
+            card_msg = await message.answer(t("speaking.grading_in_progress", lang))
+        hold = await guard.begin(card_msg, state, data, module="s", kind=speaking_kind(data["part"]), lang=lang,
+                                 failed_state=SpeakingStates.failed)
+    except Exception as e:  # noqa: BLE001 - before grading (a hold begin() took is given back there)
+        await _failed_early(message, state, lang, card_msg, e)
+        return
     if hold is None:
         return
     card = live.begin(card_msg, lang, "speaking")  # the waiting message, alive (bot/utils/progress.py)
@@ -519,24 +554,49 @@ async def _failed(message: Message, state: FSMContext, lang: str, card: Message,
         await _edit_or_send(card, t("check.failed_lost", lang) + note)
     elif await guard.owns(state, hold):
         await state.set_state(SpeakingStates.failed)
+        await guard.park(message.chat.id, state)  # "try again" survives a top-up's own steps (C3)
         await _edit_or_send(card, t("check.failed", lang) + note, guard.retry_kb(lang, hold.id))
     else:
         await _edit_or_send(card, t("check.failed_lost", lang) + note)
     await stickers.send(message.bot, message.chat.id, "oops")
 
 
-async def _edit_or_send(msg: Message, text: str, markup=None) -> None:
+async def _failed_early(message: Message, state: FSMContext, lang: str, card: Message | None,
+                        error: BaseException) -> None:
+    """A step before grading failed - the database or Redis away, Telegram down (2026-11-16: it escaped to
+    aiogram, the card said "analysing…" for good and the state stayed `processing`). Nothing was charged (a
+    hold begin() took is given back there): the check moves to `failed` with "🔁 Try again" while its
+    recordings are in the FSM data and on disk, else the student is asked to send them again. `card`: the
+    check's card, None when there is none yet (a new message then)."""
+    logger.error("Speaking check of user %s could not start: %s", message.chat.id, _reason(error), exc_info=error)
+    target = card or message
     try:
-        await msg.edit_text(text, reply_markup=markup)
-    except TelegramBadRequest:
-        await msg.answer(text, reply_markup=markup)
+        data = await state.get_data()
+        if (data.get("answers") or data.get("pieces")) and not data.get("mock_session_id") \
+                and not isinstance(error, FileNotFoundError):
+            await guard.refuse(target, state, SpeakingStates.failed, lang, t("check.failed", lang),
+                               edit=card is not None)
+            return
+        await state.clear()
+    except Exception:  # noqa: BLE001 - the FSM is away too: at least the student hears it
+        logger.warning("FSM of user %s not updated after a failed start", message.chat.id, exc_info=True)
+    await guard.show(target, t("check.failed_lost", lang), edit=card is not None)
+
+
+async def _edit_or_send(msg: Message, text: str, markup=None) -> None:
+    """The card becomes `text`, or a new message when it is gone - never raising (guard.show, 2026-11-16)."""
+    await guard.show(msg, text, markup)
 
 
 async def retry(message: Message, state: FSMContext, lang: str) -> None:
     """"🔁 Try again" after a failed or interrupted check (the state already claimed `processing` by
     bot/handlers/check_retry.py): it goes on from the last step whose result is kept - the recording already
     heard and split, heard only, or the answers sent one by one."""
-    data = await state.get_data()
+    try:
+        data = await state.get_data()
+    except Exception as e:  # noqa: BLE001 - Redis away: never left in `processing`
+        await _failed_early(message, state, lang, None, e)
+        return
     if data.get("pieces"):
         if data.get("rec_path") and data.get("split") is not None and data.get("questions"):
             await _checked(message, state, lang, lambda hold, card: _grade_recording(message, state, lang, card, hold))
@@ -601,7 +661,8 @@ async def _grade(
     short_words = short_sample_size(part, check.items)  # one short answer: the band is approximate
     report.notices = list(notices) + ([SHORT_SAMPLE_NOTICE.format(words=short_words)] if short_words else [])
     transcripts = [item.audio.text for item in check.items]
-    repeat = _find_resubmission(sessions, audio_hash, transcripts)
+    # character by character over the earlier sessions - off the event loop (the Writing check's way)
+    repeat = await asyncio.to_thread(_find_resubmission, sessions, audio_hash, transcripts)
     progress = build_progress(
         part, report.overall_band, check.metrics, None if repeat else previous, report.priorities,
         _session_number(repeat) if repeat else None,
@@ -709,16 +770,14 @@ async def _grade(
     if short_words:
         caption += "\n\n" + t("speaking.short_sample", lang, words=short_words)
     await live.end(card)
-    try:
-        await processing_msg.delete()
-    except TelegramBadRequest:
-        pass  # the student deleted the card meanwhile
     await stickers.send(message.bot, user_id, stickers.for_result(report.overall_band, found))  # the Gotcha moment
-    await guard.deliver(lambda: message.answer_document(
+    sent = await guard.deliver(lambda: message.answer_document(
         BufferedInputFile(pdf_bytes, filename=report_filename("speaking", part)),
         caption=with_ai_note(caption, lang),
         reply_markup=share_card_kb("speaking", submission.id, lang),
     ), f"speaking report {submission.id}")
+    # the card goes only now the report is there; not delivered: the card says it is saved, with its button
+    await guard.report_sent(processing_msg, sent, lang, "speaking", submission.id)
     if listen:
         await guard.deliver(lambda: message.answer(
             t("speaking.listen_prompt", lang),
@@ -799,11 +858,22 @@ async def receive_recording(message: Message, state: FSMContext, lang: str) -> N
         await message.answer(t("speaking.one_too_big" if "too big" in str(e).lower() else "writing.could_not_read",
                                lang))
         return
+    except ReceiveFailed:  # logged there; the pieces so far and the state are kept: this one is sent again
+        await message.answer(t("input.voice_not_received", lang))
+        return
+    except Exception:  # noqa: BLE001
+        logger.exception("Recording piece of user %s not received", message.from_user.id)
+        await message.answer(t("input.voice_not_received", lang))
+        return
     try:
         seconds = wav_seconds(await to_wav16k(content, filename))
     except (RuntimeError, EOFError, wave.Error):  # ffmpeg can't read it, or no audio in it
         logger.warning("Recording piece unreadable for user %s (%s)", message.from_user.id, filename)
         await message.answer(t("writing.could_not_read", lang))
+        return
+    except Exception:  # noqa: BLE001 - our side (a temporary file): the piece is asked again
+        logger.exception("Recording piece of user %s not measured", message.from_user.id)
+        await message.answer(t("input.voice_not_received", lang))
         return
 
     async with _user_locks[message.from_user.id]:
@@ -882,10 +952,14 @@ async def _end_recording(message: Message, state: FSMContext, lang: str, anyway:
 
 
 async def _grade_pieces(message: Message, state: FSMContext, lang: str) -> None:
-    data = await state.get_data()
-    # the very same pieces again: their saved report, before anything is paid for (a test run: always anew)
-    repeated, _ = (False, None) if data.get("test_run") else \
-        await _repeated(message, state, data, _fingerprint(_piece_bytes(data)), lang)
+    try:
+        data = await state.get_data()
+        # the very same pieces again: their saved report, before anything is paid for (a test run: always anew)
+        repeated, _ = (False, None) if data.get("test_run") else \
+            await _repeated(message, state, data, _fingerprint(_piece_bytes(data)), lang)
+    except Exception as e:  # noqa: BLE001 - the database or Redis away: "try again", never a stuck flow
+        await _failed_early(message, state, lang, None, e)
+        return
     if not repeated:
         await _checked(message, state, lang, lambda hold, card: _read_recording(message, state, lang, card, hold))
 
