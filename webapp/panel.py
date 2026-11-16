@@ -328,15 +328,70 @@ async def _settings(request: Request, done: str | None, backup_key: str | None =
         "bad_amount": "Summani raqam bilan kiriting: OpenAI — so'mda (masalan 70000), Azure — soatda (masalan 5).",
         "capacity": "Saqlandi: bot uni 15 soniya ichida qo'llaydi.",
         "bad_capacity": "1 dan 2000 gacha son kiriting.",
+        "cost_limits": "Xarajat chegaralari saqlandi: bot ularni 15 soniya ichida qo'llaydi.",
+        "bad_cost_limits": "Raqam kiriting: tekshiruv chegarasi $0.01–100, kunlik chegara $0–10000, sekin tekshiruv "
+                           "0–120 daqiqa (0 — o'chiq).",
     }.get(done or "")
     return templates.TemplateResponse(request, "settings.html", {
         "active": "settings", "on": on, "testers": sorted(listed), "users": users, "waiting": await checks_back.waiting_count(),
-        "flash": flash, "flash_bad": done in ("bad", "empty", "bad_amount", "bad_capacity"),
+        "flash": flash, "flash_bad": done in ("bad", "empty", "bad_amount", "bad_capacity", "bad_cost_limits"),
         "env_on": bool(settings.checks_only_for_ids),
         "openai": await balance.openai_status(), "credit_paused": await balance.credit_paused(),
         "azure": await balance.azure_status(), "capacity": await capacity_state(),
+        "costs": await cost_limits_state(),
         "offsite": offsite_state(), "backup_key": backup_key,
     })
+
+
+async def cost_limits_state() -> dict:
+    """The «Xarajat chegaralari» card (bot/utils/cost_guard.py, 2026-11-16): each value in force, its default,
+    whether the owner set it - and today's OpenAI spend against the daily cap."""
+    from bot.utils import cost_guard
+
+    try:
+        own = await cost_guard.overrides()
+        spend = sum(float(v) for v in (await crm.redis().hgetall(crm.spend_key(crm.local_now().date()))).values())
+    except Exception:  # noqa: BLE001 - Redis away: the defaults are shown
+        own, spend = {}, None
+    defaults = cost_guard.defaults()
+    rows = [{"name": name, "label": label, "unit": unit, "value": own.get(name, defaults[name]),
+             "default": defaults[name], "own": name in own}
+            for name, (label, unit, _) in cost_guard.FIELDS.items()]
+    cap = own.get("daily_cap", defaults["daily_cap"])
+    return {"rows": rows, "spend": spend, "cap": cap,
+            "pct": round(spend / cap * 100) if spend is not None and cap else None}
+
+
+@router.post("/settings/cost-limits")
+async def settings_cost_limits(request: Request, action: str = Form("save"), writing_task1: str = Form(""),
+                               writing_task2: str = Form(""), speaking_part: str = Form(""),
+                               speaking_full: str = Form(""), daily_cap: str = Form(""), slow_minutes: str = Form("")):
+    """The cost guard's limits (owner only): one check's OpenAI cost per kind, the day's spend cap, a slow
+    check's minutes. An empty field is left as it is; "reset" brings back the .env defaults."""
+    if (r := guard(request, owner=True)) is not None:
+        return r
+    from bot.utils import cost_guard
+
+    if action == "reset":
+        await cost_guard.reset()
+        await audit(request, "cost_limits", details="standart qiymatlarga qaytarildi")
+        return RedirectResponse("/settings?done=cost_limits#costs", status_code=303)
+    typed = {"writing_task1": writing_task1, "writing_task2": writing_task2, "speaking_part": speaking_part,
+             "speaking_full": speaking_full, "daily_cap": daily_cap, "slow_minutes": slow_minutes}
+    values = {}
+    for name, raw in typed.items():
+        if not raw.strip():
+            continue
+        value = cost_guard.parse(name, raw)
+        if value is None:
+            return RedirectResponse("/settings?done=bad_cost_limits#costs", status_code=303)
+        values[name] = value
+    before = await cost_guard.limits(fresh=True)
+    await cost_guard.save(values)
+    changed = [f"{cost_guard.FIELDS[k][0]} {before.get(k, 0):g}→{v:g}" for k, v in values.items()
+               if before.get(k) != v]
+    await audit(request, "cost_limits", details=", ".join(changed) or "o'zgarishsiz")
+    return RedirectResponse("/settings?done=cost_limits#costs", status_code=303)
 
 
 async def capacity_state() -> dict:

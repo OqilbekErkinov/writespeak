@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import functools
 import html
+import json
 import logging
 from datetime import date, datetime, timedelta, timezone
 
@@ -19,6 +20,7 @@ from sqlalchemy import select
 from bot.config import settings
 from bot.keyboards.payment_kb import REJECT_REASONS
 from bot.utils import crm
+from bot.utils.coins import speaking_kind, writing_kind
 from db import crud
 from db.database import get_session
 from db.models import (
@@ -399,8 +401,9 @@ def _cost_card(head: str, cost: dict, seconds, paid_text: str, revenue: int | No
     return "\n".join(lines)
 
 
-async def _check_cards(kind: str, submission_id: int, rate: float | None = None):
-    """(card, cost card or None, PDF path, PDF file name) of a saved check."""
+async def _check_cards(kind: str, submission_id: int, rate: float | None = None, info: dict | None = None):
+    """(card, cost card or None, PDF path, PDF file name) of a saved check; `info` (when given) gets what the
+    cost guard needs (bot/utils/cost_guard.py): its check kind, label, id, student, cost and revenue."""
     model = WritingSubmission if kind == "w" else SpeakingSubmission
     async with get_session() as session:
         sub = await session.get(model, submission_id)
@@ -484,6 +487,10 @@ async def _check_cards(kind: str, submission_id: int, rate: float | None = None)
     if cost:
         head = f"<b>{label} · #{sub.id}</b> · {_esc(name)}"
         cost_card = _cost_card(head, cost, seconds, PAID_NAMES.get(paid.get("mode"), "?"), revenue, rate)
+    if info is not None:
+        info.update(kind=writing_kind(_value(sub.task_type)) if kind == "w" else speaking_kind(_value(sub.part)),
+                    label=label, id=sub.id, user_id=sub.user_id, name=name, who=_user(user, sub.user_id),
+                    cost=cost or {}, revenue=revenue)
     pdf = sub.feedback_pdf_path
     filename = f"{'writing' if kind == 'w' else 'speaking'}_{sub.id}_{sub.user_id}.pdf"
     return "\n".join(lines), cost_card, pdf, filename
@@ -493,30 +500,95 @@ def _value(x) -> str:
     return getattr(x, "value", x)
 
 
+NOTES_KEY = "crm:check_notes:{}:{}"  # + w/s, submission id: what went worse than it should, kept for its edits
+
+
+def _with_notes(card: str, notes: list[str]) -> str:
+    """The check's card with what went worse than it should (bot/utils/check_incidents.py card_lines) - marked
+    ⚠️ at its head, the notes at its end (2026-11-16: one card a check, also for a degraded one)."""
+    return "\n".join([f"⚠️ {card}", *notes]) if notes else card
+
+
 @_safe
 async def check_done(kind: str, submission_id: int) -> None:
-    """A new report was sent ("w" Writing, "s" Speaking): its card with the
-    PDF, and its cost in 💰 Xarajatlar."""
-    built = await _check_cards(kind, submission_id)
+    """A new report was sent ("w" Writing, "s" Speaking): its card with the PDF - and what went worse than it
+    should, when anything did - and its cost in 💰 Xarajatlar (cost_guard: 💸 over its limit or far over its
+    kind's usual; folded into a digest while the group's queue is long)."""
+    from bot.utils import check_incidents  # noqa: PLC0415
+
+    info: dict = {}
+    built = await _check_cards(kind, submission_id, info=info)
     if built is None:
         return
     card, cost_card, pdf, filename = built
+    notes = await check_incidents.card_lines()  # the check running here: this one
+    if notes:
+        await crm.redis().set(NOTES_KEY.format(kind, submission_id), json.dumps(notes, ensure_ascii=False),
+                              ex=crm.KEEP)
     await crm.post(
-        "writing" if kind == "w" else "speaking", card, document=pdf, filename=filename, key=f"check:{kind}:{submission_id}"
+        "writing" if kind == "w" else "speaking", _with_notes(card, notes), document=pdf, filename=filename,
+        key=f"check:{kind}:{submission_id}"
     )
     if cost_card:
-        await crm.post("costs", cost_card, key=f"cost:{kind}:{submission_id}")
+        await _post_cost(kind, submission_id, info, cost_card)
+
+
+async def _post_cost(kind: str, submission_id: int, info: dict, cost_card: str) -> None:
+    from bot.utils import cost_guard  # noqa: PLC0415
+
+    key = f"cost:{kind}:{submission_id}"
+    verdict = await cost_guard.judge(info["kind"], float(info["cost"].get("total_usd") or 0.0))
+    if verdict["flagged"]:
+        await cost_guard.remember_flag(kind, submission_id, verdict)
+        await crm.post("costs", _flagged_card(verdict, info, cost_card), key=key)
+        if verdict["severe"]:
+            await crm.post("errors", cost_guard.severe_card(verdict, info))
+        return
+    if await cost_guard.fold_cost(kind, submission_id, info):
+        return  # the group's queue is long: its line goes in the next "💰 jamlanmasi"
+    await crm.post("costs", cost_card, key=key)
+
+
+def _flagged_card(verdict: dict, info: dict, cost_card: str) -> str:
+    """A 💸 check's cost card: the alert's head over its plain cost card (by purpose, with each one's models)."""
+    from bot.utils import cost_guard  # noqa: PLC0415
+
+    return "\n".join(cost_guard.alert_lines(verdict, info)) + "\n\n" + cost_card
+
+
+async def _notes(kind: str, submission_id: int) -> list[str]:
+    raw = await crm.redis().get(NOTES_KEY.format(kind, submission_id))
+    try:
+        return json.loads(raw) if raw else []
+    except ValueError:
+        return []
 
 
 @_safe
 async def cost_updated(kind: str, submission_id: int) -> None:
-    """A model answer was spoken on demand: the check's cards show its cost."""
-    built = await _check_cards(kind, submission_id)
+    """A model answer was spoken on demand: the check's cards show its cost - a check it takes over its limit
+    becomes 💸 now (a folded cost card stays folded otherwise)."""
+    from bot.utils import cost_guard  # noqa: PLC0415
+
+    info: dict = {}
+    built = await _check_cards(kind, submission_id, info=info)
     if built is None:
         return
     card, cost_card, _, _ = built
-    await crm.edit(f"check:{kind}:{submission_id}", "writing" if kind == "w" else "speaking", card)
-    if cost_card:
+    await crm.edit(f"check:{kind}:{submission_id}", "writing" if kind == "w" else "speaking",
+                   _with_notes(card, await _notes(kind, submission_id)))
+    if not cost_card:
+        return
+    before = await cost_guard.flag_of(kind, submission_id)
+    verdict = await cost_guard.judge(info["kind"], float(info["cost"].get("total_usd") or 0.0), record=False)
+    if before and before.get("anomaly"):  # judged against the checks before it, once
+        verdict.update(anomaly=True, median=before.get("median"), samples=before.get("samples"), flagged=True)
+    if verdict["flagged"]:
+        await cost_guard.remember_flag(kind, submission_id, verdict)
+        await crm.edit(f"cost:{kind}:{submission_id}", "costs", _flagged_card(verdict, info, cost_card))
+        if verdict["severe"] and not (before and before.get("severe")):
+            await crm.post("errors", cost_guard.severe_card(verdict, info))
+    elif not await cost_guard.was_folded(kind, submission_id):
         await crm.edit(f"cost:{kind}:{submission_id}", "costs", cost_card)
 
 

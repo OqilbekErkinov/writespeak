@@ -450,7 +450,7 @@ async def main() -> int:
         check("...the audit log has the reason", logged == f"#{preq.id} · Chek o'qilmaydi", logged)
         check("...the group card names the panel login, not a bare 'web panel'",
               f"⛔ Rad etdi: {owner} (web panel)" in card_text and "💬 Sabab: Chek o'qilmaydi" in card_text, card_text)
-        queued = [json.loads(x) for x in await redis().lrange(crm.QUEUE, 0, -1)]
+        queued = [json.loads(x) for x in await redis().lrange(crm.HI_QUEUE, 0, -1)]  # payments: the high lane
         edit = [j for j in queued if j.get("op") == "edit" and j.get("key") == f"pay:{preq.id}"]
         check("...and the card edit queued for the group says so", edit and f"{owner} (web panel)" in edit[-1]["text"]
               and "Sabab: Chek o'qilmaydi" in edit[-1]["text"], edit)
@@ -489,7 +489,7 @@ async def main() -> int:
                                                                                             f"pay_reject:{doc_req.id}"]
                                                             for m in docs)
               and not [m for m, _ in session.sent[mark:] if type(m).__name__ == "SendPhoto"], docs)
-        queued = [json.loads(x) for x in await redis().lrange(crm.QUEUE, 0, -1)]
+        queued = [json.loads(x) for x in await redis().lrange(crm.HI_QUEUE, 0, -1)]  # payments: the high lane
         copies = [j for j in queued if j.get("op") == "copy" and j.get("copy_from") == [ST, doc_msg]]
         cards_q = [j for j in queued if j.get("key") == f"pay:{doc_req.id}" and j.get("op") == "send"]
         check("...the group: the file copied into 💳 To'lovlar, the card after it as text (no photo)",

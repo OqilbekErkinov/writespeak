@@ -108,6 +108,37 @@
   </form>
 </div>
 
+<div class="card" id="costs">
+  <h2>Xarajat chegaralari</h2>
+  <p class="hint" style="margin:-8px 0 12px">Bitta tekshiruvning OpenAI narxi o'z chegarasidan oshsa, guruhning
+    «💰 Xarajatlar» bo'limiga 💸 karta chiqadi (narx qaysi qadam va modelga ketgani bilan), 2 barobar oshsa —
+    «⚠️ Xatolar»ga ham. Odatdagidan 2.5 barobar qimmat tekshiruv (o'sha turdagi oxirgi 50 tasining medianasiga
+    nisbatan) ham shunday belgilanadi. Bugungi umumiy xarajat kunlik chegaraning 80% va 100% iga yetganda
+    «⚠️ Xatolar»ga va adminlarga to'g'ridan-to'g'ri xabar boradi — tekshiruvlar to'xtatilmaydi. Sekin tekshiruv
+    chegarasidan uzoq davom etgan tekshiruv o'z kartasida ⚠️ bilan belgilanadi. 0 — kunlik chegara yoki sekin
+    tekshiruv nazoratini o'chiradi.</p>
+  {% if costs.spend is not none %}
+  <div class="bk-state {{ 'bad' if costs.pct is not none and costs.pct >= 80 else '' }}">
+    💰 Bugun OpenAI'ga: <b>${{ "%.2f"|format(costs.spend) }}</b>{% if costs.cap %} — kunlik chegara
+    ${{ "%g"|format(costs.cap) }} ning <b>{{ costs.pct }}%</b>i{% else %} · kunlik chegara o'chiq{% endif %}
+  </div>
+  {% endif %}
+  <form method="post" action="/settings/cost-limits" class="cl-grid">
+    {% for row in costs.rows %}
+    <label class="cl-row">
+      <span class="cl-label">{{ row.label }} <span class="muted">({{ row.unit }})</span></span>
+      <input type="text" name="{{ row.name }}" inputmode="decimal" value="{{ '%g'|format(row.value) }}"
+             aria-label="{{ row.label }}">
+      <span class="cl-sub">{% if row.own %}siz o'rnatgansiz · standart {{ "%g"|format(row.default) }}{% else %}standart{% endif %}</span>
+    </label>
+    {% endfor %}
+    <div class="cl-actions">
+      <button type="submit" name="action" value="save" class="btn btn-good">Saqlash</button>
+      <button type="submit" name="action" value="reset" class="btn">Standartga qaytarish</button>
+    </div>
+  </form>
+</div>
+
 <div class="card" id="backup">
   <h2>Zaxira</h2>
   <p class="hint" style="margin:-8px 0 12px">Har kuni ~04:50 da (Toshkent) baza va yangi fayllar shifrlanib, adminlar guruhidagi
@@ -176,6 +207,12 @@
   .tw-add input { flex: 1 1 240px; }
   .bk-state { padding: 12px 16px; border-radius: 14px; background: var(--mint); font-size: 14.5px; }
   .bk-state.bad { background: rgba(229, 72, 77, 0.08); border: 1px solid #e5484d; }
+  .cl-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-top: 16px; }
+  .cl-row { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .cl-label { font-weight: 700; font-size: 14px; }
+  .cl-row input { width: 100%; box-sizing: border-box; }
+  .cl-sub { font-size: 12.5px; color: var(--muted, #666); }
+  .cl-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px; }
   .bk-key { display: block; padding: 12px 14px; border-radius: 12px; background: var(--ink); color: var(--lime);
     font: 600 15px/1.4 ui-monospace, monospace; word-break: break-all; user-select: all; }
 </style>

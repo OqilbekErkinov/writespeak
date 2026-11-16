@@ -56,6 +56,10 @@ class Call:
 
 _current: ContextVar[list[Call] | None] = ContextVar("openai_usage_calls", default=None)
 _label: ContextVar[str | None] = ContextVar("openai_usage_label", default=None)
+# A running check's own meter (bot/utils/check_guard.py begin(), 2026-11-16): every call made from its hold on -
+# inside a `track` block or not, in the tasks it starts too - so a check that fails halfway still knows what it
+# spent (its incident card says it, bot/utils/check_incidents.py).
+_meter: ContextVar[list[Call] | None] = ContextVar("openai_usage_meter", default=None)
 _spent: dict[str, float] = {}  # category -> USD, until take_spent()
 
 
@@ -83,6 +87,9 @@ def _add(call: Call) -> None:
     calls = _current.get()
     if calls is not None:
         calls.append(call)
+    meter = _meter.get()
+    if meter is not None and meter is not calls:
+        meter.append(call)
     category = (_label.get() or call.purpose).split()[0]
     _spent[category] = _spent.get(category, 0.0) + call.cost
     callback = _listener.get()
@@ -91,6 +98,20 @@ def _add(call: Call) -> None:
             callback(call.purpose)
         except Exception:  # noqa: BLE001 - a progress display never breaks a check
             logger.debug("Usage listener failed", exc_info=True)
+
+
+def start_meter() -> list[Call]:
+    """Every call recorded from here on in this context (and in the tasks it starts) is also added to the
+    returned list: a check's meter, from its hold to its end (stop_meter)."""
+    calls: list[Call] = []
+    _meter.set(calls)
+    return calls
+
+
+def stop_meter(calls: list[Call] | None = None) -> None:
+    """The meter `calls` (or whichever runs) stops counting in this context."""
+    if calls is None or _meter.get() is calls:
+        _meter.set(None)
 
 
 def take_spent() -> dict[str, float]:
@@ -173,9 +194,11 @@ def summary(calls: list[Call]) -> dict:
     the bot container is recreated. `details` has each purpose's calls,
     tokens and how many ran on Flex (the admins' group shows them)."""
     by_purpose: dict[str, float] = {}
+    by_model: dict[str, float] = {}
     details: dict[str, dict] = {}
     for c in calls:
         by_purpose[c.purpose] = by_purpose.get(c.purpose, 0.0) + c.cost
+        by_model[c.model] = by_model.get(c.model, 0.0) + c.cost
         d = details.setdefault(c.purpose, {
             "usd": 0.0, "calls": 0, "flex": 0, "in": 0, "cached": 0, "out": 0, "reasoning": 0,
             "audio_s": 0.0, "models": [],
@@ -199,6 +222,8 @@ def summary(calls: list[Call]) -> dict:
         "by_purpose": {k: round(by_purpose[k], 4) for k in order},
         "calls": len(calls),
         "models": sorted({c.model for c in calls}),
+        # what each model cost (2026-11-16: the 💸 card of a check over its limit names the dear model)
+        "by_model": {m: round(v, 4) for m, v in sorted(by_model.items(), key=lambda kv: -kv[1])},
         "details": {k: details[k] for k in order},
     }
 
@@ -210,9 +235,12 @@ def merge(total: dict | None, extra: dict | None, prefix: str = "") -> dict | No
         return total
     out = dict(total or {"total_usd": 0.0, "by_purpose": {}, "calls": 0, "models": [], "details": {}})
     by_purpose = dict(out.get("by_purpose") or {})
+    by_model = dict(out.get("by_model") or {})
     details = {k: dict(v) for k, v in (out.get("details") or {}).items()}
     for purpose, value in (extra.get("by_purpose") or {}).items():
         by_purpose[prefix + purpose] = round(by_purpose.get(prefix + purpose, 0.0) + value, 4)
+    for model, value in (extra.get("by_model") or {}).items():
+        by_model[model] = round(by_model.get(model, 0.0) + value, 4)
     for purpose, d in (extra.get("details") or {}).items():
         mine = details.get(prefix + purpose)
         if mine is None:
@@ -228,6 +256,8 @@ def merge(total: dict | None, extra: dict | None, prefix: str = "") -> dict | No
         models=sorted({*out.get("models", []), *extra.get("models", [])}),
         details=details,
     )
+    if by_model:
+        out["by_model"] = dict(sorted(by_model.items(), key=lambda kv: -kv[1]))
     return out
 
 
