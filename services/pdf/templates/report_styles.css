@@ -23,10 +23,12 @@
   --gold: var(--yellow); --blue: var(--moss);
 }
 * { box-sizing: border-box; }
-body { color: var(--text); font-size: 10pt; line-height: 1.5; margin: 0; }
+/* 2026-11-16 (the owner): the inner pages' text ~20% larger (headings ~10%) - on a phone an A4 page is
+   shown screen-wide and the 10pt text read as ~7pt. The cover keeps its sizes (it must fit one page). */
+body { color: var(--text); font-size: 12pt; line-height: 1.5; margin: 0; }
 h2 { color: var(--ink); margin: 0 0 2mm; }
-h2 .en { color: var(--muted); font-weight: 400; font-size: 11pt; }
-.sub { color: var(--muted); font-size: 9.6pt; margin-bottom: 4.5mm; }
+h2 .en { color: var(--muted); font-weight: 400; font-size: 13.2pt; }
+.sub { color: var(--muted); font-size: 11.5pt; margin-bottom: 4.5mm; }
 .page-break { page-break-before: always; }
 
 /* page footer: the symbol + "Bandzilla • n / N" (Brand Guidelines p. 55) */
@@ -34,81 +36,81 @@ h2 .en { color: var(--muted); font-weight: 400; font-size: 11pt; }
 .pagefoot img { height: 3.6mm; vertical-align: -1mm; margin-right: 1.5mm; }
 .pagefoot .pg::after { content: "Bandzilla  •  " counter(page) " / " counter(pages); }
 
-.tag { display: inline-block; font-size: 7.3pt; font-weight: 700; border-radius: 1.5mm; padding: .2mm 1.8mm; white-space: nowrap; }
+.tag { display: inline-block; font-size: 8.8pt; font-weight: 700; border-radius: 1.5mm; padding: .2mm 1.8mm; white-space: nowrap; }
 .tag.lr { background: var(--yellow-bg); color: #6B5200; }
 .tag.gra { background: var(--pink-bg); color: #A3263F; }
 .tag.cc { background: #FCEFF2; color: #8C3A4C; }
 .tag.task { background: var(--mint-bg); color: var(--moss); }
 
-.legend { display: flex; gap: 5mm; font-size: 9pt; color: var(--muted); margin-bottom: 4mm; }
+.legend { display: flex; gap: 5mm; font-size: 10.8pt; color: var(--muted); margin-bottom: 4mm; }
 .legend span { white-space: nowrap; display: inline-flex; align-items: center; gap: 1.5mm; }
 .sw { display: inline-block; width: 7mm; height: 3.5mm; border-radius: 1mm; }
-.essay { border: 1px solid var(--line); border-radius: 3mm; padding: 5mm 6mm; font-size: 10.6pt; line-height: 1.75; }
+.essay { border: 1px solid var(--line); border-radius: 3mm; padding: 5mm 6mm; font-size: 12.7pt; line-height: 1.75; }
 .essay p { margin: 0 0 3.2mm; }
 .essay p:last-child { margin: 0; }
 .good { background: var(--mint-bg); border-radius: 1mm; padding: 0 .6mm; }
 .err { border-bottom: 1.8px solid var(--line-y); }
 .essay s { color: var(--red); text-decoration-color: var(--red); }
 .essay ins { text-decoration: none; color: var(--moss); font-weight: 700; }
-sup.n { font-size: 6.8pt; font-weight: 800; color: var(--lime); background: var(--ink); border-radius: 2mm; padding: 0 1.1mm; margin-left: .4mm; }
+sup.n { font-size: 8.2pt; font-weight: 800; color: var(--lime); background: var(--ink); border-radius: 2mm; padding: 0 1.1mm; margin-left: .4mm; }
 
 /* mistakes */
 .mist { border-bottom: 1px solid var(--line); padding: 1.9mm 0; page-break-inside: avoid; }
-.mist .num { border-radius: 50%; background: var(--ink); color: var(--lime); font-weight: 800; font-size: 9pt; text-align: center; line-height: 6.5mm; margin-top: .3mm; }
-.mist .fix { font-size: 10.6pt; }
+.mist .num { border-radius: 50%; background: var(--ink); color: var(--lime); font-weight: 800; font-size: 10.8pt; text-align: center; line-height: 6.5mm; margin-top: .3mm; }
+.mist .fix { font-size: 12.7pt; }
 .mist .w { color: var(--red); text-decoration: line-through; text-decoration-color: var(--red); }
 .mist .r { color: var(--moss); font-weight: 700; }
-.mist .why { font-size: 9.7pt; color: var(--muted); margin-top: .6mm; }
+.mist .why { font-size: 11.6pt; color: var(--muted); margin-top: .6mm; }
 .mist.ask { background: var(--mint-soft); border-radius: 2mm; }
-.mist.ask .q { font-size: 9.7pt; color: var(--moss); font-weight: 700; margin-top: .6mm; }
+.mist.ask .q { font-size: 11.6pt; color: var(--moss); font-weight: 700; margin-top: .6mm; }
 
 /* vocab */
-table.voc { width: 100%; border-collapse: collapse; font-size: 10pt; }
-table.voc th { text-align: left; font-size: 7.8pt; font-weight: 800; text-transform: uppercase; letter-spacing: .9px; color: var(--muted); border-bottom: 1.5px solid var(--ink); padding: 1.5mm 2mm; }
+table.voc { width: 100%; border-collapse: collapse; font-size: 12pt; }
+table.voc th { text-align: left; font-size: 9.4pt; font-weight: 800; text-transform: uppercase; letter-spacing: .9px; color: var(--muted); border-bottom: 1.5px solid var(--ink); padding: 1.5mm 2mm; }
 table.voc td { border-bottom: 1px solid var(--line); padding: 2mm; vertical-align: top; line-height: 1.38; }
 table.voc tr { page-break-inside: avoid; }
 table.voc td.term { color: var(--ink); font-weight: 800; width: 24%; }
 table.voc td.mean { width: 34%; }
 table.voc td.exm { color: #3D5149; font-style: italic; }
 /* the meaning in Uzbek under the English one (services/ai/vocab_uz.py) */
-table.voc .uz { margin-top: 1mm; font-size: 9pt; color: var(--moss); line-height: 1.35; }
-table.voc .uz span { display: inline-block; font-size: 6.4pt; font-weight: 800; letter-spacing: .6px; color: var(--moss); background: var(--mint-bg); border-radius: 1mm; padding: 0 1.2mm; margin-right: 1.6mm; vertical-align: 1px; }
+table.voc .uz { margin-top: 1mm; font-size: 10.8pt; color: var(--moss); line-height: 1.35; }
+table.voc .uz span { display: inline-block; font-size: 7.7pt; font-weight: 800; letter-spacing: .6px; color: var(--moss); background: var(--mint-bg); border-radius: 1mm; padding: 0 1.2mm; margin-right: 1.6mm; vertical-align: 1px; }
 
 /* the AI note at the end of every report (the user, 2026-11-10): the band comes from AI, +-0.5 */
-.ai-note { margin-top: 10mm; background: var(--wash); border-radius: 2mm; padding: 2.6mm 4mm; font-size: 9.2pt; color: #3D5149; text-align: center; page-break-inside: avoid; }
+.ai-note { margin-top: 10mm; background: var(--wash); border-radius: 2mm; padding: 2.6mm 4mm; font-size: 11pt; color: #3D5149; text-align: center; page-break-inside: avoid; }
 .ai-note b { color: var(--ink); }
-.disc { margin-top: 3mm; font-size: 8pt; color: var(--faint); text-align: center; }
+.disc { margin-top: 3mm; font-size: 9.6pt; color: var(--faint); text-align: center; }
 
 /* model answer */
-.sample-note { background: var(--mint-soft); color: var(--moss); font-size: 9.4pt; border-radius: 2mm; padding: 2.5mm 4mm; margin-bottom: 3mm; }
-.sample { border: 1px solid var(--line); border-left: 1.6mm solid var(--yellow); border-radius: 3mm; font-size: 11pt; line-height: 1.6; padding: 4mm 5.5mm; }
+.sample-note { background: var(--mint-soft); color: var(--moss); font-size: 11.3pt; border-radius: 2mm; padding: 2.5mm 4mm; margin-bottom: 3mm; }
+.sample { border: 1px solid var(--line); border-left: 1.6mm solid var(--yellow); border-radius: 3mm; font-size: 13.2pt; line-height: 1.6; padding: 4mm 5.5mm; }
 .sample p { margin: 0 0 2.4mm; } .sample p:last-child { margin: 0; }
 .sample .ph { color: var(--faint); font-style: italic; }
-.sample-meta { font-size: 9pt; color: var(--muted); margin-top: 2mm; text-align: right; }
+.sample-meta { font-size: 10.8pt; color: var(--muted); margin-top: 2mm; text-align: right; }
 
 .copy { background: #E9EFEC; border-bottom: 1.6px dashed var(--faint); border-radius: 1mm; padding: 0 .6mm; color: #4A5C55; }
-.copy-tip { font-size: 9.2pt; color: #4A5C55; background: var(--wash); border-left: 1.2mm solid var(--faint); border-radius: 1.5mm; padding: 2mm 3.5mm; margin-top: 3.5mm; }
+.copy-tip { font-size: 11pt; color: #4A5C55; background: var(--wash); border-left: 1.2mm solid var(--faint); border-radius: 1.5mm; padding: 2mm 3.5mm; margin-top: 3.5mm; }
 .mist .side .tag { margin: 0; }
 
 /* progress */
 .prog { margin-top: 0; background: var(--mint-soft); border-radius: 3mm; padding: 3.5mm 5mm; page-break-inside: avoid; }
-.chip { font-size: 8pt; font-weight: 800; border-radius: 4mm; padding: .4mm 2.6mm; }
+.chip { font-size: 9.6pt; font-weight: 800; border-radius: 4mm; padding: .4mm 2.6mm; }
 .chip.up { background: var(--mint); color: var(--moss); }
 .chip.down { background: var(--yellow-bg); color: #6B5200; }
 .chip.eq { background: #E9EFEC; color: #4A5C55; }
-.prog .pn { font-size: 8.6pt; color: var(--muted); margin-top: 2mm; }
-.prog .first { font-size: 10pt; color: #3D5149; }
+.prog .pn { font-size: 10.3pt; color: var(--muted); margin-top: 2mm; }
+.prog .first { font-size: 12pt; color: #3D5149; }
 
 h2, .sub { page-break-after: avoid; }
 
 @page :first { margin: 0; @bottom-center { content: none; } }
 
 /* section headings on inner pages (Brand Guidelines p. 55: h2 Unbounded 600 17pt -3.5%) */
-h2 { font-weight: 600; font-size: 17pt; letter-spacing: -.6pt; line-height: 1.15; }
-.kick { font-weight: 800; font-size: 7.5pt; letter-spacing: 2px; color: var(--moss); text-transform: uppercase; margin-bottom: 1mm; }
+h2 { font-weight: 600; font-size: 18.7pt; letter-spacing: -.6pt; line-height: 1.15; }
+.kick { font-weight: 800; font-size: 9pt; letter-spacing: 2px; color: var(--moss); text-transform: uppercase; margin-bottom: 1mm; }
 
 /* ---------- COVER ---------- */
-.cover { position: relative; }
+.cover { position: relative; font-size: 10pt; }  /* the cover keeps its sizes: it must fit one page */
 .hero { background: var(--ink) url(img/skin-ink.svg) no-repeat; background-size: 210mm auto; color: #fff; padding: 11mm 16mm 30mm; position: relative; }
 .hero-in { position: relative; display: flex; justify-content: space-between; align-items: center; }
 .brandrow { position: relative; display: flex; justify-content: space-between; align-items: center; margin-bottom: 6mm; }
@@ -184,15 +186,15 @@ h2 { font-weight: 600; font-size: 17pt; letter-spacing: -.6pt; line-height: 1.15
 .mhead { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4.5mm; }
 /* Band badge: Ink, a yellow label, an Unbounded number (p. 54) */
 .bandbadge { background: var(--ink); color: #fff; border-radius: 3mm; padding: 2.2mm 5mm 2.6mm; text-align: center; min-width: 26mm; }
-.bandbadge span { display: block; font-weight: 800; font-size: 7pt; letter-spacing: 2px; text-transform: uppercase; color: var(--yellow); white-space: nowrap; }
-.bandbadge b { display: block; font-weight: 700; font-size: 22pt; line-height: 1; margin-top: .8mm; }
-.qbox { background: var(--mint-bg); border-radius: 3mm; padding: 3.2mm 4.5mm; font-size: 9.8pt; font-style: italic; color: #2D4239; line-height: 1.5; margin-bottom: 4mm; }
-.qbox .ql { font-weight: 800; font-size: 7.4pt; font-style: normal; letter-spacing: 1.6px; text-transform: uppercase; color: var(--moss); margin-bottom: 1mm; }
-.checkh { font-weight: 700; font-size: 13pt; letter-spacing: -.3pt; color: var(--ink); margin: 8mm 0 3mm; }
-.ck { display: flex; align-items: flex-start; border-bottom: 1px solid var(--line); padding: 2.6mm 0; font-size: 10.2pt; color: var(--text); }
+.bandbadge span { display: block; font-weight: 800; font-size: 8.4pt; letter-spacing: 2px; text-transform: uppercase; color: var(--yellow); white-space: nowrap; }
+.bandbadge b { display: block; font-weight: 700; font-size: 24.2pt; line-height: 1; margin-top: .8mm; }
+.qbox { background: var(--mint-bg); border-radius: 3mm; padding: 3.2mm 4.5mm; font-size: 11.8pt; font-style: italic; color: #2D4239; line-height: 1.5; margin-bottom: 4mm; }
+.qbox .ql { font-weight: 800; font-size: 8.9pt; font-style: normal; letter-spacing: 1.6px; text-transform: uppercase; color: var(--moss); margin-bottom: 1mm; }
+.checkh { font-weight: 700; font-size: 14.3pt; letter-spacing: -.3pt; color: var(--ink); margin: 8mm 0 3mm; }
+.ck { display: flex; align-items: flex-start; border-bottom: 1px solid var(--line); padding: 2.6mm 0; font-size: 12.2pt; color: var(--text); }
 .ck > i { flex: none; display: block; width: 4.2mm; height: 4.2mm; border: 1.4px solid var(--moss); border-radius: 1mm; margin-top: .4mm; margin-right: 3.5mm; }
 .ck b { color: var(--ink); }
-.ck span { display: block; font-size: 8pt; color: var(--faint); margin-top: .4mm; }
+.ck span { display: block; font-size: 9.6pt; color: var(--faint); margin-top: .4mm; }
 
 /* ---- Bundled fonts (fonts/, SIL OFL): Unbounded, Manrope, Caveat. WeasyPrint 63
    ignores unicode-range, so each subset is its own family and the font-family
@@ -225,8 +227,8 @@ h2, .name, .stat b, .g-num, .cc-score, .well .q, .prio-h .t, .prio .n, .bandbadg
 .mist.ask { padding-left: 12mm; padding-right: 2mm; }
 .mist.ask .num { left: 2mm; }
 .mist.ask .side { right: 2mm; }
-.nomist { font-size: 10.5pt; color: var(--moss); font-weight: 700; }
-.unmarked { font-size: 9.4pt; color: var(--muted); margin-bottom: 3mm; }
+.nomist { font-size: 12.6pt; color: var(--moss); font-weight: 700; }
+.unmarked { font-size: 11.3pt; color: var(--muted); margin-bottom: 3mm; }
 .copy-tip.notice { margin: 0 0 3mm; }
 .qbox .qt { white-space: pre-line; }
 .qimg { display: block; max-width: 100%; max-height: 85mm; margin: 3mm auto 0; border-radius: 2mm; }
@@ -260,7 +262,7 @@ h2, .name, .stat b, .g-num, .cc-score, .well .q, .prio-h .t, .prio .n, .bandbadg
 .compact .toc a { padding: 1.6mm 2.4mm; font-size: 7.6pt; }
 /* progress rows as a table, so label, value and chip never run together
    (WeasyPrint's flexbox ignored the rows' widths: "Overall band8.0 → 8.5") */
-table.ptbl { width: 100%; border-collapse: collapse; font-size: 9.8pt; }
+table.ptbl { width: 100%; border-collapse: collapse; font-size: 11.8pt; }
 table.ptbl td { padding: 1.4mm 0; border-top: 1px solid #D5E5DD; vertical-align: middle; }
 table.ptbl tr:first-child td { border-top: 0; }
 table.ptbl td.l { width: 64mm; padding-right: 3mm; color: #3D5149; }
@@ -268,22 +270,22 @@ table.ptbl td.v { width: 38mm; font-weight: 800; color: var(--ink); }
 /* candidate-specific model answers: where the answer shows a priority - the
    yellow marker (Brand Guidelines p. 46) */
 .shw { background: var(--yellow-bg); border-radius: 1mm; padding: 0 .6mm; }
-sup.k, .shows .k { display: inline-block; font-weight: 800; font-size: 6.8pt; color: var(--ink); background: var(--yellow); border-radius: 2mm; padding: 0 1.2mm; margin-left: .4mm; }
-.shows { margin-top: 2mm; font-size: 9.2pt; color: #3D5149; line-height: 1.45; }
+sup.k, .shows .k { display: inline-block; font-weight: 800; font-size: 8.2pt; color: var(--ink); background: var(--yellow); border-radius: 2mm; padding: 0 1.2mm; margin-left: .4mm; }
+.shows { margin-top: 2mm; font-size: 11pt; color: #3D5149; line-height: 1.45; }
 .shows b { color: var(--ink); }
 .shows div + div { margin-top: .8mm; }
-.mnote { font-size: 8.6pt; color: var(--muted); margin-top: 1mm; }
+.mnote { font-size: 10.3pt; color: var(--muted); margin-top: 1mm; }
 /* the notes under the model answer never start a page alone (the last prompt's B7) */
 .sample-foot { page-break-before: avoid; break-before: avoid; page-break-inside: avoid; break-inside: avoid; }
 .sample p:last-child { page-break-inside: avoid; }
 
 /* "Upgrade ideas" (2026-10-29): acceptable as written, another option only more common - never a mistake */
 .upg-box { margin-top: 5mm; padding: 3mm 4mm; border-radius: 2.5mm; background: var(--mint-soft); page-break-inside: avoid; }
-.upg-h { font-weight: 800; font-size: 11pt; color: var(--ink); }
-.upg-s { font-size: 9.3pt; color: var(--muted); margin: .5mm 0 1.5mm; }
+.upg-h { font-weight: 800; font-size: 13.2pt; color: var(--ink); }
+.upg-s { font-size: 11.2pt; color: var(--muted); margin: .5mm 0 1.5mm; }
 .upg { display: flex; justify-content: space-between; gap: 3mm; padding: 1.4mm 0; border-top: 1px solid var(--line); }
-.upg .fix { font-size: 10.3pt; }
+.upg .fix { font-size: 12.4pt; }
 .upg .o { color: var(--ink); }
 .upg .r { color: var(--moss); font-weight: 700; }
-.upg .why { font-size: 9.4pt; color: var(--muted); margin-top: .4mm; }
+.upg .why { font-size: 11.3pt; color: var(--muted); margin-top: .4mm; }
 .upg .side .tag { margin: 0; }
