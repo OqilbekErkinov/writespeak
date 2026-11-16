@@ -1,7 +1,8 @@
 """The result card (the owner, 2026-11-16): after every check the student gets a picture of their result to post
 on Instagram (a post, or a story) or Telegram - 1080x1350 (4:5; the first 1080x1920 looked too tall in a
 chat), the overall band and the four criteria, a kind word that fits the result, and a different design each
-time (seven layouts in the Bandzilla brand, each with its own mascot mood).
+time (ten layouts in the Bandzilla brand, each with its own mascot mood; since 2026-11-16 in the colours of our
+Instagram carousels too - yellow, pink, mint, white stickers with an ink border).
 
 Never harsh: no "mistakes", no "low" - the words only encourage (the owner: "qattiq so'zlarni ishlatmagin,
 muloyim so'zlar bo'lsin"). The student's name is not printed - the card shows the result, not the person.
@@ -41,13 +42,16 @@ WHITE = (255, 255, 255)
 MINT = (198, 244, 221)
 SUN = (255, 222, 89)
 
-DESIGNS = ("ink_scales", "lime_pop", "paper_ring", "night_glow", "split", "certificate", "bento")
+DESIGNS = ("ink_scales", "lime_pop", "paper_ring", "split", "certificate", "bento",
+           "yellow_big", "pink_gotcha", "goal_arrow", "sticker_list")
 
 # --- words -----------------------------------------------------------------------------------------------------
 
 _WORDS = {
     "uz": {
         "title": "Mening IELTS natijam",
+        "tag": "NATIJAM", "criteria": "4 mezon", "now": "Hozir", "next": "keyingi maqsad",
+        "peak": "Cho‘qqidaman!",
         "overall": "Umumiy ball",
         "best": "Eng kuchli tomonim",
         "even": "Barcha mezonlar bir tekis",
@@ -68,6 +72,8 @@ _WORDS = {
     },
     "ru": {
         "title": "Мой результат IELTS",
+        "tag": "РЕЗУЛЬТАТ", "criteria": "4 критерия", "now": "Сейчас", "next": "следующая цель",
+        "peak": "На вершине!",
         "overall": "Общий балл",
         "best": "Моя сильная сторона",
         "even": "Все критерии ровно",
@@ -88,6 +94,7 @@ _WORDS = {
     },
     "en": {
         "title": "My IELTS result",
+        "tag": "MY RESULT", "criteria": "4 criteria", "now": "Now", "next": "next goal", "peak": "At the top!",
         "overall": "Overall band",
         "best": "My strongest skill",
         "even": "All criteria even",
@@ -179,6 +186,14 @@ def _asset(name: str) -> Image.Image:
 def _sized(name: str, height: int) -> Image.Image:
     im = _asset(name)
     return im.resize((round(im.width * height / im.height), height), Image.LANCZOS)
+
+
+def _tinted(name: str, color) -> Image.Image:
+    """An asset's shape in one flat colour (a zigzag in pink)."""
+    im = _asset(name)
+    flat = Image.new("RGBA", im.size, (*color, 255))
+    flat.putalpha(im.getchannel("A"))
+    return flat
 
 
 def _sized_w(name: str, width: int) -> Image.Image:
@@ -427,43 +442,12 @@ def _d_paper_ring(c: dict) -> Image.Image:
     return img
 
 
-def _d_night_glow(c: dict) -> Image.Image:
-    img = _gradient((4, 22, 17), (10, 92, 58))
-    _glow(img, (160, 360), 260, LIME, 70)
-    _glow(img, (W - 120, 860), 300, SKIN, 80)
-    w = c["words"]
-    _header(img, "logo-on-dark", w, c["day"], (170, 215, 195))
-    d = ImageDraw.Draw(img)
-    _text(d, W / 2, 168, c["label"].upper(), _font("Manrope", 30, 800), LIME, anchor="m", spacing=6)
-    box = (PAD, 226, W - PAD, 566)
-    _rrect(img, box, 50, (255, 255, 255, 26), outline=(255, 255, 255, 60), width=2)
-    pet = _sized(c["mascot"], 210)
-    _paste(img, pet, W - PAD - pet.width + 40, 566 - pet.height + 60, rotate=-6)
-    d = ImageDraw.Draw(img)
-    _text(d, W / 2, 266, w["overall"].upper(), _font("Manrope", 26, 800), (190, 230, 212), anchor="m", spacing=4)
-    _text(d, W / 2, 316, _band(c["band"]), _font("Unbounded", 200, 800), WHITE, anchor="m")
-    _text(d, W / 2, 648, c["cheer"], _fit(d, c["cheer"], "Unbounded", 46, 700, W - 2 * PAD), WHITE, anchor="m")
-    if c["best"]:
-        _text(d, W / 2, 712, c["best"], _fit(d, c["best"], "Manrope", 30, 600, W - 2 * PAD), (190, 230, 212),
-              anchor="m")
-    tw, gap = (W - 2 * PAD - 3 * 20) // 4, 20
-    for i, (short, full, v) in enumerate(c["rows"]):
-        x = PAD + i * (tw + gap)
-        _rrect(img, (x, 790, x + tw, 1010), 32, (255, 255, 255, 30), outline=(255, 255, 255, 70), width=2)
-        d = ImageDraw.Draw(img)
-        _text(d, x + tw / 2, 832, short, _font("Unbounded", 28, 700), LIME, anchor="m")
-        _text(d, x + tw / 2, 890, _band(v), _font("Unbounded", 48, 800), WHITE, anchor="m")
-        _bar(img, x + 26, 970, tw - 52, 10, v, (255, 255, 255, 50), LIME)
-    _footer(img, w, c["bot"], WHITE, (190, 230, 212), LIME, INK)
-    return img
-
-
 def _d_split(c: dict) -> Image.Image:
     img = Image.new("RGBA", (W, H), INK)
     top = _layer()
-    ImageDraw.Draw(top).polygon([(0, 0), (W, 0), (W, 600), (0, 740)], fill=LIME)
+    ImageDraw.Draw(top).polygon([(0, 0), (W, 0), (W, 600), (0, 740)], fill=PINK)  # pink since 2026-11-16
     img.alpha_composite(top)
-    zz = _sized_w("zigzag-lime", W).resize((W, 56))
+    zz = _tinted("zigzag-lime", PINK).resize((W, 56))
     w = c["words"]
     _header(img, "logo-on-lime", w, c["day"], INK)
     d = ImageDraw.Draw(img)
@@ -474,16 +458,16 @@ def _d_split(c: dict) -> Image.Image:
     pet = _sized(c["mascot"], 340)
     _paste(img, pet, W - pet.width - 50, 296)
     d = ImageDraw.Draw(img)
-    _text(d, PAD, 760, c["cheer"], _fit(d, c["cheer"], "Caveat", 84, 700, W - 2 * PAD), LIME)
+    _text(d, PAD, 760, c["cheer"], _fit(d, c["cheer"], "Caveat", 84, 700, W - 2 * PAD), YELLOW)
     y = 856
     for short, full, v in c["rows"]:
         d = ImageDraw.Draw(img)
-        _text(d, PAD, y, short, _font("Unbounded", 32, 800), LIME)
+        _text(d, PAD, y, short, _font("Unbounded", 32, 800), PINK)
         _text(d, PAD + 120, y + 4, full, _font("Manrope", 30, 600), (190, 225, 210))
         _text(d, W - PAD, y - 2, _band(v), _font("Unbounded", 36, 800), WHITE, anchor="r")
         y += 50
     _paste(img, zz, 0, H - zz.height)
-    _footer(img, w, c["bot"], WHITE, (170, 205, 190), LIME, INK, y=1104)
+    _footer(img, w, c["bot"], WHITE, (170, 205, 190), PINK, INK, y=1104)
     return img
 
 
@@ -533,8 +517,8 @@ def _d_bento(c: dict) -> Image.Image:
     g = 22
     L, R = PAD - 30, W - PAD + 30
     mid = (L + R) // 2
-    _rrect(img, (L, 142, mid + 120, 520), 44, LIME)
-    _rrect(img, (mid + 120 + g, 142, R, 520), 44, MOSS)
+    _rrect(img, (L, 142, mid + 120, 520), 44, YELLOW)  # the carousels' colours since 2026-11-16
+    _rrect(img, (mid + 120 + g, 142, R, 520), 44, PINK)
     d = ImageDraw.Draw(img)
     _text(d, L + 46, 186, c["label"].upper(), _fit(d, c["label"].upper(), "Manrope", 26, 800, mid + 40 - L - 46), INK,
           spacing=3)
@@ -545,9 +529,9 @@ def _d_bento(c: dict) -> Image.Image:
     _paste(img, pet, mid + 120 + g + (cw - pet.width) / 2, 520 - pet.height - 20)
     _rrect(img, (L, 520 + g, R, 690), 44, (20, 58, 45))
     d = ImageDraw.Draw(img)
-    _text(d, W / 2, 592, c["cheer"], _fit(d, c["cheer"], "Caveat", 76, 700, R - L - 80), LIME, anchor="m")
+    _text(d, W / 2, 592, c["cheer"], _fit(d, c["cheer"], "Caveat", 76, 700, R - L - 80), YELLOW, anchor="m")
     tw = (R - L - g) // 2
-    colors = [(255, 255, 255), MINT, MINT, (255, 255, 255)]
+    colors = [LIME, (255, 227, 233), MINT, (255, 241, 196)]
     for i, (short, full, v) in enumerate(c["rows"]):
         x = L + (i % 2) * (tw + g)
         y = 712 + (i // 2) * (160 + g)
@@ -555,13 +539,196 @@ def _d_bento(c: dict) -> Image.Image:
         d = ImageDraw.Draw(img)
         _text(d, x + 36, y + 30, full, _fit(d, full, "Manrope", 26, 700, tw - 72), (60, 95, 80))
         _text(d, x + 36, y + 78, _band(v), _font("Unbounded", 52, 800), INK)
-        _bar(img, x + 190, y + 100, tw - 226, 12, v, (210, 228, 219), SKIN)
+        _bar(img, x + 190, y + 100, tw - 226, 12, v, (255, 255, 255, 150), INK)
     _footer(img, w, c["bot"], WHITE, (170, 205, 190), LIME, INK, y=1124)
     return img
 
 
+# --- the carousel look (the owner, 2026-11-16: "like our Instagram carousels - not everything green") ----------
+# The brand's social posts: yellow, pink, mint and lime grounds, black Unbounded headlines, white "sticker" cards
+# with a thick ink border and a hard offset shadow, a small ink tag top-left, Caveat notes in red, a huge faded
+# word behind, the mascot big at the side.
+
+YELLOW = (251, 220, 101)
+PINK = (251, 120, 145)
+RED_NOTE = (214, 40, 78)
+
+
+def _sticker(img: Image.Image, box, fill=WHITE, radius: int = 26, border: int = 5, shadow: int = 12,
+             rotate: float = 0, draw=None) -> None:
+    """A white card with an ink border and a hard ink shadow down-right (the carousels' cards), optionally
+    tilted; `draw(d, w, h)` writes its content in the card's own coordinates before it is tilted."""
+    x0, y0, x1, y1 = (round(v) for v in box)
+    w, h = x1 - x0, y1 - y0
+    card = Image.new("RGBA", (w + shadow + 2 * border, h + shadow + 2 * border), (0, 0, 0, 0))
+    cd = ImageDraw.Draw(card)
+    cd.rounded_rectangle((shadow, shadow, w + shadow, h + shadow), radius, fill=INK)
+    cd.rounded_rectangle((0, 0, w, h), radius, fill=fill, outline=INK, width=border)
+    if draw is not None:
+        draw(ImageDraw.Draw(card), w, h)
+    if rotate:
+        card = card.rotate(rotate, resample=Image.BICUBIC, expand=True)
+    img.alpha_composite(card, (x0 - (card.width - (w + shadow + 2 * border)) // 2,
+                               y0 - (card.height - (h + shadow + 2 * border)) // 2))
+
+
+def _tag(img: Image.Image, x: int, y: int, text: str, bg=INK, fg=LIME) -> None:
+    """The carousels' top-left tag: an ink pill with the symbol and a word in Lime."""
+    font = _font("Manrope", 26, 800)
+    d = ImageDraw.Draw(img)
+    tw = d.textlength(text, font=font) + 3 * (len(text) - 1)
+    sym = _sized("symbol-on-dark", 40)
+    w, h = 22 + sym.width + 12 + tw + 26, 58
+    _rrect(img, (x, y, x + w, y + h), h // 2, bg)
+    _paste(img, sym, x + 18, y + 9)
+    _text(ImageDraw.Draw(img), x + 22 + sym.width + 12, y + 19, text, font, fg, spacing=3)
+
+
+def _corner(img: Image.Image, day: str, fg=INK) -> None:
+    _text(ImageDraw.Draw(img), W - PAD, 82, day, _font("Unbounded", 26, 700), fg, anchor="r")
+
+
+def _outlined(d: ImageDraw.ImageDraw, x: float, y: float, s: str, font, fill, stroke, width: int,
+              anchor: str = "l") -> None:
+    """White letters with an ink outline (the carousels' "Topa olasizmi?")."""
+    w = d.textlength(s, font=font)
+    if anchor == "m":
+        x -= w / 2
+    d.text((x, y - _cap_top(font)), s, font=font, fill=fill, stroke_width=width, stroke_fill=stroke)
+
+
+def _rows_in_card(rows, label: str, value_color=INK, name_size: int = 30):
+    """The four criteria inside a sticker: an ink label pill, then name ... band per row."""
+    def draw(d, w, h):
+        lab = _font("Manrope", 22, 800)
+        lw = d.textlength(label, font=lab) + 2 * (len(label) - 1)
+        d.rounded_rectangle((30, 28, 30 + lw + 32, 70), 10, fill=INK)
+        _text(d, 46, 39, label, lab, LIME, spacing=2)
+        y = 104
+        step = (h - 130) / max(len(rows), 1)
+        for i, (short, full, v) in enumerate(rows):
+            _text(d, 34, y, full, _fit(d, full, "Manrope", name_size, 700, w - 190), INK)
+            _text(d, w - 34, y - 4, _band(v), _font("Unbounded", 36, 800), value_color, anchor="r")
+            if i < len(rows) - 1:
+                d.line((34, y + step - 22, w - 34, y + step - 22), fill=(222, 230, 226), width=2)
+            y += step
+    return draw
+
+
+def _d_yellow_big(c: dict) -> Image.Image:
+    img = Image.new("RGBA", (W, H), YELLOW)
+    w = c["words"]
+    _tag(img, PAD, 64, w["tag"])
+    _corner(img, c["day"])
+    d = ImageDraw.Draw(img)
+    _text(d, PAD, 172, c["label"], _font("Unbounded", 40, 700), INK)
+    _text(d, PAD - 8, 236, _band(c["band"]),
+          _fit(d, _band(c["band"]), "Unbounded", 270, 800, W - 2 * PAD - 300, min_size=200), INK)
+    _text(d, PAD, 470, c["cheer"], _fit(d, c["cheer"], "Caveat", 72, 700, W - 2 * PAD - 340), RED_NOTE)
+    pet = _sized(c["mascot"], 420)
+    _paste(img, pet, W - pet.width - 40, 250)
+    _sticker(img, (PAD, 580, W - PAD - 10, 1040), rotate=-1.2,
+             draw=_rows_in_card(c["rows"], w["criteria"].upper()))
+    _footer(img, w, c["bot"], INK, (60, 50, 20), INK, YELLOW)
+    return img
+
+
+def _d_pink_gotcha(c: dict) -> Image.Image:
+    img = Image.new("RGBA", (W, H), PINK)
+    d = ImageDraw.Draw(img)
+    ghost = ("WRITING" if c["module"] == "writing" else "SPEAKING")
+    _text(d, -40, 470, ghost, _font("Unbounded", 230, 800), (236, 100, 128))
+    w = c["words"]
+    _tag(img, PAD, 64, w["tag"])
+    _corner(img, c["day"])
+    d = ImageDraw.Draw(img)
+    _text(d, PAD, 172, w["title"], _fit(d, w["title"], "Unbounded", 52, 800, W - 2 * PAD), INK)
+    _text(d, PAD, 240, c["label"], _font("Manrope", 34, 700), INK)
+    _outlined(d, PAD - 6, 312, _band(c["band"]), _font("Unbounded", 230, 800), WHITE, INK, 7)
+    pet = _sized(c["mascot"], 330)
+    _paste(img, pet, W - pet.width - 50, 240, rotate=4)
+    _text(d, PAD, 560, c["cheer"], _fit(d, c["cheer"], "Caveat", 70, 700, W - 2 * PAD), (120, 10, 40))
+
+    def grid(dd, cw, ch):
+        half = (cw - 40) // 2
+        for i, (short, full, v) in enumerate(c["rows"]):
+            x = 26 + (i % 2) * (half + 12)
+            y = 26 + (i // 2) * ((ch - 52) // 2)
+            dd.rounded_rectangle((x, y, x + half - 12, y + (ch - 52) // 2 - 14), 18, fill=(255, 236, 241))
+            _text(dd, x + 24, y + 26, full, _fit(dd, full, "Manrope", 24, 700, half - 60), (120, 10, 40))
+            _text(dd, x + 24, y + 70, _band(v), _font("Unbounded", 50, 800), INK)
+    _sticker(img, (PAD, 660, W - PAD - 10, 1040), rotate=1.2, draw=grid)
+    _footer(img, w, c["bot"], INK, (90, 20, 40), INK, PINK)
+    return img
+
+
+def _d_goal_arrow(c: dict) -> Image.Image:
+    img = Image.new("RGBA", (W, H), MINT)
+    w = c["words"]
+    _tag(img, PAD, 64, w["tag"])
+    _corner(img, c["day"])
+    d = ImageDraw.Draw(img)
+    _text(d, PAD, 172, c["label"], _font("Unbounded", 40, 700), INK)
+    band = c["band"]
+    top = band >= 9
+    goal = 9.0 if top else min(9.0, band + 0.5)
+    _text(d, PAD, 250, w["now"], _font("Manrope", 30, 800), MOSS)
+    big = _font("Unbounded", 160, 800)
+    _text(d, PAD - 6, 296, _band(band), big, INK)
+    if top:
+        _text(d, PAD + 10, 520, w["peak"], _fit(d, w["peak"], "Caveat", 80, 700, 600), RED_NOTE)
+    else:
+        # a red arrow from the right of today's band, curving down to the next goal (the carousels' "6.0 -> 7.0")
+        x0 = PAD + d.textlength(_band(band), font=big) + 18
+        p0, p1, p2 = (x0, 360), (x0 + 150, 340), (x0 + 130, 470)
+        pts = [((1 - t) ** 2 * p0[0] + 2 * (1 - t) * t * p1[0] + t * t * p2[0],
+                (1 - t) ** 2 * p0[1] + 2 * (1 - t) * t * p1[1] + t * t * p2[1]) for t in [i / 24 for i in range(25)]]
+        layer = _layer()
+        ld = ImageDraw.Draw(layer)
+        ld.line(pts, fill=RED_NOTE, width=10, joint="curve")
+        ex, ey = p2
+        ld.polygon([(ex - 22, ey - 6), (ex + 20, ey - 10), (ex - 2, ey + 30)], fill=RED_NOTE)
+        img.alpha_composite(layer)
+        d = ImageDraw.Draw(img)
+        _text(d, x0 + 40, 500, _band(goal), big, MOSS)
+        _text(d, PAD, 560, w["next"], _font("Caveat", 64, 700), RED_NOTE)
+    pet = _sized(c["mascot"], 300)
+    _paste(img, pet, W - pet.width - 40, 170)
+    _sticker(img, (PAD, 690, W - PAD - 10, 1060), rotate=-1,
+             draw=_rows_in_card(c["rows"], w["criteria"].upper(), value_color=MOSS, name_size=28))
+    _footer(img, w, c["bot"], INK, (40, 80, 60), INK, LIME, y=1140)
+    return img
+
+
+def _d_sticker_list(c: dict) -> Image.Image:
+    img = Image.new("RGBA", (W, H), (9, 98, 60))
+    _scales(img, (12, 108, 67), (16, 120, 75), r=56)
+    w = c["words"]
+    _tag(img, PAD, 64, w["tag"], bg=LIME, fg=INK)
+    _corner(img, c["day"], fg=(200, 240, 220))
+    d = ImageDraw.Draw(img)
+    _text(d, PAD, 172, c["label"], _font("Unbounded", 40, 700), WHITE)
+    _text(d, PAD - 8, 236, _band(c["band"]),
+          _fit(d, _band(c["band"]), "Unbounded", 230, 800, W - 2 * PAD - 320, min_size=180), WHITE)
+    _text(d, PAD, 452, c["cheer"], _fit(d, c["cheer"], "Caveat", 70, 700, W - 2 * PAD - 240), SUN)
+    pet = _sized(c["mascot"], 340)
+    _paste(img, pet, W - pet.width - 50, 180)
+    y = 556
+    for i, (short, full, v) in enumerate(c["rows"]):
+        def row(dd, cw, ch, short=short, full=full, v=v):
+            _text(dd, 30, 36, short, _font("Unbounded", 36, 800), MOSS)
+            _text(dd, 150, 40, full, _fit(dd, full, "Manrope", 28, 700, cw - 330), INK)
+            _text(dd, cw - 30, 32, _band(v), _font("Unbounded", 40, 800), INK, anchor="r")
+        _sticker(img, (PAD, y, W - PAD - 10, y + 108), radius=22, shadow=9, rotate=(-0.8 if i % 2 else 0.8),
+                 fill=(WHITE if i % 2 else (255, 247, 214)), draw=row)
+        y += 132
+    _footer(img, w, c["bot"], WHITE, (200, 240, 220), YELLOW, INK, y=1124)
+    return img
+
+
 _DRAW = {"ink_scales": _d_ink_scales, "lime_pop": _d_lime_pop, "paper_ring": _d_paper_ring,
-         "night_glow": _d_night_glow, "split": _d_split, "certificate": _d_certificate, "bento": _d_bento}
+         "split": _d_split, "certificate": _d_certificate, "bento": _d_bento, "yellow_big": _d_yellow_big,
+         "pink_gotcha": _d_pink_gotcha, "goal_arrow": _d_goal_arrow, "sticker_list": _d_sticker_list}
 
 
 def build_story_card(*, module: str, task: str, band: float, criteria: dict, lang: str = "uz",
@@ -584,7 +751,7 @@ def build_story_card(*, module: str, task: str, band: float, criteria: dict, lan
         best = f"{words['best']}: {tops[0]} {_band(top_value)}" if len(tops) < len(rows) else \
             f"{words['even']}: {_band(top_value)}"
     c = {
-        "band": float(band), "rows": rows, "words": words, "bot": bot_username,
+        "band": float(band), "rows": rows, "words": words, "bot": bot_username, "module": module,
         "cheer": rnd.choice(words["cheers"][level]),
         "best": best,
         "label": _TASKS.get(task, "IELTS"),

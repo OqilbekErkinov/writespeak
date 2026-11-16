@@ -1,7 +1,7 @@
 """The student's result card for an Instagram / Telegram story (the owner, 2026-11-16): sent by itself right after
 every report (bot/handlers/writing.py, speaking.py: send_story), and again - in another design - from the
 report's "📸" button or the card's own "🎨 Boshqa dizayn". services/image/story_card.py draws it: the overall
-band and the four criteria, a kind word that fits the result, seven designs; the student's previous design is
+band and the four criteria, a kind word that fits the result, ten designs; the student's previous design is
 never repeated next (Redis story:last:<user>). The caption carries their referral link, so a forwarded card
 brings friends in as their invitees (bot/keyboards/account_kb.py referral_link).
 

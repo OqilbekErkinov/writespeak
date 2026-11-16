@@ -74,7 +74,7 @@ def unit() -> None:
         repeats += used == prev
         seen.add(used)
         prev = used
-    check("a new card is never the student's previous design; all 7 come up", repeats == 0
+    check("a new card is never the student's previous design; all 10 come up", repeats == 0
           and seen == set(sc.DESIGNS), (repeats, seen))
 
     # kind words only: no "mistake", "bad", "low", "weak" in any language
