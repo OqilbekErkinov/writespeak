@@ -73,7 +73,7 @@ async def main() -> None:
     check("after a while: a one-tap vocabulary question with three options", asked
           and len(asked[-1][1].inline_keyboard[0]) == 3 and "🧠" in asked[-1][0], texts[-1][-200:])
     q = card.quiz[-1]
-    right = live._choices(q).index(live.QUIZ[q][1])
+    right = card.choices(q).index(live.QUIZ[q][1])
     check("...the right option counts", card.answer(q, right) is True and card.answer(q, right) is None)
     await asyncio.sleep(0.08)
     check("...shown at once: 'To'g'ri!' and the score", "To'g'ri!" in msg.edits[-1][0] and "1/1" in msg.edits[-1][0]
@@ -103,6 +103,34 @@ async def main() -> None:
     await asyncio.sleep(0.08)
     check("English, Task 1: its own usual time", "usually 3–6 minutes" in msg3.edits[-1][0])
     await live.end(card3)
+
+    # 2026-11-16 (the owner): the same student's checks (a Task 1, then a Task 2...) met the same four words in
+    # the same order, the options always in one order - now each card draws its own
+    live._recent.clear()
+    runs = []
+    for n in range(3):
+        c = live.Waiting(msg=FakeMessage(100 + n), lang="uz", kind="writing")
+        for _ in range(4):
+            c._next_question()
+        runs.append(c.quiz)
+    check("three checks in a row for one student: 12 different words, none repeated", len({q for r in runs for q in r})
+          == 12, runs)
+    positions = set()
+    for n in range(40):
+        c = live.Waiting(msg=FakeMessage(200 + n), lang="uz", kind="writing")
+        c._next_question()
+        q = c.quiz[-1]
+        positions.add(c.choices(q).index(live.QUIZ[q][1]))
+        check_ok = c.answer(q, c.choices(q).index(live.QUIZ[q][1]))
+        if check_ok is not True:
+            positions.add("broken")
+    check("the right option moves around (every position over 40 cards), and the card's own order is the one "
+          "answered", positions == {0, 1, 2}, positions)
+    live._recent.clear()
+    first_words = {live.Waiting(msg=FakeMessage(300 + n), lang="uz", kind="writing").rng.randrange(10**6)
+                   for n in range(5)}
+    check("each card rolls its own dice", len(first_words) == 5)
+    check("80 words to ask, no word twice", len(live.QUIZ) == 80 and len({w for w, *_ in live.QUIZ}) == 80)
 
 
 if __name__ == "__main__":

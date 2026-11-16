@@ -22,7 +22,9 @@ import hashlib
 import logging
 import math
 import random
+import secrets
 import time
+from collections import OrderedDict, deque
 from dataclasses import dataclass, field
 
 from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
@@ -204,10 +206,50 @@ QUIZ = [
     ("contemporary", "modern", ("ancient", "temporary")), ("diverse", "varied", ("uniform", "divided")),
     ("frugal", "thrifty", ("wasteful", "fragile")), ("candid", "frank", ("secretive", "candied")),
     ("lucrative", "profitable", ("unpaid", "lucid")), ("negligible", "tiny", ("huge", "negligent")),
+    # 2026-11-16: twice as many, so a student waiting on several checks meets new words
+    ("ambiguous", "unclear", ("obvious", "ambitious")), ("beneficial", "useful", ("harmful", "beneath")),
+    ("coherent", "logical", ("confused", "inherent")), ("deliberate", "intentional", ("accidental", "delicate")),
+    ("eliminate", "remove", ("include", "illuminate")), ("emerge", "appear", ("vanish", "merge")),
+    ("evident", "clear", ("doubtful", "eventual")), ("exceed", "go beyond", ("fall short", "excuse")),
+    ("fundamental", "basic", ("minor", "fun")), ("gradual", "slow and steady", ("sudden", "graduate")),
+    ("hazardous", "dangerous", ("safe", "harmonious")), ("illustrate", "show", ("hide", "illuminate")),
+    ("implement", "carry out", ("abandon", "imply")), ("inadequate", "insufficient", ("plenty", "accurate")),
+    ("inhabitant", "resident", ("visitor", "habit")), ("innovative", "new and original", ("traditional", "invasive")),
+    ("integral", "essential", ("optional", "integer")), ("interpret", "explain", ("confuse", "interrupt")),
+    ("justify", "defend", ("criticise", "adjust")), ("legitimate", "lawful", ("illegal", "legendary")),
+    ("magnitude", "size", ("tiny", "magnet")), ("marginal", "small", ("huge", "marginalised")),
+    ("notion", "idea", ("fact", "motion")), ("obtain", "get", ("lose", "contain")),
+    ("persist", "continue", ("stop", "insist")), ("preliminary", "initial", ("final", "primary")),
+    ("prevalent", "widespread", ("rare", "prevented")), ("pursue", "follow", ("abandon", "persuade")),
+    ("rapid", "fast", ("slow", "rabid")), ("reinforce", "strengthen", ("weaken", "enforce")),
+    ("rigid", "inflexible", ("flexible", "ridiculous")), ("severe", "serious", ("mild", "several")),
+    ("sustain", "maintain", ("drop", "contain")), ("tedious", "boring", ("exciting", "tiny")),
+    ("thrive", "flourish", ("struggle", "thirst")), ("trivial", "unimportant", ("vital", "tribal")),
+    ("unprecedented", "never seen before", ("common", "unpredictable")), ("vast", "huge", ("tiny", "fast")),
+    ("vulnerable", "exposed", ("protected", "valuable")), ("yield", "produce", ("consume", "yell")),
 ]
+
+# The questions each chat saw lately, in this process (2026-11-16: the order came from the chat's id, so a
+# student got the same words in the same order on every check): a new card avoids them.
+RECENT_KEEP = 30
+RECENT_CHATS = 5000
+_recent: "OrderedDict[int, deque[int]]" = OrderedDict()
+
+
+def _seen(chat_id: int) -> set[int]:
+    return set(_recent.get(chat_id, ()))
+
+
+def _remember(chat_id: int, question: int) -> None:
+    seen = _recent.pop(chat_id, None) or deque(maxlen=RECENT_KEEP)
+    seen.append(question)
+    _recent[chat_id] = seen
+    while len(_recent) > RECENT_CHATS:
+        _recent.popitem(last=False)
 
 
 def _choices(index: int) -> list[str]:
+    """The options in a fixed order - only for a card that never shuffled its own (Waiting.choices)."""
     word, right, wrong = QUIZ[index]
     options = [right, *wrong]
     random.Random(index * 7919).shuffle(options)
@@ -225,6 +267,8 @@ class Waiting:
     shown: float = 0.0
     frame: int = 0
     quiz: list[int] = field(default_factory=list)  # the questions asked, in order
+    order: dict[int, list[str]] = field(default_factory=dict)  # question -> its options, shuffled for this card
+    rng: random.Random = field(default_factory=lambda: random.Random(secrets.randbits(64)))  # this card's own dice
     answered: dict[int, str] = field(default_factory=dict)  # question -> the option tapped
     right: int = 0
     result_ticks: int = 0
@@ -313,20 +357,31 @@ class Waiting:
             return None
         q = self.quiz[-1]
         return InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text=o, callback_data=f"{CB_PREFIX}{q}:{i}") for i, o in enumerate(_choices(q))]])
+            InlineKeyboardButton(text=o, callback_data=f"{CB_PREFIX}{q}:{i}") for i, o in enumerate(self.choices(q))]])
+
+    def choices(self, question: int) -> list[str]:
+        return self.order.get(question) or _choices(question)
 
     def _next_question(self) -> None:
+        """A random question this card has not asked and the student did not meet lately, its options shuffled
+        for this card (2026-11-16)."""
         asked = set(self.quiz)
-        left = [i for i in range(len(QUIZ)) if i not in asked]
-        if left:
-            seed = int(hashlib.md5(f"{self.msg.chat.id}:{len(self.quiz)}".encode()).hexdigest()[:6], 16)
-            self.quiz.append(left[seed % len(left)])
+        fresh = [i for i in range(len(QUIZ)) if i not in asked]
+        unseen = [i for i in fresh if i not in _seen(self.msg.chat.id)]
+        pool = unseen or fresh
+        if pool:
+            q = self.rng.choice(pool)
+            options = [QUIZ[q][1], *QUIZ[q][2]]
+            self.rng.shuffle(options)
+            self.order[q] = options
+            self.quiz.append(q)
+            _remember(self.msg.chat.id, q)
 
     def answer(self, question: int, option: int) -> bool | None:
         """A tap on an option: True right, False wrong, None when it is no longer the open question."""
         if not self.quiz or self.quiz[-1] != question or question in self.answered:
             return None
-        chosen = _choices(question)[option]
+        chosen = self.choices(question)[option]
         self.answered[question] = chosen
         ok = chosen == QUIZ[question][1]
         self.right += ok
