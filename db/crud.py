@@ -1388,7 +1388,8 @@ async def _locked_user(session: AsyncSession, user_id: int) -> User | None:
 
 
 async def decide_payment_request(
-    session: AsyncSession, request_id: int, *, approve: bool, admin_id: int, referral_coins: int = 0
+    session: AsyncSession, request_id: int, *, approve: bool, admin_id: int, referral_coins: int = 0,
+    reject_reason: str | None = None,
 ) -> PaymentDecision:
     """Approves or rejects a payment request, adding the coins to the
     buyer's balance on approval. `applied` is False when the request was
@@ -1397,13 +1398,18 @@ async def decide_payment_request(
     The buyer's first approved coin purchase also pays `referral_coins` to
     them and to whoever invited them (once - User.referral_rewarded). A gift
     purchase counts as that purchase too (it is their money), but its coins
-    go to a one-time gift link, not to the buyer.
+    go to a one-time gift link, not to the buyer. `reject_reason`: a
+    rejection's REJECT_REASONS key (bot/keyboards/payment_kb.py), told to
+    the buyer (2026-11-16).
 
     Row locks (request, buyer, inviter): approval exists both in the bot and
     in the admin panel, and the ORM writes balances as absolute values - two
-    admins at once must not both credit, nor overwrite a check's charge."""
+    admins at once must not both credit, nor overwrite a check's charge.
+    Each locked row is read afresh (populate_existing), so a copy the
+    caller's session already holds can't stand in for it."""
     request = (await session.execute(
         select(PaymentRequest).where(PaymentRequest.id == request_id).with_for_update()
+        .execution_options(populate_existing=True)
     )).scalar_one_or_none()
     if request is None:
         return PaymentDecision(None, False)
@@ -1415,6 +1421,7 @@ async def decide_payment_request(
     request.status = PaymentStatus.approved if approve else PaymentStatus.rejected
     request.reviewed_at = datetime.now(timezone.utc)
     request.reviewed_by = admin_id
+    request.reject_reason = None if approve else ((reject_reason or "none")[:32])
     if approve:
         user = await _locked_user(session, request.user_id)
         if user is not None:
@@ -1504,7 +1511,9 @@ async def unclaimed_gifts(session: AsyncSession, buyer_id: int, limit: int = 5) 
 async def adjust_coins(session: AsyncSession, user_id: int, delta: int, note: str | None) -> CoinAdjustment | None:
     """Adds `delta` coins (negative: takes them away) to a user's balance and
     records it. None when there's no such user or the balance would go below 0."""
-    user = await session.get(User, user_id, with_for_update=True)
+    # Locked and read afresh (2026-11-16): session.get() locks the row but keeps the values of a User this
+    # session already holds, and `+= delta` would then write that old balance back over a check's charge.
+    user = await _locked_user(session, user_id)
     if user is None or delta == 0 or user.coin_balance + delta < 0:
         return None
     user.coin_balance += delta
@@ -2045,14 +2054,19 @@ async def gift_coins(
     if members != set(student_ids):
         return None
     payer_id = await get_group_payer_id(session, group)
-    # Row locks: two quick taps must not both spend the same balance.
-    payer = (await session.execute(select(User).where(User.id == payer_id).with_for_update())).scalar_one_or_none()
+    # Row locks: two quick taps must not both spend the same balance. Read afresh (populate_existing,
+    # 2026-11-16): the caller's session may already hold these users (bot/handlers/group.py's "gift to all"
+    # loads the members first), and `+= amount` on that old balance wrote back over a check's charge or
+    # refund committed in between.
+    payer = (await session.execute(
+        select(User).where(User.id == payer_id).with_for_update().execution_options(populate_existing=True)
+    )).scalar_one_or_none()
     if payer is None or payer.coin_balance < amount * len(members):
         await session.rollback()
         return None
-    students = list(
-        (await session.execute(select(User).where(User.id.in_(members)).with_for_update())).scalars().all()
-    )
+    students = list((await session.execute(
+        select(User).where(User.id.in_(members)).with_for_update().execution_options(populate_existing=True)
+    )).scalars().all())
     payer.coin_balance -= amount * len(students)
     # every move recorded like any coin change (2026-11-15: a group gift left no trace but a group message)
     session.add(CoinAdjustment(user_id=payer.id, delta=-amount * len(students), balance_after=payer.coin_balance,

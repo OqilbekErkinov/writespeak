@@ -12,7 +12,9 @@ Picking a question presets the prompt/question for the Writing or Speaking
 FSM and jumps straight to answering, so the student doesn't have to retype
 a prompt that's already on file - Writing Task 1 questions come with their
 chart image, Speaking sets are asked one question at a time. After grading,
-"➡️ Keyingi savol" moves on to the next question not done yet.
+"➡️ Keyingi savol" moves on to the next question not done yet. A student
+who can't start a check now (too few coins, checks paused) still sees the
+question, with why under it - nothing waits for their answer (2026-11-16).
 """
 from __future__ import annotations
 
@@ -51,9 +53,12 @@ from bot.keyboards.practice_kb import (
     page_of,
     question_list_kb,
 )
+from bot.states.payment_states import PaymentStates
 from bot.states.writing_states import WritingStates
+from bot.utils.flow import GRADING
 from bot.utils.messages import remove_message, show_screen
-from bot.utils.quota import check_quota, free_check_note, send_paywall
+from bot.utils.quota import Quota, check_quota, free_check_note, send_paywall
+from bot.utils.speaking_questions import split_questions
 from db import crud
 from db.database import get_session
 from db.models import PracticeModule, PracticeQuestion
@@ -68,6 +73,7 @@ SPEAKING_MODULES = {PracticeModule.speaking_part1, PracticeModule.speaking_part2
 SUBTYPE_TASKS = {PracticeModule.writing_task1: "task1_academic", PracticeModule.writing_task2: "task2"}
 
 CAPTION_LIMIT = 1024  # Telegram's photo caption limit
+VIEW_LIMIT = 3000  # characters of a Speaking set shown without its answer step (a message holds 4096)
 HOT_TIMES = 3  # reported from the exam at least this often: 🔥
 NEW_DAYS = 14  # Writing reported within this many days: 🆕
 TITLE_WIDTH = 42
@@ -280,8 +286,11 @@ async def _start_practice_question(
         return
 
     quota = await check_quota(callback.from_user.id, question.module.value)
-    if not quota.allowed:
+    if quota.busy:  # a check of theirs is being graded: "wait for its result" (bot/utils/check_guard.py)
         await send_paywall(callback.message, lang, quota)
+        return
+    if not quota.allowed:
+        await _show_question_only(callback, state, question, lang, quota)
         return
     spend_credit = quota.spend_credit
 
@@ -297,9 +306,7 @@ async def _start_practice_question(
 
     if module in WRITING_MODULES:
         task_type = module.value.removeprefix("writing_")  # "task1" | "task2"
-        image_path = question.image_path if question.image_path and Path(question.image_path).exists() else None
-        if question.image_path and image_path is None:
-            logger.warning("Practice question %s image missing on disk: %s", question.id, question.image_path)
+        image_path = _image_on_disk(question)
         await state.update_data(
             task_type=task_type,
             prompt_text=question.question_text,
@@ -317,16 +324,7 @@ async def _start_practice_question(
             question=html.escape(question.question_text, quote=False),
             min_words=min_words,
         ) + "\n\n" + t("writing.honest_note", lang)
-        kb = back_kb(lang, f"{CB_BACK_TO_LIST_PREFIX}{question.id}")
-        if image_path is None:
-            await message.answer(text, reply_markup=kb)
-            return
-        photo = BufferedInputFile(read_file(image_path), filename=Path(image_path).name)
-        if len(text) <= CAPTION_LIMIT:
-            await message.answer_photo(photo, caption=text, reply_markup=kb)
-        else:
-            await message.answer_photo(photo)
-            await message.answer(text, reply_markup=kb)
+        await _send_question(message, text, back_kb(lang, f"{CB_BACK_TO_LIST_PREFIX}{question.id}"), image_path)
         return
 
     if module in SPEAKING_MODULES:
@@ -337,12 +335,76 @@ async def _start_practice_question(
             spend_credit=spend_credit,
             payer_id=quota.payer_id,
         )
-        intro = None
-        if question.topic:
-            intro = t(
-                "practice.speaking_topic",
-                lang,
-                label=MODULE_LABELS[module],
-                topic=html.escape(question.topic, quote=False),
-            )
+        intro = _speaking_intro(question, lang)
         await start_question_set(message, state, question.question_text, lang, intro=intro)
+
+
+async def _show_question_only(
+    callback: CallbackQuery, state: FSMContext, question: PracticeQuestion, lang: str, quota: Quota
+) -> None:
+    """The question without its answer step (2026-11-16): a student who can't
+    start a check now - fewer coins than it costs, checks paused, a test
+    window - still sees it (its text, its chart) to prepare an answer, with
+    why under it: the paywall's packs, or the pause note (which itself sends
+    them to Practice). No answer state is entered, so nothing is graded; with
+    coins, opening the question again starts it as usual. Until then such a
+    student got only the paywall - Practice was closed to them."""
+    # Whatever flow they were in gives way, as when a question starts - except a receipt being waited for (the
+    # paywall below leads to one, and a photo sent for it must still be taken) and a check being graded (an
+    # admin is never "busy"; bot/utils/flow.py).
+    if await state.get_state() not in GRADING | {PaymentStates.awaiting_receipt.state}:
+        await state.clear()
+    await remove_message(callback.message)
+    message = callback.message
+    module = question.module
+    kb = back_kb(lang, f"{CB_BACK_TO_LIST_PREFIX}{question.id}")
+    if module in WRITING_MODULES:
+        text = t("practice.view_question", lang, question=html.escape(question.question_text, quote=False))
+        await _send_question(message, text, kb, _image_on_disk(question))
+    elif module in SPEAKING_MODULES:
+        part = module.value.removeprefix("speaking_")  # "part1" | "part2" | "part3"
+        raw = question.question_text
+        if len(raw) > VIEW_LIMIT:
+            raw = raw[:VIEW_LIMIT].rstrip() + "…"
+        questions = [html.escape(q, quote=False) for q in split_questions(raw, part)] or [html.escape(raw, quote=False)]
+        if part == "part2":
+            body = t("practice.view_cue_card", lang, question=questions[0])
+        else:
+            body = t("practice.view_questions", lang,
+                     questions="\n".join(f"{n}. {q}" for n, q in enumerate(questions, start=1)))
+        intro = _speaking_intro(question, lang)
+        await message.answer(f"{intro}\n\n{body}" if intro else body, reply_markup=kb)
+    await send_paywall(message, lang, quota)
+
+
+def _image_on_disk(question: PracticeQuestion) -> str | None:
+    """A Writing question's chart, when its file is there."""
+    image_path = question.image_path if question.image_path and Path(question.image_path).exists() else None
+    if question.image_path and image_path is None:
+        logger.warning("Practice question %s image missing on disk: %s", question.id, question.image_path)
+    return image_path
+
+
+async def _send_question(message: Message, text: str, kb, image_path: str | None) -> None:
+    """A Writing question: its chart with the text as the caption (the text apart when too long for one)."""
+    if image_path is None:
+        await message.answer(text, reply_markup=kb)
+        return
+    photo = BufferedInputFile(read_file(image_path), filename=Path(image_path).name)
+    if len(text) <= CAPTION_LIMIT:
+        await message.answer_photo(photo, caption=text, reply_markup=kb)
+    else:
+        await message.answer_photo(photo)
+        await message.answer(text, reply_markup=kb)
+
+
+def _speaking_intro(question: PracticeQuestion, lang: str) -> str | None:
+    """"<b>Part 1</b> — topic" over a Speaking question, when it has a topic."""
+    if not question.topic:
+        return None
+    return t(
+        "practice.speaking_topic",
+        lang,
+        label=MODULE_LABELS[question.module],
+        topic=html.escape(question.topic, quote=False),
+    )

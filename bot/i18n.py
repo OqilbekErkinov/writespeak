@@ -126,10 +126,10 @@ _T: dict[str, dict[str, str]] = {
     },
     "pay.instructions": {
         "uz": "💳 <b>{amount} so'm</b>ni quyidagi kartaga o'tkazing:\n\n<code>{card}</code>\n"
-        "{holder}\n\nO'tkazgandan so'ng, chekning skrinshotini shu yerga <b>rasm</b> qilib "
+        "{holder}\n\nO'tkazgandan so'ng, chekning skrinshotini shu yerga <b>rasm</b> yoki PDF fayl qilib "
         "yuboring.",
         "ru": "💳 Переведите <b>{amount} сум</b> на карту:\n\n<code>{card}</code>\n{holder}\n\n"
-        "После перевода отправьте сюда скриншот чека <b>картинкой</b>.",
+        "После перевода отправьте сюда скриншот чека <b>картинкой</b> или PDF-файлом.",
     },
     "pay.choose_amount_first": {
         "uz": "Iltimos, avval 💳 to'lov miqdorini tanlang.",
@@ -143,9 +143,10 @@ _T: dict[str, dict[str, str]] = {
         "uz": "✅ Chek qabul qilindi, admin tomonidan tekshirilmoqda. Tez orada javob olasiz.",
         "ru": "✅ Чек принят, администратор проверит его. Скоро получите ответ.",
     },
+    # anything but a photo, an image file or a PDF at the receipt step (2026-11-16: files are receipts too)
     "pay.send_photo_only": {
-        "uz": "Iltimos, chekning skrinshotini rasm shaklida yuboring.",
-        "ru": "Пожалуйста, отправьте скриншот чека именно картинкой.",
+        "uz": "Iltimos, chekni rasm (skrinshot) yoki PDF fayl qilib yuboring.",
+        "ru": "Пожалуйста, отправьте чек картинкой (скриншотом) или PDF-файлом.",
     },
     "pay.cancel_btn": {"uz": "❌ Bekor qilish", "ru": "❌ Отменить"},
     "pay.cancelled": {"uz": "To'lov bekor qilindi. Menyudan davom eting 👇",
@@ -166,12 +167,36 @@ _T: dict[str, dict[str, str]] = {
         "uz": "🎉 To'lovingiz tasdiqlandi! {months} oylik cheksiz obuna faollashtirildi.",
         "ru": "🎉 Ваша оплата подтверждена! Активирована безлимитная подписка на {months} мес.",
     },
+    # A rejection (bot/handlers/payments.py's notify_decision, 2026-11-16): pay.rejected - or pay.rejected_reason
+    # with the admin's reason (pay.reason_*) - then pay.rejected_hint over its two buttons.
     "pay.rejected": {
-        "uz": "⛔ To'lovingiz tasdiqlanmadi. Agar bu xato bo'lsa, chekni qayta tekshirib "
-        "qaytadan yuboring yoki admin bilan bog'laning.",
-        "ru": "⛔ Оплата не подтверждена. Если это ошибка, проверьте чек и отправьте заново "
-        "или свяжитесь с администратором.",
+        "uz": "⛔ To'lovingiz tasdiqlanmadi.",
+        "ru": "⛔ Оплата не подтверждена.",
     },
+    "pay.rejected_reason": {
+        "uz": "⛔ To'lovingiz tasdiqlanmadi. Sabab: <b>{reason}</b>.",
+        "ru": "⛔ Оплата не подтверждена. Причина: <b>{reason}</b>.",
+    },
+    "pay.rejected_hint": {
+        "uz": "Xato bo'lsa, chekni tekshirib, pastdagi «📸 Chekni qayta yuborish» tugmasi bilan qaytadan yuboring "
+        "yoki «💬 Admin bilan aloqa» orqali yozing.",
+        "ru": "Если это ошибка, проверьте чек и отправьте его заново кнопкой «📸 Отправить чек заново» ниже "
+        "или напишите через «💬 Связь с админом».",
+    },
+    "pay.reason_amount": {"uz": "summa mos emas", "ru": "сумма не совпадает"},
+    "pay.reason_unreadable": {"uz": "chek o'qilmaydi", "ru": "чек не читается"},
+    "pay.reason_reused": {"uz": "chek avval ishlatilgan", "ru": "чек уже был использован"},
+    "pay.reason_no_money": {"uz": "pul kelib tushmagan", "ru": "деньги не поступили"},
+    "pay.btn_resend": {"uz": "📸 Chekni qayta yuborish", "ru": "📸 Отправить чек заново"},
+    "pay.file_too_big": {
+        "uz": "📎 Bu fayl juda katta. Chekni 10 MB gacha rasm yoki PDF fayl qilib yuboring.",
+        "ru": "📎 Файл слишком большой. Отправьте чек картинкой или PDF-файлом до 10 МБ.",
+    },
+    # A Practice question shown without the answer step - too few coins, checks paused (2026-11-16,
+    # bot/handlers/practice.py): the question itself, then why under it.
+    "practice.view_question": {"uz": "📋 Savol:\n\n{question}", "ru": "📋 Вопрос:\n\n{question}"},
+    "practice.view_questions": {"uz": "❓ <b>Savollar</b>\n\n{questions}", "ru": "❓ <b>Вопросы</b>\n\n{questions}"},
+    "practice.view_cue_card": {"uz": "🗂 <b>Cue card</b>\n\n{question}", "ru": "🗂 <b>Cue card</b>\n\n{question}"},
     # --- Writing (bot/handlers/writing.py) ---
     "writing.choose_type": {
         "uz": "Qaysi turini tekshirmoqchisiz?",
@@ -387,13 +412,14 @@ _T: dict[str, dict[str, str]] = {
         "yozilgan namuna javob bilan PDF hisobot keladi.\n📝 <b>Practice</b> — tayyor IELTS savollari.\n🟡 "
         "Tekshiruvlar coin bilan to'lanadi (1 coin = {coin_price} so'm); tekshiruv yakunlanmasa, coin "
         "qaytariladi.\n\n<b>Buyruqlar:</b>\n/menu — asosiy menyu\n/cancel — joriy amalni bekor qilish\n/help — "
-        "shu yordam\n\nSavol yoki muammo bo'lsa — «💬 Admin bilan aloqa» orqali yozing.",
+        "shu yordam\n\nSavol yoki muammo bo'lsa — «👤 Hisobim» → «💬 Admin bilan aloqa» (yoki /support) orqali "
+        "yozing.",
         "ru": "🦖 <b>Bandzilla — помощь</b>\n\n✍️ <b>Writing</b> и 🎙 <b>Speaking</b> — отправьте вопрос, затем "
         "ответ (текст, фото, файл или голос). Через 2–5 минут придёт PDF-отчёт: баллы, разбор каждой ошибки и "
         "образец ответа для вас.\n📝 <b>Practice</b> — готовые вопросы IELTS.\n🟡 Проверки оплачиваются coin "
         "(1 coin = {coin_price} сум); если проверка не завершится, coin вернутся.\n\n<b>Команды:</b>\n/menu — "
         "главное меню\n/cancel — отменить текущее действие\n/help — эта справка\n\nВопросы и проблемы — через "
-        "«💬 Связь с админом».",
+        "«👤 Профиль» → «💬 Связь с админом» (или /support).",
     },
     "check.report_resent": {"uz": "📄 Hisobotingiz qayta yuborildi.", "ru": "📄 Ваш отчёт отправлен повторно."},
     "check.still_failed": {
@@ -938,10 +964,10 @@ _T: dict[str, dict[str, str]] = {
         "🏫 Группа → ➕ Создать группу.",
     },
     "group.teacher_rejected": {
-        "uz": "Afsuski, o'qituvchi bo'lish so'rovingiz tasdiqlanmadi. Savollar bo'lsa, admin "
-        "bilan bog'laning.",
-        "ru": "К сожалению, ваш запрос преподавателя не подтверждён. Если есть вопросы, "
-        "свяжитесь с администратором.",
+        "uz": "Afsuski, o'qituvchi bo'lish so'rovingiz tasdiqlanmadi. Savollar bo'lsa, «👤 Hisobim» → "
+        "«💬 Admin bilan aloqa» (yoki /support) orqali yozing.",
+        "ru": "К сожалению, ваш запрос преподавателя не подтверждён. Если есть вопросы, напишите через "
+        "«👤 Профиль» → «💬 Связь с админом» (или /support).",
     },
     "group.ask_name": {
         "uz": "Guruh nomini yozing (masalan: \"IELTS kechki guruh\"):",

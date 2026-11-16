@@ -3,11 +3,13 @@ file, a voice message - and it lands in the admins' group's 💬 Murojaatlar
 topic (bot/utils/crm_events.py). An admin's reply there comes back to this
 chat (bot/handlers/crm.py) with a "✍️ Javob yozish" button. The student
 stays in this mode until they leave it with ⬅️ or a menu button, so a
-question can take several messages.
+question can take several messages. Opened from 👤 Hisobim, the old menu
+button's text, a rejected payment's message, or /support.
 """
 from __future__ import annotations
 
 from aiogram import F, Router
+from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
@@ -24,6 +26,9 @@ MAX_PER_HOUR = 30  # messages a student may send the admins in an hour
 
 
 @router.message(F.text.in_({BTN_SUPPORT_UZ, BTN_SUPPORT_RU, BTN_SUPPORT_EN}))
+# /support (2026-11-16): the help text names it - the button lives in 👤 Hisobim, not on the main menu. Like
+# /menu and /help (bot/handlers/main_menu.py, the router just before this one), ahead of the fallback.
+@router.message(Command("support"))
 async def open_support(message: Message, state: FSMContext, lang: str) -> None:
     await state.clear()
     await _ask(message, state, lang)
