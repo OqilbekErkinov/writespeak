@@ -184,6 +184,29 @@ async def healthz():
                              headers={"Cache-Control": "no-store"})
 
 
+# The host watchdog's last run (deploy/watchdog/watchdog.sh writes data/ops_status.json every 5 minutes).
+OPS_STALE = 15 * 60
+
+
+@app.get("/healthz/ops", include_in_schema=False)
+async def healthz_ops():
+    """A second monitor for UptimeRobot (2026-11-16): what the host watchdog found - the nightly backup and its
+    copy in the admins' group, the disk, the TLS certificates, the containers - so the owner is e-mailed even
+    when Telegram (where the watchdog's own alerts go) is what is broken. 503 "down: watchdog" when it has not
+    run for 15 minutes (its cron stopped); 503 naming the problems' keys; 200 "ok". Public, says nothing more."""
+    try:
+        state = json.loads((Path(settings.file_storage_path).parent / "ops_status.json").read_text(encoding="utf-8"))
+        at, problems = int(state.get("at") or 0), [str(p) for p in state.get("problems") or []]
+    except (OSError, ValueError, TypeError):
+        at, problems = 0, []
+    if time.time() - at > OPS_STALE:
+        down = ["watchdog"]
+    else:
+        down = sorted({p.split(":")[0] for p in problems})  # "tls:bandzilla.uz" -> "tls": no host names out
+    return PlainTextResponse("down: " + ", ".join(down) if down else "ok", status_code=503 if down else 200,
+                             headers={"Cache-Control": "no-store"})
+
+
 @app.get("/login", response_class=HTMLResponse)
 async def login_form(request: Request):
     return templates.TemplateResponse(request, "login.html", {"error": None})

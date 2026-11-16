@@ -204,6 +204,25 @@ async def main() -> int:
         r = await c.get("/healthz")
         check("...no beat yet (a bot from before): not counted", r.status_code == 200, r.text)
 
+        # /healthz/ops: the host watchdog's last run (data/ops_status.json), for a second UptimeRobot monitor
+        ops = Path(settings.file_storage_path).parent / "ops_status.json"
+        ops.parent.mkdir(parents=True, exist_ok=True)
+        ops.write_text(json.dumps({"at": int(time.time()), "problems": []}), encoding="utf-8")
+        r = await c.get("/healthz/ops")
+        check("/healthz/ops: the watchdog ran, nothing wrong: 200 ok", r.status_code == 200 and r.text == "ok", r.text)
+        ops.write_text(json.dumps({"at": int(time.time()), "problems": ["tls:bandzilla.uz", "backup_old"]}),
+                       encoding="utf-8")
+        r = await c.get("/healthz/ops")
+        check("...problems: 503 with their keys, no host names", r.status_code == 503
+              and r.text == "down: backup_old, tls", r.text)
+        ops.write_text(json.dumps({"at": int(time.time()) - 20 * 60, "problems": []}), encoding="utf-8")
+        r = await c.get("/healthz/ops")
+        check("...the watchdog has not run for 20 minutes (its cron stopped): 'down: watchdog'",
+              r.status_code == 503 and r.text == "down: watchdog", r.text)
+        ops.unlink()
+        r = await c.get("/healthz/ops")
+        check("...no status file at all: 'down: watchdog'", r.status_code == 503 and r.text == "down: watchdog")
+
     print(f"\n{len(fails)} failed" if fails else "\nall passed")
     await crm.redis().aclose()
     return 1 if fails else 0

@@ -19,6 +19,8 @@
 # counts as good. Sunday runs are also kept in weekly/, 1st-of-month runs in
 # monthly/ (hardlinks, no extra space). Retention is by count: 14 / 8 / 12.
 # Any failure sends a Telegram message to ADMIN_TELEGRAM_IDS, and so does a disk over DISK_ALERT % full.
+# The result is also written to data/backup_status.json (2026-11-16): the watchdog alerts on a failed, missing
+# or hung night even when the message above did not get through, and the daily report shows it.
 # Then a copy goes off the server, encrypted, to the admins' Telegram group (deploy/backup/offsite.sh).
 #
 # 2026-11-15: the test restore waited for the throwaway Postgres on its unix socket, which answers during
@@ -67,11 +69,18 @@ cleanup() {
   docker rm -f -v "$TEST_CONTAINER" >/dev/null 2>&1 || true
 }
 
+# The night's result for the watchdog and the daily report (2026-11-16): data/backup_status.json.
+write_status() { # ok error [db files restored]
+  local f="$APP/data/backup_status.json"
+  jq -n --arg at "$(date -Iseconds)" --argjson ok "$1" --arg error "$2" --arg ts "$TS" --arg db "${3:-}"     --arg files "${4:-}" --arg restored "${5:-}"     '{at: $at, ok: $ok, ts: $ts, db: $db, files: $files, restored: $restored, error: $error}' > "$f.tmp" 2>/dev/null     && mv "$f.tmp" "$f" && chmod 644 "$f" || true
+}
+
 on_error() {
   local line=$1
   echo "$(date '+%F %T') FAILED at line $line"
   rm -rf "$WORK"
   cleanup
+  write_status false "qator $line" || true
   alert "⚠️ WriteSpeak: kunlik zaxira MUVAFFAQIYATSIZ ($(hostname), $TS, qator $line). Log: /var/log/writespeak-backup.log"
 }
 
@@ -156,6 +165,7 @@ prune "$DEST/weekly" "$KEEP_WEEKLY"
 prune "$DEST/monthly" "$KEEP_MONTHLY"
 
 echo "$(date '+%F %T') OK $TS db=$(du -h "$FINAL/db.dump" | cut -f1) files=$(du -h "$FINAL/storage.tar.gz" | cut -f1) redis=$(du -h "$FINAL/redis.rdb" | cut -f1) restore-check: $restored"
+write_status true "" "$(du -h "$FINAL/db.dump" | cut -f1)" "$(du -h "$FINAL/storage.tar.gz" | cut -f1)" "$restored"
 
 # 7. Retention (the user, 2026-11-15: "1 month"): the students' own uploads - their photos, voices,
 #    recordings, documents - go after KEEP_UPLOADS_DAYS, once tonight's backup holds them. The PDF reports
