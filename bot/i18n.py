@@ -1887,7 +1887,13 @@ _T: dict[str, dict[str, str]] = {
         "uz": "Natijangizni do'stlaringizga ulashing! 🦖📤",
         "ru": "Поделитесь результатом с друзьями! 🦖📤",
     },
-    "share.button": {"uz": "📤 Ulashish uchun rasm", "ru": "📤 Изображение для публикации"},
+    "share.button": {"uz": "📸 Story uchun rasm", "ru": "📸 Картинка для сторис"},
+    # the story card under every report (bot/handlers/share.py, 2026-11-16): kind words only
+    "story.caption": {
+        "uz": "📸 Natijangiz story uchun tayyor! Joylang — do'stlaringiz ham ko'rsin 🦖",
+        "ru": "📸 Ваш результат готов для сторис! Поделитесь — пусть друзья тоже увидят 🦖",
+    },
+    "story.again": {"uz": "🎨 Boshqa dizayn", "ru": "🎨 Другой дизайн"},
 }
 
 for _key, _text in EN.items():

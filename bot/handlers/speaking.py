@@ -99,6 +99,7 @@ from bot.utils.input_extraction import (
 from bot.utils.messages import show_screen, strip_buttons
 from bot.utils.mock_test_flow import record_mock_test_part
 from bot.utils.report_names import report_filename, with_ai_note
+from bot.handlers import share  # the story card after a report (2026-11-16)
 from bot.utils import check_guard as guard
 from bot.utils import crm_events, nudges, stickers
 from bot.utils import progress as live
@@ -837,6 +838,8 @@ async def _grade(
             t("speaking.listen_prompt", lang),
             reply_markup=listen_kb(submission.id, [a["label"] for a in check.answers]),
         ), f"speaking voices of {submission.id}")
+    if sent and not test_run and not data.get("mock_session_id"):
+        await share.send_story(message.bot, user_id, "speaking", submission, lang)  # the story card (2026-11-16)
 
     if data.get("mock_session_id"):
         await record_mock_test_part(

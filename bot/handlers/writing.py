@@ -66,6 +66,7 @@ from bot.keyboards.writing_task_kb import (
     writing_task_kb,
 )
 from bot.states.writing_states import WritingStates
+from bot.handlers import share  # the story card after a report (2026-11-16)
 from bot.utils import check_guard as guard
 from bot.utils import crm_events, nudges, runtime, stickers
 from bot.utils import progress as live
@@ -983,6 +984,8 @@ async def _deliver_writing(message, state, lang, data, hold, submission, report,
     ), f"writing report {submission.id}")
     # the card goes only now the report is there; not delivered: the card says it is saved, with its button
     await guard.report_sent(processing_msg, sent, lang, "writing", submission.id)
+    if sent and not test_run and not data.get("mock_session_id"):
+        await share.send_story(message.bot, user_id, "writing", submission, lang)  # the story card (2026-11-16)
 
     if data.get("mock_session_id"):
         await record_mock_test_part(

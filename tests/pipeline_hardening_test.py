@@ -1010,6 +1010,8 @@ async def c3_parked(w: World) -> None:
     out = await w.press(uid, continue_data)
     check("C3 after the FSM was cleared and the top-up: the parked answer graded, charged once", len(GRADED) == 1
           and "parked matters" in GRADED[0] and docs(out) and await balance(uid) == 15, (GRADED, await balance(uid)))
+    story = [c for c in out if type(c).__name__ == "SendPhoto" and "story" in (c.caption or "")]
+    check("...and right after the report, the story card (2026-11-16)", len(story) == 1, [type(c).__name__ for c in out])
     check("C3 ...the parked copy is gone once its check took its hold", await guard.parked(uid) is None
           and await guard.parked_keyboard(uid, "uz") is None)
     out = await w.press(uid, continue_data)

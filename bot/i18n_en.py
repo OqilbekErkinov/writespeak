@@ -520,5 +520,7 @@ EN: dict[str, str] = {
     "support.btn_reply": "✍️ Reply",
     "share.not_found": "This result wasn't found.",
     "share.caption": "Share your result with your friends! 🦖📤",
-    "share.button": "📤 Image to share",
+    "share.button": "📸 Story image",
+    "story.caption": "📸 Your result is ready for a story! Share it so your friends see it too 🦖",
+    "story.again": "🎨 Another design",
 }
