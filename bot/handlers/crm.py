@@ -169,11 +169,13 @@ async def status(message: Message) -> None:
         return
     cfg = crm.config()
     r = crm.redis()
-    queued = await r.llen(crm.QUEUE)
+    lanes = await crm.queued()  # both lanes (2026-11-16): the urgent one is sent first
+    queued = lanes["hi"] + lanes["normal"]
     spend = await r.hgetall(crm.spend_key(crm.local_now().date()))
     total = sum(float(v) for v in spend.values())
     lines = [
-        f"📡 Navbatda: {queued} ta xabar" + (f" (~{queued * crm.PAUSE / 60:.0f} daqiqa)" if queued else ""),
+        f"📡 Navbatda: {queued} ta xabar" + (f" (~{queued * crm.PAUSE / 60:.0f} daqiqa; shoshilinch: {lanes['hi']})"
+                                              if queued else ""),
         f"💰 Bugungi OpenAI xarajati: ${total:.4f}",
         f"💱 1 $ = {await crm.usd_rate():,.0f} so'm".replace(",", " "),
     ]
