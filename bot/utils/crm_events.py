@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import functools
 import html
+import json
 import logging
 from datetime import date, datetime, timedelta, timezone
 
@@ -245,14 +246,22 @@ async def _payment_card(session, request: PaymentRequest, panel_admin: str | Non
     return "\n".join(lines)
 
 
-@_safe
 async def payment_receipt(request_id: int, file_message: tuple[int, int] | None = None) -> None:
     """A receipt was sent (bot/handlers/payments.py); the admins still
     decide in their private chats. `file_message`: (chat id, message id) of
     a receipt sent as a file - an image file or a PDF (2026-11-16) - which
     can't go as a photo: that message is copied into the topic (a copy
     takes any kind of message) and the card follows it as a text message of
-    its own, the one payment_decided edits."""
+    its own, the one payment_decided edits. When it came is kept first, with
+    or without the group: the admins' reminders count from it (2026-11-16)."""
+    from bot.utils import admin_reminders
+
+    await admin_reminders.receipt_sent(request_id)
+    await _payment_receipt_card(request_id, file_message)
+
+
+@_safe
+async def _payment_receipt_card(request_id: int, file_message: tuple[int, int] | None) -> None:
     async with get_session() as session:
         request = await session.get(PaymentRequest, request_id)
         text = await _payment_card(session, request)
@@ -672,6 +681,10 @@ async def support_message(message) -> None:
 
 # --- 📥 Practice import (importer service) ----------------------------------------------------------
 
+# The importer's last run (services/practice_import/runner.py save_status, 2026-11-16): {"at", "ok", "writing",
+# "speaking", "error"[, "skipped"]} - the daily report flags a failed run, or none for IMPORT_STALE.
+IMPORTER_STATUS_KEY = "importer:last"
+
 
 async def import_done(result: dict) -> None:
     """After an import run (services/practice_import/runner.py): its OpenAI
@@ -768,6 +781,20 @@ async def teacher_report(days: int | None = 7) -> str:
     return "\n".join(lines)
 
 
+# --- ⏰ Eslatmalar (every minute) ----------------------------------------------------------------------
+
+
+async def reminders_due(bot) -> None:
+    """Every minute (crm.run_sender), with or without the group: the payments and support threads still waiting,
+    and the balance warnings for the admins' private chats (bot/utils/admin_reminders.py). Never raises."""
+    try:
+        from bot.utils import admin_reminders
+
+        await admin_reminders.tick(bot)
+    except Exception:  # noqa: BLE001 - never the daily report's failure
+        logger.warning("Admins' reminders failed", exc_info=True)
+
+
 # --- 📊 Kunlik hisobot --------------------------------------------------------------------------------
 
 
@@ -789,6 +816,11 @@ async def daily_report_if_due() -> None:
 
 
 async def daily_report(day: date, partial: bool = False) -> str:
+    """The day's report. What needs someone comes first (2026-11-16, the owner: "problems first"): ⚠️ lines -
+    the bot's errors, checks that stopped, a payment or a student's message waiting too long, a backup or the
+    importer not working - then what merely waits (a teacher's marks for the owner); the day's figures; and at
+    the end the system's healthy parts, in one line each. A part that is fine and has nothing to say is left
+    out."""
     start = datetime(day.year, day.month, day.day, tzinfo=crm.TZ)
     end = start + timedelta(days=1)
     async with get_session() as session:
@@ -797,13 +829,19 @@ async def daily_report(day: date, partial: bool = False) -> str:
         writing, speaking = await crud.checks_between(session, start, end)
         decided = await crud.payments_decided_between(session, start, end)
         pending = await crud.count_pending_payments(session)
+        watch = await _watch_lines(session, start, end)
     r = crm.redis()
     spend = {k: float(v) for k, v in (await r.hgetall(crm.spend_key(day))).items()}
     errors = int(await r.get(f"crm:errors:{day.isoformat()}") or 0)
     rate = await crm.usd_rate()
+    system = await _system_lines()
+    problems = ([f"⚠️ Xatolar: <b>{errors} ta</b> — «⚠️ Xatolar» bo'limida"] if errors else []) \
+        + watch["problems"] + system["problems"]
 
     lines = [f"📊 <b>Kunlik hisobot · {day.strftime('%d.%m.%Y')}, {WEEKDAYS[day.weekday()]}</b>"
              + (" (hozirgacha)" if partial else ""), ""]
+    if problems or watch["waiting"]:
+        lines += [*problems, *watch["waiting"], ""]
     lines.append(f"👥 Yangi foydalanuvchilar: <b>{new_users}</b> (jami {total_users})")
     lines.append(f"🧑‍🎓 Tekshiruv qilganlar: {len({s.user_id for s in [*writing, *speaking]})} kishi")
     lines.append("")
@@ -877,8 +915,171 @@ async def daily_report(day: date, partial: bool = False) -> str:
         f"📈 Kun natijasi: tushum {_som(revenue)} − xarajat {_som(total * rate)} = "
         f"<b>{'+' if result >= 0 else '−'}{_som(abs(result))} so'm</b>"
     )
-    lines.append(f"⚠️ Xatolar: {errors} ta")
+    if not errors:
+        lines.append("✅ Xatolar: 0")
+    if system["fine"]:
+        lines += ["", *system["fine"]]
     return "\n".join(lines)
+
+
+BACKUP_STALE = timedelta(hours=30)  # the nightly backup runs at ~04:50 Tashkent
+IMPORT_STALE = timedelta(hours=8)  # the importer runs every 3 hours
+PAY_LATE = timedelta(minutes=20)  # as the reminders (bot/utils/admin_reminders.py)
+SUPPORT_LATE = timedelta(hours=2)
+# Why a check stopped (CheckHold.reason, bot/utils/check_guard.py - a handler's words, or an error's type), in
+# Uzbek; anything else shows its first part. BENIGN_STOPS are the student's input, asked for again - no fault.
+STOP_REASONS = {
+    "chart unreadable": "grafik o'qilmadi (qayta so'raldi)", "chart refused": "grafik rad etildi (qayta so'raldi)",
+    "not graded": "baholanmadi (nutq topilmadi va h.k.)", "stopped": "to'xtatildi", "not finished": "tugamadi",
+    "the bot restarted": "bot qayta ishga tushdi", "left running": "tugallanmay qoldi",
+    "TimeoutError": "vaqt tugadi", "the FSM state could not be saved": "holati saqlanmadi",
+}
+BENIGN_STOPS = {"chart unreadable", "chart refused", "not graded"}
+IMPORT_WORDS = {"done": "yangi", "added": "yangi", "updated": "yangilangan", "removed": "olib tashlangan",
+                "failed": "xato"}
+
+
+def _stop_reason(hold) -> str:
+    if hold.state == "interrupted":
+        return "the bot restarted"
+    if hold.state == "expired":
+        return "left running"
+    return (hold.reason or "not finished").split(":")[0].strip() or "not finished"
+
+
+async def _watch_lines(session, start: datetime, end: datetime) -> dict[str, list[str]]:
+    """{"problems": the ⚠️ lines, "waiting": what waits but is not late yet} - the checks that stopped in the
+    day, the payments and support threads waiting now, the teachers' marks waiting for the owner."""
+    from bot.utils import admin_reminders  # it imports this module
+
+    now = datetime.now(timezone.utc)
+    problems, waiting = [], []
+
+    stopped = await crud.checks_stopped_between(session, start, end)
+    if stopped:
+        reasons: dict[str, int] = {}
+        for hold in stopped:
+            reason = _stop_reason(hold)
+            reasons[reason] = reasons.get(reason, 0) + 1
+        parts = [f"{STOP_REASONS.get(k) or f'<code>{_esc(k[:60])}</code>'} ×{n}"
+                 for k, n in sorted(reasons.items(), key=lambda kv: -kv[1])[:6]]
+        line = f"To'xtagan tekshiruvlar: <b>{len(stopped)} ta</b> (coinlari qaytarildi) — " + " · ".join(parts)
+        if set(reasons) - BENIGN_STOPS:
+            problems.append(f"⚠️ {line}")
+        else:
+            waiting.append(f"ℹ️ {line}")
+
+    payments = await crud.pending_payments(session)
+    if payments:
+        since = await admin_reminders._receipt_times(payments)
+        oldest = min(payments, key=lambda p: since[p.id])
+        late = now - since[oldest.id]
+        line = (f"To'lov tasdiq kutmoqda: <b>{len(payments)} ta</b> — eng eskisi #{oldest.id} "
+                f"({_esc(oldest.user.full_name if oldest.user else oldest.user_id)}, {_som(oldest.amount)} so'm) "
+                f"{admin_reminders.waited(late.total_seconds())}dan beri")
+        if late >= PAY_LATE:
+            problems.append(f"⚠️ {line}")
+        else:
+            waiting.append(f"💳 {line}")
+
+    threads = await crud.support_waiting(session)
+    if threads:
+        oldest = threads[0]
+        user = await crud.get_user(session, oldest.user_id)
+        late = now - oldest.since
+        line = (f"Murojaatlar: <b>{len(threads)} tasi</b> javob kutmoqda — eng eskisi "
+                f"{admin_reminders.waited(late.total_seconds())}dan beri "
+                f"({_esc(user.full_name if user else oldest.user_id)})")
+        if late >= SUPPORT_LATE:
+            problems.append(f"⚠️ {line}")
+        else:
+            waiting.append(f"💬 {line}")
+
+    marks = await crud.teacher_marks_waiting(session)
+    if marks:
+        waiting.append(f"👩‍🏫 Ustoz baholari tasdig'ingizni kutmoqda: <b>{marks} ta</b> — panel → Tekshiruvlar")
+    return {"problems": problems, "waiting": waiting}
+
+
+def _status_file(name: str) -> dict | None:
+    """data/<name>, next to crm.json on the volume the backup scripts write (deploy/backup/); None when missing."""
+    try:
+        data = json.loads((crm.config_path().parent / name).read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError):
+        return {"unreadable": True}
+    return data if isinstance(data, dict) else {"unreadable": True}
+
+
+def _status_at(state: dict) -> datetime | None:
+    try:
+        at = datetime.fromisoformat(str(state.get("at")))
+    except (TypeError, ValueError):
+        return None
+    return at if at.tzinfo else at.replace(tzinfo=timezone.utc)
+
+
+def _health(name: str, state: dict | None, stale: timedelta, detail: str = "") -> tuple[bool, str]:
+    """(fine, its line): missing, failed, stale - or when it last went well."""
+    if state is None:
+        return False, f"⚠️ {name}: holati haqida yozuv yo'q"
+    if state.get("unreadable"):
+        return False, f"⚠️ {name}: holat yozuvi o'qilmadi (buzilgan)"
+    at = _status_at(state)
+    when = _when(at) if at else "?"
+    if not state.get("ok", True):
+        return False, f"⚠️ {name} xato bilan tugadi ({when}): {_esc(str(state.get('error') or '?')[:200])}"
+    if at is None:
+        return False, f"⚠️ {name}: oxirgi marta qachon ishlagani noma'lum"
+    age = datetime.now(timezone.utc) - at
+    if age > stale:
+        return False, f"⚠️ {name} {int(age.total_seconds() // 3600)} soatdan beri ishlamagan — oxirgisi {when}"
+    return True, f"✅ {name}: {when}" + (f" · {detail}" if detail else "")
+
+
+async def _system_lines() -> dict[str, list[str]]:
+    """{"problems", "fine"}: the nightly backup on the server (data/backup_status.json), its copy sent to the
+    group (data/offsite_status.json, deploy/backup/offsite.sh) and the importer's last run (Redis)."""
+    out: dict[str, list[str]] = {"problems": [], "fine": []}
+
+    def add(result: tuple[bool, str]) -> None:
+        out["fine" if result[0] else "problems"].append(result[1])
+
+    backup = _status_file("backup_status.json")
+    sizes = ", ".join(f"{label} {_esc(backup[key])}" for key, label in (("db", "baza"), ("files", "fayllar"))
+                      if backup and backup.get(key))
+    add(_health("💾 Zaxira (serverda)", backup, BACKUP_STALE, sizes))
+    offsite = _status_file("offsite_status.json")
+    detail = ""
+    if offsite and offsite.get("bytes"):
+        detail = f"{offsite.get('parts') or 1} qism, {offsite['bytes'] / 1024 / 1024:.0f} MB" \
+            + (" (to'liq)" if offsite.get("full") else "")
+    add(_health("☁️ Zaxira nusxasi (guruhga)", offsite, BACKUP_STALE, detail))
+
+    try:
+        raw = await crm.redis().get(IMPORTER_STATUS_KEY)
+        state = json.loads(raw) if raw else None
+    except (ValueError, TypeError):
+        state = {"unreadable": True}
+    if not isinstance(state, (dict, type(None))):
+        state = {"unreadable": True}
+    if state is not None and state.get("skipped") == "credit":
+        at = _status_at(state)
+        out["problems"].append(f"⚠️ 📥 Practice import to'xtab turibdi: OpenAI balansi tugagan "
+                               f"({_when(at) if at else '?'})")
+        return out
+    detail = ""
+    if state is not None:
+        parts = []
+        for label, key in (("Writing", "writing"), ("Speaking", "speaking")):
+            counts = state.get(key) or {}
+            said = [f"{IMPORT_WORDS[k]} {v}" for k, v in counts.items() if k in IMPORT_WORDS and v]
+            if said:
+                parts.append(f"{label} " + ", ".join(said))
+        detail = " · ".join(parts) or "yangi savol yo'q"
+    add(_health("📥 Practice import", state, IMPORT_STALE, detail))
+    return out
 
 
 # --- Setup: what each topic is for, and everything from before -------------------------------------
@@ -886,7 +1087,8 @@ async def daily_report(day: date, partial: bool = False) -> str:
 INTROS = {
     "users": "Har bir yangi foydalanuvchi: kimligi, qayerdan kelgani (referal, guruh yoki markaz havolasi).",
     "payments": "Har bir yuborilgan chek. Tasdiqlash avvalgidek adminlarning shaxsiy chatida; qaror "
-                "qilinganda shu yerdagi karta o'zgaradi.",
+                "qilinganda shu yerdagi karta o'zgaradi. Chek 20 daqiqa, 2 soat (keyin har 12 soatda) javobsiz "
+                "tursa, shu yerga va adminlarga eslatma keladi.",
     "writing": "Har bir Writing tekshiruvi: ballar, to'lov turi, kutish vaqti, narxi va o'quvchiga borgan PDF.",
     "speaking": "Har bir Speaking tekshiruvi: ballar, nutq ko'rsatkichlari, to'lov turi, kutish vaqti, narxi va PDF.",
     "costs": "Har bir tekshiruvning OpenAI narxi: qaysi qadam qancha turdi, tokenlar, Flex yoki oddiy narx, "
@@ -899,7 +1101,8 @@ INTROS = {
                 "sovg'alari, vazifalar.",
     "support": "O'quvchilarning adminga yozgan xabarlari (botda «💬 Admin bilan aloqa»). Javob berish uchun "
                "xabarga reply qiling - javob o'quvchiga bot orqali boradi. Javobni faqat bot adminlari va "
-               "/crm_agents da belgilanganlar bera oladi.",
+               "/crm_agents da belgilanganlar bera oladi. 2 soat javobsiz qolgan murojaat shu yerda va ularga "
+               "eslatiladi.",
     "backup": "Har kuni ~04:50 da (Toshkent) bazaning shifrlangan zaxirasi (server buzilsa ham ma'lumotlar shu yerda qoladi): "
               "har kuni baza va yangi fayllar, yakshanba kunlari barcha fayllar. Ochish uchun zaxira kaliti kerak - "
               "u admin panelda (Sozlamalar → Zaxira), uni xavfsiz joyda saqlang. Tiklash: deploy/backup/RESTORE.md.",

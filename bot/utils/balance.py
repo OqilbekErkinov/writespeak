@@ -12,6 +12,12 @@ with quota.back to everyone who waited - when a top-up is entered or a test call
 
 Azure (Pronunciation) has no money balance on its free tier, but a monthly allowance of audio: the seconds
 assessed this month are counted against the hours the admins enter (the free F0 tier: 5; 0 = no limit).
+
+Every warning also goes straight to the bot admins (2026-11-16: the busy errors topic alone was easy to miss):
+any process may cross a threshold, so the message waits in Redis (DM_KEY) and the bot process sends it within
+a minute (deliver_direct, from bot/utils/admin_reminders.py) - once per crossing, as the `warned` marks already
+make the topic's. OpenAI's own "out of credit" is pinned in the errors topic when the bot may pin, and unpinned
+once the credit is back.
 """
 from __future__ import annotations
 
@@ -32,6 +38,11 @@ AZURE_DEFAULT_HOURS = 5.0  # Azure Speech's free F0 tier: 5 audio hours a month
 CHECK_USD = 0.15  # about one check's OpenAI cost, for "about N checks left" (Writing $0.13-0.30, Speaking ~$0.1)
 CACHE = 5  # seconds the pause flag is kept in memory
 _paused: dict = {"at": 0.0, "value": False}
+DM_KEY = "balance:dm"  # list: warnings for the bot admins' private chats, sent by the bot process (deliver_direct)
+DM_KEEP = 2 * 24 * 3600  # a warning not sent by then (the bot down for days) is dropped
+PIN_KEY = "balance:pin"  # the admins' group message key (crm.post) of the "out of credit" message, until pinned
+PINNED_KEY = "balance:pinned"  # "chat id|message id" of the pinned one
+UNPIN_KEY = "balance:unpin"  # the credit is back: unpin it
 
 
 def _month() -> str:
@@ -76,6 +87,8 @@ async def set_openai(uzs: float) -> bool:
     resumed = bool(await r.delete(EMPTY_KEY))
     _paused.update(at=0.0)
     logger.info("OpenAI balance entered: %s%s", som(uzs), " - checks open again" if resumed else "")
+    if resumed:
+        await _credit_back(f"balans kiritildi: {som(uzs)}")
     return resumed
 
 
@@ -94,7 +107,9 @@ async def add_spent(usd: float) -> None:
               if status["left"] <= limit * status["rate"] and f"{limit:g}" not in warned]
     if passed:  # one message, for the lowest limit passed - one big spend may pass two
         await r.hset(OPENAI_KEY, "warned", ",".join(sorted(warned | {f"{limit:g}" for limit in passed})))
-        await crm.post("errors", openai_warning(status, min(passed)))
+        text = openai_warning(status, min(passed))
+        await crm.post("errors", text)
+        await tell_admins(text)
 
 
 def openai_warning(status: dict, limit: float) -> str:
@@ -123,13 +138,19 @@ async def out_of_credit() -> None:
             return
         _paused.update(at=0.0)
         logger.warning("OpenAI: insufficient_quota - checks paused for everyone but the admins")
-        await crm.post("errors", (
-            "🚨 <b>OpenAI balansi tugadi - OpenAI so'rovlarni rad etyapti.</b>\n"
-            "Tekshiruvlar adminlardan boshqa hamma uchun avtomatik to'xtatildi: talabalarga «tez orada qaytamiz, "
-            "coinlaringiz joyida» degan xabar chiqadi va ular kutayotganlar ro'yxatiga yoziladi.\n"
-            "👉 platform.openai.com da balansni to'ldiring, keyin guruhga <code>/balans SUMMA</code> yozing "
-            "(yoki panel → Sozlamalar). Bot har 10 daqiqada o'zi ham tekshiradi va OpenAI ishlashi bilan "
-            "tekshiruvlarni qayta ochadi, kutganlarga xabar yuboradi."))
+        text = ("🚨 <b>OpenAI balansi tugadi - OpenAI so'rovlarni rad etyapti.</b>\n"
+                "Tekshiruvlar adminlardan boshqa hamma uchun avtomatik to'xtatildi: talabalarga «tez orada qaytamiz, "
+                "coinlaringiz joyida» degan xabar chiqadi va ular kutayotganlar ro'yxatiga yoziladi.\n"
+                "👉 platform.openai.com da balansni to'ldiring, keyin guruhga <code>/balans SUMMA</code> yozing "
+                "(yoki panel → Sozlamalar). Bot har 10 daqiqada o'zi ham tekshiradi va OpenAI ishlashi bilan "
+                "tekshiruvlarni qayta ochadi, kutganlarga xabar yuboradi.")
+        # pinned in the errors topic once the sender has posted it (deliver_direct): its key finds the message
+        key = f"balance:empty:{int(time.time())}"
+        await crm.post("errors", text, key=key)
+        if crm.ready():
+            await r.delete(UNPIN_KEY)
+            await r.set(PIN_KEY, key, ex=DM_KEEP)
+        await tell_admins(text)
     except Exception:  # noqa: BLE001 - the failing check itself is reported anyway
         logger.warning("Could not record OpenAI's out-of-credit answer", exc_info=True)
 
@@ -162,6 +183,8 @@ async def probe_credit() -> bool:
         return False
     deleted = await crm.redis().delete(EMPTY_KEY)
     _paused.update(at=0.0)
+    if deleted:
+        await _credit_back("sinov so'rovi o'tdi")
     return bool(deleted)
 
 
@@ -202,7 +225,9 @@ async def add_azure_seconds(seconds: float) -> None:
     passed = [limit for limit in (*AZURE_WARN, 0.0) if status["left"] <= limit and f"{limit:g}" not in warned]
     if passed:
         await r.hset(AZURE_KEY, field, ",".join(sorted(warned | {f"{limit:g}" for limit in passed})))
-        await crm.post("errors", azure_warning(status, min(passed)))
+        text = azure_warning(status, min(passed))
+        await crm.post("errors", text)
+        await tell_admins(text)
 
 
 def azure_warning(status: dict, limit: float) -> str:
@@ -217,6 +242,78 @@ def azure_warning(status: dict, limit: float) -> str:
     return (f"🔴 <b>Azure (Pronunciation): bu oylik {hours:g} soatlik limit tugadi</b> ({used:.1f} soat ishlatildi).\n"
             f"Speaking tekshiruvlari davom etyapti, lekin talaffuz endi o'lchanmaydi. portal.azure.com da tarifni "
             f"tekshiring (pullik S0 da limit yo'q) va keyin <code>/balans azure 0</code> yozing.")
+
+
+# --- Straight to the bot admins (2026-11-16) -------------------------------------------------------------
+
+
+async def tell_admins(text: str) -> None:
+    """`text` for every bot admin's private chat: queued here, sent by the bot process (deliver_direct) - the
+    callers say it once per threshold crossing. Never raises."""
+    try:
+        r = crm.redis()
+        await r.rpush(DM_KEY, text)
+        await r.ltrim(DM_KEY, -20, -1)
+        await r.expire(DM_KEY, DM_KEEP)
+    except Exception:  # noqa: BLE001 - the errors topic has it anyway
+        logger.warning("A balance warning not queued for the admins' private chats", exc_info=True)
+
+
+async def _credit_back(how: str) -> None:
+    """The credit is back (a top-up entered, or the test call went through): the "out of credit" message gets
+    unpinned, and the admins - told directly it was gone - hear it is back."""
+    try:
+        r = crm.redis()
+        await r.delete(PIN_KEY)
+        await r.set(UNPIN_KEY, "1", ex=DM_KEEP)
+    except Exception:  # noqa: BLE001
+        logger.warning("The out-of-credit message not marked for unpinning", exc_info=True)
+    await tell_admins(f"✅ <b>OpenAI yana ishlayapti</b> ({how}) - tekshiruvlar hamma uchun qayta ochildi.")
+
+
+async def deliver_direct(bot) -> int:
+    """The bot process, every minute (bot/utils/admin_reminders.py): the queued warnings to every bot admin, and
+    the "out of credit" message pinned in the errors topic once the sender has posted it - unpinned when the
+    credit is back. A pin the bot may not make is only logged. Returns how many warnings went out."""
+    from aiogram.enums import ParseMode
+
+    from bot.config import settings
+
+    r = crm.redis()
+    sent = 0
+    for _ in range(20):
+        text = await r.lpop(DM_KEY)
+        if text is None:
+            break
+        sent += 1
+        for admin_id in sorted(settings.admin_ids):
+            try:
+                await bot.send_message(admin_id, text, parse_mode=ParseMode.HTML)
+            except Exception as e:  # noqa: BLE001 - blocked the bot, never started it
+                logger.info("Balance warning to admin %s not sent: %r", admin_id, e)
+    if await r.get(UNPIN_KEY):
+        await r.delete(UNPIN_KEY, PIN_KEY)
+        pinned = await r.get(PINNED_KEY)
+        if pinned:
+            await r.delete(PINNED_KEY)
+            chat_id, message_id = (int(x) for x in pinned.split("|"))
+            try:
+                await bot.unpin_chat_message(chat_id, message_id=message_id)
+            except Exception as e:  # noqa: BLE001
+                logger.info("The out-of-credit message not unpinned: %r", e)
+    key = await r.get(PIN_KEY)
+    cfg = crm.config()
+    if key and cfg:
+        saved = await r.get(f"crm:msg:{key}")  # crm._deliver keeps "message id|kind" under a post's key
+        if saved:
+            await r.delete(PIN_KEY)
+            message_id = int(saved.split("|")[0])
+            try:
+                await bot.pin_chat_message(cfg["chat_id"], message_id)
+                await r.set(PINNED_KEY, f"{cfg['chat_id']}|{message_id}", ex=60 * 24 * 3600)
+            except Exception as e:  # noqa: BLE001 - no right to pin, the message gone: never a failure
+                logger.info("The out-of-credit message not pinned (the bot may lack the right to pin): %r", e)
+    return sent
 
 
 # --- Shown in the group, the panel and the daily report --------------------------------------------------

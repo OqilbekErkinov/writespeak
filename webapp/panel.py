@@ -34,14 +34,14 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Resp
 from sqlalchemy import and_, func, select, update
 
 from bot.config import settings
-from bot.utils import balance, checks_back, crm, panel_access, runtime
+from bot.utils import balance, checks_back, crm, panel_access, runtime, support_log
+from db import crud
 from db.database import get_session
 from db.models import (
     AdminAction,
     ChartKey,
     PaymentKind,
     PaymentRequest,
-    PaymentStatus,
     SupportMessage,
     User,
     UserStatus,
@@ -224,11 +224,11 @@ async def nav_counts(request: Request) -> dict:
     out["errors"] = await errors_today()
     try:
         async with get_session() as session:
-            out["support"] = (await session.execute(select(func.count()).select_from(SupportMessage).where(
-                SupportMessage.direction == "in", SupportMessage.read.is_(False)))).scalar() or 0
-            out["payments"] = (await session.execute(select(func.count()).select_from(PaymentRequest).where(
-                PaymentRequest.status == PaymentStatus.pending,
-                PaymentRequest.receipt_file_id.is_not(None)))).scalar() or 0  # a pack tapped, no receipt: nothing to decide
+            # the threads waiting for an answer - their last message the student's (2026-11-16: unread messages
+            # were counted, and a thread opened but never answered dropped out of the badge)
+            out["support"] = len(await crud.support_waiting(session))
+            # a receipt sent, no decision yet - the one "pending" of every count (a pack tapped is nothing to decide)
+            out["payments"] = await crud.count_pending_payments(session)
             out["charts"] = (await session.execute(select(func.count()).select_from(ChartKey).where(
                 ChartKey.status == "auto"))).scalar() or 0
         out["window"] = await runtime.window_on()
@@ -622,10 +622,29 @@ async def support_thread(request: Request, user_id: int, sent: str | None = None
     for m in messages:
         m.when = insights.fmt(m.created_at)
     flash = {"1": "Javob yuborildi.", "0": "Javob yetkazilmadi: foydalanuvchi botni bloklagan bo'lishi mumkin.",
-             "empty": "Javob bo'sh."}.get(sent or "")
+             "empty": "Javob bo'sh.",
+             "closed": "Murojaat javobsiz yopildi — endi «javob kutmoqda» sanalmaydi."}.get(sent or "")
     return templates.TemplateResponse(request, "support_thread.html", {
         "active": "support", "user": user, "messages": messages, "flash": flash, "flash_bad": sent in ("0", "empty"),
+        # the last message the student's: waiting for an answer - or for «✓ Javob shart emas»
+        "waiting": bool(messages) and messages[-1].direction == "in",
     })
+
+
+@router.post("/support/{user_id}/close")
+async def support_close(request: Request, user_id: int):
+    """«✓ Javob shart emas» (2026-11-16): a thread that needs no answer (a «rahmat») stops waiting - the badge,
+    the reminders and the daily report count only the threads waiting for one. Kept in the thread as a note;
+    nothing goes to the student."""
+    if (r := guard(request)) is not None:
+        return r
+    async with get_session() as session:
+        last = (await session.execute(select(SupportMessage.direction).where(SupportMessage.user_id == user_id)
+                                      .order_by(SupportMessage.id.desc()).limit(1))).scalar_one_or_none()
+    if last == "in":  # only a thread that waits (a double click adds nothing)
+        await support_log.save(user_id, "out", kind=support_log.CLOSED, via="web", admin=admin_name(request))
+        await audit(request, "support_closed", user_id)
+    return RedirectResponse(f"/support/{user_id}?sent=closed", status_code=303)
 
 
 @router.get("/support/file/{message_id}")
@@ -976,6 +995,7 @@ async def security_recovery(request: Request):
 ACTION_NAMES = {
     "login": "Kirdi", "login_failed": "Kirish xato", "payment_approve": "To'lovni tasdiqladi",
     "payment_reject": "To'lovni rad etdi", "coins": "Coin o'zgartirdi", "message": "Xabar yozdi",
+    "support_closed": "Murojaatni javobsiz yopdi",
     "broadcast": "Ommaviy xabar", "user_blocked": "Blokladi", "user_unblocked": "Blokdan chiqardi",
     "test_window_on": "Test rejimini yoqdi", "test_window_off": "Test rejimini o'chirdi", "tester_add": "Sinovchi qo'shdi",
     "tester_remove": "Sinovchini olib tashladi", "openai_balance": "OpenAI balansini kiritdi",

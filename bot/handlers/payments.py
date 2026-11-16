@@ -256,11 +256,14 @@ async def receive_receipt(message: Message, state: FSMContext, lang: str) -> Non
     else:
         file_id, unique_id = message.photo[-1].file_id, message.photo[-1].file_unique_id
     async with get_session() as session:
-        request = await crud.set_payment_receipt(session, request_id, file_id, unique_id)
+        request, outcome = await crud.attach_receipt(session, request_id, file_id, unique_id)
         # the very same receipt sent for another payment: flagged on the admins' card (2026-11-15)
-        twins = await crud.same_receipt(session, request) if request is not None else []
+        twins = await crud.same_receipt(session, request) if outcome == "ok" else []
 
     await state.clear()
+    if outcome == "expired":
+        await _request_expired(message, request, lang)
+        return
     if request is None:
         await message.answer(t("pay.error_retry", lang))
         return
@@ -301,6 +304,19 @@ async def receive_receipt(message: Message, state: FSMContext, lang: str) -> Non
     await crm_events.payment_receipt(
         request.id, file_message=(message.chat.id, message.message_id) if document is not None else None
     )
+
+
+async def _request_expired(message: Message, request: PaymentRequest, lang: str) -> None:
+    """A receipt for a pack tapped over a day ago with none sent (crud.PAYMENT_NO_RECEIPT_TTL, 2026-11-16):
+    that request takes no receipt any more - why, and the packs again (a gift's packs for a gift), to start a
+    fresh one; a transfer already made is not lost: the same pack, then the same receipt."""
+    if request.kind == PaymentKind.gift:
+        markup = gift_packs_kb(lang)
+    else:
+        async with get_session() as session:
+            user = await crud.get_user(session, message.from_user.id)
+        markup = buy_coins_kb(lang, sees_center_packs(user))
+    await message.answer(t("pay.request_expired", lang), reply_markup=markup)
 
 
 @router.message(PaymentStates.awaiting_receipt, ~F.text.in_(MENU_BUTTON_TEXTS), ~F.text.startswith("/"))

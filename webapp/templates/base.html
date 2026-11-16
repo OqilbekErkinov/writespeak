@@ -388,11 +388,11 @@
       <a class="si {{ 'active' if active == 'dashboard' }}" href="/" data-tip="Dashboard"><span class="ic">🏠</span>Dashboard</a>
 
       <details class="sg {{ 'on' if g_users }}" data-group="users" {{ 'open' if g_users }}>
-        <summary><span class="ic">👥</span>Foydalanuvchilar{% if nav.support %}<span class="nb" title="o'qilmagan murojaatlar">{{ nav.support }}</span>{% endif %}<span class="car">▾</span></summary>
+        <summary><span class="ic">👥</span>Foydalanuvchilar{% if nav.support %}<span class="nb" title="javob kutayotgan murojaatlar">{{ nav.support }}</span>{% endif %}<span class="car">▾</span></summary>
         <div class="sub">
           <div class="fly-h">Foydalanuvchilar</div>
           <a href="/users" class="{{ 'active' if active == 'users' }}">Ro'yxat</a>
-          <a href="/support" class="{{ 'active' if active == 'support' }}">Murojaatlar{% if nav.support %}<span class="nb" title="o'qilmagan">{{ nav.support }}</span>{% endif %}</a>
+          <a href="/support" class="{{ 'active' if active == 'support' }}">Murojaatlar{% if nav.support %}<span class="nb" title="javob kutmoqda">{{ nav.support }}</span>{% endif %}</a>
           {% if not nav.can or nav.can.broadcast %}<a href="/broadcast" class="{{ 'active' if active == 'broadcast' }}">Ommaviy xabar</a>{% endif %}
         </div>
       </details>
@@ -452,7 +452,7 @@
     <div class="mtop">
       <button type="button" class="burger" id="bzBurger" aria-label="Menyuni ochish" aria-controls="bzSide">☰</button>
       <a class="brand" href="{{ '/checks' if nav.teacher else '/' }}"><img src="https://bandzilla.uz/assets/logo-on-dark.webp" alt="Bandzilla" width="720" height="126"></a>
-      {% if not nav.teacher %}<span class="mt-badges">{% if nav.payments %}<a class="nb" href="/payments" title="to'lov tasdiq kutmoqda">💳 {{ nav.payments }}</a>{% endif %}{% if nav.support %}<a class="nb" href="/support" title="o'qilmagan murojaatlar">💬 {{ nav.support }}</a>{% endif %}</span>{% endif %}
+      {% if not nav.teacher %}<span class="mt-badges">{% if nav.payments %}<a class="nb" href="/payments" title="to'lov tasdiq kutmoqda">💳 {{ nav.payments }}</a>{% endif %}{% if nav.support %}<a class="nb" href="/support?f=waiting" title="javob kutayotgan murojaatlar">💬 {{ nav.support }}</a>{% endif %}</span>{% endif %}
     </div>
   <script>
   (function () {

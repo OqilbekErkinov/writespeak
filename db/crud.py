@@ -42,6 +42,7 @@ from db.models import (
     SpeakingPart,
     SpeakingSubmission,
     SubmissionComment,
+    SupportMessage,
     User,
     UserRole,
     UserStatus,
@@ -1335,17 +1336,59 @@ async def create_payment_request(
     return request
 
 
-async def set_payment_receipt(
+# A pack tapped and no receipt sent within this long (2026-11-16: such requests waited for ever): the request is
+# abandoned - it takes no receipt any more (the student gets the packs again, bot/handlers/payments.py) and
+# leaves the panel's "Kutilmoqda" list. Nothing is written: no status of its own (no migration), the rule is
+# read from created_at wherever it matters (payment_expired). A request WITH a receipt never expires - it waits
+# for an admin, and the reminders (bot/utils/admin_reminders.py) chase it.
+PAYMENT_NO_RECEIPT_TTL = timedelta(hours=24)
+
+
+def awaiting_decision():
+    """The one meaning of a "pending" payment in every count and reminder (2026-11-16: the dashboard and the
+    finance page counted packs tapped with no receipt, the nav badge and the daily report did not): a receipt
+    sent, no decision yet. A SQL condition; awaits_decision() is the same for a loaded row."""
+    return and_(PaymentRequest.status == PaymentStatus.pending, PaymentRequest.receipt_file_id.is_not(None))
+
+
+def awaits_decision(request: PaymentRequest) -> bool:
+    return request.status == PaymentStatus.pending and request.receipt_file_id is not None
+
+
+def payment_expired(request: PaymentRequest, now: datetime | None = None) -> bool:
+    """Still pending, no receipt, tapped over PAYMENT_NO_RECEIPT_TTL ago."""
+    if request.status != PaymentStatus.pending or request.receipt_file_id is not None or request.created_at is None:
+        return False
+    return (now or datetime.now(timezone.utc)) - request.created_at > PAYMENT_NO_RECEIPT_TTL
+
+
+async def attach_receipt(
     session: AsyncSession, request_id: int, receipt_file_id: str, receipt_unique_id: str | None = None
-) -> PaymentRequest | None:
-    request = await session.get(PaymentRequest, request_id)
+) -> tuple[PaymentRequest | None, str]:
+    """The receipt the student sent, on their request: (the request, "ok"); (the request, "expired") when it was
+    tapped over PAYMENT_NO_RECEIPT_TTL ago with none sent - nothing is saved then; (None, "missing")."""
+    request = (await session.execute(
+        select(PaymentRequest).where(PaymentRequest.id == request_id).with_for_update()
+        .execution_options(populate_existing=True)
+    )).scalar_one_or_none()
     if request is None:
-        return None
+        return None, "missing"
+    if payment_expired(request):
+        await session.commit()  # nothing changed: only the row lock goes (a rollback would expire the row)
+        return request, "expired"
     request.receipt_file_id = receipt_file_id
     request.receipt_unique_id = receipt_unique_id
     await session.commit()
     await session.refresh(request)
-    return request
+    return request, "ok"
+
+
+async def set_payment_receipt(
+    session: AsyncSession, request_id: int, receipt_file_id: str, receipt_unique_id: str | None = None
+) -> PaymentRequest | None:
+    """attach_receipt(): the request, or None (none such, or expired)."""
+    request, outcome = await attach_receipt(session, request_id, receipt_file_id, receipt_unique_id)
+    return request if outcome == "ok" else None
 
 
 async def same_receipt(session: AsyncSession, request: PaymentRequest) -> list[PaymentRequest]:
@@ -1576,9 +1619,8 @@ async def get_admin_stats(session: AsyncSession) -> dict:
     ).scalar() or 0
     pending_payments = (
         await session.execute(
-            select(func.count())
-            .select_from(PaymentRequest)
-            .where(PaymentRequest.status == PaymentStatus.pending)
+            # a receipt sent, no decision yet - as every other count (2026-11-16: a pack tapped counted here)
+            select(func.count()).select_from(PaymentRequest).where(awaiting_decision())
         )
     ).scalar() or 0
     total_users = (await session.execute(select(func.count()).select_from(User))).scalar() or 0
@@ -2456,6 +2498,10 @@ async def list_payment_requests(
     )
     if status is not None:
         stmt = stmt.where(PaymentRequest.status == status)
+    if status == PaymentStatus.pending:
+        # an abandoned pack (no receipt for PAYMENT_NO_RECEIPT_TTL) is nothing to decide any more (2026-11-16)
+        stmt = stmt.where(or_(PaymentRequest.receipt_file_id.is_not(None),
+                              PaymentRequest.created_at >= datetime.now(timezone.utc) - PAYMENT_NO_RECEIPT_TTL))
     return list((await session.execute(stmt)).scalars().all())
 
 
@@ -2616,9 +2662,83 @@ async def payments_decided_between(session: AsyncSession, start: datetime, end: 
 
 
 async def count_pending_payments(session: AsyncSession) -> int:
-    """Receipts sent and still waiting for an admin."""
+    """Receipts sent and still waiting for an admin (awaiting_decision)."""
     return (await session.execute(
-        select(func.count()).select_from(PaymentRequest).where(
-            PaymentRequest.status == PaymentStatus.pending, PaymentRequest.receipt_file_id.is_not(None)
-        )
+        select(func.count()).select_from(PaymentRequest).where(awaiting_decision())
     )).scalar() or 0
+
+
+async def pending_payments(session: AsyncSession, limit: int = 100) -> list[PaymentRequest]:
+    """The receipts waiting for an admin (awaiting_decision), the oldest first, with their buyers - for the
+    reminders (bot/utils/admin_reminders.py) and the daily report."""
+    return list((await session.execute(
+        select(PaymentRequest).options(selectinload(PaymentRequest.user)).where(awaiting_decision())
+        .order_by(PaymentRequest.created_at, PaymentRequest.id).limit(limit)
+    )).scalars().all())
+
+
+# --- Support threads waiting for an answer (2026-11-16) ------------------------------------------------------
+
+
+@dataclass
+class WaitingThread:
+    """A student's support messages since the admins last wrote to them."""
+
+    user_id: int
+    since: datetime  # the first of them: how long the student has waited
+    last_at: datetime
+    first_id: int
+    last_id: int
+    messages: int
+
+
+async def support_waiting(session: AsyncSession) -> list[WaitingThread]:
+    """The support threads waiting for an answer, the longest-waiting first: the student's messages after the
+    admins' last one - an answer from the group or the panel, or a «no answer needed» (kind "closed", the
+    panel's support thread) - i.e. the threads whose last message is the student's. The panel's badge, the
+    reminders and the daily report count these (until 2026-11-16 the badge counted unread messages: a thread
+    opened in the panel and never answered dropped out of it)."""
+    answered = (select(SupportMessage.user_id, func.max(SupportMessage.id).label("last_out"))
+                .where(SupportMessage.direction == "out").group_by(SupportMessage.user_id).subquery())
+    rows = (await session.execute(
+        select(SupportMessage.user_id, func.min(SupportMessage.created_at), func.max(SupportMessage.created_at),
+               func.min(SupportMessage.id), func.max(SupportMessage.id), func.count())
+        .outerjoin(answered, answered.c.user_id == SupportMessage.user_id)
+        .where(SupportMessage.direction == "in", SupportMessage.id > func.coalesce(answered.c.last_out, 0))
+        .group_by(SupportMessage.user_id)
+        .order_by(func.min(SupportMessage.created_at))
+    )).all()
+    return [WaitingThread(*row) for row in rows]
+
+
+async def user_ids_by_usernames(session: AsyncSession, usernames) -> set[int]:
+    """The bot's users with these @usernames (any case) - the /crm_agents named by username."""
+    names = {str(n).lower().lstrip("@") for n in usernames if n}
+    if not names:
+        return set()
+    return set((await session.execute(select(User.id).where(func.lower(User.username).in_(names)))).scalars().all())
+
+
+# Checks that stopped without a report (bot/utils/check_guard.py's CheckHold states), for the daily report
+STOPPED_STATES = ("refunded", "interrupted", "expired")
+
+
+async def checks_stopped_between(session: AsyncSession, start: datetime, end: datetime) -> list[CheckHold]:
+    """The checks that stopped between `start` and `end` (by when they stopped), their coins given back: an
+    error (refunded), a bot restart (interrupted), never finished (expired)."""
+    when = func.coalesce(CheckHold.finished_at, CheckHold.created_at)
+    return list((await session.execute(
+        select(CheckHold).where(CheckHold.state.in_(STOPPED_STATES), when >= start, when < end)
+        .order_by(CheckHold.created_at)
+    )).scalars().all())
+
+
+async def teacher_marks_waiting(session: AsyncSession) -> int:
+    """Teacher logins' marks the owner has not approved yet - what the checks page shows as «⏳ tasdiq
+    kutmoqda» (bot/utils/teacher_bands.py: they teach the Speaking scoring only once approved)."""
+    n = 0
+    for model in (WritingSubmission, SpeakingSubmission):
+        marks = (await session.execute(select(model.teacher_bands).where(model.teacher_bands.isnot(None)))) \
+            .scalars().all()
+        n += sum(1 for m in marks if isinstance(m, dict) and m.get("role") == "teacher" and not m.get("approved"))
+    return n

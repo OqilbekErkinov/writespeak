@@ -160,6 +160,9 @@ class Settings(BaseSettings):
     # login's own Telegram. false only as a break-glass (Telegram unreachable and no recovery code at hand):
     # set WEB_2FA=false in .env and restart admin_web.
     web_2fa: bool = True
+    # The panel's address in the admins' reminders (bot/utils/admin_reminders.py, 2026-11-16): a payment waiting
+    # for a decision, a support message waiting for an answer.
+    panel_url: str = "https://admin.bandzilla.uz"
     # Teachers' web cabinet (webapp/cabinet.py), e.g. https://bandzilla.uz/cabinet
     # - the bot's "Web-kabinet" button signs them in there. Empty = button hidden.
     cabinet_base_url: str = ""

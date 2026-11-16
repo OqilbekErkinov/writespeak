@@ -26,6 +26,7 @@ from bot.config import settings
 from bot.utils import balance
 from bot.utils.coins import CENTER_PACKS, CHECK_COINS, COIN_PACKS
 from bot.utils.crm import redis, usd_rate
+from db import crud
 from db.database import get_session
 from db.models import (
     FinanceEntry,
@@ -164,7 +165,7 @@ async def overview(session, period: str) -> dict:
     real = [p for p in approved if not p.is_test]
     real_in = [p for p in real if inside(tday(p.reviewed_at))]
     test_in = [p for p in approved if p.is_test and inside(tday(p.reviewed_at))]
-    pending = [p for p in payments if p.status == PaymentStatus.pending]
+    pending = [p for p in payments if crud.awaits_decision(p)]  # a receipt sent, no decision yet (2026-11-16)
     income_in = [e for e in entries if e.kind == "income" and inside(e.day)]
     expense_in = [e for e in entries if e.kind == "expense" and inside(e.day)]
 
