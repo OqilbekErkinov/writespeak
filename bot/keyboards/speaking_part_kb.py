@@ -2,6 +2,8 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from bot.i18n import t
 from bot.keyboards.nav_kb import back_button
+from bot.keyboards.practice_kb import ready_question_button
+from db.models import PracticeModule
 
 CB_PART1 = "speaking:part1"
 CB_PART2 = "speaking:part2"
@@ -44,12 +46,15 @@ def listen_kb(submission_id: int, labels: list[str]) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[buttons[i:i + 3] for i in range(0, len(buttons), 3)])
 
 
-def send_question_kb(lang: str, back_callback: str) -> InlineKeyboardMarkup:
-    """Under "send the question/s": or a recording that has the questions in it."""
-    return InlineKeyboardMarkup(inline_keyboard=[
+def send_question_kb(lang: str, back_callback: str, part: str | None = None) -> InlineKeyboardMarkup:
+    """Under "send the question/s": a ready question of `part` from Practice (2026-11-16 - students without a
+    question of their own stalled here), or a recording that has the questions in it."""
+    rows = [[ready_question_button(lang, PracticeModule(f"speaking_{part}"))]] if part else []
+    rows += [
         [InlineKeyboardButton(text=t("speaking.btn_no_questions", lang), callback_data=CB_NO_QUESTIONS)],
         [back_button(lang, back_callback)],
-    ])
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def mode_kb(lang: str, back_callback: str, own_recording: bool) -> InlineKeyboardMarkup:

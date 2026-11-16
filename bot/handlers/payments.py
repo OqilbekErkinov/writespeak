@@ -36,6 +36,7 @@ from bot.config import settings
 from bot.i18n import t
 from bot.keyboards.main_menu_kb import MENU_BUTTON_TEXTS, main_menu_kb
 from bot.keyboards.account_kb import gift_packs_kb
+from bot.keyboards.entry_kb import approval_start_kb
 from bot.keyboards.payment_kb import (
     CB_BUY_PREFIX,
     CB_BUY_SUB_PREFIX,
@@ -501,15 +502,20 @@ async def _clear_buttons(bot, message, status_line: str) -> None:
 
 
 async def approval_keyboard(decision: crud.PaymentDecision, lang: str) -> InlineKeyboardMarkup | None:
-    """The buttons under an approval message - built only here (a gift's
-    share button today), so another button joins in one place."""
+    """The buttons under an approval message - built only here, so another
+    button joins in one place. A gift: its share button. Coins: the check
+    that waits for them first - else a way to spend them."""
     if decision.request.kind == PaymentKind.gift and decision.gift is not None:
         return gift_share_kb(gift_link(decision.gift.code), decision.gift.coins, lang)
     # a check that stopped for want of coins (bot/utils/check_guard.py park(), 2026-11-16): "🔁 Continue my
     # check" right under the approval - the answer is not sent again
     from bot.utils import check_guard  # noqa: PLC0415 - check_guard imports the payments keyboards' world
 
-    return await check_guard.parked_keyboard(decision.request.user_id, lang)
+    parked = await check_guard.parked_keyboard(decision.request.user_id, lang)
+    if parked is not None:
+        return parked
+    # nothing waits: "✍️ Writing" / "🎙 Speaking", each as a new message - this one stays (2026-11-16)
+    return approval_start_kb(lang)
 
 
 def rejection_text(request: PaymentRequest, lang: str) -> str:

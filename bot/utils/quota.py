@@ -32,7 +32,7 @@ from bot.config import settings
 from bot.i18n import t
 from bot.keyboards.payment_kb import buy_coins_kb
 from bot.utils import runtime
-from bot.utils.coins import check_coins
+from bot.utils.coins import COIN_PACKS, check_coins
 from db import crud
 from db.database import get_session
 from db.models import FULL_TEST_CHECKS
@@ -146,7 +146,21 @@ async def send_paywall(message: Message, lang: str = "uz", quota: Quota | None =
         text = t("quota.paywall", lang, price=quota.price, balance=quota.balance)
     else:
         text = t("quota.paywall_generic", lang)
-    await message.answer(text + "\n\n" + price_list(lang), reply_markup=buy_coins_kb(lang))
+    text += "\n\n" + price_list(lang)
+    if quota is not None and quota.balance is not None:
+        text += carry_over_note(quota.balance, quota.price, lang)
+    await message.answer(text, reply_markup=buy_coins_kb(lang))
+
+
+def carry_over_note(balance: int, price: int, lang: str) -> str:
+    """"Your coins left aren't lost: 3 coin + 10 coin = 13 coin = 2 checks" - the line above the packs
+    (2026-11-16: the paywall never said what happens to the coins a student already has). "" with none to
+    carry over. Also for check_guard's own paywall, which can take it in one call."""
+    if not 0 < balance < price:
+        return ""
+    pack = COIN_PACKS[0][0]  # the smallest pack
+    return "\n\n" + t("quota.carry_over", lang, balance=balance, pack=pack, total=balance + pack,
+                      checks=(balance + pack) // price)
 
 
 def price_list(lang: str) -> str:

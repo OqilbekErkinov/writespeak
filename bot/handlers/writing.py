@@ -6,7 +6,10 @@ Flow: pick task -> send prompt (any format) -> [confirm OCR/parse if needed]
 back at the main menu). Also entered directly from Practice
 (bot/handlers/practice.py), which presets task_type/prompt_text/
 practice_question_id (+ the Task 1 chart, if any) and jumps straight to
-`awaiting_answer`. Every step has a "⬅️ Orqaga" button.
+`awaiting_answer`. Every step has a "⬅️ Orqaga" button. And from the smart
+entry (bot/handlers/fallback.py, 2026-11-16): an essay typed outside any
+flow is kept ("kept_answer") while the question is asked, then graded as the
+answer without asking for it again (start_task, _ask_for_answer).
 
 A Task 1 chart is read once into a data sheet before grading (services/ai/
 visual_reading.py) and every call uses its figures. A chart the vision model
@@ -53,6 +56,7 @@ from bot.keyboards.writing_task_kb import (
     cut_start_kb,
     length_kb,
     recheck_kb,
+    send_prompt_kb,
     wrong_section_kb,
     CB_TASK1,
     CB_TASK2,
@@ -63,7 +67,7 @@ from bot.keyboards.writing_task_kb import (
 )
 from bot.states.writing_states import WritingStates
 from bot.utils import check_guard as guard
-from bot.utils import crm_events, runtime, stickers
+from bot.utils import crm_events, nudges, runtime, stickers
 from bot.utils import progress as live
 from bot.utils.input_extraction import read_images, read_text_input
 from bot.utils.messages import show_screen, strip_buttons
@@ -133,12 +137,19 @@ async def back_to_writing_menu(callback: CallbackQuery, state: FSMContext, lang:
 @router.callback_query(F.data.in_({CB_TASK1, CB_TASK2}))
 async def choose_task(callback: CallbackQuery, state: FSMContext, lang: str) -> None:
     await callback.answer()
+    await start_task(callback, state, "task1" if callback.data == CB_TASK1 else "task2", lang)
 
-    task_type = "task1" if callback.data == CB_TASK1 else "task2"
+
+async def start_task(callback: CallbackQuery, state: FSMContext, task_type: str, lang: str,
+                     kept_answer: str | None = None, note: str = "") -> bool:
+    """The task's "send the question" step, in place of the callback's message. Also the smart entry's hand-off
+    (bot/handlers/fallback.py, 2026-11-16): `kept_answer` - an essay typed outside any flow - becomes the answer
+    as soon as the question is in (_ask_for_answer), never asked for again; `note` (HTML, ending in a blank
+    line) heads the step. False when the check can't start now (the paywall or the pause note was sent)."""
     quota = await check_quota(callback.from_user.id, writing_kind(task_type))
     if not quota.allowed:
         await send_paywall(callback.message, lang, quota)
-        return
+        return False
 
     # Defends against a stale Task1/Task2 button from an old message being
     # tapped while a Mock Test (bot/utils/mock_test_flow.py) is in progress -
@@ -146,11 +157,13 @@ async def choose_task(callback: CallbackQuery, state: FSMContext, lang: str) -> 
     # one-off check get wrongly recorded as a mock test part. A no-op in the
     # normal flow, since open_writing_menu already cleared state.
     await state.clear()
-    await state.update_data(task_type=task_type, spend_credit=quota.spend_credit, payer_id=quota.payer_id)
+    await state.update_data(task_type=task_type, spend_credit=quota.spend_credit, payer_id=quota.payer_id,
+                            **({"kept_answer": kept_answer} if kept_answer else {}))
     await state.set_state(WritingStates.awaiting_prompt)
-    await show_screen(
-        callback, free_check_note(quota, lang) + t("writing.send_prompt", lang), back_kb(lang, CB_WRITING_MENU)
-    )
+    # a ready question from Practice instead (2026-11-16) - not when an answer is kept: it has its own question
+    markup = back_kb(lang, CB_WRITING_MENU) if kept_answer else send_prompt_kb(lang, task_type, CB_WRITING_MENU)
+    await show_screen(callback, free_check_note(quota, lang) + note + t("writing.send_prompt", lang), markup)
+    return True
 
 
 @router.message(WritingStates.awaiting_prompt, ~F.text.in_(MENU_BUTTON_TEXTS))
@@ -158,7 +171,9 @@ async def receive_prompt(message: Message, state: FSMContext, lang: str) -> None
     async with _user_locks[message.from_user.id]:
         if await state.get_state() != WritingStates.awaiting_prompt.state:
             return  # a second message that came together with the first: the first one is used
-        await _receive_input(message, state, field="prompt", lang=lang)
+        go = await _receive_input(message, state, field="prompt", lang=lang)
+    if go:  # an answer kept by the smart entry is graded as soon as its question is in
+        await _run_grading(message, state, lang)
 
 
 @router.message(WritingStates.awaiting_answer, ~F.text.in_(MENU_BUTTON_TEXTS))
@@ -258,7 +273,9 @@ async def switch_section(callback: CallbackQuery, state: FSMContext, lang: str) 
         await state.update_data(task_type=task_type, spend_credit=quota.spend_credit, payer_id=quota.payer_id,
                                 switch_to=None,
                                 prompt_image_paths=[] if task_type == "task2" else data.get("prompt_image_paths"))
-        await _advance(callback.message, state, "prompt", lang)
+        go = await _advance(callback.message, state, "prompt", lang)
+    if go:  # a kept answer (the smart entry): graded now
+        await _run_grading(callback.message, state, lang)
 
 
 def _preview(text: str) -> str:
@@ -384,6 +401,11 @@ async def _advance(message: Message, state: FSMContext, field: str, lang: str) -
     `processing` then; the caller grades it, outside its lock)."""
     if field == "prompt":
         data = await state.get_data()
+        if data.get("kept_answer") and await _same_as_kept(data.get("prompt_text", ""), data["kept_answer"]):
+            # the kept essay sent again as its question: never graded against itself - the question is asked again
+            await state.set_state(WritingStates.awaiting_prompt)
+            await message.answer(t("smart.same_as_answer", lang), reply_markup=back_kb(lang, CB_WRITING_MENU))
+            return False
         own_question = data.get("mock_session_id") or data.get("assignment_part_id") or data.get("practice_question_id")
         section = None if own_question else wrong_section(data["task_type"], data.get("prompt_text", ""))
         if section:
@@ -400,8 +422,7 @@ async def _advance(message: Message, state: FSMContext, field: str, lang: str) -
             await state.set_state(WritingStates.awaiting_chart)
             await message.answer(t("writing.send_chart", lang), reply_markup=chart_kb(lang, _back_target(data, "answer")))
             return False
-        await _ask_for_answer(message, state, data, lang)
-        return False
+        return await _ask_for_answer(message, state, data, lang)
     data = await state.get_data()
     text = data.get("answer_text", "")
     if data.get("answer_source") == SourceType.text.value and starts_mid_word(text) \
@@ -454,13 +475,37 @@ async def recheck_choice(callback: CallbackQuery, state: FSMContext, lang: str) 
     await _run_grading(callback.message, state, lang)
 
 
-async def _ask_for_answer(message: Message, state: FSMContext, data: dict, lang: str) -> None:
+async def _ask_for_answer(message: Message, state: FSMContext, data: dict, lang: str) -> bool:
+    """The answer step. True when the answer is already here and ready to be graded (the state is `processing`
+    then; the caller grades it): the essay the smart entry kept (bot/handlers/fallback.py, 2026-11-16) - it gets
+    a typed answer's own checks first (a start lost in copying, the length), as if just sent."""
     await state.set_state(WritingStates.awaiting_answer)
+    kept = (await state.get_data()).get("kept_answer")
+    if kept:
+        await state.update_data(kept_answer=None, answer_text=kept, answer_source=SourceType.text.value,
+                                answer_file_path=None)
+        return await _advance(message, state, "answer", lang)
     await message.answer(
         t("writing.send_answer", lang, min_words=MIN_ANSWER_WORDS[data["task_type"]])
         + "\n\n" + t("writing.honest_note", lang),
         reply_markup=back_kb(lang, _back_target(data, "answer")),
     )
+    return False
+
+
+async def _same_as_kept(prompt: str, kept: str) -> bool:
+    """The "question" is the kept essay again (pasted twice): over 90% the same text. A real question is far
+    shorter, so most are told apart by length alone; the character comparison runs off the event loop."""
+    if count_words(prompt) < 0.8 * count_words(kept):
+        return False
+    a, b = canon(prompt).lower(), canon(kept).lower()
+
+    def similar() -> bool:
+        matcher = difflib.SequenceMatcher(None, a, b, autojunk=False)
+        # quick_ratio() >= ratio() (difflib's own upper bound): at or under the threshold already means "not over"
+        return a == b or (matcher.quick_ratio() > RESUBMISSION_SIMILARITY and matcher.ratio() > RESUBMISSION_SIMILARITY)
+
+    return await asyncio.to_thread(similar)
 
 
 @router.message(WritingStates.awaiting_chart, ~F.text.in_(MENU_BUTTON_TEXTS))
@@ -497,13 +542,13 @@ async def skip_chart(callback: CallbackQuery, state: FSMContext, lang: str) -> N
 
 
 async def _after_chart(message: Message, state: FSMContext, data: dict, lang: str) -> bool:
-    """True when the check goes on now (the chart asked for again after the answer)."""
+    """True when the check goes on now (the chart asked for again after the answer, or the answer kept by the
+    smart entry)."""
     if data.get("rechart"):
         await state.update_data(rechart=False)
         await state.set_state(WritingStates.processing)
         return True
-    await _ask_for_answer(message, state, data, lang)
-    return False
+    return await _ask_for_answer(message, state, data, lang)
 
 
 class ChartUnreadable(Exception):
@@ -666,7 +711,8 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
                                                 band=same.overall_band)
                 else:
                     await state.clear()
-                    await message.answer(t("nav.what_next", lang), reply_markup=_after_result_kb(data, lang))
+                    await nudges.what_next(message, lang, writing_kind(data["task_type"]), data,
+                                           _after_result_kb(data, lang))  # with the coins left (2026-11-16)
                 await crm_events.check_repeated("w", user_id, same.id)
             except Exception:  # noqa: BLE001
                 logger.exception("Writing resubmission of user %s: the steps after the saved report failed", user_id)
@@ -948,7 +994,8 @@ async def _deliver_writing(message, state, lang, data, hold, submission, report,
         )
     elif await guard.owns(state, hold):  # not when they started something else meanwhile
         await state.clear()
-        await message.answer(t("nav.what_next", lang), reply_markup=_after_result_kb(data, lang))
+        await nudges.what_next(message, lang, writing_kind(data["task_type"]), data,
+                               _after_result_kb(data, lang))  # with the coins left (2026-11-16)
     if not test_run:
         await crm_events.check_done("w", submission.id)
 

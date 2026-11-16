@@ -41,7 +41,9 @@ from bot.keyboards.practice_kb import (
     CB_MODULE_PREFIX,
     CB_NEXT_PREFIX,
     CB_NOOP,
+    CB_OPEN_PREFIX,
     CB_PAGE_PREFIX,
+    CB_PRACTICE_NEW,
     CB_QUESTION_PREFIX,
     CB_RANDOM_PREFIX,
     KIND_LABELS,
@@ -55,7 +57,7 @@ from bot.keyboards.practice_kb import (
 )
 from bot.states.payment_states import PaymentStates
 from bot.states.writing_states import WritingStates
-from bot.utils.flow import GRADING
+from bot.utils.flow import GRADING, leave_flow
 from bot.utils.messages import remove_message, show_screen
 from bot.utils.quota import Quota, check_quota, free_check_note, send_paywall
 from bot.utils.speaking_questions import split_questions
@@ -127,6 +129,31 @@ async def back_to_modules(callback: CallbackQuery, state: FSMContext, lang: str)
 @router.callback_query(F.data == CB_NOOP)
 async def page_counter(callback: CallbackQuery) -> None:
     await callback.answer()
+
+
+@router.callback_query(F.data.startswith(CB_OPEN_PREFIX))
+async def open_from_step(callback: CallbackQuery, state: FSMContext, lang: str) -> None:
+    """"📝 Tayyor savol tanlash" on the "send the question" step of Writing or Speaking (2026-11-16 - a student
+    without a question of their own stalled there): that step is left (a check being graded goes on) and the
+    module's question list takes its place."""
+    await callback.answer()
+    await leave_flow(state)
+    try:
+        module = PracticeModule(callback.data.removeprefix(CB_OPEN_PREFIX))
+    except ValueError:  # a module renamed since the button was sent
+        await show_screen(callback, *await _picker_screen(callback.from_user.id, lang))
+        return
+    await show_screen(callback, *await _question_list_screen(module, callback.from_user.id, lang))
+
+
+@router.callback_query(F.data == CB_PRACTICE_NEW)
+async def open_as_new(callback: CallbackQuery, state: FSMContext, lang: str) -> None:
+    """The module picker as a new message, under a message that stays (the last onboarding tip) - as the menu's
+    "📝 Practice" opens it."""
+    await callback.answer()
+    await leave_flow(state)
+    text, kb = await _picker_screen(callback.from_user.id, lang)
+    await callback.message.answer(text, reply_markup=kb)
 
 
 async def _load(module: PracticeModule, user_id: int, kind: str):

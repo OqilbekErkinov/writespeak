@@ -46,7 +46,9 @@ CENTER_PACKS: tuple[tuple[int, int], ...] = (
 )
 ALL_PACKS = dict((*COIN_PACKS, *CENTER_PACKS))
 
-# Rough "how many checks" a pack is, shown on the buttons.
+# What one check costs, for "how many checks" a pack or a balance is: "= N tekshiruv" on every pack button
+# (bot/keyboards/payment_kb.py pack_button, since 2026-11-16 - until then this said so, but no button showed it),
+# the paywall's carry-over line and the balance under a report (bot/utils/nudges.py).
 TYPICAL_CHECK = CHECK_COINS["writing_task2"]
 
 

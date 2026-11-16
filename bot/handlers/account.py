@@ -6,6 +6,12 @@ admins (bot/handlers/support.py).
 
 "📂 My Works" and "💬 Admin bilan aloqa" used to be main-menu buttons; the
 old texts (still on some keyboards) open this hub and the support chat.
+
+Since 2026-11-16 the hub also has "🎁 Do'stni taklif qilish" (Telegram's share
+screen with the student's referral link) and the switch for the
+re-engagement reminders (bot/utils/nudges.py), which a reminder's own
+"🔕 Eslatmalarni o'chirish" turns off. The weakest-criterion line is
+weakest_line - the reminders use it too.
 """
 from __future__ import annotations
 
@@ -15,8 +21,9 @@ import math
 from datetime import datetime, timezone
 
 from aiogram import F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
-from aiogram.types import BufferedInputFile, CallbackQuery, Message
+from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardMarkup, Message
 
 from bot.config import settings
 from bot.handlers.payments import sees_center_packs
@@ -27,6 +34,8 @@ from bot.keyboards.account_kb import (
     CB_HOME,
     CB_LANG,
     CB_NOOP,
+    CB_NUDGES_OFF,
+    CB_NUDGES_TOGGLE,
     CB_STATS,
     CB_TOPUP,
     CB_TOPUP_CENTER,
@@ -38,10 +47,12 @@ from bot.keyboards.account_kb import (
     history_kb,
     lang_kb,
     packs_kb,
+    referral_link,
     teacher_needed_kb,
     topup_kb,
 )
 from bot.keyboards.main_menu_kb import BTN_ACCOUNT_EN, BTN_ACCOUNT_RU, BTN_ACCOUNT_UZ, BTN_MY_WORKS
+from bot.utils import nudges
 from bot.utils.gifts import gift_link
 from bot.utils.messages import remove_message, show_screen
 from bot.utils.quota import price_list
@@ -56,13 +67,29 @@ RECENT_WORKS_FOR_WEAKNESS = 5
 _EVER = datetime(2000, 1, 1, tzinfo=timezone.utc)
 
 
+def weakest(averages: dict[str, float]) -> str | None:
+    """The criterion with the lowest average (db/crud.py get_criteria_averages), None with no scores."""
+    return min(averages, key=averages.get) if averages else None
+
+
+async def weakest_line(session, user_id: int, key: str, lang: str) -> str:
+    """The student's weakest criterion over their last RECENT_WORKS_FOR_WEAKNESS checks, as the text `key`
+    (label, average, tip) - "" when nothing is scored yet. Hisobim's line, and the reminders'
+    (bot/utils/nudges.py)."""
+    averages = await crud.get_criteria_averages(session, user_id, limit=RECENT_WORKS_FOR_WEAKNESS)
+    worst = weakest(averages)
+    if worst is None:
+        return ""
+    return t(key, lang, label=CRITERIA_LABELS.get(worst, worst), avg=averages[worst], tip=criteria_tip(worst, lang))
+
+
 async def _home_text(tg, lang: str) -> str:
     async with get_session() as session:
         user = await crud.get_user(session, tg.id)
         referral_count = await crud.get_referral_count(session, tg.id)
         vocab_total, vocab_learned = await crud.get_vocabulary_counts(session, tg.id)
         works = await crud.get_works_since(session, tg.id, _EVER)
-        criteria_averages = await crud.get_criteria_averages(session, tg.id, limit=RECENT_WORKS_FOR_WEAKNESS)
+        weakest_text = await weakest_line(session, tg.id, "account.weakest", lang)
 
     lines = [t("acc.title", lang, name=html.escape(tg.first_name or tg.full_name or "", quote=False)), ""]
     lines.append(t("account.coin_balance", lang, coins=user.coin_balance if user is not None else 0))
@@ -72,21 +99,23 @@ async def _home_text(tg, lang: str) -> str:
     writing = sum(1 for w in works if w["kind"] == "w")
     lines.append(t("acc.checks_line", lang, total=len(works), w=writing, s=len(works) - writing))
     lines.append(t("account.vocab_progress", lang, learned=vocab_learned, total=vocab_total))
-    if criteria_averages:
-        key = min(criteria_averages, key=criteria_averages.get)
-        lines.append(t("account.weakest", lang, label=CRITERIA_LABELS.get(key, key), avg=criteria_averages[key],
-                       tip=criteria_tip(key, lang)))
+    if weakest_text:
+        lines.append(weakest_text)
     lines += ["", t("account.referral", lang, count=referral_count, coins=settings.referral_coins,
-                    link=f"https://t.me/{settings.telegram_bot_username}?start=ref_{tg.id}"),
+                    link=referral_link(tg.id)),
               "", t("acc.choose", lang)]
     return "\n".join(lines)
+
+
+async def _hub_kb(user_id: int, lang: str):
+    return account_kb(lang, user_id, await nudges.reminders_on(user_id))
 
 
 @router.message(F.text.in_({BTN_ACCOUNT_UZ, BTN_ACCOUNT_RU, BTN_ACCOUNT_EN, BTN_MY_WORKS}))
 async def show_account(message: Message, state: FSMContext, lang: str) -> None:
     await state.clear()  # leaving whatever flow was in progress
-    await message.answer(await _home_text(message.from_user, lang), reply_markup=account_kb(lang),
-                         disable_web_page_preview=True)
+    await message.answer(await _home_text(message.from_user, lang),
+                         reply_markup=await _hub_kb(message.from_user.id, lang), disable_web_page_preview=True)
 
 
 @router.callback_query(F.data == CB_HOME)
@@ -94,17 +123,58 @@ async def account_home(callback: CallbackQuery, state: FSMContext, lang: str) ->
     await callback.answer()
     await state.clear()
     text = await _home_text(callback.from_user, lang)
+    markup = await _hub_kb(callback.from_user.id, lang)
     if getattr(callback.message, "text", None) is not None:
-        await show_screen(callback, text, account_kb(lang))
+        await show_screen(callback, text, markup)
         return
     # from the statistics photo: a new text message, without a link preview
     await remove_message(callback.message)
-    await callback.message.answer(text, reply_markup=account_kb(lang), disable_web_page_preview=True)
+    await callback.message.answer(text, reply_markup=markup, disable_web_page_preview=True)
 
 
 @router.callback_query(F.data == CB_NOOP)
 async def noop(callback: CallbackQuery) -> None:
     await callback.answer()
+
+
+# --- the re-engagement reminders' switch (bot/utils/nudges.py, 2026-11-16) ------------------------------
+
+
+@router.callback_query(F.data == CB_NUDGES_OFF)
+async def reminders_off(callback: CallbackQuery, lang: str) -> None:
+    """"🔕 Eslatmalarni o'chirish" under a reminder: off, said where to turn them back on; the reminder keeps
+    its other buttons."""
+    try:
+        await nudges.set_reminders(callback.from_user.id, False)
+    except Exception:  # noqa: BLE001 - Redis away: nothing changed, and the student is told so
+        await callback.answer(t("pay.error_retry", lang), show_alert=True)
+        return
+    await callback.answer(t("nudge.off_toast", lang))
+    markup = getattr(callback.message, "reply_markup", None)
+    if markup is not None:
+        rows = [row for row in markup.inline_keyboard if not any(b.callback_data == CB_NUDGES_OFF for b in row)]
+        try:
+            await callback.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+        except TelegramBadRequest:
+            pass
+    await callback.message.answer(t("nudge.off_done", lang))
+
+
+@router.callback_query(F.data == CB_NUDGES_TOGGLE)
+async def reminders_toggle(callback: CallbackQuery, lang: str) -> None:
+    """The hub's switch: on <-> off, the hub's buttons redrawn."""
+    user_id = callback.from_user.id
+    on = not await nudges.reminders_on(user_id)
+    try:
+        await nudges.set_reminders(user_id, on)
+    except Exception:  # noqa: BLE001
+        await callback.answer(t("pay.error_retry", lang), show_alert=True)
+        return
+    await callback.answer(t("nudge.on_toast" if on else "nudge.off_toast", lang))
+    try:
+        await callback.message.edit_reply_markup(reply_markup=account_kb(lang, user_id, on))
+    except TelegramBadRequest:
+        pass
 
 
 # --- top up ---------------------------------------------------------------------------------------
@@ -208,8 +278,8 @@ async def show_stats(callback: CallbackQuery, lang: str) -> None:
     )
     chronological = [w["band"] for w in reversed(works)]
     caption = t("acc.stats_caption", lang, last=f"{works[0]['band']:.1f}", trend=_trend(chronological, lang))
-    if criteria_averages:
-        key = min(criteria_averages, key=criteria_averages.get)
+    key = weakest(criteria_averages)
+    if key is not None:
         caption += "\n💡 " + criteria_tip(key, lang)
     await remove_message(callback.message)
     await callback.message.answer_photo(

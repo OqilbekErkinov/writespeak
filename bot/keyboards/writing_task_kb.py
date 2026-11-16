@@ -2,6 +2,8 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from bot.i18n import t
 from bot.keyboards.nav_kb import back_button
+from bot.keyboards.practice_kb import ready_question_button
+from db.models import PracticeModule
 
 CB_TASK1 = "writing:task1"
 CB_TASK2 = "writing:task2"
@@ -24,6 +26,17 @@ def writing_task_kb(lang: str = "uz") -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="Task 2 { Essay }", callback_data=CB_TASK2),
             ],
             [back_button(lang)],
+        ]
+    )
+
+
+def send_prompt_kb(lang: str, task_type: str, back_callback: str) -> InlineKeyboardMarkup:
+    """Under "send the question": or a ready one from Practice (2026-11-16 - students without a question of
+    their own stalled here), or back."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [ready_question_button(lang, PracticeModule(f"writing_{task_type}"))],
+            [back_button(lang, back_callback)],
         ]
     )
 

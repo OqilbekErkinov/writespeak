@@ -20,6 +20,11 @@ CB_RANDOM_PREFIX = "practice:rand:"  # + module:kind
 CB_BACK_TO_LIST_PREFIX = "practice:back:"  # + question id -> the list page holding it
 CB_NEXT_PREFIX = "practice:next:"  # + question id -> the next question not done yet
 CB_NOOP = "practice:noop"  # the page counter between the arrows
+# "📝 Tayyor savol tanlash" (2026-11-16): CB_OPEN_PREFIX leaves the flow it is pressed in (the "send the question"
+# step) for that module's question list, shown in its place; CB_PRACTICE_NEW sends the module picker as a new
+# message, under a message that stays (the last onboarding tip).
+CB_OPEN_PREFIX = "practice:open:"  # + module
+CB_PRACTICE_NEW = "practice:new"
 
 ALL_KINDS = "all"
 
@@ -53,6 +58,13 @@ KIND_LABELS = {
 }
 
 QUESTIONS_PER_PAGE = 10
+
+
+def ready_question_button(lang: str, module: PracticeModule | None = None) -> InlineKeyboardButton:
+    """"📝 Tayyor savol tanlash": `module`'s question list in place of the step it is under, else the picker as a
+    new message."""
+    data = f"{CB_OPEN_PREFIX}{module.value}" if module is not None else CB_PRACTICE_NEW
+    return InlineKeyboardButton(text=t("entry.btn_practice", lang), callback_data=data)
 
 
 def module_picker_kb(lang: str = "uz", stats: dict[PracticeModule, tuple[int, int]] | None = None) -> InlineKeyboardMarkup:
