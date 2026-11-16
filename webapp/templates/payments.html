@@ -1,6 +1,29 @@
 {% extends "base.html" %}
 {% block title %}To'lovlar — Bandzilla Admin{% endblock %}
 {% block content %}
+<script>
+  // A receipt the browser can't show as a picture - a PDF, a HEIC file (files are receipts since 2026-11-16) -
+  // becomes a link that opens it; one that can't be fetched at all becomes "—" as before. Defined before the
+  // table: a thumbnail may fail while the page is still loading.
+  function receiptNotPicture(img) {
+    const link = img.closest("a");
+    if (!link) return;
+    fetch(link.href + "?info=1", { credentials: "same-origin" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((info) => {
+        if (!info) { link.replaceWith("—"); return; }
+        const file = document.createElement("a");
+        file.href = link.href;
+        file.target = "_blank";
+        file.rel = "noopener";
+        file.className = "receipt-file";
+        file.title = "Chekni ochish";
+        file.textContent = info.type === "application/pdf" ? "📄 PDF" : "📎 Fayl";
+        link.replaceWith(file);
+      })
+      .catch(() => link.replaceWith("—"));
+  }
+</script>
 <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;margin-bottom:22px">
   <h1 style="margin:0">To'lovlar</h1>
   {% if can(request, "users") %}<a class="btn" href="/export/payments.xlsx" title="Barcha to'lovlar Excel faylda">⬇ Excel</a>{% endif %}
@@ -44,7 +67,7 @@
       <td>
         {% if r.receipt_file_id %}
         <a class="receipt" href="/payments/{{ r.id }}/receipt" target="_blank" title="Chekni ochish">
-          <img src="/payments/{{ r.id }}/receipt" alt="Chek" loading="lazy" onerror="this.parentNode.replaceWith('—')">
+          <img src="/payments/{{ r.id }}/receipt" alt="Chek" loading="lazy" onerror="receiptNotPicture(this)">
         </a>
         {% else %}—{% endif %}
       </td>
@@ -53,6 +76,7 @@
         {% elif r.status.value == "approved" %}<span class="pill pill-good">tasdiqlangan</span>
         {% else %}<span class="pill pill-bad">rad etilgan</span>{% endif %}
         {% if r.is_test %}<span class="pill" title="Sinov uchun tasdiqlangan: coinlari berilgan, lekin tushumga kirmaydi">test</span>{% endif %}
+        {% if r.status.value == "rejected" and r.reject_reason %}<br><span class="hint reject-reason">{{ "Sababsiz" if r.reject_reason == "none" else "Sabab: " ~ reject_reasons.get(r.reject_reason, r.reject_reason) }}</span>{% endif %}
       </td>
       <td>
         {% if not can(request, "payments") %}
@@ -64,7 +88,12 @@
               data-confirm-ok="Baribir tasdiqlash" data-tone="warn"{% endif %}>
           <button type="submit" class="btn btn-good">Tasdiqlash</button>
         </form>
-        <form class="inline" method="post" action="/payments/{{ r.id }}/reject">
+        {# the reason goes to the student with "send the receipt again" (2026-11-16) #}
+        <form class="inline reject" method="post" action="/payments/{{ r.id }}/reject">
+          <select name="reason" aria-label="Rad etish sababi">
+            <option value="" selected>Sababni tanlang</option>
+            {% for key, label in reject_reasons.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+          </select>
           <button type="submit" class="btn btn-bad">Rad etish</button>
         </form>
         {% elif r.status.value == "approved" %}
@@ -95,8 +124,19 @@
   .receipt-view { padding: 0; border: none; border-radius: 16px; background: transparent; max-width: 92vw; }
   .receipt-view::backdrop { background: rgba(6, 32, 24, 0.75); }
   .receipt-view img { display: block; max-width: 92vw; max-height: 88vh; border-radius: 16px; cursor: zoom-out; }
+  .receipt-file { display: inline-block; padding: 6px 10px; border-radius: 10px; border: 1px solid var(--border-strong);
+    background: var(--mint-2); font-weight: 700; white-space: nowrap; }
+  form.reject .dd { min-width: 170px; }
 </style>
 <script>
+  // A reject needs its reason - it is what the student is told.
+  document.querySelectorAll("form.reject").forEach((form) => {
+    form.bzConfirm = (f) => {
+      if (f.reason.value) return undefined;
+      bz.toast("Avval rad etish sababini tanlang.", "bad");
+      return null;
+    };
+  });
   // A tap on the thumbnail shows the receipt over the page; a tap anywhere or Esc closes it.
   const view = document.getElementById("receipt-view");
   document.querySelectorAll("a.receipt").forEach((link) => link.addEventListener("click", (event) => {

@@ -28,12 +28,13 @@ from aiogram import Bot
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from fastapi import FastAPI, File, Form, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
 from bot.config import settings
 from bot.i18n import t
+from bot.keyboards.payment_kb import REJECT_REASONS
 from bot.utils import crm_events, support_log
 from db import crud
 from db.database import get_session
@@ -542,14 +543,30 @@ async def payments_page(request: Request, status: str | None = None):
     return templates.TemplateResponse(
         request,
         "payments.html",
-        {"active": "payments", "requests": requests_, "status": status or "all"},
+        {"active": "payments", "requests": requests_, "status": status or "all", "reject_reasons": REJECT_REASONS},
     )
 
 
-# Receipt images by payment request id - a receipt never changes, so the
-# Telegram download happens once per image (the newest RECEIPT_CACHE kept).
+# Receipts by payment request id - a receipt never changes, so the
+# Telegram download happens once per receipt (the newest RECEIPT_CACHE kept).
 _receipts: dict[int, bytes] = {}
 RECEIPT_CACHE = 250  # the payments page shows up to 200 receipts
+
+
+def _receipt_type(data: bytes) -> tuple[str, str]:
+    """(media type, file extension) of a downloaded receipt, read from its first bytes - Telegram's file says
+    nothing reliable (2026-11-16: a receipt may be an image file or a PDF now; all were served as JPEG)."""
+    if b"%PDF-" in data[:1024]:  # a PDF may have a few bytes before its header
+        return "application/pdf", "pdf"
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png", "png"
+    if data.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg", "jpg"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp", "webp"
+    if data[4:8] == b"ftyp" and data[8:12] in (b"heic", b"heix", b"hevc", b"hevx", b"mif1", b"msf1", b"heim", b"heis"):
+        return "image/heic", "heic"
+    return "application/octet-stream", "bin"
 
 
 async def _download_receipt(file_id: str) -> bytes | None:
@@ -569,24 +586,36 @@ async def _download_receipt(file_id: str) -> bytes | None:
 
 
 @app.get("/payments/{request_id}/receipt")
-async def payment_receipt(request: Request, request_id: int):
+async def payment_receipt(request: Request, request_id: int, info: int = 0):
+    """The receipt as it is - a photo, an image file or a PDF - shown in the browser (inline), its type read
+    from the bytes. `info=1`: only {"type": ...}, for the payments page to turn a receipt it can't show as a
+    picture (a PDF) into a link."""
     if (redirect := _require_login(request)) is not None:
         return redirect
-    image = _receipts.get(request_id)
-    if image is None:
+    data = _receipts.get(request_id)
+    if data is None:
         async with get_session() as session:
             payment = await session.get(PaymentRequest, request_id)
-        image = await _download_receipt(payment.receipt_file_id) if payment and payment.receipt_file_id else None
-        if image is None:
+        data = await _download_receipt(payment.receipt_file_id) if payment and payment.receipt_file_id else None
+        if data is None:
             return Response(status_code=404)
-        _receipts[request_id] = image
+        _receipts[request_id] = data
         while len(_receipts) > RECEIPT_CACHE:
             _receipts.pop(next(iter(_receipts)))
-    return Response(image, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=86400"})
+    media_type, ext = _receipt_type(data)
+    if info:
+        return JSONResponse({"type": media_type}, headers={"Cache-Control": "private, max-age=86400"})
+    # an unknown kind of file is only downloaded, never shown; nosniff: the browser never guesses another type
+    disposition = "attachment" if media_type == "application/octet-stream" else "inline"
+    return Response(data, media_type=media_type, headers={
+        "Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff",
+        "Content-Disposition": f'{disposition}; filename="chek-{request_id}.{ext}"',
+    })
 
 
 @app.post("/payments/{request_id}/{action}")
-async def decide_payment_web(request: Request, request_id: int, action: str):
+async def decide_payment_web(request: Request, request_id: int, action: str, reason: str = Form("")):
+    """Approve, reject (with a reason - REJECT_REASONS, 2026-11-16), or mark an approved payment as a test."""
     if (redirect := panel.guard(request, perm="payments")) is not None:
         return redirect
     if action == "test":  # approved only to try the bot out: no revenue (or back to real money)
@@ -600,19 +629,30 @@ async def decide_payment_web(request: Request, request_id: int, action: str):
                                   details=f"#{request_id}")
         return RedirectResponse("/payments?status=approved", status_code=303)
     if action in ("approve", "reject"):
+        approve = action == "approve"
+        # a reason from an older page (none sent) or one not on the list: "Sababsiz"
+        reject_reason = None if approve else (reason if reason in REJECT_REASONS else "none")
         async with get_session() as session:
             decision = await crud.decide_payment_request(
-                session, request_id, approve=(action == "approve"), admin_id=WEB_REVIEWER_ID,
-                referral_coins=settings.referral_coins,
+                session, request_id, approve=approve, admin_id=WEB_REVIEWER_ID,
+                referral_coins=settings.referral_coins, reject_reason=reject_reason,
             )
         if decision.applied:
+            who = panel.admin_name(request)
             await panel.audit(request, f"payment_{action}", decision.request.user_id if decision.request else None,
-                              details=f"#{request_id}")
-            await crm_events.payment_decided(request_id)
-            # The buyer is told as in the bot (a gift's link included).
-            from bot.handlers.payments import notify_decision
+                              details=f"#{request_id}" + (f" · {REJECT_REASONS[reject_reason]}" if reject_reason else ""))
+            await crm_events.payment_decided(request_id, by=who)  # the group's card names the panel login
+            from bot.handlers.payments import clear_review_cards, decision_line, notify_decision
 
-            await _with_bot(lambda bot: notify_decision(bot, decision))
+            line = decision_line(decision.request, f"{who} (web panel)")
+
+            async def tell(bot) -> None:
+                # the admins' copies of the card in the bot lose ✅/⛔ (2026-11-16), and the buyer is told
+                # as in the bot (a gift's link, a rejection's reason and "send the receipt again")
+                await clear_review_cards(bot, request_id, line)
+                await notify_decision(bot, decision)
+
+            await _with_bot(tell)
     return RedirectResponse("/payments", status_code=303)
 
 

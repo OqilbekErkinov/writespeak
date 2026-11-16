@@ -386,11 +386,15 @@ class PaymentRequest(Base):
         Enum(PaymentStatus, name="payment_status"), default=PaymentStatus.pending
     )
     receipt_file_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    # the photo's file_unique_id: one picture sent for two payments is flagged (2026-11-15)
+    # the photo's (or, since 2026-11-16, the file's) file_unique_id: one receipt sent for two payments is
+    # flagged (2026-11-15)
     receipt_unique_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     reviewed_by: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    # Why it was rejected (2026-11-16): a key of bot/keyboards/payment_kb.py's REJECT_REASONS ("none" when the
+    # admin chose "Sababsiz"); NULL for approvals and for the rejections made before reasons existed
+    reject_reason: Mapped[str | None] = mapped_column(String(32), nullable=True)
     # Approved only to try the bot out (2026-11-14): its coins stand, but it is never revenue
     is_test: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 

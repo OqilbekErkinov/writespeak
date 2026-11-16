@@ -17,6 +17,7 @@ from datetime import date, datetime, timedelta, timezone
 from sqlalchemy import select
 
 from bot.config import settings
+from bot.keyboards.payment_kb import REJECT_REASONS
 from bot.utils import crm
 from db import crud
 from db.database import get_session
@@ -204,7 +205,8 @@ _PAY_STATUS = {
 }
 
 
-async def _payment_card(session, request: PaymentRequest) -> str:
+async def _payment_card(session, request: PaymentRequest, panel_admin: str | None = None) -> str:
+    """`panel_admin`: the panel login that decided it (2026-11-16: the card said only "web panel")."""
     user = await crud.get_user(session, request.user_id)
     if request.kind == PaymentKind.subscription:
         item = f"{request.subscription_months} oylik cheksiz obuna"
@@ -226,12 +228,15 @@ async def _payment_card(session, request: PaymentRequest) -> str:
             f"#{p.id} ({'tasdiqlangan' if p.status == PaymentStatus.approved else 'kutmoqda'})" for p in twins))
     if request.status != PaymentStatus.pending:
         if request.reviewed_by == WEB_REVIEWER_ID:
-            by = "web panel"
+            by = f"{_esc(panel_admin)} (web panel)" if panel_admin else "web panel"
         else:
             reviewer = await crud.get_user(session, request.reviewed_by) if request.reviewed_by else None
             by = _esc(reviewer.full_name) if reviewer else _esc(request.reviewed_by)
         verb = "✅ Tasdiqladi" if request.status == PaymentStatus.approved else "⛔ Rad etdi"
         lines.append(f"{verb}: {by} · {_when(request.reviewed_at)}")
+        if request.status == PaymentStatus.rejected and request.reject_reason:
+            label = _esc(REJECT_REASONS.get(request.reject_reason, request.reject_reason))
+            lines.append(f"💬 {label}" if request.reject_reason == "none" else f"💬 Sabab: {label}")
     if user is not None:
         balance = f"💼 Balans: {user.coin_balance} coin"
         if _subscribed(user):
@@ -241,21 +246,30 @@ async def _payment_card(session, request: PaymentRequest) -> str:
 
 
 @_safe
-async def payment_receipt(request_id: int) -> None:
-    """A receipt photo was sent (bot/handlers/payments.py); the admins still
-    decide in their private chats."""
+async def payment_receipt(request_id: int, file_message: tuple[int, int] | None = None) -> None:
+    """A receipt was sent (bot/handlers/payments.py); the admins still
+    decide in their private chats. `file_message`: (chat id, message id) of
+    a receipt sent as a file - an image file or a PDF (2026-11-16) - which
+    can't go as a photo: that message is copied into the topic (a copy
+    takes any kind of message) and the card follows it as a text message of
+    its own, the one payment_decided edits."""
     async with get_session() as session:
         request = await session.get(PaymentRequest, request_id)
         text = await _payment_card(session, request)
+    if file_message is not None:
+        await crm.post("payments", "", copy_from=file_message)
+        await crm.post("payments", text, key=f"pay:{request_id}")
+        return
     await crm.post("payments", text, photo=request.receipt_file_id, key=f"pay:{request_id}")
 
 
 @_safe
-async def payment_decided(request_id: int) -> None:
-    """Approved or rejected - in the bot or the web panel: the card changes."""
+async def payment_decided(request_id: int, by: str | None = None) -> None:
+    """Approved or rejected - in the bot or the web panel (`by`: the panel
+    login that did it): the card changes."""
     async with get_session() as session:
         request = await session.get(PaymentRequest, request_id)
-        text = await _payment_card(session, request)
+        text = await _payment_card(session, request, panel_admin=by)
     await crm.edit(f"pay:{request_id}", "payments", text)
 
 
