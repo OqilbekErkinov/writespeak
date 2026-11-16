@@ -93,6 +93,7 @@
       <td class="r num">{{ "$%.3f"|format(c.cost) if c.cost else "—" }}</td>
       {% endif %}
       <td style="white-space:nowrap">
+        {% if not teacher_view %}<a class="btn btn-sm" href="/archive/{{ 'writing' if c.kind == 'w' else 'speaking' }}/{{ c.id }}" title="Arxivda: shu tekshiruvning hamma narsasi">🗂 Arxiv</a>{% endif %}
         {% if c.kind == "w" %}<a class="btn btn-sm" href="/checks/w/{{ c.id }}/answer" target="_blank">Javob</a>{% endif %}
         {% if c.audio %}<button type="button" class="btn btn-sm a-open" data-audio='{{ {"src": "/audio/s/" ~ c.id, "title": c.label ~ " #" ~ c.id, "who": who, "when": c.when}|tojson }}'>🎧 Audio</button>{% endif %}
         {% if c.pdf and not teacher_view %}<a class="btn btn-sm" href="/reports/{{ c.kind }}/{{ c.id }}.pdf" target="_blank">PDF</a>

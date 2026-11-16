@@ -138,7 +138,7 @@
 </div>
 
 <div class="card" id="tekshiruvlar">
-  <h2>Tekshiruvlar <span class="muted num">{{ checks|length }}</span></h2>
+  <h2>Tekshiruvlar <span class="muted num">{{ checks|length }}</span>{% if checks %} <a class="btn btn-sm" href="/archive/writing?q={{ user.id }}&amp;test=1" style="margin-left:8px">✍️ Writing arxivi</a> <a class="btn btn-sm" href="/archive/speaking?q={{ user.id }}&amp;test=1">🎙 Speaking arxivi</a>{% endif %}</h2>
   {% if checks %}
   <div class="table-scroll"><table>
     <tr><th>Sana</th><th>Turi</th><th>Band</th><th>Mezonlar</th><th>To'lov</th><th class="r">AI xarajat</th><th></th></tr>
@@ -150,7 +150,8 @@
       <td class="muted" style="font-size:12.5px">{{ c.criteria }}</td>
       <td>{{ (c.coins ~ " coin") if c.coins else c.paid }}</td>
       <td class="r num">{{ "$%.3f"|format(c.cost) if c.cost else "—" }}</td>
-      <td>{% if c.pdf %}<a class="btn btn-sm" href="/reports/{{ c.kind }}/{{ c.id }}.pdf" target="_blank">PDF</a>{% endif %}</td>
+      <td style="white-space:nowrap"><a class="btn btn-sm" href="/archive/{{ 'writing' if c.kind == 'w' else 'speaking' }}/{{ c.id }}" title="Arxivda: shu tekshiruvning hamma narsasi">🗂 Arxiv</a>
+        {% if c.pdf %}<a class="btn btn-sm" href="/reports/{{ c.kind }}/{{ c.id }}.pdf" target="_blank">PDF</a>{% endif %}</td>
     </tr>
     {% endfor %}
   </table></div>

@@ -1,0 +1,25 @@
+<section class="card">
+  <h2>💸 Xarajat va texnik ma'lumot</h2>
+  <dl class="a-dl">
+    <dt>OpenAI jami</dt><dd class="num">{{ "$%.4f"|format(cost.total) if cost.total else "—" }}</dd>
+    {% for name, usd in cost.parts[:12] %}<dt class="muted" style="padding-left:10px">{{ name }}</dt><dd class="num" style="font-weight:600">${{ "%.4f"|format(usd) }}</dd>{% endfor %}
+    {% if cost.calls %}<dt>So'rovlar</dt><dd class="num">{{ cost.calls }}</dd>{% endif %}
+    {% if cost.models %}<dt>Modellar</dt><dd style="font-weight:600">{{ cost.models|join(", ") }}</dd>{% endif %}
+    {% if seconds is not none %}<dt>Kutish</dt><dd class="num">{{ seconds|int }} s</dd>{% endif %}
+    <dt>Coin</dt><dd class="num">{{ coins or 0 }}</dd>
+    {% if rd.check_token %}<dt>Hold</dt><dd class="num" style="font-weight:600;font-size:12px">{{ rd.check_token }}</dd>{% endif %}
+  </dl>
+  {% if not rd %}<p class="hint">Bu tekshiruv hisobot ma'lumotlari (report_data) saqlanishidan oldin bo'lgan — faqat asosiy maydonlar bor.</p>{% endif %}
+</section>
+
+{% if comments %}
+<section class="card">
+  <h2>💬 O'qituvchi izohlari <span class="muted num">{{ comments|length }}</span></h2>
+  {% for c in comments %}
+  <div class="a-comment">
+    <div>{{ c.c.text }}</div>
+    <div class="muted">{% if c.who %}<a href="/users/{{ c.who.id }}">{{ c.who.full_name }}</a>{% else %}{{ c.c.teacher_id }}{% endif %} · {{ c.when }}{% if c.c.band is not none %} · band {{ "%g"|format(c.c.band) }}{% endif %}</div>
+  </div>
+  {% endfor %}
+</section>
+{% endif %}

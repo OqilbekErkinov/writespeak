@@ -1,0 +1,16 @@
+<section class="card" id="pdf">
+  <h2>📄 PDF hisobot <span class="muted">o'quvchiga yuborilgan ko'rinishda</span></h2>
+  {% if pdf %}
+  <p class="hint" style="margin:0 0 12px">To'liq hisobot: mezonlar bo'yicha izohlar, kuchli tomoni, ustuvor vazifalar, belgilangan {{ "insho" if kind.slug == "writing" else "javoblar" }}, namuna javob{{ "" if kind.slug == "writing" else "lar" }} va lug'at.</p>
+  <div class="a-btns">
+    <a class="btn btn-good" href="{{ pdf.url }}" target="_blank">Yangi oynada ochish ↗</a>
+    <a class="btn" href="{{ pdf.url }}" download>⬇ Yuklab olish · {{ pdf.size }}</a>
+    <button type="button" class="btn a-embed" data-src="{{ pdf.url }}" aria-expanded="false">👁 Shu yerda ko'rish</button>
+  </div>
+  <div class="a-frame" id="aFrame" hidden></div>
+  {% elif pdf_recorded %}
+  <div class="a-gone">📄 <span>PDF fayli serverda topilmadi — hisobotlar odatda o'chirilmaydi; zaxira nusxadan tiklash mumkin.</span></div>
+  {% else %}
+  <div class="a-gone">📄 <span>Bu tekshiruvda PDF hisobot saqlanmagan.</span></div>
+  {% endif %}
+</section>

@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block title %}W{{ sub.id }} · {{ label }} — Arxiv{% endblock %}
+{% block content %}
+{% include "_archive_style.html" %}
+{% include "_archive_head.html" %}
+
+<nav class="a-toc" aria-label="Bo'limlar">
+  <a href="#savol">Savol</a>
+  {% if visual %}<a href="#grafik">Grafikni o'qish</a>{% endif %}
+  <a href="#javob">Javob <span>{{ words }} so'z</span></a>
+  <a href="#xatolar">Xatolar <span>{{ mistakes|length }}</span></a>
+  <a href="#lugat">Lug'at <span>{{ vocabulary|length }}</span></a>
+  <a href="#pdf">PDF</a>
+</nav>
+
+<div class="a-grid">
+  <div class="a-main">
+    <section class="card" id="savol">
+      <h2>Savol <span class="muted">{{ "Task 1" if task == "task1" else "Task 2" }}{% if prompt_source %} · {{ prompt_source }}{% endif %}</span></h2>
+      {% if sub.prompt_text %}<div class="a-text a-q">{{ sub.prompt_text }}</div>{% else %}<div class="empty">Savol matni saqlanmagan.</div>{% endif %}
+      {% set pics = pictures.charts %}
+      {% if pics or pictures.practice_image %}
+      <div class="a-pics {{ 'one' if (pics|length + (1 if pictures.practice_image else 0)) == 1 }}">
+        {% for c in pics %}<a class="a-pic" href="{{ c.url }}" target="_blank" title="Asl o'lchamda ochish"><img src="{{ c.url }}" alt="Task 1 rasmi {{ c.n }}" loading="lazy"></a>{% endfor %}
+        {% if pictures.practice_image %}<a class="a-pic" href="{{ pictures.practice_image }}" target="_blank"><img src="{{ pictures.practice_image }}" alt="Practice savolining rasmi" loading="lazy"></a>{% endif %}
+      </div>
+      {% elif task == "task1" %}
+        {% if chart_key and chart_key.image %}
+        <div class="a-pics one"><a class="a-pic" href="/chart-image/{{ chart_key.key.id }}" target="_blank"><img src="/chart-image/{{ chart_key.key.id }}" alt="Grafik kalitidagi rasm" loading="lazy"></a></div>
+        <p class="hint">O'quvchi yuborgan rasm serverda yo'q — bu grafik kalitida saqlangan nusxasi.</p>
+        {% else %}
+        <div class="a-gone">🖼 <span>Task 1 rasmi serverda yo'q{% if pictures.gone %}: o'quvchilar yuklagan rasmlar {{ 30 }} kun saqlanadi{% if age %}, bu tekshiruv {{ age }} bo'lgan{% endif %}{% else %} — bu tekshiruvda rasm saqlanmagan{% endif %}.</span></div>
+        {% endif %}
+      {% endif %}
+      {% if chart_key %}
+      <div class="a-key">🔑 Grafik kaliti <a href="/charts/{{ chart_key.key.id }}">#{{ chart_key.key.id }}</a>
+        {% if chart_key.verified %}<span class="pill pill-good">✓ tekshirilgan</span>{% else %}<span class="pill pill-warn">tekshirilmagan</span>{% endif %}
+        {% if chart_key.judged_by %}<span class="muted">· shu kalit jadvali bo'yicha baholangan</span>{% endif %}</div>
+      {% endif %}
+    </section>
+
+    {% if visual %}
+    <section class="card" id="grafik">
+      <h2>Grafikni o'qish <span class="muted">bot ko'rgan ma'lumotlar jadvali — hisobotdagi har bir raqam shundan</span></h2>
+      <div class="a-key" style="margin-top:0">
+        {% if visual.readability == "clear" %}<span class="pill pill-good">aniq o'qildi</span>{% elif visual.readability == "unreadable" %}<span class="pill pill-bad">o'qib bo'lmadi</span>{% elif visual.readability %}<span class="pill pill-warn">qisman noaniq</span>{% endif %}
+        {% if visual.reads %}<span class="muted">· {{ visual.reads }} marta o'qilib solishtirilgan</span>{% endif %}
+        {% if visual.note %}<span class="muted">· {{ visual.note }}</span>{% endif %}
+      </div>
+      {% for b in visual.blocks %}
+      <h3>{{ b.type|capitalize or "Grafik" }}{% if b.title %} · {{ b.title }}{% endif %}{% if b.units %} <span class="muted">({{ b.units }})</span>{% endif %}</h3>
+      {% if b.overall %}<p class="hint" style="margin:0 0 6px">{{ b.overall }}</p>{% endif %}
+      {% if b.rows %}
+      <div class="table-scroll"><table class="a-sheet">
+        <tr><th></th>{% for p in b.points %}<th>{{ p or "—" }}</th>{% endfor %}</tr>
+        {% for r in b.rows %}<tr><td class="strong">{{ r.label or "—" }}</td>{% for cell in r.cells %}<td class="num {{ 'unsure' if cell and cell.unsure }}" {% if cell and cell.note %}title="{{ cell.note }}"{% endif %}>{{ cell.text if cell else "" }}</td>{% endfor %}</tr>{% endfor %}
+      </table></div>
+      {% endif %}
+      {% if b.steps %}<ol class="a-list">{% for s in b.steps %}<li>{{ s }}</li>{% endfor %}</ol>{% endif %}
+      {% if b.features %}<ul class="a-list">{% for ft in b.features %}<li><b>{{ ft.name }}</b>{% if ft.location %} — {{ ft.location }}{% endif %}{% if ft.states %}<br><span class="muted">{{ ft.states|join(" · ") }}</span>{% endif %}</li>{% endfor %}</ul>{% endif %}
+      {% endfor %}
+      {% if visual.overview %}<h3>Overview'da bo'lishi kerak</h3><ul class="a-list">{% for x in visual.overview %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
+      {% if visual.comparisons %}<h3>Asosiy taqqoslashlar</h3><ul class="a-list">{% for x in visual.comparisons %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
+      {% if visual.grouping %}<p class="hint">Guruhlash: {{ visual.grouping }}</p>{% endif %}
+      {% if visual.unreadable %}<h3>O'qib bo'lmaganlar</h3><ul class="a-list">{% for x in visual.unreadable %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
+      {% if visual.checks %}<h3>Kod tekshiruvlari</h3><ul class="a-list">{% for x in visual.checks %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
+      <p class="hint">Sariq katak — ikki o'qish mos kelmagan, noaniq raqam.</p>
+    </section>
+    {% endif %}
+
+    <section class="card" id="javob">
+      <h2>O'quvchining javobi <span class="muted num">{{ words }} so'z{% if answer_source %} · {{ answer_source }}{% endif %}</span>
+        {% if marked %}<button type="button" class="btn btn-sm a-toggle" aria-pressed="false" data-target="essay">Xatolarni belgilash</button>{% endif %}</h2>
+      {% if sub.answer_text %}
+      <div class="a-text a-essay" data-v="essay-plain">{{ sub.answer_text }}</div>
+      {% if marked %}<div class="a-text a-essay" data-v="essay-marked" hidden>{{ marked }}</div>{% endif %}
+      {% else %}<div class="empty">Javob matni saqlanmagan.</div>{% endif %}
+      <p class="hint">Aynan o'quvchi yuborganidek{% if answer_source and answer_source != "matn" %} (fayl/rasmdan o'qilgan matn){% endif %}.</p>
+    </section>
+
+    <section class="card" id="xatolar">
+      <h2>Xatolar <span class="muted num">{{ mistakes|length }}</span></h2>
+      {% include "_archive_mistakes.html" %}
+    </section>
+
+    <section class="card" id="lugat">
+      <h2>Lug'at <span class="muted num">{{ vocabulary|length }}</span></h2>
+      {% include "_archive_vocab.html" %}
+    </section>
+
+    {% include "_archive_pdf.html" %}
+  </div>
+
+  <aside class="a-side">
+    <section class="card">
+      <h2>📎 O'quvchi yuklagan fayllar</h2>
+      {% for u in pictures.uploads %}
+      {% if u.image %}<a class="a-pic" href="{{ u.url }}" target="_blank" style="margin-bottom:8px"><img src="{{ u.url }}" alt="{{ u.title }}" loading="lazy"></a>{% endif %}
+      <div class="a-file"><b>{{ u.title }}</b><span class="muted">{{ u.ext }} · {{ u.size }}</span><a href="{{ u.url }}" target="_blank" style="margin-left:auto">ochish ↗</a></div>
+      {% endfor %}
+      {% if pictures.gone %}
+      <div class="a-gone">🗑 <span>{{ pictures.gone }} ta fayl o'chirilgan: o'quvchilarning rasm va fayllari {{ 30 }} kun saqlanadi{% if age %} (bu tekshiruv {{ age }}){% endif %}. Matn, baho va PDF hisobot saqlanib qoladi.</span></div>
+      {% elif not pictures.uploads %}
+      <p class="muted" style="margin:0">Savol va javob matn bilan yuborilgan — yuklangan fayl yo'q.</p>
+      {% endif %}
+    </section>
+
+    <section class="card">
+      <h2>✨ Namuna javob</h2>
+      {% if model_answer %}
+      <dl class="a-dl">
+        {% if model_answer.aimed_at is not none %}<dt>Mo'ljallangan band</dt><dd>{{ "%.1f"|format(model_answer.aimed_at) }}</dd>{% endif %}
+        {% if model_answer.source %}<dt>Manba</dt><dd>{{ {"ai_generated": "AI yozgan", "published_reference": "kitobdan", "human_reviewed": "ustoz tekshirgan"}.get(model_answer.source, model_answer.source) }}</dd>{% endif %}
+        {% if model_answer.writer %}<dt>Uslub (yozuvchi)</dt><dd>{{ model_answer.writer }}</dd>{% endif %}
+        {% if model_answer.shows %}<dt>Ko'rsatadigan priority</dt><dd>{{ model_answer.shows|join(", ") }}</dd>{% endif %}
+        {% if model_answer.refs %}<dt>Namunalar</dt><dd>{{ model_answer.refs }} ta</dd>{% endif %}
+        {% if model_answer.alternative %}<dt>Turi</dt><dd>bitta paragraf boshqacha</dd>{% endif %}
+      </dl>
+      <p class="hint">Namuna javobning matni, mezonlar bo'yicha izohlar va ustuvor vazifalar PDF hisobotda saqlanadi — <a href="#pdf">pastda ko'ring</a>.</p>
+      {% else %}
+      <p class="muted" style="margin:0">Ma'lumot saqlanmagan{% if not sub.report_data %} (bu tekshiruv hisobot ma'lumotlari saqlanishidan oldin bo'lgan){% endif %}. To'liq hisobot — PDF'da.</p>
+      {% endif %}
+    </section>
+
+    {% include "_archive_side.html" %}
+  </aside>
+</div>
+{% include "_archive_script.html" %}
+{% endblock %}

@@ -118,6 +118,11 @@ app.include_router(search.router)
 from webapp import analytics  # noqa: E402
 
 app.include_router(analytics.router)
+# The archive of every check, everything inside each (2026-11-16) - admins only, read-only.
+from webapp import archive  # noqa: E402
+
+archive.templates = templates
+app.include_router(archive.router)
 
 
 @app.on_event("startup")

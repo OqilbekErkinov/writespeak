@@ -363,7 +363,7 @@
 <body>
   {% set nav = request.state.nav if request.state.nav is defined else {} %}
   {% set g_users = active in ('users', 'support', 'broadcast') %}
-  {% set g_checks = active in ('checks', 'checks_stopped', 'questions', 'charts') %}
+  {% set g_checks = active in ('checks', 'checks_stopped', 'archive_w', 'archive_s', 'questions', 'charts') %}
   {% set g_centers = active in ('teachers', 'groups') %}
   {% set g_money = active in ('finance', 'payments') %}
   {% set g_admin = active in ('errors', 'settings', 'admins', 'audit') %}
@@ -404,6 +404,8 @@
         <div class="sub">
           <div class="fly-h">Tekshiruvlar</div>
           <a href="/checks" class="{{ 'active' if active == 'checks' }}">Barcha tekshiruvlar</a>
+          <a href="/archive/writing" class="{{ 'active' if active == 'archive_w' }}">✍️ Writing arxivi</a>
+          <a href="/archive/speaking" class="{{ 'active' if active == 'archive_s' }}">🎙 Speaking arxivi</a>
           <a href="/checks/stopped" class="{{ 'active' if active == 'checks_stopped' }}">To'xtagan tekshiruvlar</a>
           <a href="/questions" class="{{ 'active' if active == 'questions' }}">Practice savollari</a>
           <a href="/charts" class="{{ 'active' if active == 'charts' }}">Grafik kalitlari{% if nav.charts %}<span class="nb" title="tekshirilmagan">{{ nav.charts }}</span>{% endif %}</a>
