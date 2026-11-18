@@ -65,6 +65,21 @@ async def main() -> int:
     await ar.off_question("task1", "The chart shows sales.", "Sales rose.", sheet="Sales 2010: 5; 2020: 9")
     check("Task 1: the chart's sheet goes with the question", "Sales 2010: 5" in sent[0]["messages"][1]["content"]
           and "Task 1" in sent[0]["messages"][1]["content"])
+
+    # Speaking: the questions with their transcripts, judged together
+    sent.clear()
+    verdicts[:] = ["other_question", "unrelated"]
+    why = await ar.off_question_speaking("part1", [("Do you like reading?", "I went to London last year"),
+                                                   ("What do you read?", "the weather was cold"), ("Q3", "")])
+    content = sent[0]["messages"][1]["content"] if sent else ""
+    check("speaking: both readings off -> refused; every question with its answer, an empty answer left out",
+          (why or "").startswith("other_question") and "Do you like reading?" in content
+          and "I went to London" in content and "Q3" not in content and "Speaking" in sent[0]["messages"][0]["content"],
+          why)
+    verdicts[:] = ["answers", "other_question"]
+    check("speaking: one reading says they answer -> marked",
+          await ar.off_question_speaking("part2", [("Describe a book", "I want to talk about a book")]) is None)
+    check("speaking: nothing said -> nothing asked", await ar.off_question_speaking("part1", [("Q", "  ")]) is None)
     print(f"\n{len(fails)} failed" if fails else "\nall passed")
     return 1 if fails else 0
 

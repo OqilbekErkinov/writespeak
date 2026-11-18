@@ -17,6 +17,7 @@ from dataclasses import dataclass
 
 from bot.utils.speaking_questions import duplicate_of, parse_cue_card
 from services.ai import pronunciation
+from services.ai.answer_relevance import OffQuestion, off_question_speaking
 from services.ai.speaking_answers import build_model_answers, needs_from_feedback, targets_for
 from services.ai.speaking_grader import Evidence, SessionItem, grade_speaking
 from services.ai.speaking_marking import SpeakingReport
@@ -51,17 +52,21 @@ def build_items(questions: list[dict], audios: list[AnswerAudio]) -> list[Sessio
 
 async def run_check(
     part: str, questions: list[dict], clips: list[tuple[bytes, str]], seed: int = 0,
-    transcribed: list[AnswerAudio] | None = None,
+    transcribed: list[AnswerAudio] | None = None, check_relevance: bool = True,
 ) -> SpeakingCheck:
     """`clips`: (audio bytes, filename), one per question in `questions`;
     `transcribed`: their transcripts when already made (one recording, split
-    by services/ai/single_recording.py)."""
+    by services/ai/single_recording.py). `check_relevance`: "were these questions answered?" read beside the
+    marking (services/ai/answer_relevance.py, the owner, 2026-11-18) - answers given to other questions, or
+    unrelated to them, raise OffQuestion and nothing is marked; False for a mock test's part."""
     wavs = list(await asyncio.gather(*(to_wav16k(audio, name) for audio, name in clips)))
     audios = await analyse_answers(wavs, [q["text"] for q in questions], transcribed)
     items = build_items(questions, audios)
+    gate = asyncio.create_task(off_question_speaking(
+        part, [(q["text"], a.text) for q, a in zip(questions, audios) if not a.no_speech])) if check_relevance else None
     metrics = measure(audios)
-    pitch = await asyncio.to_thread(measure_pitch, [w for w, a in zip(wavs, audios) if not a.no_speech])
     answers_task: asyncio.Task | None = None
+    marking: asyncio.Task | None = None
     needs = None
 
     def start_answers(scores, overall, feedback) -> None:
@@ -70,7 +75,8 @@ async def run_check(
         needs = needs_from_feedback(items, scores, overall, feedback, metrics)
         answers_task = asyncio.create_task(build_model_answers(targets_for(items), needs, seed=seed))
 
-    try:
+    async def mark():
+        pitch = await asyncio.to_thread(measure_pitch, [w for w, a in zip(wavs, audios) if not a.no_speech])
         pron, practise = None, None
         if pronunciation.configured():
             pron = await pronunciation.assess_answers(
@@ -79,9 +85,18 @@ async def run_check(
             practise = await pronunciation.words_to_practise(pron) if pron is not None else None
         report = await grade_speaking(part, items, Evidence(metrics, pron, pitch), practise,
                                       on_feedback=start_answers)
+        return pron, report
+
+    try:
+        marking = asyncio.create_task(mark())
+        off = await gate if gate is not None else None
+        if off:
+            raise OffQuestion(off)
+        pron, report = await marking
     except BaseException:
-        if answers_task is not None:
-            answers_task.cancel()
+        for task in (gate, marking, answers_task):
+            if task is not None:
+                task.cancel()
         raise
     # the vocabulary's Uzbek meanings, written beside the model answers (no longer wait)
     uz_task = asyncio.create_task(uzbek_meanings(report.vocabulary))

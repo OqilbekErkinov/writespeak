@@ -433,6 +433,14 @@ _T: dict[str, dict[str, str]] = {
         "стали его оценивать.\n\n📌 Прочитайте вопрос ещё раз внимательно и напишите ответ именно на него. "
         "Отправьте новый ответ сюда ✍️",
     },
+    "speaking.off_question": {
+        "uz": "🤔 <b>Javobingiz savolga to'g'ri kelmayapti</b>\n\nJavoblaringiz boshqa savollarga berilganga "
+        "o'xshaydi, shuning uchun ularni baholamadik.\n\n📌 Savolni yana bir bor diqqat bilan o'qing va aynan unga "
+        "javob bering. Savollarni quyida qaytadan yuboraman 🎙",
+        "ru": "🤔 <b>Ваш ответ не подходит к вопросу</b>\n\nПохоже, вы отвечали на другие вопросы, поэтому мы не "
+        "стали оценивать ответы.\n\n📌 Прочитайте вопрос ещё раз внимательно и ответьте именно на него. "
+        "Вопросы — ниже, ещё раз 🎙",
+    },
     "check.coins_back": {
         "uz": "🟡 Band qilingan <b>{coins} coin</b> balansingizga qaytarildi.",
         "ru": "🟡 Зарезервированные <b>{coins} coin</b> возвращены на баланс.",

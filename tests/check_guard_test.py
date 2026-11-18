@@ -612,10 +612,14 @@ async def part3_speaking() -> None:
                            chat=Chat(id=getattr(method, "chat_id", None) or uid, type="private"),
                            text=getattr(method, "text", None) or "x").as_(bot)
 
-    graded, control = [], {"fail": 1}
+    graded, control, relevance = [], {"fail": 1}, []
 
-    async def fake_run_check(part, questions, clips, seed=0, transcribed=None):
+    async def fake_run_check(part, questions, clips, seed=0, transcribed=None, **kw):
         graded.append(len(clips))
+        relevance.append(kw.get("check_relevance"))
+        if control.get("off"):
+            from services.ai.answer_relevance import OffQuestion
+            raise OffQuestion(control.pop("off"))
         if control["fail"]:
             control["fail"] -= 1
             raise RuntimeError("speaking model call failed")
@@ -680,6 +684,29 @@ async def part3_speaking() -> None:
           and await balance(uid) == coins - price and any(type(c).__name__ == "SendDocument" for c in out)
           and await state.get_state() is None, (graded, await balance(uid)))
     check("speaking: no hold left running", not await guard.busy(uid))
+
+    # answers given to other questions (the owner, 2026-11-18): not marked, coins back, the questions asked again
+    check("speaking: the relevance reading runs on a normal check", relevance and all(relevance), relevance)
+    control["off"] = "other_question - asks: reading books; addresses: a trip to London"
+    coins = await balance(uid)
+    await send(text=BTN_SPEAKING)
+    await press(CB_PART1)
+    await send(text="Do you like reading books?")
+    await press(CB_MODE_EACH)
+    fid = f"ans{next(counter)}"
+    files[fid] = _wav()
+    out = await send(document=Document(file_id=fid, file_unique_id="u" + fid, file_name="a.wav",
+                                       mime_type="audio/wav", file_size=len(files[fid])))
+    said = [c.text for c in out if type(c).__name__ in ("SendMessage", "EditMessageText")]
+    data = await state.get_data()
+    check("speaking off the question: not marked, coins back, said kindly, no report",
+          await balance(uid) == coins and not any(type(c).__name__ == "SendDocument" for c in out)
+          and any("savolga to'g'ri kelmayapti" in x and "qaytarildi" in x for x in said), said)
+    check("...the same question asked again from the first, the recordings dropped",
+          await state.get_state() in (SpeakingStates.awaiting_answer.state, SpeakingStates.choosing_mode.state)
+          and data.get("questions") == ["Do you like reading books?"] and not data.get("answers")
+          and data.get("q_index") == 0, (await state.get_state(), data.get("answers")))
+    check("speaking: no hold left running after it", not await guard.busy(uid))
     await bot.session.close()
 
 

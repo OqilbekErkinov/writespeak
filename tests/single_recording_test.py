@@ -272,7 +272,7 @@ async def part2_bot() -> None:
 
     graded: list[dict] = []
 
-    async def fake_run_check(part, questions, clips, seed=0, transcribed=None):
+    async def fake_run_check(part, questions, clips, seed=0, transcribed=None, **kw):
         """The grading's stand-in: the real pauses and fillers of what it is
         given, a report with no mistakes."""
         wavs = [await to_wav16k(a, n) for a, n in clips]

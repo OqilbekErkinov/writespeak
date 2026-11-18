@@ -110,6 +110,7 @@ from db import crud
 from db.database import get_session
 from db.models import SourceType
 from services.ai import pronunciation, single_recording as one, tts, usage
+from services.ai.answer_relevance import OffQuestion
 from services.ai.essay_marking import canon
 from services.ai.schemas import VocabularyItem
 from services.ai.speaking_check import run_check
@@ -578,6 +579,11 @@ async def _checked(message: Message, state: FSMContext, lang: str, run, waiting:
     try:
         async with guard.slot(hold, card), asyncio.timeout(settings.check_deadline_seconds):
             await run(hold, card_msg)
+    except OffQuestion as e:
+        logger.warning("Speaking answers of user %s don't fit their questions - not marked: %s", message.chat.id, e)
+        refunded = await guard.end(hold, f"off question: {e}"[:300])
+        await live.end(card)
+        await _off_question(message, state, lang, card_msg, data, hold, refunded)
     except Exception as e:
         if hold.saved:  # the report is saved and paid - only its delivery went wrong (logged there)
             logger.exception("Speaking check of user %s failed after its report was saved", message.chat.id)
@@ -597,6 +603,25 @@ async def _checked(message: Message, state: FSMContext, lang: str, run, waiting:
 
 def _reason(e: BaseException) -> str:
     return f"{type(e).__name__}: {e}"[:300]
+
+
+async def _off_question(message: Message, state: FSMContext, lang: str, card: Message, data: dict,
+                        hold: guard.Hold, refunded: bool) -> None:
+    """The answers don't fit their questions (services/ai/answer_relevance.py, 2026-11-18): not marked, the coins
+    back, and the same questions are asked again from the first - the recordings sent are dropped."""
+    text = t("speaking.off_question", lang)
+    if refunded:
+        text += "\n\n" + t("check.coins_back", lang, coins=hold.coins)
+    await _edit_or_send(card, text)
+    if not await guard.owns(state, hold):  # they started something else meanwhile
+        return
+    await state.update_data(answers=[], q_index=0, pieces=[], rec_path=None, split=None, split_cost=None,
+                            question_msg_id=None, kept_voice=None)
+    if _offers_one_recording(await state.get_data()):
+        await _choose_mode(message, state, lang)
+    else:
+        await state.set_state(SpeakingStates.awaiting_answer)
+        await _ask_current_question(message, state, lang)
 
 
 async def _failed(message: Message, state: FSMContext, lang: str, card: Message, hold: guard.Hold, data: dict,
@@ -711,6 +736,7 @@ async def _grade(
             clips,
             seed=user_id + earlier_sessions,
             transcribed=transcribed,
+            check_relevance=not data.get("mock_session_id"),  # answers to other questions: not marked (2026-11-18)
         )
     report = check.report
     short_words = short_sample_size(part, check.items)  # one short answer: the band is approximate

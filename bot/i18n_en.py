@@ -83,6 +83,7 @@ EN: dict[str, str] = {
     "check.interrupted": "⚠️ <b>Your check stopped while the bot was being updated.</b>\nYour answer is saved: tap «🔁 Try again».",
     "check.interrupted_lost": "⚠️ <b>Your check stopped while the bot was being updated.</b> Please send your answer again.",
     "check.coins_back": "🟡 The <b>{coins} coin</b> held for it are back on your balance.",
+    "speaking.off_question": "🤔 <b>Your answer doesn't fit the question</b>\n\nIt looks like you answered different questions, so we didn't mark your answers.\n\n📌 Read the question again carefully and answer exactly what it asks. Here are the questions again 🎙",
     "writing.off_question": "🤔 <b>Your answer doesn't fit the question</b>\n\nIt looks like it was written for a different question, so we didn't mark it.\n\n📌 Read the question again carefully and answer exactly what it asks. Send your new answer here ✍️",
     "check.retry_btn": "🔁 Try again",
     "check.retry_gone": "This check's answer is no longer kept — please send it again.",

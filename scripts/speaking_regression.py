@@ -74,7 +74,7 @@ async def grade(case: dict) -> dict:
     check = await run_check(
         case["part"], [{"part": case["part"], "text": case["questions"][i]} for i in answered],
         [(one.cut(joined, split[i]), f"q{i + 1}.wav") for i in answered], seed=1,
-        transcribed=[one.answer_audio(rec, split[i]) for i in answered],
+        transcribed=[one.answer_audio(rec, split[i]) for i in answered], check_relevance=False,
     )
     report = check.report
     report.notices = [one.NOTICE_ONE_RECORDING]

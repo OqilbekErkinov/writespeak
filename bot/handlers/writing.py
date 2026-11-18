@@ -80,7 +80,7 @@ from db import crud
 from db.database import get_session
 from db.models import SourceType
 from services.ai import chart_keys, marking_config, usage
-from services.ai.answer_relevance import off_question
+from services.ai.answer_relevance import OffQuestion, off_question
 from services.ai.essay_marking import PASTE_NOTICE, canon, clean_pasted, count_words, starts_mid_word, wrong_section
 from services.ai.openai_client import is_image_error
 from services.ai.sample_bank import build_model_answer, needs_from_feedback
@@ -555,11 +555,6 @@ async def _after_chart(message: Message, state: FSMContext, data: dict, lang: st
 
 class ChartUnreadable(Exception):
     """The chart reading found no usable visual in the picture."""
-
-
-class OffQuestion(Exception):
-    """The answer was written for another question, or has nothing to do with it (services/ai/answer_relevance.py):
-    not marked (the owner, 2026-11-18)."""
 
 
 async def _off_question(message: Message, state: FSMContext, lang: str, card: Message, data: dict,

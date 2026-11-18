@@ -248,7 +248,7 @@ def fake_grading() -> None:
     writing.build_progress = lambda *a: {"first": True}
     writing.build_writing_report_pdf = lambda *a: b"%PDF-1.4 fake"
 
-    async def fake_run_check(part, questions, clips, seed=0, transcribed=None):
+    async def fake_run_check(part, questions, clips, seed=0, transcribed=None, **kw):
         SPOKEN.append(len(clips))
         report = NS(notices=[], overall_band=6.0, mistakes=[], vocabulary=[], pron_estimated=True, priorities=[],
                     criteria_scores=lambda: {"FC": 6.0, "LR": 6.0, "GRA": 6.0, "Pronunciation": 6.0},
