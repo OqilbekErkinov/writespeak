@@ -1353,11 +1353,12 @@ def short_speaking_samples() -> None:
     check("...no mistakes below 9: the next band comes from the priorities",
           "No mistakes that need fixing" in rendered[1] and "Your next band comes from the priorities" in rendered[1])
 
-    check("a short sample's report says the band is approximate (the user, 2026-11-11)",
+    check("a short sample's report says the answer was short - not that the band is approximate (2026-11-18)",
           speaking_grader.short_sample_size("part3", short) == words
           and speaking_grader.short_sample_size("part3", long) is None
           and speaking_grader.short_sample_size("full", short) is None
-          and f"({words} words), so it is approximate" in speaking_grader.SHORT_SAMPLE_NOTICE.format(words=words))
+          and f"Your answer was short ({words} words)" in speaking_grader.SHORT_SAMPLE_NOTICE.format(words=words)
+          and "approximate" not in speaking_grader.SHORT_SAMPLE_NOTICE)
     from bot.i18n import t
     check("...and so does the bot's message, in every language",
           all(f"{words} " in t("speaking.short_sample", lang, words=words) and "Part 3" in

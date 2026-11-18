@@ -410,9 +410,8 @@ def short_sample_size(part: str, items: list[SessionItem]) -> int | None:
     return words if part != "full" and 0 < words < short_sample_words() else None
 
 
-SHORT_SAMPLE_NOTICE = ("This band comes from a short answer ({words} words), so it is approximate. For a more "
-                       "accurate band, say more in one check: Part 1 - 4-5 questions, Part 2 - 1-2 minutes, "
-                       "Part 3 - 3-4 questions.")
+SHORT_SAMPLE_NOTICE = ("Your answer was short ({words} words). Say more, as in the exam: Part 1 - 4-5 questions, "
+                       "Part 2 - 1-2 minutes, Part 3 - 3-4 questions.")  # no "approximate" (the owner, 2026-11-18)
 
 
 def short_sample_note(part: str, items: list[SessionItem]) -> str:

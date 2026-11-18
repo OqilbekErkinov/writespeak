@@ -20,11 +20,8 @@ def report_filename(module: str, task_or_part) -> str:
 CAPTION_LIMIT = 1024  # Telegram's document caption limit
 
 
-def with_ai_note(caption: str, lang: str | None) -> str:
-    """A report's caption with the note that the band comes from AI and may differ from an official
-    IELTS result by about ±0.5 (the user, 2026-11-10) - left off only if it would not fit."""
-    from bot.i18n import t
-
-    note = t("report.ai_note", lang)
-    joined = f"{caption}\n\n{note}" if caption else note
-    return joined if len(joined) <= CAPTION_LIMIT else caption
+def with_ai_note(caption: str, lang: str | None) -> str:  # noqa: ARG001 - kept for its callers
+    """A report's caption as it is. From 2026-11-10 it carried "marked by AI, may differ from an official IELTS
+    result by about ±0.5"; the owner took that note off everywhere on 2026-11-18 (the bot, the PDFs, the site) -
+    only the "Bandzilla is independent, official results come from a test centre" line stays."""
+    return caption

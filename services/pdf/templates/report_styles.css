@@ -77,8 +77,6 @@ table.voc .uz { margin-top: 1mm; font-size: 10.8pt; color: var(--moss); line-hei
 table.voc .uz span { display: inline-block; font-size: 7.7pt; font-weight: 800; letter-spacing: .6px; color: var(--moss); background: var(--mint-bg); border-radius: 1mm; padding: 0 1.2mm; margin-right: 1.6mm; vertical-align: 1px; }
 
 /* the AI note at the end of every report (the user, 2026-11-10): the band comes from AI, +-0.5 */
-.ai-note { margin-top: 10mm; background: var(--wash); border-radius: 2mm; padding: 2.6mm 4mm; font-size: 11pt; color: #3D5149; text-align: center; page-break-inside: avoid; }
-.ai-note b { color: var(--ink); }
 .disc { margin-top: 3mm; font-size: 9.6pt; color: var(--faint); text-align: center; }
 
 /* model answer */
