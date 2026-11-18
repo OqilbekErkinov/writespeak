@@ -8,11 +8,12 @@ agreed in the plan.
 from __future__ import annotations
 
 import enum
+import re
 from datetime import date, datetime
 
 from pgvector.sqlalchemy import Vector
+from sqlalchemy import JSON as _JSON
 from sqlalchemy import (
-    JSON,
     BigInteger,
     Boolean,
     Date,
@@ -29,8 +30,38 @@ from sqlalchemy import (
 )
 from sqlalchemy import text as sql_text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, query_expression, relationship
+from sqlalchemy.types import TypeDecorator
 
 EMBEDDING_DIM = 1536  # text-embedding-3-small
+
+# A model's broken escape: it meant "é" (é) and wrote "\u0000e9" - a NUL, then "e9".
+_NUL_ESCAPE = re.compile("\x00([0-9a-fA-F]{2})")
+
+
+def no_nul(value):
+    """`value` without the NUL character in any string, keys included. Postgres keeps a NUL in a json column as
+    \\u0000 but can't turn it into text: every ->> on that row then fails ("unsupported Unicode escape sequence") -
+    the panel's dashboard went down on 2026-11-18 over one Task 1 chart title, "Caf\\u0000e9". A NUL followed by
+    two hex digits becomes the character the model meant ("Café"); any other NUL is dropped."""
+    if isinstance(value, str):
+        if "\x00" in value:
+            value = _NUL_ESCAPE.sub(lambda m: chr(int(m.group(1), 16)), value).replace("\x00", "")
+        return value
+    if isinstance(value, dict):
+        return {no_nul(k): no_nul(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [no_nul(v) for v in value]
+    return value
+
+
+class JSON(TypeDecorator):
+    """SQLAlchemy's JSON, cleaned of NUL characters on the way in (`no_nul`). The same column type in Postgres."""
+
+    impl = _JSON
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):  # noqa: ARG002
+        return no_nul(value)
 
 
 class Base(DeclarativeBase):
