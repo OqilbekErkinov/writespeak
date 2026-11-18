@@ -80,6 +80,7 @@ from db import crud
 from db.database import get_session
 from db.models import SourceType
 from services.ai import chart_keys, marking_config, usage
+from services.ai.answer_relevance import off_question
 from services.ai.essay_marking import PASTE_NOTICE, canon, clean_pasted, count_words, starts_mid_word, wrong_section
 from services.ai.openai_client import is_image_error
 from services.ai.sample_bank import build_model_answer, needs_from_feedback
@@ -556,6 +557,26 @@ class ChartUnreadable(Exception):
     """The chart reading found no usable visual in the picture."""
 
 
+class OffQuestion(Exception):
+    """The answer was written for another question, or has nothing to do with it (services/ai/answer_relevance.py):
+    not marked (the owner, 2026-11-18)."""
+
+
+async def _off_question(message: Message, state: FSMContext, lang: str, card: Message, data: dict,
+                        hold: guard.Hold, refunded: bool) -> None:
+    """The answer doesn't fit the question: not marked, the coins back, and the same question waits for a new
+    answer."""
+    text = t("writing.off_question", lang)
+    if refunded:
+        text += "\n\n" + t("check.coins_back", lang, coins=hold.coins)
+    if await guard.owns(state, hold):
+        await state.update_data(answer_text=None, answer_file_path=None, _length_ok=False)
+        await state.set_state(WritingStates.awaiting_answer)
+        await _edit_or_send(card, text, back_kb(lang, _back_target(data, "answer")))
+    else:
+        await _edit_or_send(card, text)
+
+
 def _load_prompt_images(paths: list[str]) -> list[tuple[bytes, str]]:
     images = []
     for path in paths[:MAX_PROMPT_IMAGES]:
@@ -795,22 +816,32 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
                             data["answer_text"], visual.model_dump(), data["prompt_text"], prompt_images)
                         if unchecked:
                             notices.append(CHART_PARTLY_CHECKED)
+                # "Is this an answer to this question?" read beside the marking (the owner, 2026-11-18): an
+                # answer to another question, or one unrelated to it, stops the marking - not marked, coins back.
+                # A mock test's part is always marked.
+                gate = None if data.get("mock_session_id") else asyncio.create_task(off_question(
+                    data["task_type"], data["prompt_text"], data["answer_text"], sheet))
+                grading = asyncio.create_task(grade_writing(
+                    task_type=data["task_type"],
+                    prompt_text=data["prompt_text"],
+                    answer_text=data["answer_text"],
+                    prompt_images=prompt_images,
+                    on_feedback=start_answer,
+                    sheet=judged,
+                    notices=notices,
+                    visual=visual_data,
+                    text_source=data.get("answer_source") or "text",
+                    fresh=fresh,
+                ))
                 try:
-                    report = await grade_writing(
-                        task_type=data["task_type"],
-                        prompt_text=data["prompt_text"],
-                        answer_text=data["answer_text"],
-                        prompt_images=prompt_images,
-                        on_feedback=start_answer,
-                        sheet=judged,
-                        notices=notices,
-                        visual=visual_data,
-                        text_source=data.get("answer_source") or "text",
-                        fresh=fresh,
-                    )
+                    off = await gate if gate is not None else None
+                    if off:
+                        raise OffQuestion(off)
+                    report = await grading
                 except BaseException:
-                    if answer_task is not None:
-                        answer_task.cancel()
+                    for task in (gate, grading, answer_task):
+                        if task is not None:
+                            task.cancel()
                     raise
                 # the vocabulary's Uzbek meanings, written beside the model answer (no longer wait)
                 uz_task = asyncio.create_task(uzbek_meanings(report.vocabulary))
@@ -906,6 +937,12 @@ async def _run_grading(message: Message, state: FSMContext, lang: str) -> None:
                         "check_token": hold.id,
                     },
                 )
+    except OffQuestion as e:
+        logger.warning("Writing answer of user %s doesn't fit its question - not marked: %s", user_id, e)
+        refunded = await guard.end(hold, f"off question: {e}"[:300])
+        await live.end(card)
+        await _off_question(message, state, lang, processing_msg, data, hold, refunded)
+        return
     except (ChartImageRejected, ChartUnreadable) as e:
         logger.warning("Task 1 chart of user %s can't be used (%s: %s) - asking for it again",
                        user_id, type(e).__name__, str(e)[:300])

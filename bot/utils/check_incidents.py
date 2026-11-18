@@ -228,6 +228,9 @@ def classify(error: BaseException | None, *, elapsed: float | None = None) -> Re
             or _through(frames, "services/ai/ocr", "document_parser.py"):
         return Reason("input_unreadable", "O'quvchi yuborgan rasm/fayl o'qilmadi (OCR)", detail,
                       "O'quvchidan qayta yuborish so'raldi, coin qaytarildi.", user=True)
+    if names & {"OffQuestion"}:  # bot/handlers/writing.py, services/ai/answer_relevance.py (2026-11-18)
+        return Reason("off_question", "Javob savolga mos emas (boshqa savolga yozilgan)", detail,
+                      "Baholanmadi, coin qaytarildi; o'quvchidan shu savolga yangi javob so'raldi.", user=True)
     if names & {"ReceiveFailed"}:
         return Reason("telegram_download", "Telegram: faylni yuklab bo'lmadi", detail,
                       "Telegram yoki server tarmog'i — odatda vaqtinchalik.", stage="start")

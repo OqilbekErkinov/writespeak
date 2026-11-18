@@ -424,6 +424,15 @@ _T: dict[str, dict[str, str]] = {
         "yuboring.",
         "ru": "⚠️ <b>Проверка прервалась, пока бот обновлялся.</b> Пожалуйста, отправьте ответ заново.",
     },
+    # An answer written for another question, or unrelated to it: not marked, the coins back (the owner, 2026-11-18)
+    "writing.off_question": {
+        "uz": "🤔 <b>Javobingiz savolga to'g'ri kelmayapti</b>\n\nInshongiz boshqa savolga yozilganga o'xshaydi, "
+        "shuning uchun uni baholamadik.\n\n📌 Savolni yana bir bor diqqat bilan o'qing va aynan unga javob yozing. "
+        "Yangi javobingizni shu yerga yuboring ✍️",
+        "ru": "🤔 <b>Ваш ответ не подходит к вопросу</b>\n\nПохоже, текст написан на другой вопрос, поэтому мы не "
+        "стали его оценивать.\n\n📌 Прочитайте вопрос ещё раз внимательно и напишите ответ именно на него. "
+        "Отправьте новый ответ сюда ✍️",
+    },
     "check.coins_back": {
         "uz": "🟡 Band qilingan <b>{coins} coin</b> balansingizga qaytarildi.",
         "ru": "🟡 Зарезервированные <b>{coins} coin</b> возвращены на баланс.",

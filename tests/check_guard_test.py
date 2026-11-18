@@ -397,7 +397,11 @@ async def part2_writing() -> None:
     async def fake_uz(vocab):
         return [""] * len(vocab)
 
+    async def fake_off(*a, **k):
+        return control.get("off")
+
     writing.grade_writing = fake_grade
+    writing.off_question = fake_off
     writing.build_model_answer = fake_answer
     writing.uzbek_meanings = fake_uz
     writing.needs_from_feedback = lambda *a: None
@@ -518,6 +522,28 @@ async def part2_writing() -> None:
     check("an old 🔁 button: says the check is gone, does nothing", len(graded) == 2
           and any(getattr(c, "show_alert", False) for c in out if type(c).__name__ == "AnswerCallbackQuery"))
     check("no hold left running", not await guard.busy(uid))
+
+    # 4. an answer to another question (the owner, 2026-11-18): not marked, coins back, a new answer awaited
+    graded.clear()
+    control["off"] = "other_question - asks: problems and solutions; addresses: whether a law is positive"
+    coins2, subs2 = await balance(uid), await submissions()
+    await start_task2()
+    out = await send(long_answer + " Third.")
+    check("off the question: not marked, nothing charged, no report, the reason said kindly",
+          await balance(uid) == coins2 and await submissions() == subs2 and not docs(out)
+          and any("savolga to'g'ri kelmayapti" in x and "qaytarildi" in x for x in texts(out)), texts(out))
+    check("...the same question waits for a new answer", await state.get_state() == WritingStates.awaiting_answer.state
+          and (await state.get_data()).get("prompt_text") == prompt and not (await state.get_data()).get("answer_text"))
+    async with get_session() as s:
+        off_hold = (await s.execute(select(CheckHold).where(CheckHold.user_id == uid)
+                                    .order_by(CheckHold.created_at.desc()))).scalars().first()
+    check("...its hold says why (the admins' group hears it)", off_hold.state == "refunded"
+          and off_hold.reason.startswith("Javob savolga mos emas") and "other_question" in off_hold.reason
+          and "bug" not in off_hold.reason, off_hold.reason)
+    control["off"] = None
+    out = await send(long_answer + " Fourth, on the question.")
+    check("...the new answer is marked as usual", docs(out) and await balance(uid) == coins2 - 5
+          and await submissions() == subs2 + 1, texts(out))
     await bot.session.close()
 
 
