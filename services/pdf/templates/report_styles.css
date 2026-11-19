@@ -49,7 +49,7 @@ h2 .en { color: var(--muted); font-weight: 400; font-size: 13.2pt; }
 .essay p { margin: 0 0 3.2mm; }
 .essay p:last-child { margin: 0; }
 .good { background: var(--mint-bg); border-radius: 1mm; padding: 0 .6mm; }
-.err { border-bottom: 1.8px solid var(--line-y); }
+.err { border-bottom: 3.4px solid var(--line-y); }  /* 1.8px was lost on a phone (the owner, 2026-11-19) */
 .essay s { color: var(--red); text-decoration-color: var(--red); }
 .essay ins { text-decoration: none; color: var(--moss); font-weight: 700; }
 sup.n { font-size: 8.2pt; font-weight: 800; color: var(--lime); background: var(--ink); border-radius: 2mm; padding: 0 1.1mm; margin-left: .4mm; }
