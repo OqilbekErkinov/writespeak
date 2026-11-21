@@ -1,22 +1,26 @@
 """Puts the admins' premium emoji (bot/utils/premium_emoji.py) into every message the bot sends or edits: the
-HTML text or caption, and an inline button's icon. Registered on the bot's session (bot/main.py, and the panel's
-bot - webapp/panel.py new_bot), so every handler, reminder and broadcast gets them without a change.
+HTML text or caption, and a button's icon - inline buttons and the main menu's (2026-11-22, the owner: "the menu
+too"). Registered on the bot's session (bot/main.py, and the panel's bot - webapp/panel.py new_bot), so every
+handler, reminder and broadcast gets them without a change.
 
 Never makes a send fail: a send Telegram refuses with them goes again as it was; a message sent with no parse mode,
-or with its own entities, is left alone; a reply keyboard is left alone (its button's text is what the student's
-press sends back, and the handlers match it). When Telegram takes the message but drops them (the bot's owner no
-longer has Telegram Premium), the admins' group is told once a day.
+or with its own entities, is left alone. A main-menu button whose emoji became its icon sends only its words when
+pressed; MenuPressText (below) gives the handlers its full text back. When Telegram takes the message but drops the
+emoji (the bot's owner no longer has Telegram Premium), the admins' group is told once a day.
 """
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 from aiogram.client.default import Default
 from aiogram.client.session.middlewares.base import BaseRequestMiddleware
 from aiogram.exceptions import TelegramBadRequest
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram import BaseMiddleware
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, Message, ReplyKeyboardMarkup
 
+from bot.keyboards.main_menu_kb import MENU_BUTTON_TEXTS
 from bot.utils import premium_emoji
 
 logger = logging.getLogger(__name__)
@@ -34,21 +38,28 @@ def _parse_mode(bot: Any, method: Any) -> str | None:
 
 
 def _buttons(markup: Any, emoji_map: dict[str, str]) -> tuple[Any, int]:
-    if not isinstance(markup, InlineKeyboardMarkup):
+    """An inline keyboard's or the main menu's buttons: a leading mapped emoji becomes the button's premium icon.
+    A reply button's text is what its press sends back - MenuPressText puts the emoji back on it."""
+    if isinstance(markup, InlineKeyboardMarkup):
+        kind, field, plain_only = InlineKeyboardButton, "inline_keyboard", False
+    elif isinstance(markup, ReplyKeyboardMarkup):
+        kind, field, plain_only = KeyboardButton, "keyboard", True
+    else:
         return markup, 0
     rows, n = [], 0
-    for row in markup.inline_keyboard:
+    for row in getattr(markup, field):
         new_row = []
         for button in row:
-            icon = None if (button.model_extra or {}).get("icon_custom_emoji_id") else \
-                premium_emoji.button_icon(button.text, emoji_map)
+            fields = button.model_dump(exclude_none=True)
+            icon = None
+            if not fields.get("icon_custom_emoji_id") and not (plain_only and set(fields) - {"text", "style"}):
+                icon = premium_emoji.button_icon(button.text, emoji_map)
             if icon:
                 n += 1
-                button = InlineKeyboardButton(**{**button.model_dump(exclude_none=True), "text": icon[0],
-                                                 "icon_custom_emoji_id": icon[1]})
+                button = kind(**{**fields, "text": icon[0], "icon_custom_emoji_id": icon[1]})
             new_row.append(button)
         rows.append(new_row)
-    return (InlineKeyboardMarkup(inline_keyboard=rows) if n else markup), n
+    return (markup.model_copy(update={field: rows}) if n else markup), n
 
 
 async def dress(bot: Any, method: Any) -> tuple[Any, int, int] | None:
@@ -100,6 +111,34 @@ class PremiumEmoji(BaseRequestMiddleware):
         if in_text and isinstance(result, Message) and not _kept(result):
             await _stripped()
         return result
+
+
+_LEADING = re.compile(r"^[\W_]+")
+
+
+def _words(text: str) -> str:
+    """A menu button's words, without the emoji before them: "✍️ Writing" -> "Writing"."""
+    return _LEADING.sub("", text).strip()
+
+
+MENU_BY_WORDS = {_words(text): text for text in MENU_BUTTON_TEXTS}
+
+
+class MenuPressText(BaseMiddleware):
+    """A main-menu press whose emoji is the button's premium icon sends only the words ("Writing"); every handler
+    knows the button by its full text ("✍️ Writing"), so it gets that back before any filter looks at it. A student
+    typing the bare words ("Writing") gets the same section. Registered as the messages' outer middleware
+    (bot/main.py)."""
+
+    async def __call__(self, handler: Any, event: Any, data: dict) -> Any:
+        text = getattr(event, "text", None)
+        if isinstance(event, Message) and text and text not in MENU_BUTTON_TEXTS and event.chat.type == "private":
+            full = MENU_BY_WORDS.get(_words(text))
+            if full:
+                event = event.model_copy(update={"text": full, "entities": None})
+                if data.get("bot") is not None:
+                    event = event.as_(data["bot"])
+        return await handler(event, data)
 
 
 async def _stripped() -> None:

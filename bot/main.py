@@ -33,6 +33,10 @@ def build_dispatcher() -> Dispatcher:
     # Middlewares (order matters: access control must run before routers below).
     from bot.middlewares.access_control import AccessControlMiddleware
 
+    from bot.middlewares.premium_emoji import MenuPressText
+
+    # a menu button whose emoji is its premium icon sends only its words: its full text back, before any filter
+    dp.message.outer_middleware(MenuPressText())
     dp.message.middleware(AccessControlMiddleware())
     dp.callback_query.middleware(AccessControlMiddleware())
 

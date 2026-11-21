@@ -28,6 +28,26 @@ def u16(s: str) -> int:
     return len(s.encode("utf-16-le")) // 2
 
 
+def sticker(emoji, cid, set_name):
+    from aiogram.types import Sticker
+
+    return Sticker(file_id=f"F{cid}", file_unique_id=f"U{cid}", type="custom_emoji", width=100, height=100,
+                   is_animated=False, is_video=False, emoji=emoji, custom_emoji_id=cid, set_name=set_name)
+
+
+def pack(name):
+    """TestPack: ✅ twice (the first is taken), 🎙, a unicorn the bot never writes, and 📝 (sent by the admin)."""
+    from aiogram.exceptions import TelegramBadRequest
+    from aiogram.methods import GetStickerSet
+    from aiogram.types import StickerSet
+
+    if name != "TestPack":
+        raise TelegramBadRequest(method=GetStickerSet(name=name), message="Bad Request: STICKERSET_INVALID")
+    return StickerSet(name=name, title="Test Pack", sticker_type="custom_emoji", is_animated=False, is_video=False,
+                      stickers=[sticker("✅", "p1", name), sticker("✅", "p2", name), sticker("🎙", "p3", name),
+                                sticker("🦄", "p4", name), sticker("📝", "a1", name)])
+
+
 def fake_session(refuse=None, strip=False):
     from aiogram.client.session.base import BaseSession
     from aiogram.types import Chat, Message, MessageEntity
@@ -48,6 +68,14 @@ def fake_session(refuse=None, strip=False):
             err = refuse(method) if refuse else None
             if err is not None:
                 raise err
+            name = type(method).__name__
+            if name == "GetCustomEmojiStickers":
+                return [sticker(e, cid, "TestPack") for e, cid in (("📝", "a1"), ("🔥", "b1"))
+                        if cid in method.custom_emoji_ids]
+            if name == "GetStickerSet":
+                return pack(method.name)
+            if name == "AnswerCallbackQuery":
+                return True
             text = getattr(method, "text", None) or getattr(method, "caption", None) or "x"
             ents = [MessageEntity(type="custom_emoji", offset=0, length=1, custom_emoji_id="k")] \
                 if "tg-emoji" in text and not strip else None
@@ -145,9 +173,19 @@ async def middleware() -> None:
     sent = bot.session.prepare_value(s.calls[-1].reply_markup, bot=bot, files={})
     check("...and the icon goes to Telegram", '"icon_custom_emoji_id": "111"' in sent or
           '"icon_custom_emoji_id":"111"' in sent, sent[:200])
-    await bot.send_message(5, "Menyu", reply_markup=ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="✍️ Writing")]]))
-    check("a reply keyboard left alone (its text is what a press sends back)",
-          s.calls[-1].reply_markup.keyboard[0][0].text == "✍️ Writing")
+    from bot.keyboards.main_menu_kb import main_menu_kb
+
+    await bot.send_message(5, "Menyu", reply_markup=main_menu_kb("uz"))
+    menu = s.calls[-1].reply_markup
+    first = menu.keyboard[0][0]
+    check("the main menu: ✍️ becomes the Writing button's premium icon, the other buttons as they were, its options kept",
+          first.text == "Writing" and first.model_extra.get("icon_custom_emoji_id") == "111"
+          and menu.keyboard[1][0].text == "📝 Practice" and menu.resize_keyboard and menu.one_time_keyboard,
+          (first, menu.keyboard[1][0]))
+    await bot.send_message(5, "Raqam", reply_markup=ReplyKeyboardMarkup(keyboard=[
+        [KeyboardButton(text="✍️ Telefon", request_contact=True)]]))
+    check("a reply button that asks for more than text: left alone",
+          s.calls[-1].reply_markup.keyboard[0][0].text == "✍️ Telefon")
 
     def refuse(method):
         if "tg-emoji" in (getattr(method, "text", None) or ""):
@@ -219,14 +257,43 @@ async def handlers() -> None:
         return [c.text for c in s.calls if type(c).__name__ == "SendMessage"]
 
     await dp.feed_update(bot, upd(text="/emoji"))
-    check("/emoji: the list (none yet), how to add, the bot's most used emoji",
-          "Premium emoji" in replies()[-1] and "Hali birorta" in replies()[-1] and "eng ko'p" in replies()[-1])
+    check("/emoji: how many of the bot's emoji are premium (none yet), the plain ones, the two ways to add",
+          "Premium emoji" in replies()[-1] and "<b>0</b> tasi premium" in replies()[-1] and "Hali oddiy" in replies()[-1]
+          and "addemoji" in replies()[-1], replies()[-1][:300])
     text = "✍️ = 📝"
     ents = [MessageEntity(type="custom_emoji", offset=u16("✍️ = "), length=u16("📝"), custom_emoji_id="a1")]
     await dp.feed_update(bot, upd(text=text, entities=ents))
     saved = await pe.entries()
     check("the premium emoji sent next: saved for ✍️, the answer shows it",
           saved.get("✍", {}).get("id") == "a1" and "Saqlandi (1)" in replies()[-1] and "a1" in replies()[-1], saved)
+    offer = [c for c in s.calls if type(c).__name__ == "SendMessage"][-1].reply_markup
+    btns = [b for row in (offer.inline_keyboard if offer else []) for b in row]
+    check("...and its pack offered: the rest the bot's texts use (✅ 🎙 📝 - not the unicorn, not ✍️ again)",
+          len(btns) == 1 and "Test Pack" in btns[0].text and "yana 3 ta" in btns[0].text, [b.text for b in btns])
+    from aiogram.types import CallbackQuery
+
+    n[0] += 1
+    await dp.feed_update(bot, Update(update_id=n[0], callback_query=CallbackQuery(
+        id="cb1", from_user=User(id=ADMIN, is_bot=False, first_name="Admin"), chat_instance="c", data=btns[0].callback_data,
+        message=Message(message_id=1, date=datetime.now(timezone.utc), chat=Chat(id=ADMIN, type="private"), text="x"))))
+    saved = await pe.entries()
+    check("the offer pressed: the pack's first ✅ and its 🎙 and 📝 saved, ✍️ kept as chosen",
+          saved.get("✅", {}).get("id") == "p1" and saved.get("🎙", {}).get("id") == "p3"
+          and saved.get("📝", {}).get("id") == "a1" and saved.get("✍", {}).get("id") == "a1" and "🦄" not in saved
+          and "yana <b>3</b> ta olindi" in replies()[-1], (saved, replies()[-1][:200]))
+    await pe.clear()
+    await dp.feed_update(bot, upd(text="/emoji"))
+    await dp.feed_update(bot, upd(text="Mana: https://t.me/addemoji/TestPack va https://t.me/addemoji/NoSuch"))
+    saved = await pe.entries()
+    check("a pack's link: every emoji of it the bot uses saved at once; a wrong link said so",
+          set(saved) == {"✅", "🎙", "📝"} and "«Test Pack»" in replies()[-1] and "<b>3</b> tasi" in replies()[-1]
+          and "NoSuch" in replies()[-1], (saved, replies()[-1][:300]))
+    await pe.clear()
+    await dp.feed_update(bot, upd(text="/emoji"))
+    await dp.feed_update(bot, upd(text="✍️ = 📝"))
+    check("no premium emoji, no link: said so", "topilmadi" in replies()[-1])
+    await dp.feed_update(bot, upd(text="/emoji"))
+    await dp.feed_update(bot, upd(text=text, entities=ents))
     before = len(s.calls)
     await dp.feed_update(bot, upd(text="An essay text with no premium emoji at all"))
     check("after that the flow is over: the next message is not taken", len(s.calls) == before)
@@ -259,9 +326,49 @@ async def handlers() -> None:
     await redis().delete(broadcast_post.KEY)
 
 
+async def menu_press() -> None:
+    """The main menu's button with a premium icon sends only its words: the handlers get its full text."""
+    from aiogram import Bot, Dispatcher, F, Router
+    from aiogram.types import Chat, Message, Update, User
+
+    from bot.middlewares.premium_emoji import MenuPressText
+
+    s = fake_session()
+    bot = Bot("123456:TEST", session=s)
+    dp = Dispatcher()
+    dp.message.outer_middleware(MenuPressText())
+    seen = []
+    r = Router()
+
+    @r.message(F.text == "✍️ Writing")
+    async def writing(message: Message):
+        seen.append(("w", message.text))
+        await message.answer("Writing bo'limi")
+
+    @r.message(F.text == "📚 Lug'atim")
+    async def vocab(message: Message):
+        seen.append(("v", message.text))
+
+    @r.message()
+    async def other(message: Message):
+        seen.append(("other", message.text))
+
+    dp.include_router(r)
+    for i, text in enumerate(["Writing", "✍ Writing", "✍️ Writing", "Lug'atim", "I like Writing", "writing"], 1):
+        await dp.feed_update(bot, Update(update_id=i, message=Message(
+            message_id=i, date=datetime.now(timezone.utc), chat=Chat(id=5, type="private"),
+            from_user=User(id=5, is_bot=False, first_name="S"), text=text)))
+    check("a menu press without its emoji ('Writing', '✍ Writing'): the Writing section, as the full text",
+          seen[:3] == [("w", "✍️ Writing")] * 3 and seen[3] == ("v", "📚 Lug'atim"), seen)
+    check("...other words untouched", seen[4:] == [("other", "I like Writing"), ("other", "writing")], seen)
+    check("...and the handler's answer still goes (the message keeps its bot)",
+          sum(type(c).__name__ == "SendMessage" for c in s.calls) == 3)
+
+
 async def main() -> int:
     pure()
     await middleware()
+    await menu_press()
     await handlers()
     print(f"\n{len(fails)} failed" if fails else "\nall passed")
     from bot.utils.crm import redis

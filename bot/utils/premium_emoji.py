@@ -35,9 +35,12 @@ _TAG_NAME = re.compile(r"</?\s*([a-zA-Z-]+)")
 # after a match: no variation selector, joiner, skin tone or keycap - the emoji goes on, it is a longer one
 _TAIL = "(?![️‍⃣\U0001F3FB-\U0001F3FF])"
 _SEPARATORS = re.compile(r"[\s=:\-–—>→⇒,;]+")
-# what counts as an emoji in the bot's texts (the /emoji list of the most used ones)
-_EMOJI = re.compile("[←-⇿⌀-⏿①-⓿■-➿⤀-⥿⬀-⯿"
-                    "\U0001F000-\U0001FAFF]️?")
+# what counts as an emoji in the bot's texts (the /emoji list): a flag, or one emoji with its skin tone and the
+# ones joined to it by U+200D; an arrow (← →) only with U+FE0F, else it is a text arrow
+_E = "[⌀-⏿①-⓿■-➿⤀-⥿⬀-⯿\U0001F000-\U0001FAFF]️?[\U0001F3FB-\U0001F3FF]?"
+_EMOJI = re.compile("[\U0001F1E6-\U0001F1FF]{2}|(?:[←-⇿]️|" + _E + ")(?:‍" + _E + ")*")
+# a premium emoji pack's link (Telegram: the pack -> Share): https://t.me/addemoji/<name>
+PACK_LINK = re.compile(r"(?:t\.me|telegram\.me|telegram\.dog)/addemoji/([A-Za-z0-9_]{1,64})")
 
 _cache: dict = {"at": 0.0, "map": {}}
 _patterns: dict[tuple, re.Pattern] = {}
@@ -223,9 +226,11 @@ def picked_from(text: str | None, entities) -> list[tuple[str, str]]:
 
 
 def bot_texts() -> list[str]:
+    """Every text of the bot in every language, the main menu's buttons too."""
     from bot.i18n import _T  # noqa: PLC0415 - the texts are big; only /emoji needs them
+    from bot.keyboards.main_menu_kb import MENU_BUTTON_TEXTS  # noqa: PLC0415
 
-    return [text for entry in _T.values() for text in entry.values()]
+    return [text for entry in _T.values() for text in entry.values()] + sorted(MENU_BUTTON_TEXTS)
 
 
 def usage(emoji: str, texts: list[str] | None = None) -> int:
@@ -234,11 +239,13 @@ def usage(emoji: str, texts: list[str] | None = None) -> int:
     return sum(1 for text in (texts if texts is not None else bot_texts()) if key in canon(text))
 
 
-def most_used(n: int = 24, texts: list[str] | None = None) -> list[tuple[str, int]]:
-    """The emoji the bot's Uzbek texts use most (as written, with the variation selector when they have it)."""
+def most_used(n: int = 200, texts: list[str] | None = None) -> list[tuple[str, int]]:
+    """The emoji the bot's Uzbek texts and its menu use, most used first (as written, with the variation selector
+    when they have it)."""
     from bot.i18n import _T  # noqa: PLC0415
+    from bot.keyboards.main_menu_kb import MENU_BUTTON_TEXTS  # noqa: PLC0415
 
-    uz = texts if texts is not None else [entry.get("uz", "") for entry in _T.values()]
+    uz = texts if texts is not None else [entry.get("uz", "") for entry in _T.values()] + sorted(MENU_BUTTON_TEXTS)
     counts: Counter = Counter()
     shown: dict[str, Counter] = {}
     for text in uz:
@@ -247,6 +254,21 @@ def most_used(n: int = 24, texts: list[str] | None = None) -> list[tuple[str, in
             counts[key] += 1
             shown.setdefault(key, Counter())[m.group(0)] += 1
     return [(shown[key].most_common(1)[0][0], c) for key, c in counts.most_common(n)]
+
+
+def from_pack(stickers, have: set[str], texts: list[str] | None = None) -> list[tuple[str, str]]:
+    """A premium emoji pack's emoji for the plain ones the bot's texts use and `have` (canon) has not got yet - the
+    first of the pack for each; the pack's emoji the bot never writes are left out."""
+    texts = texts if texts is not None else bot_texts()
+    taken = set(have)
+    out = []
+    for st in stickers:
+        alt, custom_id = getattr(st, "emoji", None), getattr(st, "custom_emoji_id", None)
+        if not alt or not custom_id or canon(alt) in taken or not is_emoji(alt) or not usage(alt, texts):
+            continue
+        taken.add(canon(alt))
+        out.append((alt, custom_id))
+    return out
 
 
 async def stripped_today(day: str) -> bool:
