@@ -6,6 +6,8 @@
 {% if started == "empty" %}<div class="error">O'zbekcha matn bo'sh — xabar yuborilmadi.</div>
 {% elif started == "toolong" %}<div class="error">Matn juda uzun — bitta tilda 4000 belgidan oshmasin (Telegram chegarasi). Xabar yuborilmadi.</div>
 {% elif started == "dup" %}<div class="error">Bu xabar hozirgina yuborilishni boshladi — ikkinchi marta yuborilmadi.</div>
+{% elif started == "mediatype" %}<div class="error">Bu fayl turi qabul qilinmaydi: rasm JPG, PNG yoki WEBP, video MP4 yoki MOV bo'lsin. Xabar yuborilmadi.</div>
+{% elif started == "mediabig" %}<div class="error">Fayl juda katta: rasm 10 MB gacha, video 50 MB gacha bo'lsin (Telegram chegarasi). Xabar yuborilmadi.</div>
 {% elif started %}<div class="flash">Yuborish boshlandi — pastda jarayonni kuzatib turing. Sahifani yopsangiz ham davom etadi.</div>{% endif %}
 
 <div class="b-grid">
@@ -33,7 +35,8 @@
       katta yuborishdan oldin shu bilan sinab ko'ring.</p>
   </div>
 
-  <form class="card" method="post" action="/broadcast/send" id="sendForm" data-confirm="{{ count }} kishiga yuborilsinmi?"
+  <form class="card" method="post" action="/broadcast/send" id="sendForm" enctype="multipart/form-data"
+        data-confirm="{{ count }} kishiga yuborilsinmi?"
         data-confirm-text="Yuborilgandan keyin bekor qilib bo'lmaydi." data-confirm-ok="Yuborish" data-tone="warn">
     <h2>2. Matn</h2>
     <input type="hidden" name="audience" value="{{ audience }}">
@@ -48,6 +51,23 @@
       <textarea name="text_en" rows="5" maxlength="3500" placeholder="Hello! News from Bandzilla…"></textarea>
     </details>
     <p class="hint">Har kim o'z tilidagi matnni oladi. Oddiy matn yuboriladi: emoji ishlaydi, havolalar o'zi bosiladigan bo'ladi.</p>
+
+    <h2 class="b-h2">3. Post uchun rasm yoki video <span class="muted">— ixtiyoriy</span></h2>
+    <label class="b-file">
+      <input type="file" name="media" id="mediaInput" accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime">
+      <span class="b-file-btn">🖼 / 🎬 Fayl tanlash</span>
+      <span class="b-file-name muted" id="mediaName">Tanlanmagan</span>
+      <button type="button" class="b-file-clear" id="mediaClear" hidden>✕</button>
+    </label>
+    <img id="mediaPreview" class="b-preview" alt="" hidden>
+    <p class="hint">Rasm (JPG, PNG, WEBP — 10 MB gacha) yoki video (MP4, MOV — 50 MB gacha). Matn rasm/video ostida
+      yoziladi; 1024 belgidan uzun matn rasmdan keyin alohida xabar bo'lib boradi.</p>
+
+    <label class="b-check">
+      <input type="checkbox" name="buttons" value="1">
+      <span><b>Tekshiruv tugmalarini qo'shish</b><br>
+        <span class="muted">Xabar ostida «✍️ Writing», «🎙 Speaking» va tayyor savol tugmalari — bosgan zahoti tekshiruv boshlanadi.</span></span>
+    </label>
     <button type="submit" class="btn btn-good b-send"{{ ' disabled' if not count }}>📣 {{ count }} kishiga yuborish</button>
   </form>
 </div>
@@ -88,6 +108,18 @@
   .b-more { margin-top: 12px; }
   .b-more summary { cursor: pointer; font-size: 13.5px; font-weight: 800; color: var(--moss); }
   .b-send { margin-top: 14px; font-size: 15px; padding: 11px 20px; }
+  .b-h2 { margin-top: 22px; }
+  .b-file { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; cursor: pointer; }
+  .b-file input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+  .b-file-btn { display: inline-block; padding: 9px 14px; border-radius: 12px; border: 1.5px dashed var(--moss);
+    background: var(--mint-2); font-size: 13.5px; font-weight: 800; color: var(--ink); }
+  .b-file-name { font-size: 13px; overflow-wrap: anywhere; }
+  .b-file-clear { border: 0; background: none; font-size: 16px; cursor: pointer; color: var(--ink-soft); }
+  .b-preview { display: block; max-width: 220px; max-height: 220px; margin-top: 10px; border-radius: 12px;
+    border: 1px solid var(--border); object-fit: cover; }
+  .b-check { display: flex; gap: 10px; align-items: flex-start; margin-top: 16px; padding: 12px 14px; border-radius: 14px;
+    background: var(--mint-2); border: 1px solid var(--border); font-size: 13.5px; cursor: pointer; }
+  .b-check input { margin-top: 3px; width: 18px; height: 18px; flex: none; }
   .b-send:disabled { background: var(--moss); border-color: var(--moss); color: #fff; opacity: 0.6; }
   .bar { height: 8px; border-radius: 100px; background: var(--mint-2); overflow: hidden; border: 1px solid var(--border); }
   .bar span { display: block; height: 100%; background: var(--skin); transition: width .4s; }
@@ -99,6 +131,22 @@
   document.getElementById("sendForm").addEventListener("submit", function () {
     this.querySelector(".b-send").disabled = true;  // after the confirmation: once only
   });
+  (function () {  // the chosen picture or video: its name, size and (a picture) a small preview
+    const input = document.getElementById("mediaInput"), name = document.getElementById("mediaName"),
+          clear = document.getElementById("mediaClear"), preview = document.getElementById("mediaPreview");
+    function show() {
+      const f = input.files && input.files[0];
+      if (preview.src) { URL.revokeObjectURL(preview.src); preview.removeAttribute("src"); }
+      preview.hidden = true;
+      if (!f) { name.textContent = "Tanlanmagan"; clear.hidden = true; return; }
+      const mb = f.size / 1048576, limit = f.type.startsWith("video/") ? 50 : 10;
+      name.textContent = f.name + " · " + mb.toFixed(1) + " MB" + (mb > limit ? " — juda katta (" + limit + " MB gacha)" : "");
+      clear.hidden = false;
+      if (f.type.startsWith("image/")) { preview.src = URL.createObjectURL(f); preview.hidden = false; }
+    }
+    input.addEventListener("change", show);
+    clear.addEventListener("click", function (e) { e.preventDefault(); input.value = ""; show(); });
+  })();
   const STATES = { running: "⏳ yuborilmoqda", done: "✅ tugadi", stopped: "⛔ to'xtadi" };
   function poll() {
     const rows = [...document.querySelectorAll(".b-row[data-status=running]")];

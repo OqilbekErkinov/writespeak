@@ -89,8 +89,9 @@ server {
     add_header Referrer-Policy "same-origin" always;
     add_header X-Robots-Tag "noindex, nofollow" always;
 
-    # Practice question images (the webapp accepts up to 10 MB).
-    client_max_body_size 12m;
+    # Practice question images (up to 10 MB) and the broadcast's post video (up to 50 MB, Telegram's limit for a
+    # bot - 2026-11-22).
+    client_max_body_size 55m;
 
     location / {
         proxy_pass http://127.0.0.1:8088;

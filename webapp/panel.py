@@ -29,7 +29,8 @@ from aiogram import Bot
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramForbiddenError, TelegramRetryAfter
-from fastapi import APIRouter, Form, Request
+from aiogram.types import BufferedInputFile
+from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from sqlalchemy import and_, func, select, update
 
@@ -60,6 +61,12 @@ BROADCAST_KEY = "broadcast:{id}"
 BROADCAST_IDS = "broadcast:ids"
 BROADCAST_MAX = 4000  # characters of one language's text after escaping (Telegram: 4096)
 BROADCAST_PAUSE = 0.05  # 20 messages a second at most - under Telegram's limit
+# A post: a picture or a video with the text under it (the owner, 2026-11-22). Telegram's own limits: a photo 10 MB,
+# a video 50 MB sent by a bot, a caption 1024 characters (a longer text follows as its own message).
+BROADCAST_CAPTION = 1024
+MEDIA_TYPES = {"image/jpeg": "photo", "image/png": "photo", "image/webp": "photo",
+               "video/mp4": "video", "video/quicktime": "video"}
+MEDIA_LIMITS = {"photo": 10 * 1024 * 1024, "video": 50 * 1024 * 1024}
 
 
 # --- who is signed in, and the audit log ------------------------------------------------------------
@@ -530,20 +537,55 @@ async def _audience(session, audience: str, lang: str) -> list[User]:
     return users
 
 
-async def _broadcast_job(bid: str, users: list[tuple[int, str]], texts: dict[str, str]) -> None:
+async def _deliver(bot: Bot, uid: int, text: str, media: tuple[str, bytes, str] | None, kb, cache: dict) -> None:
+    """One student's broadcast: the text - or, with `media` (kind, bytes, file name), the picture or video with the
+    text as its caption (a text over Telegram's caption limit follows it as its own message). The file is uploaded
+    once: Telegram's file id of the first delivery (`cache`) serves everyone after."""
+    if media is None:
+        await bot.send_message(uid, text, disable_web_page_preview=True, reply_markup=kb)
+        return
+    kind, data, name = media
+    caption = text if len(text) <= BROADCAST_CAPTION else None
+    markup = kb if caption is not None else None
+    if cache.get("document"):  # Telegram took the video as a file (not an MP4 it can play)
+        msg = await bot.send_document(uid, cache["document"], caption=caption, reply_markup=markup)
+    elif kind == "photo":
+        msg = await bot.send_photo(uid, cache.get("id") or BufferedInputFile(data, filename=name), caption=caption,
+                                   reply_markup=markup)
+        cache.setdefault("id", msg.photo[-1].file_id if msg.photo else None)
+    else:
+        msg = await bot.send_video(uid, cache.get("id") or BufferedInputFile(data, filename=name), caption=caption,
+                                   reply_markup=markup, supports_streaming=True)
+        if "id" not in cache and "document" not in cache:
+            if msg.video:
+                cache["id"] = msg.video.file_id
+            elif msg.document:
+                cache["document"] = msg.document.file_id
+    if caption is None:
+        await bot.send_message(uid, text, disable_web_page_preview=True, reply_markup=kb)
+
+
+async def _broadcast_job(bid: str, users: list[tuple[int, str]], texts: dict[str, str],
+                         media: tuple[str, bytes, str] | None = None, buttons: bool = False) -> None:
+    """`media`: a picture or video posted with the text; `buttons`: "✍️ Writing / 🎙 Speaking" and a ready question
+    under it (bot/keyboards/entry_kb.py onboarding_kb - what a new student sees), so a reminder starts a check."""
+    from bot.keyboards.entry_kb import onboarding_kb  # noqa: PLC0415 - the bot's keyboards, only for this job
+
     key = BROADCAST_KEY.format(id=bid)
     r = crm.redis()
     bot = new_bot()
     sent = failed = blocked = 0
+    cache: dict = {}
     try:
         for i, (uid, lang) in enumerate(users, 1):
             text = texts.get(lang) or texts["uz"]
+            kb = onboarding_kb(lang) if buttons else None
             try:
                 try:
-                    await bot.send_message(uid, text, disable_web_page_preview=True)
+                    await _deliver(bot, uid, text, media, kb, cache)
                 except TelegramRetryAfter as e:
                     await asyncio.sleep(e.retry_after)
-                    await bot.send_message(uid, text, disable_web_page_preview=True)
+                    await _deliver(bot, uid, text, media, kb, cache)
                 sent += 1
             except TelegramForbiddenError:
                 blocked += 1
@@ -562,6 +604,12 @@ async def _broadcast_job(bid: str, users: list[tuple[int, str]], texts: dict[str
         await bot.session.close()
     await crm.post("support", f"📣 <b>Ommaviy xabar</b> #{bid} tugadi: {sent} ta yetkazildi, {blocked} ta botni bloklagan, "
                               f"{failed} ta xato.")
+
+
+def _post_mark(post: tuple[str, bytes, str] | None, buttons: str) -> str:
+    """The history's and the audit log's note of what went with the text."""
+    return ({"photo": "🖼 Rasm · ", "video": "🎬 Video · "}.get(post[0], "") if post else "") + \
+        ("🔘 Tugmalar · " if buttons else "")
 
 
 def _checked(data: dict) -> dict:
@@ -599,9 +647,19 @@ async def broadcast_page(request: Request, audience: str = "all", lang: str = "a
 
 @router.post("/broadcast/send")
 async def broadcast_send(request: Request, audience: str = Form(...), lang: str = Form("any"),
-                         text_uz: str = Form(""), text_ru: str = Form(""), text_en: str = Form("")):
+                         text_uz: str = Form(""), text_ru: str = Form(""), text_en: str = Form(""),
+                         buttons: str = Form(""), media: UploadFile | None = File(None)):
     if (r := guard(request, perm="broadcast")) is not None:
         return r
+    post = None  # (kind, bytes, file name): a picture or a video with the text
+    if media is not None and media.filename:
+        kind = MEDIA_TYPES.get((media.content_type or "").split(";")[0].strip().lower())
+        if kind is None:
+            return RedirectResponse(f"/broadcast?audience={audience}&lang={lang}&started=mediatype", status_code=303)
+        data = await media.read(MEDIA_LIMITS[kind] + 1)
+        if not data or len(data) > MEDIA_LIMITS[kind]:
+            return RedirectResponse(f"/broadcast?audience={audience}&lang={lang}&started=mediabig", status_code=303)
+        post = (kind, data, media.filename[-80:])
     # Escaped first, then measured (2026-11-15: cut at 3500 and escaped after, a text full of & < > grew past
     # Telegram's 4096 characters and every single message failed).
     texts = {k: html.escape(v.strip(), quote=False) for k, v in (("uz", text_uz), ("ru", text_ru), ("en", text_en))}
@@ -610,7 +668,8 @@ async def broadcast_send(request: Request, audience: str = Form(...), lang: str 
     if any(len(v) > BROADCAST_MAX for v in texts.values()):
         return RedirectResponse(f"/broadcast?audience={audience}&lang={lang}&started=toolong", status_code=303)
     # A double submit (two clicks, a resent form) starts one broadcast, not two.
-    fingerprint = hashlib.sha256("|".join([audience, lang, *texts.values()]).encode()).hexdigest()[:24]
+    fingerprint = hashlib.sha256("|".join([audience, lang, buttons, hashlib.sha256(post[1]).hexdigest() if post else "",
+                                           *texts.values()]).encode()).hexdigest()[:24]
     if not await crm.redis().set(f"broadcast:once:{fingerprint}", "1", nx=True, ex=600):
         return RedirectResponse(f"/broadcast?audience={audience}&lang={lang}&started=dup", status_code=303)
     async with get_session() as session:
@@ -621,13 +680,13 @@ async def broadcast_send(request: Request, audience: str = Form(...), lang: str 
     await r.hset(BROADCAST_KEY.format(id=bid), mapping={
         "status": "running", "total": len(targets), "sent": 0, "failed": 0, "blocked": 0, "done": 0,
         "audience": AUDIENCES.get(audience, audience), "lang": LANG_FILTERS.get(lang, lang), "admin": admin_name(request),
-        "preview": text_uz.strip()[:160], "started": int(time.time()),
+        "preview": _post_mark(post, buttons) + text_uz.strip()[:160], "started": int(time.time()),
     })
     await r.lpush(BROADCAST_IDS, bid)
     await r.ltrim(BROADCAST_IDS, 0, 49)
     await audit(request, "broadcast", details=f"#{bid} · {AUDIENCES.get(audience)} · {LANG_FILTERS.get(lang)} · "
-                                              f"{len(targets)} kishi · {text_uz.strip()[:200]}")
-    _later(_broadcast_job(bid, targets, texts))
+                                              f"{len(targets)} kishi · {_post_mark(post, buttons)}{text_uz.strip()[:200]}")
+    _later(_broadcast_job(bid, targets, texts, post, bool(buttons)))
     return RedirectResponse(f"/broadcast?started={bid}", status_code=303)
 
 
