@@ -104,13 +104,22 @@ async def main() -> int:
           names == ["SendVideo", "SendMessage"] and s.calls[0].caption is None and s.calls[1].text == long
           and labels(s.calls[1].reply_markup) == labels(kb) and cache.get("id") == "VIDEO-ID", names)
 
+    # 3b. the Telegram post (2026-11-22): copied as it is, the buttons under it
+    s = fake_session()
+    bot = Bot("8888548766:TEST", session=s)
+    await panel._deliver(bot, 9, "", None, kb, {}, copy=(777, 55))
+    c = s.calls[-1]
+    check("a Telegram post: copied from the admin's chat, with the buttons",
+          type(c).__name__ == "CopyMessage" and c.chat_id == 9 and c.from_chat_id == 777 and c.message_id == 55
+          and labels(c.reply_markup) == labels(kb) and len(s.calls) == 1)
+
     # 4. the page: the form sends files, the picture is checked, a wrong type or a big file is refused
     from webapp.main import app
 
     sent = []
 
-    async def fake_job(bid, targets, texts, media=None, buttons=False):
-        sent.append((targets, texts, media, buttons))
+    async def fake_job(bid, targets, texts, media=None, buttons=False, copy=None):
+        sent.append((targets, texts, media, buttons, copy))
 
     panel._broadcast_job = fake_job
     transport = httpx.ASGITransport(app=app)
@@ -143,6 +152,40 @@ async def main() -> int:
               and sent[-1][2] is None and sent[-1][3] is False)
         hist = (await owner.get("/broadcast")).text
         check("the history marks the picture post and its buttons", "🖼 Rasm" in hist and "🔘 Tugmalar" in hist)
+
+        # the Telegram post (bot/utils/broadcast_post.py): none yet -> the steps, a send refused
+        from aiogram.types import Chat, Message, MessageEntity, PhotoSize
+
+        from bot.utils import broadcast_post
+        from bot.utils.crm import redis
+
+        await redis().delete(broadcast_post.KEY)
+        page = (await owner.get("/broadcast")).text
+        check("no Telegram post yet: the page says how to make one", "Telegram'dagi post" in page and "/post" in page
+              and 'action="/broadcast/send_post"' in page)
+        n = len(sent)
+        r = await owner.post("/broadcast/send_post", data={"audience": "admins", "lang": "any"}, follow_redirects=False)
+        check("...a send without one: refused", "started=nopost" in r.headers["location"] and len(sent) == n)
+        cap = "🎁 Sizga 8 coin sovg'a"
+        msg = Message(message_id=55, date=datetime.now(timezone.utc), chat=Chat(id=777, type="private"), caption=cap,
+                      photo=[PhotoSize(file_id="P", file_unique_id="p", width=1, height=1)],
+                      caption_entities=[MessageEntity(type="custom_emoji", offset=0, length=2, custom_emoji_id="g")])
+        await broadcast_post.save(msg, "Owner")
+        page = (await owner.get("/broadcast")).text
+        check("a Telegram post saved: the page shows it (kind, premium emoji, text) with its send button",
+              "🖼 Rasm" in page and "1 ta premium emoji" in page and "Sizga 8 coin" in page and "Postni" in page)
+        r = await owner.post("/broadcast/send_post", data={"audience": "admins", "lang": "any", "buttons": "1"},
+                             follow_redirects=False)
+        await asyncio.sleep(0.05)
+        check("...sent: the job copies that message, with the buttons", "started=" in r.headers["location"]
+              and len(sent) == n + 1 and sent[-1][4] == (777, 55) and sent[-1][3] is True and sent[-1][1] == {},
+              (r.headers.get("location"), sent[-1] if sent else None))
+        r = await owner.post("/broadcast/send_post", data={"audience": "admins", "lang": "any", "buttons": "1"},
+                             follow_redirects=False)
+        check("...a double click: one broadcast", "started=dup" in r.headers["location"] and len(sent) == n + 1)
+        hist = (await owner.get("/broadcast")).text
+        check("...the history marks it as the Telegram post", "📨 Telegram post" in hist)
+        await redis().delete(broadcast_post.KEY)
 
     print(f"\n{len(fails)} failed" if fails else "\nall passed")
     from bot.utils.crm import redis

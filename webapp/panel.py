@@ -35,7 +35,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Resp
 from sqlalchemy import and_, func, select, update
 
 from bot.config import settings
-from bot.utils import balance, checks_back, crm, panel_access, runtime, support_log
+from bot.utils import balance, broadcast_post, checks_back, crm, panel_access, runtime, support_log
 from db import crud
 from db.database import get_session
 from db.models import (
@@ -213,7 +213,11 @@ async def session_valid(request: Request) -> bool:
 
 
 def new_bot() -> Bot:
-    return Bot(settings.telegram_bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    from bot.middlewares.premium_emoji import PremiumEmoji  # noqa: PLC0415
+
+    bot = Bot(settings.telegram_bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    bot.session.middleware(PremiumEmoji())  # the admins' premium emoji, as in the bot's own messages
+    return bot
 
 
 # Pages that never show the top bar - no badges to count for them.
@@ -537,10 +541,15 @@ async def _audience(session, audience: str, lang: str) -> list[User]:
     return users
 
 
-async def _deliver(bot: Bot, uid: int, text: str, media: tuple[str, bytes, str] | None, kb, cache: dict) -> None:
+async def _deliver(bot: Bot, uid: int, text: str, media: tuple[str, bytes, str] | None, kb, cache: dict,
+                   copy: tuple[int, int] | None = None) -> None:
     """One student's broadcast: the text - or, with `media` (kind, bytes, file name), the picture or video with the
     text as its caption (a text over Telegram's caption limit follows it as its own message). The file is uploaded
-    once: Telegram's file id of the first delivery (`cache`) serves everyone after."""
+    once: Telegram's file id of the first delivery (`cache`) serves everyone after. `copy`: (chat id, message id) of
+    the post an admin made in Telegram (bot/utils/broadcast_post.py), sent as it is - its premium emoji too."""
+    if copy is not None:
+        await bot.copy_message(uid, copy[0], copy[1], reply_markup=kb)
+        return
     if media is None:
         await bot.send_message(uid, text, disable_web_page_preview=True, reply_markup=kb)
         return
@@ -566,9 +575,11 @@ async def _deliver(bot: Bot, uid: int, text: str, media: tuple[str, bytes, str] 
 
 
 async def _broadcast_job(bid: str, users: list[tuple[int, str]], texts: dict[str, str],
-                         media: tuple[str, bytes, str] | None = None, buttons: bool = False) -> None:
+                         media: tuple[str, bytes, str] | None = None, buttons: bool = False,
+                         copy: tuple[int, int] | None = None) -> None:
     """`media`: a picture or video posted with the text; `buttons`: "✍️ Writing / 🎙 Speaking" and a ready question
-    under it (bot/keyboards/entry_kb.py onboarding_kb - what a new student sees), so a reminder starts a check."""
+    under it (bot/keyboards/entry_kb.py onboarding_kb - what a new student sees), so a reminder starts a check;
+    `copy`: the Telegram post (chat id, message id) sent instead of `texts`."""
     from bot.keyboards.entry_kb import onboarding_kb  # noqa: PLC0415 - the bot's keyboards, only for this job
 
     key = BROADCAST_KEY.format(id=bid)
@@ -578,14 +589,14 @@ async def _broadcast_job(bid: str, users: list[tuple[int, str]], texts: dict[str
     cache: dict = {}
     try:
         for i, (uid, lang) in enumerate(users, 1):
-            text = texts.get(lang) or texts["uz"]
+            text = texts.get(lang) or texts.get("uz", "")
             kb = onboarding_kb(lang) if buttons else None
             try:
                 try:
-                    await _deliver(bot, uid, text, media, kb, cache)
+                    await _deliver(bot, uid, text, media, kb, cache, copy)
                 except TelegramRetryAfter as e:
                     await asyncio.sleep(e.retry_after)
-                    await _deliver(bot, uid, text, media, kb, cache)
+                    await _deliver(bot, uid, text, media, kb, cache, copy)
                 sent += 1
             except TelegramForbiddenError:
                 blocked += 1
@@ -639,9 +650,13 @@ async def broadcast_page(request: Request, audience: str = "all", lang: str = "a
     async with get_session() as session:
         users = await _audience(session, audience, lang)
     langs = {code: sum(1 for u in users if (u.language or "uz") == code) for code in ("uz", "ru", "en")}
+    tg_post = await broadcast_post.load()
+    if tg_post:
+        tg_post = {**tg_post, "kind_label": broadcast_post.KINDS.get(tg_post.get("kind"), "Post"),
+                   "when": insights.fmt(datetime.fromtimestamp(int(tg_post.get("at") or 0), timezone.utc))}
     return templates.TemplateResponse(request, "broadcast.html", {
         "active": "broadcast", "audiences": AUDIENCES, "lang_filters": LANG_FILTERS, "audience": audience, "lang": lang,
-        "count": len(users), "langs": langs, "history": await _broadcasts(), "started": started,
+        "count": len(users), "langs": langs, "history": await _broadcasts(), "started": started, "tg_post": tg_post,
     })
 
 
@@ -687,6 +702,40 @@ async def broadcast_send(request: Request, audience: str = Form(...), lang: str 
     await audit(request, "broadcast", details=f"#{bid} · {AUDIENCES.get(audience)} · {LANG_FILTERS.get(lang)} · "
                                               f"{len(targets)} kishi · {_post_mark(post, buttons)}{text_uz.strip()[:200]}")
     _later(_broadcast_job(bid, targets, texts, post, bool(buttons)))
+    return RedirectResponse(f"/broadcast?started={bid}", status_code=303)
+
+
+@router.post("/broadcast/send_post")
+async def broadcast_send_post(request: Request, audience: str = Form(...), lang: str = Form("any"),
+                              buttons: str = Form("")):
+    """The post an admin sent to the bot after /post (bot/utils/broadcast_post.py), copied to every student as it
+    is: bold, links, premium emoji, its picture or video."""
+    if (r := guard(request, perm="broadcast")) is not None:
+        return r
+    post = await broadcast_post.load()
+    if post is None:
+        return RedirectResponse(f"/broadcast?audience={audience}&lang={lang}&started=nopost", status_code=303)
+    copy = (int(post["chat_id"]), int(post["message_id"]))
+    fingerprint = hashlib.sha256(f"post|{audience}|{lang}|{buttons}|{copy[0]}:{copy[1]}".encode()).hexdigest()[:24]
+    if not await crm.redis().set(f"broadcast:once:{fingerprint}", "1", nx=True, ex=600):
+        return RedirectResponse(f"/broadcast?audience={audience}&lang={lang}&started=dup", status_code=303)
+    async with get_session() as session:
+        users = await _audience(session, audience if audience in AUDIENCES else "all", lang if lang in LANG_FILTERS else "any")
+    targets = [(u.id, u.language or "uz") for u in users]
+    bid = datetime.now(timezone.utc).strftime("%y%m%d%H%M%S") + secrets.token_hex(2)
+    mark = "📨 Telegram post · " + ("🔘 Tugmalar · " if buttons else "")
+    r = crm.redis()
+    await r.hset(BROADCAST_KEY.format(id=bid), mapping={
+        "status": "running", "total": len(targets), "sent": 0, "failed": 0, "blocked": 0, "done": 0,
+        "audience": AUDIENCES.get(audience, audience), "lang": LANG_FILTERS.get(lang, lang), "admin": admin_name(request),
+        "preview": mark + (post.get("preview") or broadcast_post.KINDS.get(post.get("kind"), ""))[:160],
+        "started": int(time.time()),
+    })
+    await r.lpush(BROADCAST_IDS, bid)
+    await r.ltrim(BROADCAST_IDS, 0, 49)
+    await audit(request, "broadcast", details=f"#{bid} · {AUDIENCES.get(audience)} · {LANG_FILTERS.get(lang)} · "
+                                              f"{len(targets)} kishi · {mark}{(post.get('preview') or '')[:200]}")
+    _later(_broadcast_job(bid, targets, {}, None, bool(buttons), copy=copy))
     return RedirectResponse(f"/broadcast?started={bid}", status_code=303)
 
 

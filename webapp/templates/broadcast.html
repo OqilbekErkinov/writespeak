@@ -7,10 +7,12 @@
 {% elif started == "toolong" %}<div class="error">Matn juda uzun — bitta tilda 4000 belgidan oshmasin (Telegram chegarasi). Xabar yuborilmadi.</div>
 {% elif started == "dup" %}<div class="error">Bu xabar hozirgina yuborilishni boshladi — ikkinchi marta yuborilmadi.</div>
 {% elif started == "mediatype" %}<div class="error">Bu fayl turi qabul qilinmaydi: rasm JPG, PNG yoki WEBP, video MP4 yoki MOV bo'lsin. Xabar yuborilmadi.</div>
+{% elif started == "nopost" %}<div class="error">Telegram'dagi post topilmadi: botga /post yuboring, keyin postingizni yuboring. Xabar yuborilmadi.</div>
 {% elif started == "mediabig" %}<div class="error">Fayl juda katta: rasm 10 MB gacha, video 50 MB gacha bo'lsin (Telegram chegarasi). Xabar yuborilmadi.</div>
 {% elif started %}<div class="flash">Yuborish boshlandi — pastda jarayonni kuzatib turing. Sahifani yopsangiz ham davom etadi.</div>{% endif %}
 
 <div class="b-grid">
+  <div class="b-col">
   <div class="card">
     <h2>1. Kimga</h2>
     <form method="get" action="/broadcast" class="b-who">
@@ -33,6 +35,37 @@
     </div>
     <p class="hint">Bloklangan foydalanuvchilarga yuborilmaydi. Adminlar faqat «Faqat adminlar (sinov)» tanlanganda oladi —
       katta yuborishdan oldin shu bilan sinab ko'ring.</p>
+  </div>
+
+  <form class="card b-tg" method="post" action="/broadcast/send_post" id="postForm"
+        data-confirm="Telegram'dagi post {{ count }} kishiga yuborilsinmi?"
+        data-confirm-text="Yuborilgandan keyin bekor qilib bo'lmaydi." data-confirm-ok="Yuborish" data-tone="warn">
+    <h2>📨 Telegram'dagi post <span class="muted">— premium emoji bilan</span></h2>
+    <input type="hidden" name="audience" value="{{ audience }}">
+    <input type="hidden" name="lang" value="{{ lang }}">
+    {% if tg_post %}
+    <div class="b-tg-post">
+      <div class="b-tg-meta"><b>{{ tg_post.kind_label }}</b>{% if tg_post.premium %} · ✨ {{ tg_post.premium }} ta premium emoji{% endif %}
+        <span class="muted">· {{ tg_post.by }} · {{ tg_post.when }}</span></div>
+      <div class="b-tg-text">{{ tg_post.preview or "(matnsiz)" }}{% if tg_post.preview|length >= 200 %}…{% endif %}</div>
+    </div>
+    <label class="b-check">
+      <input type="checkbox" name="buttons" value="1">
+      <span><b>Tekshiruv tugmalarini qo'shish</b><br>
+        <span class="muted">Post ostida «✍️ Writing», «🎙 Speaking» va tayyor savol tugmalari.</span></span>
+    </label>
+    <button type="submit" class="btn btn-good b-send"{{ ' disabled' if not count }}>📣 Postni {{ count }} kishiga yuborish</button>
+    <p class="hint">Post aynan Telegram'da qanday yozilgan bo'lsa, shunday boradi: qalin harf, havola, premium emoji, rasm yoki
+      video. Boshqa post uchun botga yana /post yuboring.</p>
+    {% else %}
+    <ol class="b-steps">
+      <li>Botga <b>/post</b> yuboring.</li>
+      <li>Postni Telegram'ning o'zida yozing (yoki kanaldan forward qiling) va botga yuboring: qalin harf, premium emoji,
+        bitta rasm yoki video — hammasi saqlanadi.</li>
+      <li>Shu sahifani yangilang — post shu yerda chiqadi va uni tanlangan auditoriyaga yuborasiz.</li>
+    </ol>
+    {% endif %}
+  </form>
   </div>
 
   <form class="card" method="post" action="/broadcast/send" id="sendForm" enctype="multipart/form-data"
@@ -98,6 +131,13 @@
 <style>
   .b-grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 16px; align-items: start; }
   .b-grid > * { min-width: 0; }
+  .b-col { display: grid; gap: 16px; min-width: 0; }
+  .b-tg-post { margin: 10px 0 4px; padding: 12px 14px; border-radius: 14px; background: var(--mint-2);
+    border: 1px solid var(--border); font-size: 13.5px; }
+  .b-tg-meta { margin-bottom: 6px; }
+  .b-tg-text { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink); }
+  .b-steps { margin: 10px 0 0; padding-left: 20px; font-size: 13.5px; line-height: 1.55; }
+  .b-steps li + li { margin-top: 6px; }
   .b-who { display: flex; flex-wrap: wrap; gap: 12px; }
   .b-who label { display: grid; gap: 4px; font-size: 12px; font-weight: 800; color: var(--moss); text-transform: uppercase;
     letter-spacing: 0.05em; flex: 1 1 180px; }
@@ -128,8 +168,11 @@
   @media (max-width: 1060px) { .b-grid { grid-template-columns: 1fr; } }
 </style>
 <script>
-  document.getElementById("sendForm").addEventListener("submit", function () {
-    this.querySelector(".b-send").disabled = true;  // after the confirmation: once only
+  document.querySelectorAll("#sendForm, #postForm").forEach(function (form) {
+    form.addEventListener("submit", function () {
+      const send = this.querySelector(".b-send");
+      if (send) send.disabled = true;  // after the confirmation: once only
+    });
   });
   (function () {  // the chosen picture or video: its name, size and (a picture) a small preview
     const input = document.getElementById("mediaInput"), name = document.getElementById("mediaName"),

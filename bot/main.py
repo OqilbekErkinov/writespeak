@@ -43,6 +43,7 @@ def build_dispatcher() -> Dispatcher:
     # 2026-08-29. Re-enable by importing it and adding its router back below.
     from bot.handlers import (
         account,
+        admin_tools,
         check_retry,
         crm,
         fallback,
@@ -69,6 +70,7 @@ def build_dispatcher() -> Dispatcher:
     dp.include_router(crm.router)
     private = Router(name="private_chats")
     private.message.filter(F.chat.type == "private")
+    private.include_router(admin_tools.router)  # the admins' /emoji and /post, and the message each one awaits
     private.include_router(progress_quiz.router)  # the waiting card's questions, in any state
     private.include_router(check_retry.router)  # "🔁 Try again" on a stopped check, in its `failed` state
     private.include_router(start.router)
@@ -101,7 +103,10 @@ async def main() -> None:
     )
     from bot.middlewares.stale_callbacks import SkipStaleAnswers
 
+    from bot.middlewares.premium_emoji import PremiumEmoji
+
     bot.session.middleware(SkipStaleAnswers())  # a button pressed during a deploy still does its job
+    bot.session.middleware(PremiumEmoji())  # the admins' premium emoji in every message (bot/utils/premium_emoji.py)
     dp = build_dispatcher()
 
     from bot.utils import capacity, check_guard, crm, nudges, sponsor_alerts
