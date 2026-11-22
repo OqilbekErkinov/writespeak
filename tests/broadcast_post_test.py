@@ -113,6 +113,19 @@ async def main() -> int:
           type(c).__name__ == "CopyMessage" and c.chat_id == 9 and c.from_chat_id == 777 and c.message_id == 55
           and labels(c.reply_markup) == labels(kb) and len(s.calls) == 1)
 
+    # 3c. the post's language versions: each student theirs, the Uzbek one when theirs is missing
+    s = fake_session()
+    real_new_bot = panel.new_bot
+    panel.new_bot = lambda: Bot("8888548766:TEST", session=s)
+    try:
+        await panel._broadcast_job("t3c", [(1, "uz"), (2, "ru"), (3, "en")], {}, None, False,
+                                   copy={"uz": (777, 55), "ru": (777, 56)})
+    finally:
+        panel.new_bot = real_new_bot
+    got = {c.chat_id: c.message_id for c in s.calls if type(c).__name__ == "CopyMessage"}
+    check("versions: 🇺🇿 student the Uzbek post, 🇷🇺 the Russian one, 🇬🇧 (no English one) the Uzbek one",
+          got == {1: 55, 2: 56, 3: 55}, got)
+
     # 4. the page: the form sends files, the picture is checked, a wrong type or a big file is refused
     from webapp.main import app
 
@@ -170,21 +183,39 @@ async def main() -> int:
         msg = Message(message_id=55, date=datetime.now(timezone.utc), chat=Chat(id=777, type="private"), caption=cap,
                       photo=[PhotoSize(file_id="P", file_unique_id="p", width=1, height=1)],
                       caption_entities=[MessageEntity(type="custom_emoji", offset=0, length=2, custom_emoji_id="g")])
+        import json
+
+        # a post kept before the versions (one message): it is the Uzbek one
+        await redis().set(broadcast_post.KEY, json.dumps({"chat_id": 777, "message_id": 50, "kind": "text",
+                                                          "preview": "Eski post", "by": "Owner", "at": 1, "premium": 0}))
+        check("a post kept before the versions: read as the Uzbek one",
+              (await broadcast_post.load()).get("uz", {}).get("message_id") == 50)
         await broadcast_post.save(msg, "Owner")
         page = (await owner.get("/broadcast")).text
-        check("a Telegram post saved: the page shows it (kind, premium emoji, text) with its send button",
-              "🖼 Rasm" in page and "1 ta premium emoji" in page and "Sizga 8 coin" in page and "Postni" in page)
+        check("a Telegram post saved: the page shows it (kind, premium emoji, text) with its send button; no Russian "
+              "or English version -> 'the Uzbek one goes', how to add them",
+              "🖼 Rasm" in page and "1 ta premium emoji" in page and "Sizga 8 coin" in page and "Postni" in page
+              and "Eski post" not in page and page.count("o'zbekchasi boradi") == 2 and "/post ru" in page
+              and "/post en" in page)
+        ru = Message(message_id=56, date=datetime.now(timezone.utc), chat=Chat(id=777, type="private"),
+                     text="🎁 Вам подарок: 8 coin")
+        await broadcast_post.save(ru, "Owner", "ru")
+        page = (await owner.get("/broadcast")).text
+        check("...a Russian version added: shown beside it, the Uzbek one kept",
+              "Вам подарок" in page and "Sizga 8 coin" in page and page.count("o'zbekchasi boradi") == 1)
         r = await owner.post("/broadcast/send_post", data={"audience": "admins", "lang": "any", "buttons": "1"},
                              follow_redirects=False)
         await asyncio.sleep(0.05)
-        check("...sent: the job copies that message, with the buttons", "started=" in r.headers["location"]
-              and len(sent) == n + 1 and sent[-1][4] == (777, 55) and sent[-1][3] is True and sent[-1][1] == {},
-              (r.headers.get("location"), sent[-1] if sent else None))
+        check("...sent: the job gets both versions, with the buttons", "started=" in r.headers["location"]
+              and len(sent) == n + 1 and sent[-1][4] == {"uz": (777, 55), "ru": (777, 56)} and sent[-1][3] is True
+              and sent[-1][1] == {}, (r.headers.get("location"), sent[-1] if sent else None))
         r = await owner.post("/broadcast/send_post", data={"audience": "admins", "lang": "any", "buttons": "1"},
                              follow_redirects=False)
         check("...a double click: one broadcast", "started=dup" in r.headers["location"] and len(sent) == n + 1)
         hist = (await owner.get("/broadcast")).text
-        check("...the history marks it as the Telegram post", "📨 Telegram post" in hist)
+        check("...the history marks it as the Telegram post, with its languages", "📨 Telegram post (🇺🇿🇷🇺)" in hist)
+        await broadcast_post.save(msg, "Owner", "uz", fresh=True)
+        check("a new post (/post): the old versions gone", set(await broadcast_post.load()) == {"uz"})
         await redis().delete(broadcast_post.KEY)
 
     print(f"\n{len(fails)} failed" if fails else "\nall passed")

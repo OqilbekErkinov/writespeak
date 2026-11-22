@@ -44,24 +44,32 @@
     <input type="hidden" name="audience" value="{{ audience }}">
     <input type="hidden" name="lang" value="{{ lang }}">
     {% if tg_post %}
-    <div class="b-tg-post">
-      <div class="b-tg-meta"><b>{{ tg_post.kind_label }}</b>{% if tg_post.premium %} · ✨ {{ tg_post.premium }} ta premium emoji{% endif %}
-        <span class="muted">· {{ tg_post.by }} · {{ tg_post.when }}</span></div>
-      <div class="b-tg-text">{{ tg_post.preview or "(matnsiz)" }}{% if tg_post.preview|length >= 200 %}…{% endif %}</div>
+    {% for v in tg_post.versions %}
+    <div class="b-tg-post{{ ' b-tg-none' if not v.post }}">
+      {% if v.post %}
+      <div class="b-tg-meta">{{ v.flag }} <b>{{ v.name }}</b> · {{ v.post.kind_label }}{% if v.post.premium %} · ✨ {{ v.post.premium }} ta premium emoji{% endif %}
+        <span class="muted">· {{ v.post.by }} · {{ v.post.when }}</span></div>
+      <div class="b-tg-text">{{ v.post.preview or "(matnsiz)" }}{% if v.post.preview|length >= 200 %}…{% endif %}</div>
+      {% else %}
+      <div class="b-tg-meta">{{ v.flag }} <b>{{ v.name }}</b> <span class="muted">— yo'q, bu tildagilarga o'zbekchasi boradi.
+        Qo'shish: botga <code>/post {{ v.lang }}</code></span></div>
+      {% endif %}
     </div>
+    {% endfor %}
     <label class="b-check">
       <input type="checkbox" name="buttons" value="1">
       <span><b>Tekshiruv tugmalarini qo'shish</b><br>
         <span class="muted">Post ostida «✍️ Writing», «🎙 Speaking» va tayyor savol tugmalari.</span></span>
     </label>
     <button type="submit" class="btn btn-good b-send"{{ ' disabled' if not count }}>📣 Postni {{ count }} kishiga yuborish</button>
-    <p class="hint">Post aynan Telegram'da qanday yozilgan bo'lsa, shunday boradi: qalin harf, havola, premium emoji, rasm yoki
-      video. Boshqa post uchun botga yana /post yuboring.</p>
+    <p class="hint">Har kim o'z tilidagi versiyani oladi. Post aynan Telegram'da qanday yozilgan bo'lsa, shunday boradi: qalin
+      harf, havola, premium emoji, rasm yoki video. Yangi post uchun botga yana /post yuboring.</p>
     {% else %}
     <ol class="b-steps">
       <li>Botga <b>/post</b> yuboring.</li>
-      <li>Postni Telegram'ning o'zida yozing (yoki kanaldan forward qiling) va botga yuboring: qalin harf, premium emoji,
-        bitta rasm yoki video — hammasi saqlanadi.</li>
+      <li>Postning o'zbekcha versiyasini Telegram'ning o'zida yozing (yoki kanaldan forward qiling) va botga yuboring:
+        qalin harf, premium emoji, bitta rasm yoki video — hammasi saqlanadi.</li>
+      <li>Bot javobi ostidagi tugmalar bilan ruscha va inglizcha versiyalarini qo'shing (ixtiyoriy).</li>
       <li>Shu sahifani yangilang — post shu yerda chiqadi va uni tanlangan auditoriyaga yuborasiz.</li>
     </ol>
     {% endif %}
@@ -135,6 +143,8 @@
   .b-tg-post { margin: 10px 0 4px; padding: 12px 14px; border-radius: 14px; background: var(--mint-2);
     border: 1px solid var(--border); font-size: 13.5px; }
   .b-tg-meta { margin-bottom: 6px; }
+  .b-tg-none { background: transparent; border-style: dashed; }
+  .b-tg-none .b-tg-meta { margin-bottom: 0; }
   .b-tg-text { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink); }
   .b-steps { margin: 10px 0 0; padding-left: 20px; font-size: 13.5px; line-height: 1.55; }
   .b-steps li + li { margin-top: 6px; }

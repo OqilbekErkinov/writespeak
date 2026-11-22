@@ -308,21 +308,54 @@ async def handlers() -> None:
     check("a student's /emoji: these handlers say nothing", len(s.calls) == before)
 
     await dp.feed_update(bot, upd(text="/post"))
-    check("/post: asks for the post", "Ommaviy xabar uchun post" in replies()[-1])
+    check("/post: asks for a new post, its Uzbek version first",
+          "Ommaviy xabar uchun yangi post" in replies()[-1] and "o'zbekcha" in replies()[-1])
     photo = [PhotoSize(file_id="P", file_unique_id="p", width=1, height=1)]
     await dp.feed_update(bot, upd(photo=photo, caption="a", media_group_id="g1"))
     await dp.feed_update(bot, upd(photo=photo, caption="b", media_group_id="g1"))
     check("an album: refused once, the post still awaited",
-          sum("albom" in (r or "") for r in replies()) == 1 and await broadcast_post.load() is None)
+          sum("albom" in (r or "") for r in replies()) == 1 and await broadcast_post.load() == {})
     cap = "🎁 8 coin sovg'a"
     await dp.feed_update(bot, upd(photo=photo, caption=cap, caption_entities=[
         MessageEntity(type="custom_emoji", offset=0, length=u16("🎁"), custom_emoji_id="g")]))
-    post = await broadcast_post.load()
+    post = (await broadcast_post.load()).get("uz")
     copies = [c for c in s.calls if type(c).__name__ == "CopyMessage"]
-    check("a picture post: kept (its chat, message, kind, premium count), shown back as students get it",
+    last = [c for c in s.calls if type(c).__name__ == "SendMessage"][-1]
+    buttons = [b for row in (last.reply_markup.inline_keyboard if last.reply_markup else []) for b in row]
+    check("a picture post: kept as the Uzbek version (its chat, message, kind, premium count), shown back as students "
+          "get it, with buttons to add the Russian and English ones",
           post and post["chat_id"] == ADMIN and post["kind"] == "photo" and post["premium"] == 1
           and post["preview"] == cap and copies and copies[-1].message_id == post["message_id"]
-          and "Post saqlandi" in replies()[-1], post)
+          and "versiya saqlandi" in last.text and "🇷🇺 —" in last.text
+          and any("Ruscha versiya qo'shish" in b.text for b in buttons)
+          and any("Inglizcha versiya qo'shish" in b.text for b in buttons), (post, [b.text for b in buttons]))
+
+    from aiogram.types import CallbackQuery
+
+    ru_btn = next(b for b in buttons if "Ruscha" in b.text)
+    n[0] += 1
+    await dp.feed_update(bot, Update(update_id=n[0], callback_query=CallbackQuery(
+        id="cb2", from_user=User(id=ADMIN, is_bot=False, first_name="Admin"), chat_instance="c",
+        data=ru_btn.callback_data,
+        message=Message(message_id=1, date=datetime.now(timezone.utc), chat=Chat(id=ADMIN, type="private"), text="x"))))
+    check("'➕ Ruscha versiya': asks for the Russian one", "ruscha versiyasi" in replies()[-1])
+    await dp.feed_update(bot, upd(text="🎁 Вам подарок: 8 coin"))
+    posts = await broadcast_post.load()
+    check("...the Russian version saved beside the Uzbek one",
+          set(posts) == {"uz", "ru"} and posts["ru"]["preview"].startswith("🎁 Вам") and posts["uz"]["kind"] == "photo"
+          and "🇺🇿 ✅ · 🇷🇺 ✅ · 🇬🇧 —" in replies()[-1], (set(posts), replies()[-1][-300:]))
+    await dp.feed_update(bot, upd(text="/post en"))
+    await dp.feed_update(bot, upd(text="Gift: 8 coins"))
+    check("/post en: the English version too", set(await broadcast_post.load()) == {"uz", "ru", "en"})
+    await dp.feed_update(bot, upd(text="/post"))
+    await dp.feed_update(bot, upd(text="Yangi post"))
+    posts = await broadcast_post.load()
+    check("/post: a new post - the old one and its versions gone, said so",
+          set(posts) == {"uz"} and posts["uz"]["preview"] == "Yangi post" and "oldingi post" in replies()[-1], set(posts))
+    await redis().delete(broadcast_post.KEY)
+    await dp.feed_update(bot, upd(text="/post ru"))
+    check("/post ru with no Uzbek post yet: asks for the Uzbek one first",
+          "o'zbekcha versiyasi kerak" in replies()[-1] and await broadcast_post.load() == {})
     await redis().delete(broadcast_post.KEY)
 
 

@@ -576,10 +576,11 @@ async def _deliver(bot: Bot, uid: int, text: str, media: tuple[str, bytes, str] 
 
 async def _broadcast_job(bid: str, users: list[tuple[int, str]], texts: dict[str, str],
                          media: tuple[str, bytes, str] | None = None, buttons: bool = False,
-                         copy: tuple[int, int] | None = None) -> None:
+                         copy: dict[str, tuple[int, int]] | None = None) -> None:
     """`media`: a picture or video posted with the text; `buttons`: "✍️ Writing / 🎙 Speaking" and a ready question
     under it (bot/keyboards/entry_kb.py onboarding_kb - what a new student sees), so a reminder starts a check;
-    `copy`: the Telegram post (chat id, message id) sent instead of `texts`."""
+    `copy`: the Telegram post's versions {lang: (chat id, message id)}, sent instead of `texts` - each student
+    their language's, the Uzbek one when theirs is missing."""
     from bot.keyboards.entry_kb import onboarding_kb  # noqa: PLC0415 - the bot's keyboards, only for this job
 
     key = BROADCAST_KEY.format(id=bid)
@@ -591,12 +592,13 @@ async def _broadcast_job(bid: str, users: list[tuple[int, str]], texts: dict[str
         for i, (uid, lang) in enumerate(users, 1):
             text = texts.get(lang) or texts.get("uz", "")
             kb = onboarding_kb(lang) if buttons else None
+            one = (copy.get(lang) or copy.get("uz")) if copy else None
             try:
                 try:
-                    await _deliver(bot, uid, text, media, kb, cache, copy)
+                    await _deliver(bot, uid, text, media, kb, cache, one)
                 except TelegramRetryAfter as e:
                     await asyncio.sleep(e.retry_after)
-                    await _deliver(bot, uid, text, media, kb, cache, copy)
+                    await _deliver(bot, uid, text, media, kb, cache, one)
                 sent += 1
             except TelegramForbiddenError:
                 blocked += 1
@@ -650,10 +652,14 @@ async def broadcast_page(request: Request, audience: str = "all", lang: str = "a
     async with get_session() as session:
         users = await _audience(session, audience, lang)
     langs = {code: sum(1 for u in users if (u.language or "uz") == code) for code in ("uz", "ru", "en")}
-    tg_post = await broadcast_post.load()
-    if tg_post:
-        tg_post = {**tg_post, "kind_label": broadcast_post.KINDS.get(tg_post.get("kind"), "Post"),
-                   "when": insights.fmt(datetime.fromtimestamp(int(tg_post.get("at") or 0), timezone.utc))}
+    posts = await broadcast_post.load()
+    tg_post = None
+    if "uz" in posts:
+        tg_post = {"versions": [{
+            "lang": code, "flag": broadcast_post.FLAGS[code], "name": broadcast_post.NAMES[code],
+            "post": {**posts[code], "kind_label": broadcast_post.KINDS.get(posts[code].get("kind"), "Post"),
+                     "when": insights.fmt(datetime.fromtimestamp(int(posts[code].get("at") or 0), timezone.utc))}
+            if code in posts else None} for code in broadcast_post.LANGS]}
     return templates.TemplateResponse(request, "broadcast.html", {
         "active": "broadcast", "audiences": AUDIENCES, "lang_filters": LANG_FILTERS, "audience": audience, "lang": lang,
         "count": len(users), "langs": langs, "history": await _broadcasts(), "started": started, "tg_post": tg_post,
@@ -709,21 +715,24 @@ async def broadcast_send(request: Request, audience: str = Form(...), lang: str 
 async def broadcast_send_post(request: Request, audience: str = Form(...), lang: str = Form("any"),
                               buttons: str = Form("")):
     """The post an admin sent to the bot after /post (bot/utils/broadcast_post.py), copied to every student as it
-    is: bold, links, premium emoji, its picture or video."""
+    is: bold, links, premium emoji, its picture or video - the version of the student's language, or the Uzbek one."""
     if (r := guard(request, perm="broadcast")) is not None:
         return r
-    post = await broadcast_post.load()
-    if post is None:
+    posts = await broadcast_post.load()
+    if "uz" not in posts:
         return RedirectResponse(f"/broadcast?audience={audience}&lang={lang}&started=nopost", status_code=303)
-    copy = (int(post["chat_id"]), int(post["message_id"]))
-    fingerprint = hashlib.sha256(f"post|{audience}|{lang}|{buttons}|{copy[0]}:{copy[1]}".encode()).hexdigest()[:24]
+    post = posts["uz"]
+    copy = broadcast_post.copies(posts)
+    ids = ",".join(f"{code}:{c[0]}:{c[1]}" for code, c in sorted(copy.items()))
+    fingerprint = hashlib.sha256(f"post|{audience}|{lang}|{buttons}|{ids}".encode()).hexdigest()[:24]
     if not await crm.redis().set(f"broadcast:once:{fingerprint}", "1", nx=True, ex=600):
         return RedirectResponse(f"/broadcast?audience={audience}&lang={lang}&started=dup", status_code=303)
     async with get_session() as session:
         users = await _audience(session, audience if audience in AUDIENCES else "all", lang if lang in LANG_FILTERS else "any")
     targets = [(u.id, u.language or "uz") for u in users]
     bid = datetime.now(timezone.utc).strftime("%y%m%d%H%M%S") + secrets.token_hex(2)
-    mark = "📨 Telegram post · " + ("🔘 Tugmalar · " if buttons else "")
+    mark = (f"📨 Telegram post ({''.join(broadcast_post.FLAGS[code] for code in broadcast_post.LANGS if code in posts)})"
+            " · " + ("🔘 Tugmalar · " if buttons else ""))
     r = crm.redis()
     await r.hset(BROADCAST_KEY.format(id=bid), mapping={
         "status": "running", "total": len(targets), "sent": 0, "failed": 0, "blocked": 0, "done": 0,

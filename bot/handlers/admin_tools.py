@@ -6,7 +6,8 @@
   `/emoji tozalash` all;
 - /post: the next message is kept as the panel's broadcast post (bot/utils/broadcast_post.py) - written or
   forwarded in Telegram, with its bold, links, premium emoji, picture or video - and shown back as the students
-  will get it.
+  will get it; that is its Uzbek version, and the buttons under the answer (or `/post ru`, `/post en`) add the
+  Russian and the English one, each student getting their language's.
 
 Only the bot's admins reach these handlers; for anyone else /emoji and /post are unknown words, as before.
 """
@@ -34,6 +35,7 @@ router.callback_query.filter(F.from_user.id.in_(settings.admin_ids))
 REMOVE_WORDS = ("o'chir", "ochir", "o‘chir", "o`chir", "del", "-")
 CLEAR_WORDS = ("tozalash", "tozala", "clear", "hammasi")
 CB_PACK = "pe:pack:"
+CB_POST = "bp:lang:"  # add or change one language version of the broadcast post
 OFFER_KEY = "premium_emoji:offer:{uid}"  # the packs offered under the last answer
 SHOWN = 30  # premium emoji drawn in one answer at most (the middleware may add its 40 more)
 MAX_PACKS = 3
@@ -204,15 +206,57 @@ async def take_pack(callback: CallbackQuery, bot: Bot) -> None:
         + f"\n\nEndi <b>{done}/{total}</b> premium. Ro'yxat: /emoji")
 
 
-@router.message(Command("post"))
-async def post(message: Message, state: FSMContext) -> None:
+def _version(lang: str) -> str:
+    return f"{broadcast_post.FLAGS[lang]} {broadcast_post.NAMES[lang].lower()}"
+
+
+def _versions_kb(posts: dict[str, dict]) -> InlineKeyboardMarkup:
+    """Under the bot's answer: add (or change) the Russian and the English version, change the Uzbek one."""
+    rows = []
+    for lang in ("ru", "en", "uz"):
+        name = f"{broadcast_post.FLAGS[lang]} {broadcast_post.NAMES[lang]}"
+        rows.append([InlineKeyboardButton(text=f"🔁 {name} versiyani almashtirish" if lang in posts else
+                                          f"➕ {name} versiya qo'shish", callback_data=f"{CB_POST}{lang}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def _ask_post(message: Message, state: FSMContext, lang: str, fresh: bool) -> None:
+    posts = await broadcast_post.load()
+    if not fresh and lang != "uz" and "uz" not in posts:
+        await message.answer("Avval postning o'zbekcha versiyasi kerak: /post")
+        return
     await state.set_state(AdminStates.post)
-    await message.answer(
-        "📨 <b>Ommaviy xabar uchun post</b>\n\n"
-        "Tarqatmoqchi bo'lgan postni shu yerga yuboring: o'zingiz yozing yoki kanaldan forward qiling. Qalin va "
-        "qiya harf, havola, premium emoji, bitta rasm yoki video — hammasi o'quvchilarga aynan shunday boradi.\n\n"
-        "Bekor qilish: /cancel"
-    )
+    await state.update_data(post_lang=lang, post_fresh=fresh)
+    if fresh:
+        text = ("📨 <b>Ommaviy xabar uchun yangi post</b>\n\n"
+                "Avval postning <b>🇺🇿 o'zbekcha</b> versiyasini shu yerga yuboring: o'zingiz yozing yoki kanaldan "
+                "forward qiling. Qalin va qiya harf, havola, premium emoji, bitta rasm yoki video — hammasi "
+                "o'quvchilarga aynan shunday boradi.\n\nKeyin ruscha va inglizcha versiyalarini qo'shasiz "
+                "(ixtiyoriy).")
+    else:
+        text = (f"📨 <b>Postning {_version(lang)} versiyasi</b>\n\n"
+                f"{broadcast_post.NAMES[lang]} versiyani shu yerga yuboring"
+                + (" — eskisi almashtiriladi." if lang in posts else ".")
+                + (f" Uni tili {broadcast_post.NAMES[lang].lower()} bo'lgan o'quvchilar oladi." if lang != "uz" else ""))
+    await message.answer(text + "\n\nBekor qilish: /cancel")
+
+
+@router.message(Command("post"))
+async def post(message: Message, state: FSMContext, command: CommandObject) -> None:
+    """/post: a new post (its Uzbek version first); `/post ru`, `/post en`, `/post uz`: one version of it."""
+    lang = (command.args or "").strip().lower()[:2]
+    if lang in broadcast_post.LANGS:
+        await _ask_post(message, state, lang, fresh=False)
+    else:
+        await _ask_post(message, state, "uz", fresh=True)
+
+
+@router.callback_query(F.data.startswith(CB_POST))
+async def post_version(callback: CallbackQuery, state: FSMContext) -> None:
+    lang = callback.data[len(CB_POST):]
+    await callback.answer()
+    if lang in broadcast_post.LANGS:
+        await _ask_post(callback.message, state, lang, fresh=False)
 
 
 @router.message(StateFilter(AdminStates.post), _not_command)
@@ -225,20 +269,28 @@ async def post_received(message: Message, state: FSMContext, bot: Bot) -> None:
     if broadcast_post.kind_of(message) is None:
         await message.answer("Bunday xabarni tarqatib bo'lmaydi: matn, rasm, video yoki fayl yuboring.")
         return
+    data = await state.get_data()
+    lang = data.get("post_lang") if data.get("post_lang") in broadcast_post.LANGS else "uz"
+    fresh = bool(data.get("post_fresh", "post_lang" not in data))  # a /post from before the versions: a new post
     await state.clear()
-    saved = await broadcast_post.save(message, message.from_user.full_name or str(message.from_user.id))
-    await message.answer("👀 O'quvchilar postni shunday ko'radi:")
+    await message.answer(f"👀 O'quvchilar postni shunday ko'radi ({_version(lang)}):")
     try:
         await bot.copy_message(message.chat.id, message.chat.id, message.message_id)
     except Exception as e:  # noqa: BLE001 - e.g. a forward of a protected channel post
         logger.info("Broadcast post preview failed: %r", e)
         await message.answer("⚠️ Bu postni nusxalab bo'lmadi (masalan, kanal postlarni nusxalashni taqiqlagan). "
-                             "Postni o'zingiz yozib yuboring: /post")
+                             "Postni o'zingiz yozib yuboring: /post" + (f" {lang}" if not fresh else ""))
         return
+    replaced = fresh and len(await broadcast_post.load()) > 0
+    saved = await broadcast_post.save(message, message.from_user.full_name or str(message.from_user.id), lang, fresh)
+    posts = await broadcast_post.load()
     note = f"\nPremium emoji: {saved['premium']} ta." if saved["premium"] else ""
     await message.answer(
-        f"✅ <b>Post saqlandi.</b>{note}\n\n"
-        "Endi admin panel → <b>Ommaviy xabar</b> → «Telegram'dagi post»: kimga yuborishni tanlang, kerak bo'lsa "
-        "tekshiruv tugmalarini belgilang va yuboring.\n\n"
-        "⚠️ Bu xabarni o'chirmang — panel postni shu yerdan oladi. Boshqa post: /post"
+        f"✅ <b>{broadcast_post.FLAGS[lang]} {broadcast_post.NAMES[lang]} versiya saqlandi.</b>{note}"
+        + ("\nBu yangi post — oldingi post va uning versiyalari o'chirildi." if replaced else "")
+        + f"\n\nVersiyalar: {broadcast_post.versions_line(posts)}\n"
+        "Har bir o'quvchi o'z tilidagi versiyani oladi; versiya bo'lmasa — o'zbekchasini.\n\n"
+        "Yuborish: admin panel → <b>Ommaviy xabar</b> → «Telegram'dagi post».\n"
+        "⚠️ Bu xabarlarni o'chirmang — panel postni shu yerdan oladi. Yangi post: /post",
+        reply_markup=_versions_kb(posts),
     )
