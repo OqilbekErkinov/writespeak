@@ -44,19 +44,27 @@ def writing() -> None:
     strong = ["scorching hot", "the emergence of logistics companies", "more tolerable"]
     bands = {"TR_or_TA": 7.0, "CC": 7.0, "LR": 5.0, "GRA": 7.0}
     essay += " " + ". ".join(strong) + "."
-    errors = [NS(criterion="LR", severity="error", unclear=False, wrong=f"word {i}", correct=f"term {i}")
-              for i in range(3)]  # 3 in ~370 words: past the Band 8 density, within the Lexical layer's 1 per 100
-    out, raised = writing_grader.floors("task2", essay, bands, [slip] + errors, strong)
-    check("floors: clear, less common vocabulary - Lexical Resource at least 7 (#65's LR 5)", out["LR"] == 7, raised)
-    check("...only slips in Grammar and a wide range - Grammar at least 8 (#67)", out["GRA"] == 8, raised)
-    one, raised = writing_grader.floors("task2", essay, bands, [slip, error], strong)
-    check("...one error in 360 words: the Lexical layer, 7 (the Band 8 density floor is Grammar's alone)", one["LR"] == 7,
-          raised)
-    check("...never Task Response or Coherence", out["TR_or_TA"] == 7 and out["CC"] == 7)
-    short, _ = writing_grader.floors("task2", "Too short an essay. " * 20, bands, [slip], strong)
-    check("...never an answer under 250 words", short == bands, short)
-    narrow, _ = writing_grader.floors("task2", essay, bands, [slip], strong[:1])
-    check("...never without a wide range", narrow == bands, narrow)
+    # Grammar by its counted mistakes (the owner, 2026-11-24): every one counts, a slip and a repeated one too
+    def gra(n, severity="error"):
+        return [NS(criterion="GRA", severity=severity, unclear=False, wrong=f"w{i}", correct=f"c{i}") for i in range(n)]
+    band = writing_grader.grammar_count_band
+    check("Grammar by count: none -> 9; one simple slip costs nothing (9); one real error -> 8",
+          band([]) == 9 and band(gra(1, "slip")) == 9 and band(gra(1)) == 8
+          and band([NS(**{**vars(gra(1, "slip")[0]), "unclear": True})]) == 8)
+    check("...2 -> 8, 3-6 -> 7, 7-10 -> 6, 11-14 -> 5, more -> 4",
+          [band(gra(n)) for n in (2, 3, 6, 7, 10, 11, 14, 15)] == [8, 7, 7, 6, 6, 5, 5, 4])
+    check("...slips count like errors: the same slip three times is not knowing the rule (-> 7)",
+          band(gra(3, "slip")) == 7 and band(gra(2, "slip")) == 8)
+    check("...only Grammar mistakes count", band(gra(1) + [error] * 5) == 8 and band(None) is None)
+    votes = {"TR_or_TA": 8.0, "CC": 8.0, "LR": 7.0, "GRA": 8.0}
+    lowered, why = writing_grader.grammar_by_count(votes, gra(8))
+    check("#208: 8 grammar mistakes - Grammar 8 -> 6, the rest unchanged",
+          lowered == {**votes, "GRA": 6.0} and why == ["GRA 8 -> 6 (8 grammar mistakes)"], (lowered, why))
+    kept, why = writing_grader.grammar_by_count({**votes, "GRA": 6.0}, gra(2))
+    check("...never raised: the runs' lower Grammar (a narrow range) stays", kept["GRA"] == 6 and not why)
+    check("...nothing changes without a checked list", writing_grader.grammar_by_count(votes, None) == (votes, []))
+    check("no lifts left: the floors are gone from Writing",
+          not hasattr(writing_grader, "floors") and not hasattr(writing_grader, "grammar_ceiling"))
     check("slip weight 0.25 (config)", marking_config.density()["slip_weight"] == 0.25)
 
     evidence = writing_grader.mistake_evidence(essay, [slip, error], strong,
@@ -327,63 +335,53 @@ def round2() -> None:
     writing_grader.small_slips([feel])
     check("'feeling of' -> 'feelings of' is a noun's number: a slip (#67)", feel.severity == "slip", feel.severity)
 
-    # #67: one agreement error and two slips in 374 words, a wide range - Grammar 7 is lifted to 8
-    essay67 = " ".join(["word"] * 374) + " a b c"
-    gra = [NS(wrong="this turn of events are", correct="this turn of events is", criterion="GRA", severity="error"),
-           NS(wrong="feeling of loneliness", correct="a feeling of loneliness", criterion="GRA", severity="slip"),
-           NS(wrong="feeling of worthlessness", correct="feelings of worthlessness", criterion="GRA", severity="slip")]
-    bands, raised = writing_grader.floors("task2", essay67, {"TR_or_TA": 9, "CC": 9, "LR": 8, "GRA": 7}, gra,
-                                          ["a", "b", "c"])
-    check("within the Band 8 density with a wide range: Grammar at least 8 (#67)", bands["GRA"] == 8, raised)
-    many = gra + [NS(wrong=f"err {i}", correct=f"fix {i}", criterion="GRA", severity="error") for i in range(4)]
-    bands, raised = writing_grader.floors("task2", essay67, {"TR_or_TA": 7, "CC": 7, "LR": 7, "GRA": 7}, many,
-                                          ["a", "b", "c"])
-    check("...but not past it (5 errors in 374 words stay 7)", bands["GRA"] == 7, raised)
-    grammar = lambda n: [NS(wrong=f"err {i}", correct=f"fix {i}", criterion="GRA", severity="error") for i in range(n)]
-    text300 = " ".join(["word"] * 300)
-    votes = {"TR_or_TA": 7.0, "CC": 7.0, "LR": 6.0, "GRA": 7.0}
-    capped, why = writing_grader.grammar_ceiling(text300, votes, grammar(9))
-    check("Grammar past its limit (9 errors in 300 words) stays 6 (a real Band 6 script)", capped["GRA"] == 6, why)
-    check("...only Grammar", {k: v for k, v in capped.items() if k != "GRA"} == {"TR_or_TA": 7.0, "CC": 7.0, "LR": 6.0})
-    same, why = writing_grader.grammar_ceiling(text300, votes, grammar(8))
-    check("...8 errors in 300 words, under the limit, keep the 7 (a real Band 7 script is at 2.70)", same == votes and not why, why)
     para = "word " * 150 + "\n\n" + "word " * 150
     capped, _, why, _ = writing_grader.cap_bands("task2", para, {"TR_or_TA": 7.0, "CC": 9.0, "LR": 7.0, "GRA": 7.0}, {})
     check("Coherence 9 with Lexical and Grammar at 7 stays 8 (#71)", capped["CC"] == 8, why)
     capped, _, why, _ = writing_grader.cap_bands("task2", para, {"TR_or_TA": 9.0, "CC": 9.0, "LR": 7.0, "GRA": 9.0}, {})
     check("...one of them above 7 keeps the 9 (#65)", capped["CC"] == 9, why)
-    slips = [NS(wrong=f"slip {i}", correct=f"fixed {i}", criterion="GRA", severity="slip") for i in range(12)]
-    same, why = writing_grader.grammar_ceiling(text300, votes, slips)
-    check("...slips alone never reach it: no band lost for small slips", same == votes and not why, why)
-    same, why = writing_grader.grammar_ceiling(text300, votes, None)
-    check("...without a checked list nothing changes", same == votes and not why, why)
 
-    # #128: a Band 9 report (227 words, 3 paragraphs) came out Coherence 8 in both runs, no weakness quoted
+    # Coherence 9 only beside three 9s and no Coherence problem at all (the owner, 2026-11-24; #128 the lift's case)
     report128 = "\n\n".join(" ".join(["word"] * n) for n in (80, 70, 77))
-    strong128 = {"TR_or_TA": 8.0, "CC": 8.0, "LR": 9.0, "GRA": 8.0}
-    clear = [{"_cc_clear": True}, {"_cc_clear": True}]
-    one_gra = [NS(wrong="the percentage lag", correct="the percentage lags", criterion="GRA", severity="error")]
-    nine = lambda *a, **k: writing_grader.coherence_nine(*a, **k)[0]["CC"]  # noqa: E731
-    check("a full, strong report with Coherence 8 and no weakness quoted is Coherence 9 (#128)",
-          nine("task1", report128, strong128, clear, one_gra, True) == 9)
-    check("...not with Grammar 7 (Task, Lexical and Grammar must all be 8+)",
-          nine("task1", report128, {**strong128, "GRA": 7.0}, clear, one_gra, True) == 8)
+    strong128 = {"TR_or_TA": 9.0, "CC": 8.0, "LR": 9.0, "GRA": 9.0}
+    clear = [{"_cc_clear": True, "CC": 8.0, "_notes": {"CC": "Clear."}}, {"_cc_clear": True, "CC": 8.0,
+                                                                            "_notes": {"CC": "Clear."}}]
+    one_slip = [NS(wrong="the percentage lag", correct="the percentage lags", criterion="GRA", severity="slip")]
+    nine = lambda task, text, bands, runs, checked, wide: writing_grader.coherence_nine(  # noqa: E731
+        task, text, bands, {}, runs, checked, wide)[0]["CC"]
+    check("a full report, Task, Lexical and Grammar 9, Coherence 8 and no Coherence problem: Coherence 9 (#128)",
+          nine("task1", report128, strong128, clear, one_slip, True) == 9)
+    check("...not with any other criterion under 9 (the owner: all of them 9)",
+          all(nine("task1", report128, {**strong128, k: 8.0}, clear, one_slip, True) == 8
+              for k in ("TR_or_TA", "LR", "GRA")))
     check("...not under the word minimum (#121: 126 words, Coherence 9 before 5e8092d)",
-          nine("task1", "\n\n".join(" ".join(["word"] * 42) for _ in range(3)), strong128, clear, one_gra, True) == 8)
+          nine("task1", "\n\n".join(" ".join(["word"] * 42) for _ in range(3)), strong128, clear, one_slip, True) == 8)
     check("...not in two paragraphs", nine("task1", "word " * 120 + "\n\n" + "word " * 107, strong128, clear,
-                                           one_gra, True) == 8)
-    check("...not with a Coherence error on the checked list",
-          nine("task1", report128, strong128, clear, one_gra + [NS(wrong="Moreover", correct="However",
-                                                                   criterion="CC", severity="error")], True) == 8)
+                                           one_slip, True) == 8)
+    check("...not with a Coherence mistake on the checked list - a slip neither",
+          all(nine("task1", report128, strong128, clear, one_slip + [NS(wrong="Moreover", correct="However",
+                                                                        criterion="CC", severity=sev)], True) == 8
+              for sev in ("error", "slip")))
     check("...not when most runs quoted a weakness",
-          nine("task1", report128, strong128, [{"_cc_clear": True}, {"_cc_clear": False}], one_gra, True) == 8)
-    check("...not without a wide range shown", nine("task1", report128, strong128, clear, one_gra, False) == 8)
+          nine("task1", report128, strong128, [clear[0], {**clear[1], "_cc_clear": False}], one_slip, True) == 8)
+    check("...not without a wide range shown", nine("task1", report128, strong128, clear, one_slip, False) == 8)
     check("...a Task 2 essay needs 4 paragraphs",
-          nine("task2", "\n\n".join(" ".join(["word"] * 90) for _ in range(3)), strong128, clear, one_gra, True) == 8
-          and nine("task2", "\n\n".join(" ".join(["word"] * 70) for _ in range(4)), strong128, clear, one_gra,
+          nine("task2", "\n\n".join(" ".join(["word"] * 90) for _ in range(3)), strong128, clear, one_slip, True) == 8
+          and nine("task2", "\n\n".join(" ".join(["word"] * 70) for _ in range(4)), strong128, clear, one_slip,
                    True) == 9)
-    check("...and a Coherence 7 is never lifted", nine("task1", report128, {**strong128, "CC": 7.0}, clear, one_gra,
+    check("...and a Coherence 7 is never lifted", nine("task1", report128, {**strong128, "CC": 7.0}, clear, one_slip,
                                                        True) == 7)
+    scored9 = {**strong128, "CC": 9.0}
+    bands, notes, why = writing_grader.coherence_nine("task2", report128, {**scored9, "LR": 7.0},
+                                                      {"CC": "Seamless."}, clear, one_slip, True)
+    check("a 9 the runs gave beside Lexical 7 is an 8, its note from a run that gave 8",
+          bands["CC"] == 8 and notes["CC"] == "Clear." and why, (bands, notes, why))
+    bands, _, why = writing_grader.coherence_nine("task2", report128, scored9, {"CC": "Seamless."}, clear,
+                                                  one_slip + [NS(wrong="Firstly", correct="First", criterion="CC",
+                                                                 severity="slip")], True)
+    check("...and beside a Coherence slip", bands["CC"] == 8, why)
+    check("...a 9 beside three 9s and no Coherence mistake stays",
+          writing_grader.coherence_nine("task2", report128, scored9, {}, clear, one_slip, True)[0]["CC"] == 9)
 
     # #128: notional agreement - "the overwhelming share of people ... prefer" is right as written
     from services.ai.mistake_rules import notional_agreement
@@ -635,20 +633,7 @@ def fair_marking() -> None:
     check("slips past 'rare' are", reason("GRA", [], essay, [], [
         NS(wrong=f"w{i}", correct=f"c{i}", criterion="GRA", severity="slip", unclear=False) for i in range(5)], True))
 
-    # Lexical 7 layer: the official cafe sample
-    cafe = " ".join(["word"] * 172)
-    spelling = [NS(wrong=w, correct=c, criterion="LR", severity=sev, unclear=False) for w, c, sev in (
-        ("redisign", "redesign", "error"), ("midle", "middle", "slip"), ("seatting", "seating", "error"),
-        ("modificated", "modified", "error"))]
-    long_essay = "strong one here and strong two here and strong three here " + cafe
-    bands = {"TR_or_TA": 6.0, "CC": 6.0, "LR": 6.0, "GRA": 5.0}
-    out, raised = writing_grader.floors("task1", long_essay, bands, spelling,
-                                        ["strong one here", "strong two here", "strong three here"])
-    check("the cafe's 4 spelling errors in ~180 words stay Lexical 6", out["LR"] == 6, raised)
-    out, raised = writing_grader.floors("task1", long_essay, bands, spelling[:1],
-                                        ["strong one here", "strong two here", "strong three here"])
-    check("...one in ~180 words gets the layer", out["LR"] >= 7, raised)
-    shown = writing_grader.shown_strong("A rich phrase and a word fine.", ["rich phrase", "a word", "not in the text"],
+    shown =writing_grader.shown_strong("A rich phrase and a word fine.", ["rich phrase", "a word", "not in the text"],
                                         [NS(wrong="a word", correct="the word")])
     check("only the strong phrases the report shows count", shown == ["rich phrase"], shown)
 
@@ -920,10 +905,6 @@ def official_descriptors() -> None:
            for w in ("Sales was low", "Prices has fallen", "Its share were small")]
     check("error-free sentences counted from the checked grammar mistakes (3 of 6)",
           g.error_free_sentences(text, gra) == (3, 6), g.error_free_sentences(text, gra))
-    lowered, why = g.sentence_ceiling(text, {"TR_or_TA": 7.0, "CC": 7.0, "LR": 7.0, "GRA": 8.0}, gra)
-    check("...half of them or fewer clean: Grammar 8 -> 7", lowered["GRA"] == 7 and why, why)
-    kept, _ = g.sentence_ceiling(text, {"TR_or_TA": 7.0, "CC": 7.0, "LR": 7.0, "GRA": 8.0}, gra[:2])
-    check("...four of six clean: Grammar 8 stays", kept["GRA"] == 8)
     check("...a Lexical mistake is not a grammar one",
           g.error_free_sentences(text, [NS(criterion="LR", wrong="Sales was low", correct="x")]) == (6, 6))
 
@@ -1000,14 +981,6 @@ def paid_run_fixes() -> None:
     evidence = g.mistake_evidence(essay, [NS(**{**vars(clear), "wrong": "invested heavily", "correct": "spent much"})],
                                   [], [])
     check("...the scorer sees it marked so", "word choice off, meaning clear" in evidence, evidence)
-    strong = ["invested heavily", "modern public transport", "its residents"]
-    four = [NS(criterion="LR", severity="error", less_common=g.CLEAR_CHOICE, unclear=False, wrong=f"w{i}",
-               correct=f"c{i}") for i in range(4)]
-    raised, why = g.floors("task2", essay, {"TR_or_TA": 7.0, "CC": 7.0, "LR": 6.0, "GRA": 7.0}, four, strong)
-    check("...four of them in 360 words keep the clear-vocabulary floor (Lexical 7); four plain errors don't",
-          raised["LR"] == 7 and g.floors("task2", essay, {"TR_or_TA": 7.0, "CC": 7.0, "LR": 6.0, "GRA": 7.0},
-                                         [NS(**{**vars(m), "less_common": False}) for m in four], strong)[0]["LR"] == 6,
-          why)
 
     def runs_for(values):
         it = iter(values)

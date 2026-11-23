@@ -1635,66 +1635,34 @@ def mistake_evidence(answer_text: str, mistakes: list, strong: list[str], altern
     return "\n".join(lines)
 
 
-def floors(task_type: str, answer_text: str, bands: dict[str, float], checked: list | None,
-           strong: list[str] | None) -> tuple[dict[str, float], list[str]]:
-    """The least Lexical Resource and Grammar bands for what the answer shows
-    (config/writing_marking.json "floors", the academic lead 2026-10-29):
-    a wide range and only slips on a criterion - at least 8 ("wide range + a
-    few slips = 8 or 9, never 7"); a wide range, no word that makes the
-    meaning unclear and at most about 1 word-choice or spelling mistake per
-    100 words - Lexical Resource at least 7. The range counts only the strong
-    phrases the report shows. Never Task Achievement/Response or Coherence, never
-    an answer under 150 (Task 1) / 250 (Task 2) words."""
-    if checked is None or count_words(answer_text) < TASK_MIN_WORDS.get(task_type, 0):
-        return bands, []
-    f = marking_config.floors()
-    strong = shown_strong(answer_text, strong or [], checked)
-    if len(strong) < f["wide_range_phrases"]:
-        return bands, []
-    out, raised = dict(bands), []
-    words = max(count_words(answer_text), 1)
-    weight = marking_config.density()["slip_weight"]
-    for key in ("LR", "GRA"):
-        mine = [m for m in checked if m.criterion == key]
-        errors = [m for m in mine if getattr(m, "severity", "error") != "slip"]
-        half = marking_config.density()["less_common_weight"]
-        slips = distinct_slips([m for m in mine if m not in errors])
-        density = (sum(_weight(m, weight, half) for m in errors) + len(slips) * weight) * 100 / words
-        # Lexical: every word-choice and spelling mistake counts here, errors and slips alike - a word choice
-        # off with its meaning clear as half of one (the descriptors allow "inappropriacies" at Lexical 7)
-        counted = sum(half if getattr(m, "less_common", False) == CLEAR_CHOICE else 1 for m in errors) + len(slips)
-        vocabulary_ok = key != "LR" or counted * 100 / words <= f["clear_vocabulary_max_per_100"]
-        least, why = (f["slips_only_min"], "only slips") if not errors and vocabulary_ok else (0, "")
-        clear = not any(getattr(m, "unclear", False) for m in mine)
-        # Grammar only: on Lexical Resource it lifted a real Band 6 script from 7 to 8 (2026-11-01)
-        if key == "GRA" and clear and density <= marking_config.density()["band8_max"] \
-                and f.get("band8_density_min", 0) > least:
-            least, why = f["band8_density_min"], f"{density:.2f} per 100 words, within Band 8"
-        if key == "LR" and clear and vocabulary_ok and f["clear_vocabulary_lr_min"] > least:
-            least, why = f["clear_vocabulary_lr_min"], "clear, wide vocabulary"
-        if out[key] < least:
-            raised.append(f"{key} {out[key]:g} -> {least:g} ({why})")
-            out[key] = float(least)
-    return out, raised
-
-
-def grammar_ceiling(answer_text: str, bands: dict[str, float], checked: list | None) -> tuple[dict[str, float], list[str]]:
-    """Grammar stays at 6 or below past density.grammar_band6_above, however the
-    runs voted (2026-11-01): a real Band 6 script at 2.86 per 100 words came out
-    Grammar 7 and overall 7. Density doesn't divide the bands cleanly - real
-    Band 7 and 7.5 scripts have 2.70 and 3.33 - so the limit stays as high as
-    that Band 6 case allows. Small slips weigh little, so they don't bring it on."""
-    if checked is None or bands["GRA"] <= 6:
-        return bands, []
-    d = marking_config.density()
+def grammar_count_band(checked: list | None) -> float | None:
+    """Grammar by how many grammar mistakes the checked list has (the owner, 2026-11-24; config/writing_marking.json
+    "grammar_count"). Every mistake counts, a slip too, and so does every time one is made again: the same slip two
+    or three times is not knowing the rule, not a slip of the pen - so are many simple ones. One simple slip costs
+    nothing (9), one real error is 8; 2 -> 8; 3-6 -> 7; 7-10 -> 6; 11-14 -> 5; more -> 4. None without a list."""
+    if checked is None:
+        return None
     mine = [m for m in checked if m.criterion == "GRA"]
-    errors = [m for m in mine if getattr(m, "severity", "error") != "slip"]
-    slips = distinct_slips([m for m in mine if m not in errors])
-    density = (sum(_weight(m, d["slip_weight"], d["less_common_weight"]) for m in errors)
-               + len(slips) * d["slip_weight"]) * 100 / max(count_words(answer_text), 1)
-    if density <= d["grammar_band6_above"]:
+    c = marking_config.grammar_count()
+    if len(mine) == 1:
+        simple = getattr(mine[0], "severity", "error") == "slip" and not getattr(mine[0], "unclear", False)
+        return float(c["one_simple"] if simple else c["one_serious"])
+    for most, band in c["bands"]:
+        if len(mine) <= most:
+            return float(band)
+    return float(c["beyond"])
+
+
+def grammar_by_count(bands: dict[str, float], checked: list | None) -> tuple[dict[str, float], list[str]]:
+    """Grammar no higher than its mistakes allow (grammar_count_band) - replacing the lifts to 8 ("only slips",
+    "within the Band 8 density") and the density/sentence ceilings (the owner, 2026-11-24: Writing bands too high,
+    e.g. #208: 8 grammar mistakes, 8 of 16 sentences clean, Grammar 7; the teachers' 6.0 overall). It never raises
+    a band: the scoring runs judge the range ("simple sentences predominate"), the count the accuracy."""
+    band = grammar_count_band(checked)
+    if band is None or bands["GRA"] <= band:
         return bands, []
-    return {**bands, "GRA": 6.0}, [f"GRA {bands['GRA']:g} -> 6 ({density:.1f} per 100 words)"]
+    n = sum(1 for m in checked if m.criterion == "GRA")
+    return {**bands, "GRA": band}, [f"GRA {bands['GRA']:g} -> {band:g} ({n} grammar mistake{'s' if n != 1 else ''})"]
 
 
 _SENTENCE_END = re.compile(r"(?<=[.!?])[\"'”’)]*\s+|\n+")
@@ -1710,47 +1678,49 @@ def error_free_sentences(answer_text: str, checked: list | None) -> tuple[int, i
     return len(sentences) - flawed, len(sentences)
 
 
-def sentence_ceiling(answer_text: str, bands: dict[str, float], checked: list | None) -> tuple[dict[str, float], list[str]]:
-    """Grammar 8 or 9 needs "the majority of sentences error-free" (the official descriptors, 2026-11-09):
-    with half of them or fewer clean, Grammar is 7 at most. Four sentences at least, so a short answer's one
-    slip doesn't decide it."""
-    if checked is None or bands["GRA"] <= 7:
-        return bands, []
-    free, total = error_free_sentences(answer_text, checked)
-    if total < 4 or free * 2 > total:
-        return bands, []
-    return {**bands, "GRA": 7.0}, [f"GRA {bands['GRA']:g} -> 7 (only {free} of {total} sentences error-free)"]
-
-
 COHERENCE_NINE_PARAGRAPHS = {"task1": 3, "task2": 4}
 TASK_STEADY_RUNS = 5  # Task runs two bands apart or more: up to this many runs in all (median_of_runs)
+COHERENCE_EIGHT_NOTE = "Ideas are logically organised and cohesion is well managed."
 
 
-def coherence_nine(task_type: str, answer_text: str, bands: dict[str, float], runs: list[dict],
-                   checked: list | None, wide: bool) -> tuple[dict[str, float], list[str]]:
-    """Coherence 8 -> 9 for a strong, full answer only (2026-11-09, #128: a
-    Band 9 report came out Coherence 8 in both runs - "easy to follow
-    throughout", no weakness - once 5e8092d stopped every Coherence lift).
-    All of: the task's word minimum and a full paragraph plan (Task 1: 3,
-    Task 2: 4), a wide range shown, no Coherence error on the checked list,
-    most runs with no quoted Coherence weakness, and Task, Lexical and Grammar
-    at 8 or more after the floors. The teachers' cases stay out: #121 (126
-    words, Task 6) and #119 (Task 6) came out Coherence 9 before 5e8092d."""
-    if bands.get("CC") != 8 or checked is None or not wide or not runs:
-        return bands, []
+def coherence_nine(task_type: str, answer_text: str, bands: dict[str, float], notes: dict[str, str],
+                   runs: list[dict], checked: list | None, wide: bool
+                   ) -> tuple[dict[str, float], dict[str, str], list[str]]:
+    """Coherence 9 only when Task, Lexical and Grammar are all 9 and Coherence has no problem at all (the owner,
+    2026-11-24): no Coherence mistake on the checked list - a slip neither - and, for an 8 lifted to 9, most runs
+    with no quoted Coherence weakness, the task's word minimum, a full paragraph plan (Task 1: 3, Task 2: 4) and a
+    wide range (#128, 2026-11-09). A 9 the scoring runs gave without that is an 8 (2026-11-23: #208, Coherence 8
+    with Lexical and Grammar 7, the teachers' 6.0). Run on the final bands, after the caps."""
+    cc = bands.get("CC")
+    if cc not in (8, 9) or not runs:
+        return bands, notes, []
+    others = [k for k in SCORE_KEYS if k != "CC" and bands[k] < 9]
+    problem = checked is not None and any(m.criterion == "CC" for m in checked)
+    if cc == 9:
+        if not others and not problem:
+            return bands, notes, []
+        why = ", ".join(f"{k} {bands[k]:g}" for k in others) if others else "a Coherence mistake on the checked list"
+        note = next((r["_notes"]["CC"] for r in runs if whole_band(r["CC"]) == 8 and r["_notes"].get("CC")),
+                    COHERENCE_EIGHT_NOTE)
+        return {**bands, "CC": 8.0}, {**notes, "CC": note}, [f"CC 9 -> 8 (needs the others at 9: {why})"]
+    if others or problem or checked is None or not wide:
+        return bands, notes, []
     if count_words(answer_text) < TASK_MIN_WORDS.get(task_type, 0) \
             or paragraph_count(answer_text) < COHERENCE_NINE_PARAGRAPHS.get(task_type, 3):
-        return bands, []
-    if any(m.criterion == "CC" and getattr(m, "severity", "error") != "slip" for m in checked):
-        return bands, []
-    if any(bands[k] < 8 for k in SCORE_KEYS if k != "CC"):
-        return bands, []
+        return bands, notes, []
     if sum(bool(r.get("_cc_clear")) for r in runs) * 2 <= len(runs):
-        return bands, []
-    return {**bands, "CC": 9.0}, ["CC 8 -> 9 (a full, strong answer; no Coherence weakness quoted)"]
+        return bands, notes, []
+    return {**bands, "CC": 9.0}, {**notes, "CC": NINE_NOTES["CC"]}, \
+        ["CC 8 -> 9 (Task, Lexical and Grammar 9; no Coherence mistake or weakness)"]
 
 
-FLOOR_NOTES = {"LR": "Wide, precise vocabulary; only minor slips.", "GRA": "Wide range of structures; only minor slips."}
+# Grammar's note when the count set its band and no scoring run gave that band (the report card's line)
+GRAMMAR_NOTES = {9.0: "Wide range of structures, used accurately.",
+                 8.0: "Wide range of structures; nearly every sentence is error-free.",
+                 7.0: "A variety of complex structures, with several grammar errors to fix.",
+                 6.0: "A mix of simple and complex sentences; grammar errors are frequent.",
+                 5.0: "Grammar errors in many sentences; the range is limited.",
+                 4.0: "Errors in most sentences; some make the meaning hard to follow."}
 NINE_NOTES = {"TR_or_TA": {"task1": "Clear overview; every key feature covered precisely.",
                            "task2": "Every part answered; ideas fully developed and supported."},
               "CC": "Seamless organisation; linking that never draws attention.",
@@ -1772,9 +1742,10 @@ async def decide_scores(
     strong: list[str] | None = None,
     acceptable: list[str] = (),
 ) -> Scores:
-    """The report's criterion bands: the median of SCORE_RUNS scoring runs,
-    then the floors (`checked` mistakes and `strong` phrases: floors()) and
-    the caps; each band's note comes from a run that gave that band.
+    """The report's criterion bands: the median of SCORE_RUNS scoring runs, Grammar no higher than its counted
+    mistakes allow (grammar_by_count), the caps, and Coherence 9 only beside three 9s (coherence_nine) - nothing
+    lifts a band any more (the owner, 2026-11-24: the "only slips -> 8", "Band 8 density -> Grammar 8" and
+    "clear vocabulary -> Lexical 7" floors are gone); each band's note comes from a run that gave that band.
     `evidence`: the checked mistakes (grade_writing passes them); `visual`:
     the sheet as data - its kind picks the Band 9 anchor and decides whether
     comparisons are needed (the question's wording when there is none);
@@ -1790,22 +1761,14 @@ async def decide_scores(
     votes = Counter(r.get("_overview", "clear") for r in runs)
     overview = "none" if votes["none"] * 2 > len(runs) else \
         "generic" if (votes["none"] + votes["generic"]) * 2 > len(runs) else "clear"
-    medians, raised = floors(task_type, answer_text, medians, checked, strong)
-    if raised:
-        logger.info("Band floors (writing %s): %s", task_type, "; ".join(raised))
-    medians, lowered = grammar_ceiling(answer_text, medians, checked)
-    medians, fewer = sentence_ceiling(answer_text, medians, checked)
-    lowered += fewer
+    medians, lowered = grammar_by_count(medians, checked)
     if lowered:
-        logger.info("Grammar ceiling (writing %s): %s", task_type, "; ".join(lowered))
-    medians, lifted = coherence_nine(task_type, answer_text, medians, runs, checked, wide)
-    if lifted:
-        logger.info("Coherence (writing %s): %s", task_type, "; ".join(lifted))
+        logger.info("Grammar by count (writing %s): %s", task_type, "; ".join(lowered))
     notes = {}
     for k in SCORE_KEYS:
         nine = (NINE_NOTES[k][task_type] if k == "TR_or_TA" else NINE_NOTES[k]) if medians[k] >= 9 else ""
         notes[k] = next((r["_notes"][k] for r in runs if whole_band(r[k]) == medians[k] and r["_notes"].get(k)),
-                        FLOOR_NOTES.get(k) or nine)
+                        (GRAMMAR_NOTES.get(medians[k], "") if k == "GRA" else "") or nine)
         if medians[k] >= 9 and _CRITICISM.search(notes[k]):  # "grouping could be sharper" under a 9
             notes[k] = NINE_NOTES[k][task_type] if k == "TR_or_TA" else NINE_NOTES[k]
     bands, notes, capped, notices = cap_bands(task_type, answer_text, medians, notes,
@@ -1813,6 +1776,9 @@ async def decide_scores(
                                               overview, prompt_text)
     if capped:
         logger.info("Score caps (writing %s): %s", task_type, "; ".join(capped))
+    bands, notes, coherence = coherence_nine(task_type, answer_text, bands, notes, runs, checked, wide)
+    if coherence:
+        logger.info("Coherence (writing %s): %s", task_type, "; ".join(coherence))
     return Scores(bands=bands, notes=notes, capped=capped, notices=notices,
                   runs=[{k: r[k] for k in SCORE_KEYS} for r in runs])
 

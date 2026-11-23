@@ -73,8 +73,14 @@ def type_anchors_on() -> bool:
 
 def floors() -> dict:
     """The least Lexical Resource / Grammar band a long-enough answer gets for
-    what it shows (the academic lead, 2026-10-29)."""
+    what it shows (the academic lead, 2026-10-29) - Speaking's since 2026-11-24;
+    Writing reads only wide_range_phrases."""
     return load()["floors"]
+
+
+def grammar_count() -> dict:
+    """Writing Grammar by its counted mistakes (the owner, 2026-11-24; writing_grader.grammar_count_band)."""
+    return load()["grammar_count"]
 
 
 def banned_openers() -> list[str]:
