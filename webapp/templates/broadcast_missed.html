@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Kimlarga yetmadi — Bandzilla Admin{% endblock %}
+{% block content %}
+<p class="hint" style="margin:0 0 6px"><a href="/broadcast">← Ommaviy xabar</a></p>
+<h1>Kimlarga yetmadi</h1>
+<p class="hint" style="margin:-6px 0 18px">Ommaviy xabar #{{ b.id }} · {{ b.when }} · {{ b.audience }} —
+  <b>{{ b.sent }}</b>/{{ b.total }} yetkazildi. Pastdagilarga yetmadi; ular keyingi ommaviy xabarlarga qo'shilmaydi,
+  toki botga qaytib yozmaguncha.</p>
+
+<div class="m-sum">
+  {% for why in ["not_started", "blocked", "deleted", "failed"] %}{% if counts[why] %}
+  <div><b class="num">{{ counts[why] }}</b><span>{{ labels.get(why) or "⚠️ Boshqa xato" }}</span></div>
+  {% endif %}{% endfor %}
+</div>
+
+<div class="card">
+  {% if rows %}
+  <div class="table-scroll"><table>
+    <tr><th>Foydalanuvchi</th><th>Til</th><th>Ro'yxatdan o'tgan</th><th>Sabab</th></tr>
+    {% for r in rows %}
+    <tr>
+      <td><a class="who" href="/users/{{ r.id }}"><span class="ava">{{ r.name[:1] }}</span><span class="nm">{{ r.name }}</span></a>
+        {% if r.username %}<span class="muted">@{{ r.username }}</span>{% endif %}</td>
+      <td>{{ {"uz": "🇺🇿", "ru": "🇷🇺", "en": "🇬🇧"}.get(r.lang, r.lang) }}</td>
+      <td class="num">{{ r.created }}</td>
+      <td>{{ r.label }}{% if r.back %} <span class="pill pill-good">✅ qaytdi</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  {% else %}
+  <div class="empty">Hammaga yetkazildi{% if not b.get("not_started") and b.blocked|int + b.failed|int > 0 %} — bu xabar
+    kimlarga yetmaganini yozib qo'yish qo'shilishidan oldin yuborilgan{% endif %}.</div>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Bu nimani anglatadi</h2>
+  <ul class="m-help">
+    <li><b>🚪 Yangi botni ochmagan</b> — @writespeak_bot'da (eski bot) ro'yxatdan o'tgan, @bandzilla_bot'ni hech
+      ochmagan. Telegram'da bot o'zini ochmagan odamga birinchi bo'lib yoza olmaydi; ularga faqat eski bot yoza oladi.</li>
+    <li><b>⛔ Botni bloklagan</b> — o'zi botni bloklagan. Blokdan chiqarib /start bosmaguncha unga yozib bo'lmaydi.</li>
+    <li><b>🗑 Akkauntini o'chirgan</b> — Telegram akkaunti o'chirilgan.</li>
+    <li><b>✅ qaytdi</b> — keyin botga qaytib yozgan: keyingi xabarlar unga yana boradi.</li>
+  </ul>
+</div>
+
+<style>
+  .m-sum { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
+  .m-sum > div { flex: 1 1 200px; padding: 14px 16px; border-radius: 14px; background: var(--card, #fff);
+    border: 1px solid var(--border); display: grid; gap: 4px; }
+  .m-sum b { font: 800 26px/1 var(--font-head); color: var(--ink); }
+  .m-sum span { font-size: 13px; color: var(--ink-soft); }
+  .m-help { margin: 0; padding-left: 18px; font-size: 13.5px; line-height: 1.6; }
+  .m-help li + li { margin-top: 6px; }
+</style>
+{% endblock %}

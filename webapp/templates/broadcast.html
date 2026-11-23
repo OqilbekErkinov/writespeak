@@ -33,8 +33,10 @@
       <span class="muted">· 🇺🇿 {{ langs.uz }} · 🇷🇺 {{ langs.ru }} · 🇬🇧 {{ langs.en }}</span>
       {% if count > 60 %}<span class="muted">· ~{{ ((count * 0.07) / 60) | round(0, 'ceil') | int }} daqiqada</span>{% endif %}
     </div>
-    <p class="hint">Bloklangan foydalanuvchilarga yuborilmaydi. Adminlar faqat «Faqat adminlar (sinov)» tanlanganda oladi —
-      katta yuborishdan oldin shu bilan sinab ko'ring.</p>
+    {% if left_out %}<p class="b-left" title="{{ left_out_detail }}">🚫 Yana <b>{{ left_out }}</b> kishi chiqarib tashlandi —
+      bot ularga yoza olmaydi: {{ left_out_detail }}. Botga qaytib yozishsa, o'zi qo'shiladi.</p>{% endif %}
+    <p class="hint">Panelda bloklangan foydalanuvchilarga yuborilmaydi. Adminlar faqat «Faqat adminlar (sinov)» tanlanganda
+      oladi — katta yuborishdan oldin shu bilan sinab ko'ring.</p>
   </div>
 
   <form class="card b-tg" method="post" action="/broadcast/send_post" id="postForm"
@@ -127,8 +129,10 @@
       <td>
         <div class="bar"><span style="width:{{ ((b.done|int) * 100 / ((b.total|int) or 1)) | round | int }}%"></span></div>
         <div class="b-st"><b class="sent">{{ b.sent }}</b>/<span class="total">{{ b.total }}</span> yetkazildi
-          · <span class="blocked">{{ b.blocked }}</span> botni bloklagan · <span class="failed">{{ b.failed }}</span> xato
-          · <span class="state">{{ {"running": "⏳ yuborilmoqda", "done": "✅ tugadi", "stopped": "⛔ to'xtadi"}.get(b.status, b.status) }}</span></div>
+          · <span class="blocked">{{ b.blocked }}</span> botni bloklagan
+          · <span class="not_started">{{ b.get("not_started", 0) }}</span> yangi botni ochmagan · <span class="failed">{{ b.failed }}</span> xato
+          · <span class="state">{{ {"running": "⏳ yuborilmoqda", "done": "✅ tugadi", "stopped": "⛔ to'xtadi"}.get(b.status, b.status) }}</span>
+          {% if b.blocked|int + b.failed|int + b.get("not_started", 0)|int > 0 %}<br><a href="/broadcast/{{ b.id }}/missed">Kimlarga yetmadi →</a>{% endif %}</div>
       </td>
     </tr>
     {% endfor %}
@@ -144,6 +148,8 @@
     border: 1px solid var(--border); font-size: 13.5px; }
   .b-tg-meta { margin-bottom: 6px; }
   .b-tg-none { background: transparent; border-style: dashed; }
+  .b-left { margin: 8px 0 0; padding: 10px 14px; border-radius: 12px; background: var(--mint-2);
+    border: 1px solid var(--border); font-size: 13px; }
   .b-tg-none .b-tg-meta { margin-bottom: 0; }
   .b-tg-text { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink); }
   .b-steps { margin: 10px 0 0; padding-left: 20px; font-size: 13.5px; line-height: 1.55; }
@@ -210,7 +216,10 @@
         .then(function (b) {
           if (!b || !b.total) return;
           row.querySelector(".bar span").style.width = Math.round(100 * (+b.done || 0) / (+b.total || 1)) + "%";
-          ["sent", "total", "blocked", "failed"].forEach(function (k) { row.querySelector("." + k).textContent = b[k]; });
+          ["sent", "total", "blocked", "not_started", "failed"].forEach(function (k) {
+            const el = row.querySelector("." + k);
+            if (el) el.textContent = b[k] || 0;
+          });
           row.querySelector(".state").textContent = STATES[b.status] || b.status;
           row.dataset.status = b.status;
         });

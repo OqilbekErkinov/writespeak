@@ -23,19 +23,20 @@ import json
 import logging
 import secrets
 import time
+from collections import Counter
 from datetime import datetime, timedelta, timezone
 
 from aiogram import Bot
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.exceptions import TelegramForbiddenError, TelegramRetryAfter
+from aiogram.exceptions import TelegramRetryAfter
 from aiogram.types import BufferedInputFile
 from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from sqlalchemy import and_, func, select, update
 
 from bot.config import settings
-from bot.utils import balance, broadcast_post, checks_back, crm, panel_access, runtime, support_log
+from bot.utils import balance, broadcast_post, checks_back, crm, panel_access, reach, runtime, support_log
 from db import crud
 from db.database import get_session
 from db.models import (
@@ -59,6 +60,8 @@ templates = None  # set by webapp/main.py
 TESTERS_LIST_KEY = "runtime:testers"  # the testers list, kept while the window is off
 BROADCAST_KEY = "broadcast:{id}"
 BROADCAST_IDS = "broadcast:ids"
+MISSED_KEY = "broadcast:{id}:missed"  # user id -> why it did not reach them (bot/utils/reach.py) or "failed:..."
+MISSED_TTL = 90 * 86400
 BROADCAST_MAX = 4000  # characters of one language's text after escaping (Telegram: 4096)
 BROADCAST_PAUSE = 0.05  # 20 messages a second at most - under Telegram's limit
 # A post: a picture or a video with the text under it (the owner, 2026-11-22). Telegram's own limits: a photo 10 MB,
@@ -529,7 +532,7 @@ AUDIENCES = {
 LANG_FILTERS = {"any": "Hamma tillar", "uz": "🇺🇿 O'zbekcha", "ru": "🇷🇺 Ruscha", "en": "🇬🇧 Inglizcha"}
 
 
-async def _audience(session, audience: str, lang: str) -> list[User]:
+async def _audience_all(session, audience: str, lang: str) -> list[User]:
     if audience == "admins":
         rows = (await session.execute(select(User).where(User.id.in_(settings.admin_ids)))).scalars().all()
         return list(rows)
@@ -539,6 +542,24 @@ async def _audience(session, audience: str, lang: str) -> list[User]:
     if lang != "any":
         users = [u for u in users if (u.language or "uz") == lang]
     return users
+
+
+async def _audience_split(session, audience: str, lang: str) -> tuple[list[User], Counter]:
+    """The audience the bot can write to, and {why: how many} of the ones left out - they blocked the bot, deleted
+    their account or never started it (bot/utils/reach.py) and have not been back since (2026-11-23)."""
+    users = await _audience_all(session, audience, lang)
+    if audience == "admins":
+        return users, Counter()
+    try:
+        gone = await reach.out()
+    except Exception:  # noqa: BLE001 - Redis unreadable: everyone, as before
+        logger.warning("Unreachable students not read", exc_info=True)
+        return users, Counter()
+    return [u for u in users if u.id not in gone], Counter(gone[u.id] for u in users if u.id in gone)
+
+
+async def _audience(session, audience: str, lang: str) -> list[User]:
+    return (await _audience_split(session, audience, lang))[0]
 
 
 async def _deliver(bot: Bot, uid: int, text: str, media: tuple[str, bytes, str] | None, kb, cache: dict,
@@ -586,8 +607,22 @@ async def _broadcast_job(bid: str, users: list[tuple[int, str]], texts: dict[str
     key = BROADCAST_KEY.format(id=bid)
     r = crm.redis()
     bot = new_bot()
-    sent = failed = blocked = 0
+    sent = failed = blocked = not_started = 0
+    missed: dict[str, str] = {}  # who it did not reach, and why (the panel's "Kimlarga yetmadi" page)
+    marks: dict[int, str] = {}  # the ones out of reach for good (bot/utils/reach.py)
     cache: dict = {}
+
+    async def save_progress(done: int) -> None:
+        await r.hset(key, mapping={"sent": sent, "failed": failed, "blocked": blocked, "not_started": not_started,
+                                   "done": done, "updated": int(time.time())})
+        if missed:
+            await r.hset(MISSED_KEY.format(id=bid), mapping=missed)
+            await r.expire(MISSED_KEY.format(id=bid), MISSED_TTL)
+            missed.clear()
+        if marks:
+            await reach.mark(marks)
+            marks.clear()
+
     try:
         for i, (uid, lang) in enumerate(users, 1):
             text = texts.get(lang) or texts.get("uz", "")
@@ -600,14 +635,20 @@ async def _broadcast_job(bid: str, users: list[tuple[int, str]], texts: dict[str
                     await asyncio.sleep(e.retry_after)
                     await _deliver(bot, uid, text, media, kb, cache, one)
                 sent += 1
-            except TelegramForbiddenError:
-                blocked += 1
             except Exception as e:  # noqa: BLE001
-                failed += 1
-                logger.info("Broadcast %s to %s failed: %r", bid, uid, e)
+                why = reach.why_of(e)
+                if why == "not_started":
+                    not_started += 1
+                elif why:
+                    blocked += 1
+                else:
+                    failed += 1
+                    logger.warning("Broadcast %s to %s failed: %r", bid, uid, e)
+                missed[str(uid)] = why or ("failed:" + str(getattr(e, "message", None) or repr(e)))[:200]
+                if why:
+                    marks[uid] = why
             if i % 10 == 0 or i == len(users):
-                await r.hset(key, mapping={"sent": sent, "failed": failed, "blocked": blocked, "done": i,
-                                         "updated": int(time.time())})
+                await save_progress(i)
             await asyncio.sleep(BROADCAST_PAUSE)
         await r.hset(key, mapping={"status": "done", "finished": int(time.time())})
     except Exception:
@@ -615,8 +656,9 @@ async def _broadcast_job(bid: str, users: list[tuple[int, str]], texts: dict[str
         raise
     finally:
         await bot.session.close()
-    await crm.post("support", f"📣 <b>Ommaviy xabar</b> #{bid} tugadi: {sent} ta yetkazildi, {blocked} ta botni bloklagan, "
-                              f"{failed} ta xato.")
+    await crm.post("support", f"📣 <b>Ommaviy xabar</b> #{bid} tugadi: {sent} ta yetkazildi, {blocked} ta botni bloklagan "
+                              f"yoki akkauntini o'chirgan, {not_started} ta yangi botni ochmagan, {failed} ta xato. "
+                              "Kimlar: panel → Ommaviy xabar → «Kimlarga yetmadi».")
 
 
 def _post_mark(post: tuple[str, bytes, str] | None, buttons: str) -> str:
@@ -650,7 +692,7 @@ async def broadcast_page(request: Request, audience: str = "all", lang: str = "a
     audience = audience if audience in AUDIENCES else "all"
     lang = lang if lang in LANG_FILTERS else "any"
     async with get_session() as session:
-        users = await _audience(session, audience, lang)
+        users, left_out = await _audience_split(session, audience, lang)
     langs = {code: sum(1 for u in users if (u.language or "uz") == code) for code in ("uz", "ru", "en")}
     posts = await broadcast_post.load()
     tg_post = None
@@ -663,6 +705,8 @@ async def broadcast_page(request: Request, audience: str = "all", lang: str = "a
     return templates.TemplateResponse(request, "broadcast.html", {
         "active": "broadcast", "audiences": AUDIENCES, "lang_filters": LANG_FILTERS, "audience": audience, "lang": lang,
         "count": len(users), "langs": langs, "history": await _broadcasts(), "started": started, "tg_post": tg_post,
+        "left_out": sum(left_out.values()),
+        "left_out_detail": " · ".join(f"{reach.LABELS[w]}: {n}" for w, n in left_out.most_common() if w in reach.LABELS),
     })
 
 
@@ -746,6 +790,48 @@ async def broadcast_send_post(request: Request, audience: str = Form(...), lang:
                                               f"{len(targets)} kishi · {mark}{(post.get('preview') or '')[:200]}")
     _later(_broadcast_job(bid, targets, {}, None, bool(buttons), copy=copy))
     return RedirectResponse(f"/broadcast?started={bid}", status_code=303)
+
+
+MISSED_ORDER = ("not_started", "blocked", "deleted")
+
+
+@router.get("/broadcast/{bid}/missed", response_class=HTMLResponse)
+async def broadcast_missed(request: Request, bid: str):
+    """Who a broadcast did not reach, and why (2026-11-23): blocked the bot, deleted the account, never started the
+    new bot (bot/utils/reach.py), or another error with Telegram's words. "Qaytdi" - the bot has seen them since."""
+    if (r := guard(request, perm="broadcast")) is not None:
+        return r
+    rd = crm.redis()
+    data = await rd.hgetall(BROADCAST_KEY.format(id=bid))
+    if not data:
+        return RedirectResponse("/broadcast", status_code=303)
+    missed = await rd.hgetall(MISSED_KEY.format(id=bid))
+    ids = [int(k) for k in missed if k.isdigit()]
+    async with get_session() as session:
+        found = {u.id: u for u in (await session.execute(select(User).where(User.id.in_(ids)))).scalars().all()} \
+            if ids else {}
+    still_out = await reach.out()
+    rows = []
+    for uid in ids:
+        why = missed[str(uid)]
+        u = found.get(uid)
+        rows.append({
+            "id": uid, "name": (u.full_name if u else None) or str(uid), "username": u.username if u else None,
+            "lang": (u.language if u else None) or "uz",
+            "created": insights.fmt(u.created_at, with_time=False) if u and u.created_at else "—",
+            "_ts": u.created_at.timestamp() if u and u.created_at else 0,
+            "why": why if why in reach.LABELS else "failed",
+            "label": reach.LABELS.get(why) or "⚠️ Boshqa xato: " + why.removeprefix("failed:"),
+            "back": why in reach.LABELS and uid not in still_out,
+        })
+    order = {w: i for i, w in enumerate(MISSED_ORDER)}
+    rows.sort(key=lambda x: (order.get(x["why"], 9), x["_ts"]))
+    counts = Counter(x["why"] for x in rows)
+    data["id"] = bid
+    data["when"] = insights.fmt(datetime.fromtimestamp(int(data.get("started", 0)), timezone.utc))
+    return templates.TemplateResponse(request, "broadcast_missed.html", {
+        "active": "broadcast", "b": _checked(data), "rows": rows, "counts": counts, "labels": reach.LABELS,
+    })
 
 
 @router.get("/broadcast/{bid}.json")
