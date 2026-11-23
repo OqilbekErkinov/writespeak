@@ -357,16 +357,53 @@ _T: dict[str, dict[str, str]] = {
     "writing.send_chart": {
         "uz": "✅ Savol qabul qilindi.\n\n📊 Endi shu Task 1 ning <b>grafik yoki diagramma rasmini</b> yuboring.\n\n"
         "Task 1 da ball rasmdagi ma'lumotga qarab qo'yiladi: Bandzilla javobingizdagi har bir raqam, "
-        "taqqoslash va umumiy xulosani shu rasm bilan solishtiradi. Rasmsiz faqat matn tekshiriladi.",
+        "taqqoslash va umumiy xulosani shu rasm bilan solishtiradi. Grafiksiz Task 1 tekshirilmaydi.",
         "ru": "✅ Вопрос принят.\n\n📊 Теперь отправьте <b>картинку графика или диаграммы</b> к этому Task 1.\n\n"
         "В Task 1 балл ставится по данным на картинке: Bandzilla сверит с ней каждую цифру, сравнение и "
-        "общий вывод вашего ответа. Без картинки проверяется только текст.",
+        "общий вывод вашего ответа. Без графика Task 1 не проверяется.",
     },
     "writing.chart_photo_only": {
-        "uz": "📊 Bu qadamda grafik rasmini yuboring — rasm yoki rasm-fayl. Rasm bo'lmasa, "
-        "«➡️ Rasmsiz davom etish»ni bosing.",
-        "ru": "📊 На этом шаге отправьте картинку графика — фото или файл-картинку. Если картинки нет, "
-        "нажмите «➡️ Продолжить без картинки».",
+        "uz": "📊 Bu qadamda grafik rasmini yuboring — rasm yoki rasm-fayl. Task 1 grafiksiz tekshirilmaydi.",
+        "ru": "📊 На этом шаге отправьте картинку графика — фото или файл-картинку. Без графика Task 1 не "
+        "проверяется.",
+    },
+    # Task 1 is never checked without its chart (the owner, 2026-11-23)
+    "writing.chart_before_check": {
+        "uz": "📊 Javobingiz saqlandi ✅\n\nTask 1 grafiksiz tekshirilmaydi: ball rasmdagi ma'lumotga qarab "
+        "qo'yiladi. Endi shu topshiriqning <b>grafik yoki diagramma rasmini</b> yuboring — keyin darhol "
+        "tekshiraman. Hozircha coin olinmadi.",
+        "ru": "📊 Ваш ответ сохранён ✅\n\nБез графика Task 1 не проверяется: балл ставится по данным на картинке. "
+        "Отправьте <b>картинку графика или диаграммы</b> к этому заданию — и я сразу начну проверку. Монеты пока "
+        "не списаны.",
+    },
+    "writing.chart_required": {
+        "uz": "📊 Task 1 grafiksiz tekshirilmaydi — grafik yoki diagramma rasmini yuboring.",
+        "ru": "📊 Без графика Task 1 не проверяется — отправьте картинку графика или диаграммы.",
+    },
+    "writing.chart_first": {
+        "uz": "📋 Savol:\n\n{question}\n\n📊 Bu topshiriqning grafik rasmi biriktirilmagan. Task 1 grafiksiz "
+        "tekshirilmaydi — avval <b>grafik yoki diagramma rasmini</b> yuboring, keyin javobingizni (kamida 150 so'z).",
+        "ru": "📋 Вопрос:\n\n{question}\n\n📊 К этому заданию не приложена картинка графика. Без графика Task 1 не "
+        "проверяется — сначала отправьте <b>картинку графика или диаграммы</b>, затем свой ответ (минимум 150 слов).",
+    },
+    # the essay sent as the question (2026-11-23: 13 of 42 checks graded an essay against itself)
+    "writing.question_split": {
+        "uz": "✂️ Savol va javobingizni bitta xabarda yubordingiz — ajratib oldim.\n\n<b>Savol:</b> <i>{question}</i>"
+        "\n\nJavobingiz ham shu xabardan olindi, uni qayta yuborish shart emas. Savol to'g'ri bo'lsa ✅ ni bosing; "
+        "noto'g'ri ajratilgan bo'lsa ✏️ ni bosib, savolni o'zingiz yuboring.",
+        "ru": "✂️ Вы отправили вопрос и ответ одним сообщением — я их разделил.\n\n<b>Вопрос:</b> <i>{question}</i>"
+        "\n\nОтвет тоже взят из этого сообщения, отправлять его ещё раз не нужно. Если вопрос верный — нажмите ✅; "
+        "если он выделен неправильно — нажмите ✏️ и отправьте вопрос сами.",
+    },
+    "writing.essay_as_question": {
+        "uz": "🤔 Bu savol emas, <b>javobingizga (inshoga)</b> o'xshaydi.\n\nJavobingizni saqlab qo'ydim ✅ Endi "
+        "topshiriqning <b>savolini</b> yuboring — masalan: «Some people think … To what extent do you agree or "
+        "disagree?»\n\nBandzilla javobingizni aynan shu savolga solishtirib baholaydi: savolsiz Task bahosi to'g'ri "
+        "chiqmaydi. Hozircha coin olinmadi.",
+        "ru": "🤔 Это похоже не на вопрос, а на <b>ваш ответ (эссе)</b>.\n\nЯ сохранил ваш ответ ✅ Теперь отправьте "
+        "<b>вопрос</b> задания — например: «Some people think … To what extent do you agree or disagree?»\n\n"
+        "Bandzilla оценивает ответ именно по этому вопросу: без вопроса балл за Task будет неверным. Монеты пока не "
+        "списаны.",
     },
     "writing.btn_no_chart": {"uz": "➡️ Rasmsiz davom etish", "ru": "➡️ Продолжить без картинки"},
     "writing.chart_resend": {

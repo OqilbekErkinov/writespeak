@@ -219,6 +219,7 @@ def essay(tag: str) -> str:
 
 
 GRADED: list[str] = []
+PROMPTS: list[str] = []  # the question each graded answer was marked against
 SPOKEN: list[int] = []
 
 
@@ -230,6 +231,7 @@ def fake_grading() -> None:
 
     async def fake_grade(**kw):
         GRADED.append(kw["answer_text"])
+        PROMPTS.append(kw.get("prompt_text"))
         kw["on_feedback"](None, None, None)
         return NS(overall_band=6.5, vocabulary=[NS(term="t", meaning="m", example="e")], mistakes=[],
                   criteria_scores=lambda: {"TR": 6.5, "CC": 6.5, "LR": 6.5, "GRA": 6.5},
@@ -514,17 +516,23 @@ async def e2_smart(w: World) -> None:
     out = await w.send(uid, text=PROMPT)
     check("E2 ...then the real question: graded", len(GRADED) == 1 and "smart two" in GRADED[0] and docs(out))
 
-    # Task 1: a typed question asks for its chart first; "go on without it" grades the kept report right away
+    # Task 1: a typed question asks for its chart first - and never goes on without it (the owner, 2026-11-23);
+    # the chart then grading the kept report is tests/task1_images_test.py's
     out = await w.send(uid, text=essay("task one"))
     token = [b for b in buttons(out) if b.startswith(CB_SMART_PREFIX)][0].rsplit(":", 1)[-1]
     await w.press(uid, f"{CB_SMART_PREFIX}w:task1:{token}")
     GRADED.clear()
-    await w.send(uid, text="The chart below shows the number of students at three universities between 2000 and "
-                           "2020. Summarise the information by selecting and reporting the main features.")
-    asked_chart = await st.get_state() == WritingStates.awaiting_chart.state and not GRADED
+    out = await w.send(uid, text="The chart below shows the number of students at three universities between 2000 "
+                                 "and 2020. Summarise the information by selecting and reporting the main features.")
+    asked_chart = await st.get_state() == WritingStates.awaiting_chart.state and not GRADED \
+        and not any("Rasmsiz" in b.text for c in sends(out) if c.reply_markup is not None
+                    for row in getattr(c.reply_markup, "inline_keyboard", []) for b in row)
     out = await w.press(uid, CB_NO_CHART)
-    check("E2 Task 1 kept: the chart asked for, then (without it) the kept report graded, not asked for again",
-          asked_chart and len(GRADED) == 1 and "task one" in GRADED[0] and docs(out), (asked_chart, GRADED))
+    alerts = [c for c in out if type(c).__name__ == "AnswerCallbackQuery" and c.show_alert]
+    check("E2 Task 1 kept: the chart asked for (no 'without it' button); an old one refused, nothing graded",
+          asked_chart and alerts and "grafiksiz" in alerts[0].text and not GRADED
+          and await st.get_state() == WritingStates.awaiting_chart.state, (asked_chart, GRADED))
+    await st.clear()
 
     # what is not an essay, and other states
     out = await w.send(uid, text="salom, qalesiz? coin qanday olinadi")
@@ -543,9 +551,11 @@ async def e2_smart(w: World) -> None:
     await w.send(uid, text=BTN_WRITING)
     await w.press(uid, CB_TASK2)
     out = await w.send(uid, text=essay("as a question"))
-    check("E2 in the Writing flow an essay-like text is that step's input (the question), no offer",
-          not any(b.startswith(CB_SMART_PREFIX) for b in buttons(out))
-          and await st.get_state() != WritingStates.awaiting_prompt.state, texts(out))
+    check("E2 in the Writing flow an essay-like text is that step's input, no offer: kept as the answer, the "
+          "question asked for (2026-11-23: never the essay as its own question)",
+          not any(b.startswith(CB_SMART_PREFIX) for b in buttons(out)) and any("inshoga" in x for x in texts(out))
+          and (await st.get_data()).get("kept_answer") == essay("as a question")
+          and await st.get_state() == WritingStates.awaiting_prompt.state, texts(out))
     await st.clear()
     await st.set_state(WritingStates.confirming_section)
     out = await w.send(uid, text=essay("button wait"))
@@ -769,6 +779,125 @@ async def e4_ready_question(w: World) -> None:
 # --- E5 the referral link ----------------------------------------------------------------------------------------
 
 
+async def e6_essay_as_question(w: World) -> None:
+    """The essay sent as the question (2026-11-23: 13 of 42 checks graded an essay against itself)."""
+    from bot.keyboards.confirm_kb import CB_CONFIRM, CB_EDIT
+    from bot.keyboards.writing_task_kb import CB_TASK2
+    from bot.states.writing_states import WritingStates
+    from services.ai.essay_marking import essay_in_question, looks_like_essay, split_question
+
+    # the rules on their own
+    full_question = ("You should spend about 40 minutes on this task. Write about the following topic: " + PROMPT
+                     + " Give reasons for your answer and include any relevant examples from your own knowledge or "
+                       "experience. Write at least 250 words.")
+    task1_question = ("The graph below gives information about the price of bananas in four countries between 1994 "
+                      "and 2004. Summarise the information by selecting and reporting the main features, and make "
+                      "comparisons where relevant. Write at least 150 words.")
+    body = essay("rules")
+    check("E6 a question, its instructions too, is no essay; an essay is",
+          not looks_like_essay(full_question) and not looks_like_essay(task1_question) and not looks_like_essay(PROMPT)
+          and looks_like_essay(body) and looks_like_essay(SENTENCE * 7))
+    same_line = split_question("In many cities more and more shops are open longer hours. Is it positive or negative "
+                               "development? " + body)
+    check("E6 split: the question and the essay on one line (#218)",
+          same_line and same_line[0].endswith("negative development?") and same_line[1] == body, same_line)
+    headed = split_question("TASK 2 ( TOPIC )\nMany cities have problems with public transport. Why do these problems "
+                            "happen, and how can they be solved?\n" + body)
+    check("E6 split: a header, the question, the essay on the next line (#212)",
+          headed and headed[0].endswith("how can they be solved?") and headed[1] == body, headed)
+    two = split_question("Many cities have crowded buses. Why does this happen? How can it be solved?\n\nAnswer: " + body)
+    check("E6 split: 'Why...? How...?' both in the question, an 'Answer:' label dropped",
+          two and two[0].endswith("How can it be solved?") and two[1] == body, two)
+    instructions = split_question(full_question + "\n" + body)
+    check("E6 split: the instructions after the question stay with it",
+          instructions and instructions[0].endswith("Write at least 250 words.") and instructions[1] == body)
+    check("E6 split: an essay alone, or a question alone - none",
+          split_question(body) is None and split_question(full_question) is None)
+    check("E6 the essay inside the question: caught; the question copied into an essay's introduction: not",
+          essay_in_question(body, body) and essay_in_question(PROMPT + "\n" + body, body)
+          and not essay_in_question(PROMPT, PROMPT + " " + body))
+
+    uid = BASE + 600
+    await make_user(uid, 60)
+    st = w.state(uid)
+
+    async def task2() -> None:
+        await st.clear()
+        await w.press(uid, CB_TASK2)
+        GRADED.clear()
+        PROMPTS.clear()
+
+    # a question with its instructions: as before - the answer is asked for
+    await task2()
+    await w.send(uid, text=full_question)
+    check("E6 a real question: the answer asked for, as before",
+          await st.get_state() == WritingStates.awaiting_answer.state and not GRADED)
+
+    # the question and the essay in one message: split, shown to be confirmed, the essay graded against the question
+    await task2()
+    together = essay("together")
+    out = await w.send(uid, text=PROMPT + "\n" + together)
+    shown = [c for c in sends(out) if "ajratib oldim" in c.text]
+    check("E6 question + essay in one message: split, the question shown with ✅ / ✏️, nothing graded yet",
+          shown and CB_CONFIRM in buttons(shown) and CB_EDIT in buttons(shown) and not GRADED
+          and await st.get_state() == WritingStates.confirming_prompt.state, texts(out))
+    out = await w.press(uid, CB_CONFIRM)
+    check("E6 ...✅: graded at once - the essay against the question, not asked for the answer again",
+          GRADED == [together] and PROMPTS == [PROMPT] and docs(out)
+          and not any("Endi javobingizni" in x for x in texts(out)), (GRADED, PROMPTS))
+
+    # ✏️: the student sends the question themselves; the essay is still kept
+    await task2()
+    await w.send(uid, text=PROMPT + "\n" + essay("edited"))
+    await w.press(uid, CB_EDIT)
+    out = await w.send(uid, text=full_question)
+    check("E6 ...✏️ then the question typed: graded with the kept essay",
+          GRADED == [essay("edited")] and PROMPTS == [full_question] and docs(out), (GRADED, PROMPTS))
+
+    # the essay alone as the question: kept, the question asked for, then graded
+    await task2()
+    alone = essay("alone")
+    out = await w.send(uid, text=alone)
+    data = await st.get_data()
+    check("E6 the essay alone as the question: 'that is your answer - send the question', the essay kept",
+          any("inshoga" in x for x in texts(out)) and data.get("kept_answer") == alone and not GRADED
+          and await st.get_state() == WritingStates.awaiting_prompt.state, texts(out))
+    out = await w.send(uid, text=alone)
+    check("E6 ...the same essay again: asked for the question again, nothing graded",
+          not GRADED and await st.get_state() == WritingStates.awaiting_prompt.state)
+    out = await w.send(uid, text=PROMPT)
+    check("E6 ...the question: graded with the kept essay", GRADED == [alone] and PROMPTS == [PROMPT] and docs(out))
+
+    # a short essay passes as a question; sent again as the answer it is caught before any grading
+    await task2()
+    short = SENTENCE * 5
+    await w.send(uid, text=short)
+    asked = await st.get_state() == WritingStates.awaiting_answer.state
+    out = await w.send(uid, text=short)
+    check("E6 a short essay as question and answer: caught at the answer - the question asked for, nothing graded",
+          asked and not GRADED and any("inshoga" in x for x in texts(out))
+          and await st.get_state() == WritingStates.awaiting_prompt.state, texts(out))
+    out = await w.send(uid, text=PROMPT)
+    data = await st.get_data()
+    check("E6 ...the question: the kept answer goes on (its length asked about, as for any short answer)",
+          (GRADED == [short.strip()] or data.get("answer_text") == short.strip()) and not data.get("kept_answer"),
+          (GRADED, data.get("answer_text")))
+
+    # Task 1 never checked without its chart: an answer that came first waits for it
+    await st.clear()
+    await st.update_data(task_type="task1", prompt_text="The graph below shows the price of bananas.",
+                         prompt_source="text", prompt_image_paths=[], spend_credit=True, payer_id=None,
+                         practice_question_id=1)
+    await st.set_state(WritingStates.awaiting_answer)
+    GRADED.clear()
+    out = await w.send(uid, text=essay("no chart"))
+    data = await st.get_data()
+    check("E6 Task 1 answer with no chart: kept, the chart asked for first, nothing graded",
+          not GRADED and any("grafiksiz tekshirilmaydi" in x for x in texts(out)) and data.get("answer_waiting")
+          and await st.get_state() == WritingStates.awaiting_chart.state, texts(out))
+    await st.clear()
+
+
 async def e5_referral(w: World) -> None:
     from bot.config import settings
     from bot.i18n import t
@@ -804,6 +933,7 @@ async def main() -> int:
     await e3_next_step(w)
     await e4_ready_question(w)
     await e5_referral(w)
+    await e6_essay_as_question(w)
     await w.bot.session.close()
     print(f"\n({time.monotonic() - started:.0f} s)")
     print(f"{len(fails)} failed" if fails else "all passed")

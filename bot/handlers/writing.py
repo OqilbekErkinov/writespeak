@@ -81,7 +81,17 @@ from db.database import get_session
 from db.models import SourceType
 from services.ai import chart_keys, marking_config, usage
 from services.ai.answer_relevance import OffQuestion, off_question
-from services.ai.essay_marking import PASTE_NOTICE, canon, clean_pasted, count_words, starts_mid_word, wrong_section
+from services.ai.essay_marking import (
+    PASTE_NOTICE,
+    canon,
+    clean_pasted,
+    count_words,
+    essay_in_question,
+    looks_like_essay,
+    split_question,
+    starts_mid_word,
+    wrong_section,
+)
 from services.ai.openai_client import is_image_error
 from services.ai.sample_bank import build_model_answer, needs_from_feedback
 from services.ai.schemas import VocabularyItem
@@ -403,12 +413,18 @@ async def _advance(message: Message, state: FSMContext, field: str, lang: str) -
     `processing` then; the caller grades it, outside its lock)."""
     if field == "prompt":
         data = await state.get_data()
+        own_question = data.get("mock_session_id") or data.get("assignment_part_id") or data.get("practice_question_id")
+        if not own_question:
+            # first: a question with the essay after it is split (before the kept-essay comparison below, which
+            # would take the two together for the kept essay sent again)
+            if await _essay_as_question(message, state, data, lang):
+                return False
+            data = await state.get_data()
         if data.get("kept_answer") and await _same_as_kept(data.get("prompt_text", ""), data["kept_answer"]):
             # the kept essay sent again as its question: never graded against itself - the question is asked again
             await state.set_state(WritingStates.awaiting_prompt)
             await message.answer(t("smart.same_as_answer", lang), reply_markup=back_kb(lang, CB_WRITING_MENU))
             return False
-        own_question = data.get("mock_session_id") or data.get("assignment_part_id") or data.get("practice_question_id")
         section = None if own_question else wrong_section(data["task_type"], data.get("prompt_text", ""))
         if section:
             # A Task 2 essay is never marked against Task Achievement: the student decides first.
@@ -427,6 +443,26 @@ async def _advance(message: Message, state: FSMContext, field: str, lang: str) -
         return await _ask_for_answer(message, state, data, lang)
     data = await state.get_data()
     text = data.get("answer_text", "")
+    own_question = data.get("mock_session_id") or data.get("assignment_part_id") or data.get("practice_question_id")
+    if not own_question and essay_in_question(data.get("prompt_text", ""), text):
+        # the essay came as the question too: the question in front of it kept, or the question asked for again
+        parts = split_question(data.get("prompt_text", ""))
+        if parts is None or essay_in_question(parts[0], text):
+            await state.update_data(prompt_text="", kept_answer=text, answer_text=None, _editing="prompt")
+            await state.set_state(WritingStates.awaiting_prompt)
+            await message.answer(t("writing.essay_as_question", lang), reply_markup=back_kb(lang, CB_WRITING_MENU))
+            return False
+        again = split_question(text)  # the same message twice: the answer without the question in front of it
+        same = again is not None and " ".join(again[0].split()).lower() == " ".join(parts[0].split()).lower()
+        text = again[1] if same else text
+        await state.update_data(prompt_text=parts[0], answer_text=text)
+        data = await state.get_data()
+    if data["task_type"] == "task1" and not data.get("prompt_image_paths"):
+        # Task 1 is never checked without its chart (the owner, 2026-11-23): the answer waits for it
+        await state.update_data(answer_waiting=True)
+        await state.set_state(WritingStates.awaiting_chart)
+        await message.answer(t("writing.chart_before_check", lang), reply_markup=chart_kb(lang, _back_target(data, "answer")))
+        return False
     if data.get("answer_source") == SourceType.text.value and starts_mid_word(text) \
             and data.get("_cut_warned") != text[:200]:
         # "e youngest people had..." - the start lost in copying (two teachers' tests, 2026-11-07):
@@ -495,6 +531,38 @@ async def _ask_for_answer(message: Message, state: FSMContext, data: dict, lang:
     return False
 
 
+QUESTION_SHOWN = 300  # characters of a question split from an essay shown back to the student
+
+
+async def _essay_as_question(message: Message, state: FSMContext, data: dict, lang: str) -> bool:
+    """The question step got an essay (2026-11-23: 13 of 42 checks graded the essay against itself - Task 9 in 7
+    of them). A question and the essay after it in one message are split: the question shown to be confirmed (a
+    rhetorical question in an essay's introduction could fool the split - "✏️" lets the student send the question
+    themselves), the essay kept as the answer, never asked for again. An essay alone is kept as the answer and the
+    question asked for. True when the flow stops here for the student."""
+    prompt = data.get("prompt_text", "")
+    if not looks_like_essay(prompt):
+        return False
+    parts = split_question(prompt)
+    if parts:
+        question, essay = parts
+        await state.update_data(prompt_text="", prompt_candidate_text=question, _confirm_field="prompt",
+                                kept_answer=data.get("kept_answer") or essay)
+        await state.set_state(WritingStates.confirming_prompt)
+        shown = question if len(question) <= QUESTION_SHOWN else question[:QUESTION_SHOWN] + "…"
+        await message.answer(t("writing.question_split", lang, question=html.escape(shown, quote=False)),
+                             reply_markup=confirm_edit_kb(lang))
+        return True
+    kept = data.get("kept_answer")
+    # the essay already kept (the smart entry, or a step before) sent again: "that's the answer I kept"
+    again = bool(kept) and await _same_as_kept(prompt, kept)
+    await state.update_data(prompt_text="", kept_answer=kept or prompt, _editing="prompt")
+    await state.set_state(WritingStates.awaiting_prompt)
+    await message.answer(t("smart.same_as_answer" if again else "writing.essay_as_question", lang),
+                         reply_markup=back_kb(lang, CB_WRITING_MENU))
+    return True
+
+
 async def _same_as_kept(prompt: str, kept: str) -> bool:
     """The "question" is the kept essay again (pasted twice): over 90% the same text. A real question is far
     shorter, so most are told apart by length alone; the character comparison runs off the event loop."""
@@ -528,28 +596,25 @@ async def receive_chart(message: Message, state: FSMContext, lang: str) -> None:
         await _run_grading(message, state, lang)
 
 
-@router.callback_query(WritingStates.awaiting_chart, F.data == CB_NO_CHART)
-async def skip_chart(callback: CallbackQuery, state: FSMContext, lang: str) -> None:
-    await callback.answer()
-    async with _user_locks[callback.from_user.id]:
-        if await state.get_state() != WritingStates.awaiting_chart.state:
-            return
-        await strip_buttons(callback.message)
-        data = await state.get_data()
-        if data.get("rechart"):
-            await state.update_data(prompt_image_paths=[])
-        go = await _after_chart(callback.message, state, data, lang)
-    if go:
-        await _run_grading(callback.message, state, lang)
+@router.callback_query(F.data == CB_NO_CHART)
+async def skip_chart(callback: CallbackQuery, lang: str) -> None:
+    """"➡️ Rasmsiz davom etish" under an older message: Task 1 is never checked without its chart any more (the
+    owner, 2026-11-23) - the student is told to send it."""
+    await callback.answer(t("writing.chart_required", lang), show_alert=True)
 
 
 async def _after_chart(message: Message, state: FSMContext, data: dict, lang: str) -> bool:
-    """True when the check goes on now (the chart asked for again after the answer, or the answer kept by the
-    smart entry)."""
+    """True when the check goes on now (the chart asked for again after the answer, an answer that came before
+    its chart, or the answer kept by the smart entry)."""
     if data.get("rechart"):
         await state.update_data(rechart=False)
         await state.set_state(WritingStates.processing)
         return True
+    if (await state.get_data()).get("answer_waiting"):
+        # the answer came first (a Practice / homework question without its picture, an older flow): checked now
+        await state.update_data(answer_waiting=False)
+        await state.set_state(WritingStates.awaiting_answer)
+        return await _advance(message, state, "answer", lang)
     return await _ask_for_answer(message, state, data, lang)
 
 

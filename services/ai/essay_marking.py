@@ -186,6 +186,64 @@ def paragraph_count(text: str) -> int:
     return len(_paragraph_ranges(text))
 
 
+# --- The essay sent as the question (2026-11-23) ------------------------------------------------------------
+# 13 of 42 checks (16-23 Nov) had the essay itself - or the question and the essay in one message - kept as the
+# question: graded against itself it got Task 9 in 7 of them, and its text, "copied from the question", went
+# uncounted (#212: two mistakes found in a Band 5.5 essay, Lexical and Grammar 8).
+
+QUESTION_MAX_WORDS = 130  # an IELTS question with its instructions is 30-90 words
+ESSAY_AFTER_MIN_WORDS = 60  # what follows a question must be this long to be an essay sent with it
+QUESTION_BLOCK_GAP = 25  # "Why...? How...?" / "...? Give reasons... Write at least 250 words.": one question
+ESSAY_SHARE = 0.5  # the essay's 6-word runs inside the question from which it is the essay itself
+_SENTENCES = re.compile(r"(?<=[.!?])[\"'”’)]*\s+|\n+")
+_QUESTION_END = re.compile(
+    r"\?|\b(?:discuss both (?:these )?views and give your(?: own)? opinion|give reasons for your answer[^.?!\n]*|"
+    r"write at least \d+ words|summari[sz]e the information by selecting and reporting the main features"
+    r"(?:,? and make comparisons where relevant)?|make comparisons where relevant)\s*[.!]?",
+    re.IGNORECASE)
+_ANSWER_LABEL = re.compile(r"^\s*(?:(?:my\s+)?(?:answer|essay|response)|javob(?:im)?|insho(?:m)?|ответ)\s*[:\-–—]\s*",
+                           re.IGNORECASE)
+
+
+def looks_like_essay(text: str) -> bool:
+    """Too long, or too many sentences, for an IELTS question: an essay (or a question with an essay after it)."""
+    words = count_words(text or "")
+    sentences = [s for s in _SENTENCES.split(text or "") if len(s.split()) >= 3]
+    return words >= QUESTION_MAX_WORDS or (words >= 90 and len(sentences) >= 6)
+
+
+def split_question(text: str) -> tuple[str, str] | None:
+    """(question, essay) when one message holds both - the question first: it ends at a question mark or an IELTS
+    instruction ("Discuss both views...", "Write at least 250 words.") within its first QUESTION_MAX_WORDS words,
+    taking the next ones that follow closely ("Why...? How...?"); the essay is the rest. None when there's no
+    such start, or what follows is too short for an essay."""
+    text = (text or "").strip()
+    ends = [m.end() for m in _QUESTION_END.finditer(text) if count_words(text[:m.end()]) <= QUESTION_MAX_WORDS]
+    if not ends:
+        return None
+    cut = ends[0]
+    for end in ends[1:]:
+        if count_words(text[cut:end]) > QUESTION_BLOCK_GAP:
+            break
+        cut = end
+    question, essay = text[:cut].strip(), _ANSWER_LABEL.sub("", text[cut:].strip(), count=1).strip()
+    if count_words(question) < 6 or count_words(essay) < ESSAY_AFTER_MIN_WORDS:
+        return None
+    return question, essay
+
+
+def _runs(text: str, n: int = 6) -> set[tuple[str, ...]]:
+    words = [w.lower() for w in WORD_RE.findall(canon(text or ""))]
+    return {tuple(words[i:i + n]) for i in range(len(words) - n + 1)}
+
+
+def essay_in_question(question: str, answer: str) -> bool:
+    """The answer is (mostly) inside the question: the essay was sent as the question too - never graded against
+    itself. A question copied into the essay's introduction is the other way round and doesn't count."""
+    runs = _runs(answer)
+    return bool(runs) and len(runs & _runs(question)) >= ESSAY_SHARE * len(runs)
+
+
 # --- Copied from the question --------------------------------------------------------------
 
 

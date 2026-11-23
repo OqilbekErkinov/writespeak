@@ -83,10 +83,6 @@ def recheck_kb(lang: str) -> InlineKeyboardMarkup:
 
 
 def chart_kb(lang: str, back_callback: str) -> InlineKeyboardMarkup:
-    """Under "send the Task 1 chart": go on without it, or back."""
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text=t("writing.btn_no_chart", lang), callback_data=CB_NO_CHART)],
-            [back_button(lang, back_callback)],
-        ]
-    )
+    """Under "send the Task 1 chart": back only - Task 1 is never checked without its chart (the owner,
+    2026-11-23; "➡️ Rasmsiz davom etish" was taken away)."""
+    return InlineKeyboardMarkup(inline_keyboard=[[back_button(lang, back_callback)]])

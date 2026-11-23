@@ -448,11 +448,14 @@ async def do_part(callback: CallbackQuery, state: FSMContext, lang: str) -> None
             task_type=task_type, prompt_text=part.prompt_text, prompt_source="text",
             prompt_image_paths=[image] if image else [], **common,
         )
-        await state.set_state(WritingStates.awaiting_answer)
-        text = note + header + "\n\n" + t(
+        no_chart = task_type == "task1" and image is None
+        # Task 1 is never checked without its chart (the owner, 2026-11-23): a homework question without its
+        # picture asks for the chart first, then the answer
+        await state.set_state(WritingStates.awaiting_chart if no_chart else WritingStates.awaiting_answer)
+        text = note + header + "\n\n" + (t("writing.chart_first", lang, question=_esc(part.prompt_text)) if no_chart else t(
             "practice.writing_question", lang,
             question=_esc(part.prompt_text), min_words="150" if task_type == "task1" else "250",
-        ) + "\n\n" + t("writing.honest_note", lang)
+        ) + "\n\n" + t("writing.honest_note", lang))
         markup = kb.back_kb(lang, kb.CB_MY_ASSIGNMENTS)
         if image is None:
             await message.answer(text, reply_markup=markup)

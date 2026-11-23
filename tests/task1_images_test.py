@@ -620,7 +620,7 @@ async def part2_bot() -> None:
           len(document_sent(calls)) == 1
           and not any(t("writing.send_answer", L, min_words=150) in x for x in texts(calls)))
 
-    # 6. OpenAI can't open the picture: asked again; going on without it works.
+    # 6. OpenAI can't open the picture: asked again; never checked without it (the owner, 2026-11-23).
     await forget_charts()
     await task1_until_answer("rejected")
     await send(document=doc("chart_png3", chart("PNG"), "chart.png", "image/png"))
@@ -632,12 +632,14 @@ async def part2_bot() -> None:
           t("writing.chart_resend", L) in texts(calls) and "WritingScoring" not in fake.names())
     fake.calls.clear()
     calls = await press(CB_NO_CHART)
-    feedback = [_text_of(m) for n, m in fake.calls if n == "WritingFeedback"]
-    sent = document_sent(calls)
-    check("[rejected] 'continue without the chart' checks it as text only", len(sent) == 1
-          and "VisualExtraction" not in fake.names() and feedback and "NO VISUAL WAS PROVIDED" in feedback[0])
-    check("[rejected] ...and the caption says the figures were not checked",
-          sent and t("writing.chart_not_checked", L) in (sent[0].caption or ""))
+    alerts = [c for c in calls if type(c).__name__ == "AnswerCallbackQuery" and c.show_alert]
+    check("[rejected] an old 'continue without the chart' button: refused with a note, nothing checked",
+          alerts and alerts[0].text == t("writing.chart_required", L) and not document_sent(calls)
+          and "WritingFeedback" not in fake.names() and await state.get_state() == WritingStates.awaiting_chart.state)
+    fake.readings = [reading()] * 2
+    calls = await send(document=doc("chart_png3b", chart("PNG"), "chart.png", "image/png"))
+    check("[rejected] ...a readable chart then: checked against it at once, the answer kept",
+          len(document_sent(calls)) == 1 and "VisualExtraction" in fake.names())
 
     # 7. Partly unclear chart: checked, and the student is told.
     await forget_charts()
@@ -799,7 +801,8 @@ async def cut_start_flow() -> None:
 
     try:
         await state.set_state(WritingStates.awaiting_answer)
-        await state.update_data(task_type="task1", answer_text=cut, answer_source="text")
+        await state.update_data(task_type="task1", answer_text=cut, answer_source="text",
+                                prompt_image_paths=["chart.png"])  # Task 1 never goes on without its chart
         await advance()
         buttons = [b.callback_data for row in said[-1][1].inline_keyboard for b in row] if said else []
         check("a cut answer: the student is asked, nothing marked yet",
