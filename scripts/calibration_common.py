@@ -68,7 +68,7 @@ def reading_version() -> str:
     from services.ai import schemas
 
     parts = [getattr(vr, name, "") for name in ("READ_A", "READ_B", "READ_SYSTEM", "_RULES")]
-    parts += [settings.openai_model_vision, settings.openai_chart_reasoning_effort]
+    parts += [settings.openai_model_chart, settings.openai_chart_reasoning_effort]
     for name in ("VisualExtraction", "VisualReading"):
         if hasattr(schemas, name):
             parts.append(json.dumps(getattr(schemas, name).model_json_schema(), sort_keys=True))

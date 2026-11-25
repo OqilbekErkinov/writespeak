@@ -31,6 +31,11 @@ TOKEN_PRICES = {
     "gpt-5-mini": (0.25, 0.025, 2.00),
     "gpt-5-nano": (0.05, 0.005, 0.40),
     "gpt-5": (1.25, 0.125, 10.00),
+    # the newer models (developers.openai.com/api/docs/pricing, standard tier, short context; 2026-11-26)
+    "gpt-5.5": (5.00, 0.50, 30.00),
+    "gpt-6.1-sol": (2.00, 0.10, 10.00),
+    "gpt-6.2-sol": (2.00, 0.10, 10.00),
+    "gpt-6.2-astra": (8.00, 0.40, 40.00),
     "gpt-audio": (2.50, 2.50, 10.00),
     "text-embedding-3-small": (0.02, 0.02, 0.0),
 }

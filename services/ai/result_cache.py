@@ -27,7 +27,8 @@ _ROOT = Path(__file__).resolve().parents[2]
 # re-sent after the stacked bars were measured, it got the old Task 6 back from here)
 _VERSION_FILES = ("services/ai/writing_grader.py", "services/ai/essay_marking.py", "services/ai/mistake_rules.py",
                   "services/ai/schemas.py", "services/ai/scoring.py", "services/ai/visual_check.py",
-                  "services/ai/visual_reading.py", "services/ai/chart_measure.py", "config/writing_marking.json")
+                  "services/ai/visual_reading.py", "services/ai/chart_measure.py", "services/ai/visual_features.py",
+                  "config/writing_marking.json")
 _version: str | None = None
 _client: redis.Redis | None = None
 
@@ -39,6 +40,8 @@ def marking_version() -> str:
         for name in _VERSION_FILES:
             path = _ROOT / name
             digest.update(path.read_bytes().replace(b"\r\n", b"\n") if path.exists() else b"")
+        # the models too: the chart's reader (2026-11-26, gpt-5 -> gpt-6.2-sol) and the grader decide the marks
+        digest.update(f"{settings.openai_model_chart}|{settings.openai_model_grading}".encode())
         _version = digest.hexdigest()[:16]
     return _version
 

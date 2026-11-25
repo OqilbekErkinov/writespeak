@@ -351,7 +351,13 @@ def _time_features(block: SheetBlock, grid: _Grid, out: dict) -> None:
         trend = "reversed" if g0 * g1 < 0 and min(abs(g0), abs(g1)) > slack / 2 else \
             "widened" if abs(g1) > abs(g0) + slack else \
             "narrowed" if abs(g1) < abs(g0) - slack else "stayed about the same"
-        cmp.append(f"The gap between {a[0]} and {b[0]} {trend}: {_n(abs(g0))} in {p0}, {_n(abs(g1))} in {p1}.")
+        # "stayed about the same" only when it did: not when the order flipped or the gaps clearly differ and
+        # the figures are just too unsure to say how (2026-11-26, Cambridge 18 test 1: "stayed about the same:
+        # 18 in 1970, 7.5 in 2040", the lines crossing in between)
+        unsure = trend == "stayed about the same" and (
+            g0 * g1 < 0 or abs(abs(g1) - abs(g0)) > max(1.0, 0.2 * max(abs(g0), abs(g1))))
+        if not unsure:
+            cmp.append(f"The gap between {a[0]} and {b[0]} {trend}: {_n(abs(g0))} in {p0}, {_n(abs(g1))} in {p1}.")
     shown = [v for (s, p), v in grid.totals.items() if p in (p0, p1) or s in (p0, p1)]
     if len(shown) == 2:
         cmp.append(f"The total: {_n(shown[0][0])} in {p0}, {_n(shown[1][0])} in {p1}.")
@@ -409,11 +415,23 @@ def _static_features(block: SheetBlock, grid: _Grid, out: dict) -> None:
                 more = [p for p, g, e in gaps if g > max(0.5, e)]
                 less = [p for p, g, e in gaps if g < -max(0.5, e)]
                 same = [p for p, g, e in gaps if abs(g) <= max(0.5, e)]
-                lead, trail, rest = (a, b, less) if len(more) >= len(less) else (b, a, more)
-                line = f"{lead} is higher than {trail} in {'every case' if not rest and not same else 'most cases'}"
-                if rest or same:
-                    line += f" (except {_and(rest + same)})"
-                out["overview"].append(line + ".")
+                close = [f"about the same in {_and(same)}"] if same else []
+                if len(more) == len(less):
+                    # neither leads (2026-11-26, Cambridge 19 test 4: "Under 11 is higher in most cases (except
+                    # Modern and Tap)" for one case each way and a close one)
+                    parts = ([f"{a} is higher in {_and(more)}"] if more else []) + \
+                            ([f"{b} is higher in {_and(less)}"] if less else []) + close
+                    line = "; ".join(parts)
+                else:
+                    lead, trail, mine, rest = (a, b, more, less) if len(more) > len(less) else (b, a, less, more)
+                    where = "every case" if len(mine) == len(gaps) else \
+                        "most cases" if len(mine) * 2 > len(gaps) else "more cases than not"
+                    line = f"{lead} is higher than {trail} in {where}"
+                    extras = ([f"except {_and(rest)}"] if rest else []) + close
+                    if extras:
+                        line += f" ({'; '.join(extras)})"
+                if line:
+                    out["overview"].append(line[0].upper() + line[1:] + ".")
                 big = max(gaps, key=lambda x: abs(x[1]))
                 out["comparisons"].append(f"The widest gap: {big[0]} ({_n(abs(big[1]))}).")
         for s in grid.series:
@@ -517,8 +535,12 @@ def _process_features(block: SheetBlock, out: dict) -> None:
         + f", from {proc.steps[0].rstrip('.')} to {proc.steps[-1].rstrip('.')}.")
     for s in proc.stages:
         if s.steps:
-            first, last = min(s.steps), max(s.steps)
-            span = f"step {first}" if first == last else f"steps {first}-{last}"
+            steps = sorted(set(s.steps))
+            first, last = steps[0], steps[-1]
+            # a run "1-4"; steps that are not one run are each named (2026-11-26, Cambridge 14 test 3: a stage of
+            # steps 1, 2 and 7 was given as "steps 1-7")
+            span = f"step {first}" if first == last else f"steps {first}-{last}" \
+                if steps == list(range(first, last + 1)) else f"steps {_and(str(k) for k in steps)}"
             out["comparisons"].append(f"{s.name}: {span}.")
     out["grouping"].append("by stage (the first stages in one paragraph, the rest in the next)")
 

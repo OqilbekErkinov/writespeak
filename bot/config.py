@@ -43,7 +43,12 @@ class Settings(BaseSettings):
     # classification: a cheaper model is enough there (the grade itself stays
     # on openai_model_grading).
     openai_model_sample: str = "gpt-5-mini"
-    openai_model_vision: str = "gpt-5"
+    openai_model_vision: str = "gpt-5"  # photos of essays and questions (OCR)
+    # A Task 1 chart read into its data sheet (services/ai/visual_reading.py) - the owner, 2026-11-26: 24 Cambridge
+    # 13-19 charts set against two expert readings, gpt-5 had 51 major misreadings (series mixed up on black
+    # lines, maps' repeated features), gpt-6.2-sol with the fixed code 10, then 0 on the figures. About $0.065
+    # per chart (no Flex tier) against gpt-5's $0.04.
+    openai_model_chart: str = "gpt-6.2-sol"
     # Reasoning effort for OCR: transcribing a photo needs little reasoning, and
     # reasoning tokens are billed as output.
     openai_ocr_reasoning_effort: str = "low"

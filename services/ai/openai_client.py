@@ -66,7 +66,8 @@ async def parse_flex(flex_timeout: float | None = None, **kwargs):
     settings.openai_service_tier is "flex", on the default tier otherwise or
     when Flex is unavailable or slower than `flex_timeout` seconds
     (settings.openai_flex_timeout by default)."""
-    if settings.openai_service_tier == "flex" and time.monotonic() >= _flex_off_until:
+    if settings.openai_service_tier == "flex" and time.monotonic() >= _flex_off_until \
+            and kwargs.get("model") not in _no_flex:
         timeout = flex_timeout or settings.openai_flex_timeout
         flex_kwargs = dict(kwargs)
         flex_kwargs["extra_body"] = {**(kwargs.get("extra_body") or {}), "service_tier": "flex"}
@@ -83,7 +84,17 @@ async def parse_flex(flex_timeout: float | None = None, **kwargs):
             # a dropped connection or OpenAI's 5xx on Flex (2026-11-15: these failed the whole check - Flex
             # runs with no retries of its own); the default tier, with its retries, takes the call
             logger.warning("Flex call failed (%s) - using the default tier", type(e).__name__)
+        except openai.BadRequestError as e:
+            # a model with no Flex tier (2026-11-26: gpt-6.2-sol - "This model does not support
+            # service_tier=flex"): the default tier, and Flex no more for that model
+            if "service_tier" not in str(e):
+                raise
+            _no_flex.add(kwargs.get("model", ""))
+            logger.info("%s has no Flex tier - using the default tier", kwargs.get("model"))
     return await client.beta.chat.completions.parse(**kwargs)
+
+
+_no_flex: set[str] = set()  # models OpenAI offers no Flex tier for (found on the first call)
 
 
 # Flex keeps timing out (OpenAI's queue is long): skip it for a while instead of making every call of every

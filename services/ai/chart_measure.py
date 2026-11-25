@@ -104,6 +104,17 @@ class Token:
         return self.y1 - self.y0
 
 
+def split_token(t: Token) -> list[Token]:
+    """A line of several printed numbers the OCR read as one ("1970 1980 1990 ... 2040" under a line graph, 2026-11-26
+    Cambridge 18 test 1 - no year was found, so nothing was measured) as one token per number, each placed by
+    its characters. Anything else as it is."""
+    parts = [(m.start(), m.end(), m.group()) for m in re.finditer(r"\S+", t.text)]
+    if len(parts) < 2 or any(number(p) is None for _, _, p in parts):
+        return [t]
+    n, w = len(t.text), t.x1 - t.x0
+    return [Token(p, t.x0 + w * s / n, t.y0, t.x0 + w * e / n, t.y1, number(p)) for s, e, p in parts]
+
+
 def read_tokens(img: np.ndarray) -> list[Token]:
     with _ocr_lock:
         result = _get_ocr()(np.ascontiguousarray(img[..., ::-1]))  # RapidOCR takes OpenCV's BGR order
@@ -112,8 +123,8 @@ def read_tokens(img: np.ndarray) -> list[Token]:
         if float(score) < 0.5 or not text.strip():
             continue
         box = np.asarray(box, dtype=float)
-        tokens.append(Token(text.strip(), box[:, 0].min(), box[:, 1].min(), box[:, 0].max(), box[:, 1].max(),
-                            number(text)))
+        tokens += split_token(Token(text.strip(), box[:, 0].min(), box[:, 1].min(), box[:, 0].max(), box[:, 1].max(),
+                                    number(text)))
     return tokens
 
 
@@ -519,11 +530,60 @@ def _find_label(label: str, tokens: list[Token]) -> float | None:
     return None
 
 
+def _by_initials(points: list[str], tokens: list[Token]) -> dict[str, float] | None:
+    """Points printed by their initials only (months as J F M A M J J A S O N D - 2026-11-26, Cambridge 18 test 4):
+    a left-to-right row of one-letter labels spelling the points' initials, one label per point, in order."""
+    want = "".join(_norm(p)[:1] for p in points)
+    if len(want) != len(points) or len(points) < 3:
+        return None
+    letters = [t for t in tokens if len(_norm(t.text)) == 1 and _norm(t.text).isalpha()]
+    # one printed row at a time: a marker the OCR reads as "X" or "o" inside the plot is no label
+    for t in letters:
+        row = sorted((u for u in letters if abs(u.cy - t.cy) < 0.6 * max(t.h, u.h)), key=lambda u: u.cx)
+        for i in range(len(row) - len(points) + 1):
+            run = row[i:i + len(points)]
+            if "".join(_norm(u.text) for u in run) == want:
+                return {p: u.cx for p, u in zip(points, run)}
+        placed = _evenly_placed(row, want)
+        if placed is not None:
+            return dict(zip(points, placed))
+    return None
+
+
+def _evenly_placed(row: list[Token], want: str, missing: int = 2) -> list[float] | None:
+    """The labels' places when the OCR missed up to `missing` of an evenly spaced row (2026-11-26: July's "J" not
+    read): each letter read is put in its slot by the spacing, every letter must be its slot's, and the slots
+    with none are placed by the spacing."""
+    if len(row) < len(want) - missing or len(row) < 3:
+        return None
+    for i, j in combinations(range(len(row)), 2):
+        a, b = row[i], row[j]
+        for si in range(len(want)):
+            for sj in range(si + 1, len(want)):
+                if want[si] != _norm(a.text) or want[sj] != _norm(b.text):
+                    continue
+                step = (b.cx - a.cx) / (sj - si)
+                if step <= 0:
+                    continue
+                slots = {}
+                for u in row:
+                    k = round(si + (u.cx - a.cx) / step)
+                    if 0 <= k < len(want) and abs(a.cx + (k - si) * step - u.cx) < 0.25 * step \
+                            and want[k] == _norm(u.text) and k not in slots:
+                        slots[k] = u.cx
+                if len(slots) >= len(want) - missing:
+                    return [slots.get(k, a.cx + (k - si) * step) for k in range(len(want))]
+    return None
+
+
 def point_positions(points: list[str], tokens: list[Token], ordered: bool) -> dict[str, float] | None:
     """Each point's x from the labels below the plot; points without a label
     of their own are placed between labelled ones (by year, or by place when
     the points are evenly spaced categories). None when fewer than two are
-    found, or (`ordered`: time points) they run out of order."""
+    found, or (`ordered`: time points) they run out of order. Points printed
+    by their initials are found in order (_by_initials)."""
+    if ordered and (initials := _by_initials(points, tokens)) is not None:
+        return initials
     found = {p: x for p in points if (x := _find_label(p, tokens)) is not None}
     if len(found) < 2:
         return None
@@ -953,9 +1013,11 @@ def _below(tokens: list[Token], plot: Plot) -> list[Token]:
     """The labels under a plot's base, within its width - by their edge nearest
     the base: on a picture turned for horizontal bars a long category name
     ("Czech Republic", #105) reaches far below it."""
-    base = plot.axis.pos(_base_value(plot.axis))
     height = float(np.median([t.h for t in plot.axis.labels]))
-    return [t for t in tokens if base - 0.3 * plot.axis.step_px < t.y0 < base + 4 * height
+    # under the base - or, on an axis running below 0, under its lowest label, where the categories are printed
+    # (2026-11-26, Cambridge 18 test 4: a -4 to 7 axis with the months under -4, none found under 0)
+    bases = {plot.axis.pos(_base_value(plot.axis)), plot.axis.pos(plot.axis.low)}
+    return [t for t in tokens if any(base - 0.3 * plot.axis.step_px < t.y0 < base + 4 * height for base in bases)
             and plot.x0 - height < t.cx < plot.x1 + height]
 
 
@@ -991,10 +1053,36 @@ def measure_line(img: np.ndarray, tokens: list[Token], plot: Plot, block: dict,
                         join=min(0.35 * plot.axis.step_px, 24.0 * img.shape[1] / OCR_SIDE) if by_colour and not area
                         else 0.0, rivals=rivals)
         for p, y in zip(points, heights):
-            if y is not None and p in mine and not mine[p].get("printed"):
-                out[(s, p)] = Measured(plot.axis.value(y), "line, by colour" if by_colour else "line, traced",
-                                       xs[p], y)
+            if y is None or p not in mine or mine[p].get("printed"):
+                continue
+            if not by_colour and _both_drawn(plot, xs[p], y, mine[p].get("note") or "", thick):
+                continue  # the line can't be told by colour, and a line runs where either read put it
+            out[(s, p)] = Measured(plot.axis.value(y), "line, by colour" if by_colour else "line, traced", xs[p], y)
     return _no_shared_runs(out, data, plot)
+
+
+_READS_APART = re.compile(r"the reads disagree: (-?[\d.]+) vs (-?[\d.]+)")
+
+
+def _both_drawn(plot: Plot, x: float, y: float, note: str, thick: float) -> bool:
+    """A figure the two reads disagree on, traced without its own colour: True when a line is drawn at the other
+    read's height too - the trace followed the reads' guess, and which line is this series' can't be told from
+    the picture (2026-11-26, Cambridge 18 test 4: three black lines; copper in July-September put on nickel's line
+    at -1, its own dashed line at +1). The third read decides it instead."""
+    m = _READS_APART.match(note)
+    if not m:
+        return False
+    a, b = (float(g) for g in m.groups())
+    other = a if abs(plot.axis.pos(a) - y) > abs(plot.axis.pos(b) - y) else b
+    oy = plot.axis.pos(other)
+    if abs(oy - y) < 0.4 * plot.axis.step_px:
+        return False  # the reads are close: the measurement settles which
+    reach = max(3.0, 0.15 * plot.axis.step_px, thick)
+    c0, c1 = int(x - plot.x0 - 2), int(x - plot.x0 + 3)
+    r0, r1 = int(oy - reach - plot.y0), int(oy + reach - plot.y0) + 1
+    if c1 <= 0 or c0 >= plot.ink.shape[1] or r1 <= 0 or r0 >= plot.ink.shape[0]:
+        return False
+    return bool(plot.ink[max(0, r0):r1, max(0, c0):c1].any())
 
 
 def _no_shared_runs(out: dict[tuple[str, str], Measured], data: list[dict],
@@ -1311,8 +1399,13 @@ def _plots(pic: Picture, axes: list[Axis], blocks: list[dict]) -> list[Plot | No
         right_end = min((b.x0 for b in same_band if b.x0 > axis.x1), default=w) - 4
         left_end = max((b.x1 for b in same_band if b.x1 < axis.x0), default=0) + 4
         height = float(np.median([t.h for t in axis.labels]))
+        labels = _point_labels(block)
+        initials = {_norm(lab)[:1] for lab in labels} \
+            if labels and all(len(_norm(lab)) >= 3 and _norm(lab)[0].isalpha() for lab in labels) else set()
+        # a point's own label - or its initial, when the points are printed so (J F M ... for the months)
         under = [t for t in pic.tokens if bottom - 0.3 * axis.step_px < t.cy < bottom + 6 * height
-                 and any(_norm(t.text) == _norm(lab) for lab in _point_labels(block))]
+                 and (any(_norm(t.text) == _norm(lab) for lab in labels)
+                      or (len(_norm(t.text)) == 1 and _norm(t.text) in initials))]
         right = sum(axis.x1 < t.cx < right_end for t in under)
         left = sum(left_end < t.cx < axis.x0 for t in under)
         if right == left:

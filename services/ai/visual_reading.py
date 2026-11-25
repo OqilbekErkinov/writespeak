@@ -252,7 +252,7 @@ async def _read(system: str, question: str, images: list[tuple[bytes, str]], lab
     ]
     try:
         response = await parse_flex(  # the Flex tier, the default as a fallback (openai_client)
-            model=settings.openai_model_vision,
+            model=settings.openai_model_chart,
             messages=messages,
             response_format=VisualExtraction,
             max_completion_tokens=limit,
@@ -320,6 +320,7 @@ async def read_visual(question: str, images: list[tuple[bytes, str]],
         if len(rejected) == 2:
             raise rejected[0]
         return None
+    replaced = None
     if a is not None and a.readability != "unreadable" and len(images) == 1 and (
             a.rotation in (90, 180, 270) or _box_area(a.chart_box) < SMALL_VISUAL):
         # A sideways picture, or a small visual in a big photo: read the visual alone.
@@ -329,10 +330,16 @@ async def read_visual(question: str, images: list[tuple[bytes, str]],
         except ChartImageRejected:
             c = None
         if c is not None:
-            b = c
+            b, replaced = c, b
     sheet = combine(a, b)
+    if replaced is not None and sheet.readability != "unreadable":
+        # read 2 is kept as the third opinion on what reads 1 and 3 disagree on (no call)
+        sheet = third_opinion(sheet, replaced, "read 2")
     if picture is not None and sheet.readability != "unreadable":
-        sheet = await measured(sheet, picture, images[0][0], (a or b).rotation)
+        # the reads of the whole picture only: the cropped read 3's box is in the crop's own frame
+        whole_reads = (a, replaced) if replaced is not None else (a, b)
+        box = union_box([r.chart_box for r in whole_reads if r is not None and r.rotation == (a or b).rotation])
+        sheet = await measured(sheet, picture, images[0][0], (a or b).rotation, box)
     sheet = await settle(question, images, sheet)
     counts = Counter(v.status for blk in sheet.blocks for v in blk.values)
     logger.info("Chart read: %s, %d reads, %s, %s%s; checks: %s", ", ".join(blk.visual_type for blk in sheet.blocks),
@@ -354,20 +361,58 @@ def _ocr_picture(data: bytes) -> chart_measure.Picture | None:
         return None
 
 
-async def measured(sheet: VisualSheet, picture, data: bytes, rotation: int = 0) -> VisualSheet:
+CROP_MEASURE_AREA = 0.85  # a visual filling less of the picture is measured on its crop too
+
+
+def union_box(boxes: list[list[float] | None]) -> list[float] | None:
+    """The box around every read's box of the visual: one read's alone may cut its labels off (2026-11-26,
+    Cambridge 18 test 4: read 1 put the chart at 36-76% of the page's height, its month labels at 80%)."""
+    good = [b for b in boxes if b and len(b) == 4 and 0 <= b[0] < b[2] <= 1 and 0 <= b[1] < b[3] <= 1]
+    if not good:
+        return None
+    return [min(b[0] for b in good), min(b[1] for b in good), max(b[2] for b in good), max(b[3] for b in good)]
+
+
+def _crop_measure(data: bytes, box: list[float] | None, rotation: int, blocks: list[dict]) -> dict:
+    """The figures measured on the visual cropped out of the picture and enlarged ({} when there is no box or
+    nothing was measured): a page photographed whole has small labels the OCR misreads or runs together
+    (2026-11-26, Cambridge 18 test 4: the axis read as one "76543210", -1 to -4 not at all)."""
+    if not box or _box_area(box) >= CROP_MEASURE_AREA:
+        return {}
+    crop, _ = prepare_for_reading(data, box=box, rotation=rotation)
+    pic = chart_measure.prepare(crop)
+    return chart_measure.measure(pic, blocks) if pic is not None else {}
+
+
+async def measured(sheet: VisualSheet, picture, data: bytes, rotation: int = 0,
+                   box: list[float] | None = None) -> VisualSheet:
     """The sheet with its line and bar figures measured from the picture
     (apply_measured); the sheet as it was when nothing could be measured.
-    `picture`: the task preparing the upright picture's OCR."""
+    `picture`: the task preparing the upright picture's OCR. With the read's
+    `box` the visual is measured on its crop too, and the measurement with more
+    figures stands (the crop's when as many: its labels are larger) -
+    2026-11-26, Cambridge 16 test 1: the whole page put a vacuum cleaner at 40
+    for 50, the crop read every figure right."""
+    blocks = [b.model_dump() for b in sheet.blocks]
     try:
         pic = await picture
         if rotation in (90, 180, 270):  # a sideways photo: its labels read again, upright
             pic = await asyncio.to_thread(chart_measure.prepare, data, rotation)
-        if pic is None:
-            return sheet
-        results = await asyncio.to_thread(chart_measure.measure, pic, [b.model_dump() for b in sheet.blocks])
+        whole = await asyncio.to_thread(chart_measure.measure, pic, blocks) if pic is not None else {}
     except Exception:
         logger.exception("Measuring the chart failed - the reads stand")
-        return sheet
+        whole = {}
+    try:
+        cropped = await asyncio.to_thread(_crop_measure, data, box, rotation, blocks)
+    except Exception:
+        logger.exception("Measuring the chart's crop failed")
+        cropped = {}
+    count = lambda r: sum(len(x.figures) for x in r.values())  # noqa: E731
+    results = cropped if count(cropped) >= count(whole) and cropped else whole
+    if cropped or whole:
+        logger.info("Chart measured on the %s (%d figures; the %s: %d)", "crop" if results is cropped else "picture",
+                    count(results), "picture" if results is cropped else "crop",
+                    count(whole) if results is cropped else count(cropped))
     return apply_measured(sheet, results) if results else sheet
 
 
@@ -431,7 +476,7 @@ def apply_measured(sheet: VisualSheet, results: dict) -> VisualSheet:
                 continue  # a code check's doubt, which a measurement doesn't answer
             value = round(round(m.value / grain) * grain, 6)
             read = f"{reads.group(1)} / {reads.group(2)}" if reads else f"{v.value:g}"
-            readings = [float(reads.group(1)), float(reads.group(2))] if reads else [v.value]
+            readings = [r for r in _readings(v.note) if r is not None] if reads else [v.value]
             if not wrong_scale and all(abs(m.value - r) > FAR_STEPS * res.step for r in readings):
                 # every read far from the measurement - more likely a failed measurement (#107: a
                 # striped bar measured 18 for 90) than reads that both missed: the third read decides
@@ -473,7 +518,80 @@ and how far between them the point sits;
 against the printed labels around it;
 - a pie slice: match it by its pattern or colour AND the percentage printed by it.
 value = null when you can't read a figure. Never guess."""
-_DISAGREE = re.compile(r"the reads disagree: (-?[\d.]+) vs (-?[\d.]+)$")
+_DISAGREE = re.compile(r"the reads disagree: (-?[\d.]+|none) vs (-?[\d.]+|none)$")
+
+
+def _readings(note: str | None) -> list[float | None]:
+    """The two reads' figures a disagreement note gives ("none" for a read that gave no figure); [] for no note."""
+    m = _DISAGREE.match(note or "")
+    return [None if g == "none" else float(g) for g in m.groups()] if m else []
+
+
+def _vote(a: float | None, b: float | None, c: float, close: float) -> tuple[float, bool] | None:
+    """The academic lead's rule (2026-10-29) for a third reading `c` of a figure the first two (`a`, `b` - one may
+    be None) disagree on: two readings within `close` of each other settle it at their mean, all three's when
+    every pair is close (or the third sits right between). (value, whether all three agreed); None when no two
+    agree."""
+    values = [x for x in (a, b) if x is not None]
+    pairs = sorted((abs(x - y), x, y) for x, y in [(v, c) for v in values] + ([(a, b)] if len(values) == 2 else [])
+                   if abs(x - y) <= close)
+    if not pairs:
+        return None
+    _, x, y = pairs[0]
+    both = len(pairs) == 3 or (len(pairs) == 2 and abs(pairs[0][0] - pairs[1][0]) < 1e-9)
+    return (round((a + b + c) / 3 if both else (x + y) / 2, 2), both)
+
+
+def _closeness(cell: SheetValue, block: SheetBlock, a: float | None, b: float | None) -> tuple[float, float]:
+    """(how close two readings must be to agree, the settled figure's precision): half a gridline - a printed
+    figure (both reads called it printed) only to its last digit."""
+    if cell.printed:
+        size = max(abs(x) for x in (a, b) if x is not None)
+        return 0.05 + 0.001 * size, 0.0
+    spread = abs(a - b) / 2 if a is not None and b is not None else 0.0
+    base = max(cell.precision - spread, 0.5)  # the scale's own precision, before the reads' spread
+    step = _scale_step(block.axis_labels)
+    return (step / 2 if step else base), base  # half a gridline (a bar's own precision is a quarter)
+
+
+def third_opinion(sheet: VisualSheet, read: VisualExtraction | None, label: str) -> VisualSheet:
+    """The figures two reads disagree on, settled by another read already made (2026-11-26, Cambridge 17 test 4:
+    the cropped read 3 replaced read 2, swapped two series at 2011, and read 2 - which agreed with read 1 - was
+    thrown away). Same rule as the third read (_vote); no call."""
+    if read is None:
+        return sheet
+    out = sheet.model_copy(deep=True)
+    settled = []
+    # blocks counted differently: every block is compared with all the read's figures pooled (_pair_blocks)
+    pool = read.visuals[0].model_copy(update={"data": [v for y in read.visuals for v in _capped(y).data]}) \
+        if read.visuals and len(read.visuals) != len(out.blocks) else None
+    for bi, block in enumerate(out.blocks):
+        other = pool if pool is not None else _capped(read.visuals[bi]) if bi < len(read.visuals) else None
+        if other is None:
+            continue
+        series = _match_labels([v.series for v in block.values], [v.series for v in other.data])
+        points = _match_labels([v.point for v in block.values], [v.point for v in other.data])
+        theirs = {(v.series, v.point): v.value for v in other.data if v.value is not None}
+        for cell in block.values:
+            got = _readings(cell.note)
+            if cell.status != "uncertain" or not got:
+                continue
+            c = theirs.get((series.get(cell.series), points.get(cell.point)))
+            if c is None:
+                continue
+            a, b = got
+            close, base = _closeness(cell, block, a, b)
+            voted = _vote(a, b, c, close)
+            if voted is None:
+                continue
+            cell.value, cell.precision, cell.status = voted[0], base, "verified"
+            cell.note = f"settled by {label} ({'none' if a is None else f'{a:g}'} / {'none' if b is None else f'{b:g}'}" \
+                        f" / {c:g})"
+            settled.append(f"{cell.series} {cell.point}".strip())
+    if settled:
+        out.features = key_features(out)
+        logger.info("%s settled %d figures: %s", label.capitalize(), len(settled), ", ".join(settled))
+    return out
 
 
 async def settle(question: str, images: list[tuple[bytes, str]], sheet: VisualSheet) -> VisualSheet:
@@ -486,7 +604,7 @@ async def settle(question: str, images: list[tuple[bytes, str]], sheet: VisualSh
     three when every pair does); otherwise it stays uncertain. One call per chart, only when the reads disagree - a measured
     figure (apply_measured) never comes here."""
     cells = [(bi, vi, v) for bi, b in enumerate(sheet.blocks) for vi, v in enumerate(b.values)
-             if v.status == "uncertain" and v.value is not None and _DISAGREE.match(v.note or "")][:SETTLE_MAX]
+             if v.status == "uncertain" and v.value is not None and _readings(v.note)][:SETTLE_MAX]
     if not cells or not images:
         return sheet
     listing = "\n".join(f"- {v.series} | {v.point or '(one point)'}" for _, _, v in cells)
@@ -499,7 +617,7 @@ async def settle(question: str, images: list[tuple[bytes, str]], sheet: VisualSh
         ]},
     ]
     try:
-        response = await parse_flex(model=settings.openai_model_vision, messages=messages, response_format=SettleReads,
+        response = await parse_flex(model=settings.openai_model_chart, messages=messages, response_format=SettleReads,
                                     max_completion_tokens=READ_MAX_TOKENS,
                                     extra_body={"reasoning_effort": settings.openai_chart_reasoning_effort})
     except Exception as e:  # the sheet as it was: its uncertain figures stay unchecked
@@ -516,20 +634,15 @@ async def settle(question: str, images: list[tuple[bytes, str]], sheet: VisualSh
         c = third.get((_norm(v.series), _norm(v.point)))
         if c is None:
             continue
-        a, b = (float(x) for x in _DISAGREE.match(v.note).groups())
-        base = max(v.precision - abs(a - b) / 2, 0.5)  # the scale's own precision, before the reads' spread
-        step = _scale_step(out.blocks[bi].axis_labels)
-        half = step / 2 if step else base  # half a gridline (a bar's own precision is a quarter)
-        pairs = sorted((abs(x - y), x, y) for x, y in ((a, c), (b, c), (a, b)) if abs(x - y) <= half)
-        if not pairs:
-            continue
-        _, x, y = pairs[0]
+        a, b = _readings(v.note)
         cell = out.blocks[bi].values[vi]
-        # the closest two's mean - all three's when every pair is close, or the third read sits right between
-        both = len(pairs) == 3 or (len(pairs) == 2 and abs(pairs[0][0] - pairs[1][0]) < 1e-9)
-        cell.value = round((a + b + c) / 3 if both else (x + y) / 2, 2)
-        cell.precision, cell.status = base, "verified"
-        cell.note = f"settled by a third read ({a:g} / {b:g} / {c:g})"
+        close, base = _closeness(cell, out.blocks[bi], a, b)
+        voted = _vote(a, b, c, close)
+        if voted is None:
+            continue
+        cell.value, cell.precision, cell.status = voted[0], base, "verified"
+        cell.note = f"settled by a third read ({'none' if a is None else f'{a:g}'} / " \
+                    f"{'none' if b is None else f'{b:g}'} / {c:g})"
         settled.append(f"{v.series} {v.point}".strip())
     if settled:
         out.features = key_features(out)
@@ -570,7 +683,7 @@ async def read_one(question: str, images: list[tuple[bytes, str]], sentence: str
         ]},
     ]
     try:
-        response = await parse_flex(model=settings.openai_model_vision, messages=messages,
+        response = await parse_flex(model=settings.openai_model_chart, messages=messages,
                                     response_format=FocusedRead, max_completion_tokens=8000,
                                     extra_body={"reasoning_effort": settings.openai_chart_reasoning_effort})
     except Exception as e:  # the figure then stays unconfirmed: never a mistake
@@ -761,12 +874,70 @@ def _axis_gap(block: VisualBlock) -> float | None:
     return steps[0] if steps else None
 
 
+MONTH_INITIALS = "JFMAMJJASOND"
+MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+
+_MONTH_NAMES = {m.lower(): m for m in MONTHS} | {
+    full: m for full, m in zip(("january", "february", "march", "april", "may", "june", "july", "august", "september",
+                                "october", "november", "december"), MONTHS)} | {"sept": "Sep"}
+
+
+def _month_names(block: VisualBlock) -> VisualBlock:
+    """Months written one way: "January", "jan", "Jan." -> "Jan" (2026-11-26: one read wrote the months in full,
+    the other abbreviated them, and no month of one read was paired with the other's)."""
+    def month(p: str) -> str:
+        key = p.strip().rstrip(".").lower()
+        return _MONTH_NAMES.get(key, p)
+
+    points = [month(p) for p in block.time_points]
+    if points == list(block.time_points) and all(month(v.point) == v.point for v in block.data):
+        return block
+    return block.model_copy(update={"time_points": points,
+                                    "data": [v.model_copy(update={"point": month(v.point)}) for v in block.data]})
+
+
+def _unique_points(block: VisualBlock) -> VisualBlock:
+    """Time points printed alike made distinct, so no figure stands in for another (2026-11-26, Cambridge 18 test
+    4: the months printed J F M A M J J A S O N D - June and July both "J" - and the figures were keyed by the
+    letter, so 12 months became 8 and the reads were compared month against the wrong month). The twelve month
+    initials become Jan ... Dec; other repeats get their order: "M", "M (2)". The k-th figure a series gives for
+    a repeated label is that label's k-th place."""
+    points = [p.strip() for p in block.time_points]
+    if len(set(points)) == len(points):
+        return block
+    if "".join(p.upper() for p in points) == MONTH_INITIALS:
+        new = list(MONTHS)
+    else:
+        seen: Counter = Counter()
+        new = []
+        for p in points:
+            seen[p] += 1
+            new.append(p if seen[p] == 1 else f"{p} ({seen[p]})")
+    places: dict[str, list[int]] = {}
+    for i, p in enumerate(points):
+        places.setdefault(p, []).append(i)
+    used: Counter = Counter()
+    data = []
+    for v in block.data:
+        at = places.get(v.point.strip())
+        if at is None:
+            data.append(v)
+            continue
+        k = used[(v.series, v.point.strip())]
+        used[(v.series, v.point.strip())] += 1
+        data.append(v.model_copy(update={"point": new[at[k]]}) if k < len(at) else v)
+    return block.model_copy(update={"time_points": new, "data": data})
+
+
 def _capped(block: VisualBlock) -> VisualBlock:
     """Scale readings no less precise than a quarter of the gridline step for
     bars - #48's bars on a 0-20-40 axis came back ±10, so 20 and 30
     "agreed". A point on a line is half a step (the academic lead,
     2026-10-27: #53's lines on a 50-unit grid were read 20 low by both reads,
-    and "240" for a point at 230 is a fair reading)."""
+    and "240" for a point at 230 is a fair reading). Repeated time labels are
+    made distinct first (_unique_points)."""
+    block = _unique_points(_month_names(block))
     gap = _axis_gap(block)
     if not gap:
         return block
@@ -817,11 +988,20 @@ def _merge_values(x: VisualBlock, y: VisualBlock, pooled: bool = False) -> list[
                 # used to mark the student, only to rank what clearly differs.
                 spread = abs(v.value - w.value) / 2 + max(prec, 0.0 if w.printed else w.precision)
                 out.append(SheetValue(series=v.series, point=v.point, value=(v.value + w.value) / 2, text="",
-                                      printed=False, precision=spread, status="uncertain",
+                                      printed=v.printed and w.printed, precision=spread, status="uncertain",
                                       note=f"the reads disagree: {v.value:g} vs {w.value:g}"))
         elif v.value is None and w.value is None and v.text and _norm(v.text) == _norm(w.text):
             out.append(SheetValue(series=v.series, point=v.point, value=None, text=v.text, printed=True,
                                   precision=0.0, status="verified"))
+        elif (v.value is None) != (w.value is None):
+            # one read gave a figure, the other none (2026-11-26, Cambridge 13 test 3: France's printed "462.9" -
+            # read 1 called it blurred, reads 2 and 3 gave it - and the cell was left empty): the figure is kept,
+            # uncertain until a third read gives it too (settle)
+            seen = v if v.value is not None else w
+            out.append(SheetValue(series=v.series, point=v.point, value=seen.value, text="", printed=seen.printed,
+                                  precision=0.0 if seen.printed else max(seen.precision, 0.0), status="uncertain",
+                                  note=f"the reads disagree: {'none' if v.value is None else f'{v.value:g}'} vs "
+                                       f"{'none' if w.value is None else f'{w.value:g}'}"))
         else:
             out.append(SheetValue(series=v.series, point=v.point, value=v.value, text=v.text, printed=v.printed,
                                   precision=prec, status="uncertain",
@@ -843,8 +1023,29 @@ _SIDES = {"north": "north", "northern": "north", "top": "north", "upper": "north
 _OPPOSITE = (("north", "south"), ("east", "west"))
 
 
+_COMPOUND_SIDE = re.compile(r"^(north|south)(east|west)(ern)?$")
+
+
 def _sides(text: str) -> set[str]:
-    return {_SIDES[w] for w in re.findall(r"[a-z]+", text.lower()) if w in _SIDES}
+    out = set()
+    for w in re.findall(r"[a-z]+", text.lower()):
+        if w in _SIDES:
+            out.add(_SIDES[w])
+        elif m := _COMPOUND_SIDE.match(w):  # "northwestern", "southeast"
+            out |= {m.group(1), m.group(2)}
+    return out
+
+
+_PLACE_WORDS = {"central", "centre", "center", "middle", "new", "old", "original", "former", "existing", "main",
+                "corner", "side", "the", "a", "an", "of", "from", "at", "on", "in", "to", "and"}
+
+
+def _base_words(name: str) -> set[str]:
+    """A map feature's name without where it is ("Northwestern rose garden", "Rose garden (NW)" -> rose, garden)."""
+    name = re.sub(r"\([^)]*\)", " ", name.lower())
+    return {w for w in re.findall(r"[a-z]+", name)
+            if w not in _SIDES and not _COMPOUND_SIDE.match(w) and w not in _PLACE_WORDS
+            and w not in {"nw", "ne", "sw", "se", "n", "s", "e", "w"}}
 
 
 def place_conflict(a: str, b: str) -> str:
@@ -862,18 +1063,58 @@ def place_conflict(a: str, b: str) -> str:
     return ""
 
 
+def _pair_features(xs: list, ys: list) -> list[tuple]:
+    """Each of the first read's map features with the second read's same feature (None when it has none).
+    Features printed under one name - two "Outdoor courts", three "Changing room", three "Rose garden" - are
+    each paired with the one in the same place and the same story (2026-11-26, Cambridge 13 test 4 and 14 test
+    4: they were paired by the name alone, so one stood for all and the rest were lost)."""
+    def similar(a: str, b: str) -> float:
+        if _norm(a) == _norm(b):
+            return 1.0
+        ratio = difflib.SequenceMatcher(None, _norm(a), _norm(b)).ratio()
+        # the same thing named with or without where it is: "Northwestern rose garden" / "Rose garden",
+        # "Entrance from Arnold Avenue" / "Entrance" (2026-11-26, Cambridge 14 test 4: every rose garden and
+        # entrance "seen by one read only")
+        wa, wb = _base_words(a), _base_words(b)
+        if wa and wb and wa == wb:
+            ratio = max(ratio, 0.95)
+        elif wa and wb and (wa <= wb or wb <= wa):
+            ratio = max(ratio, 0.8)
+        return ratio
+
+    def score(f, g) -> float:
+        same_story = [s.status == "absent" for s in f.states] == [s.status == "absent" for s in g.states]
+        sides_f, sides_g = _sides(f.location), _sides(g.location)
+        return 3.0 * similar(f.name, g.name) + 2.0 * same_story \
+            + (0.0 if place_conflict(f.location, g.location) else 1.0) \
+            + len(sides_f & sides_g) - 0.5 * len(sides_f ^ sides_g)
+
+    # names alike (the same words, or 0.75+ similar - "Outdoor courts (west)" / "Outdoor courts"), each of the
+    # second read's features paired once, the best-fitting pairs first
+    candidates = sorted(((score(f, g), i, j) for i, f in enumerate(xs) for j, g in enumerate(ys)
+                         if similar(f.name, g.name) >= 0.75), key=lambda c: -c[0])
+    paired: dict[int, int] = {}
+    taken: set[int] = set()
+    for _, i, j in candidates:
+        if i not in paired and j not in taken:
+            paired[i] = j
+            taken.add(j)
+    return [(f, ys[paired[i]] if i in paired else None) for i, f in enumerate(xs)]
+
+
 def _merge_map(x: VisualBlock, y: VisualBlock, unreadable: list[str]):
     """The features both reads see. A feature both reads see at every date, one calling it changed and
     the other not, is kept as there, its change uncertain (#137's gym was dropped for that, so "opposite
     the gym" could not be checked); one they place differently keeps its place as UNCERTAIN, never a
     reason to mark the student wrong."""
-    names = _match_labels([f.name for f in x.map_features], [f.name for f in y.map_features])
-    other = {f.name: f for f in y.map_features}
     kept = []
-    for f in x.map_features:
-        g = other.get(names.get(f.name, ""))
+    for f, g in _pair_features(x.map_features, y.map_features):
         if g is None:
+            # kept, as uncertain (2026-11-26: Cambridge 13 test 4's two new changing rooms were dropped, so the
+            # report's list of changes and their count left them out) - never a reason to mark the student wrong
             unreadable.append(f"Map: {f.name} - seen by one read only")
+            kept.append(f.model_copy(update={
+                "location": f"UNCERTAIN - seen by one read only: {f.location} - never mark the student wrong on it"}))
             continue
         sa, sb = [s.status for s in f.states], [s.status for s in g.states]
         if sa != sb:
@@ -956,10 +1197,29 @@ def _alike(a: str, b: str) -> bool:
     """Two legend patterns a reader can mix up: the same colour, both
     textured ("chequered grey" / "dotted grey"). Shades of a plain colour
     ("dark grey" / "light grey") are told apart by the reads and by order."""
-    wa, wb = set(re.findall(r"[a-z]+", a.lower())), set(re.findall(r"[a-z]+", b.lower()))
+    def words(text: str) -> set[str]:
+        text = re.sub(r"[×✕✖]", " x ", text.lower())  # "× markers": the cross is no letter
+        return set(re.findall(r"[a-z]+", text))
+
+    wa, wb = words(a), words(b)
     if _norm(a) == _norm(b) or not (wa & wb & _COLOURS):
         return False
+    # lines with different markers are told apart by them (2026-11-26, Cambridge 18 test 1: "dotted, hollow
+    # diamonds" and "dashed, x markers" were called look-alike, and 16 right figures were never used)
+    ma, mb = _markers(wa), _markers(wb)
+    if ma and mb and not ma & mb:
+        return False
     return bool(wa & _TEXTURES) and bool(wb & _TEXTURES)
+
+
+_MARKER_WORDS = {"diamond": "diamond", "diamonds": "diamond", "square": "square", "squares": "square",
+                 "circle": "circle", "circles": "circle", "dot": "circle", "triangle": "triangle",
+                 "triangles": "triangle", "x": "cross", "cross": "cross", "crosses": "cross", "star": "star",
+                 "stars": "star", "asterisk": "star", "plus": "plus"}
+
+
+def _markers(words: set[str]) -> set[str]:
+    return {_MARKER_WORDS[w] for w in words if w in _MARKER_WORDS}
 
 
 def _uncertain(values: list[SheetValue], note: str) -> None:
