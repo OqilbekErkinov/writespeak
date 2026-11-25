@@ -1293,6 +1293,9 @@ class Scores:
         return overall_band(list(self.bands.values()))
 
 
+COHERENCE_SHORT_MAX = 6.0  # Coherence under the task's word minimum (the owner, 2026-11-25)
+
+
 def cap_bands(task_type: str, answer_text: str, bands: dict[str, float], notes: dict[str, str],
               figures_visual: bool = True, overview: str = "clear", question: str = ""):
     """The length and paragraphing policy (marking guide B2, chosen to match
@@ -1322,10 +1325,10 @@ def cap_bands(task_type: str, answer_text: str, bands: dict[str, float], notes: 
     elif task_type == "task1" and overview == "generic":
         cap("TR_or_TA", 6, "A general overview naming no main feature keeps Task Achievement at 6 at most.")
     # "Any copied rubric must be discounted" (the official descriptors): words copied from the question
-    # are not the writer's own. Under the word minimum the report says so, but no band is lowered for the
-    # word count itself (the user's ruling, 2026-11-09: "kam so'z yozgani uchun ball ayirish kerak emas,
-    # shunchaki eslatma bersa bo'ladi" - the Task 1 <140 / <100 and Task 2 <240 / <200 caps are gone);
-    # only the descriptors' own limit stays, 20 words or fewer -> Band 1
+    # are not the writer's own. Under the word minimum (Task 1: 150, Task 2: 250) Coherence is 6 at most (the
+    # owner, 2026-11-25: #225, a 139-word report, had Coherence 8) - the other criteria keep their bands (the
+    # owner's 2026-11-09 ruling, "kam so'z yozgani uchun ball ayirish kerak emas", now stands for them only);
+    # the descriptors' own limit stays too, 20 words or fewer -> Band 1
     own = f"{words} words of your own" if copied_words else f"{words} words"
     minimum = TASK_MIN_WORDS.get(task_type, 0)
     if words <= 20:
@@ -1333,7 +1336,10 @@ def cap_bands(task_type: str, answer_text: str, bands: dict[str, float], notes: 
             cap(key, 1, f"Only {own}: 20 words or fewer are rated at Band 1.")
     elif words < minimum:
         piece = "report" if task_type == "task1" else "essay"
-        notices.append(f"Your {piece} has {own} - no band was lowered for it, but aim for at least {minimum}.")
+        cap("CC", COHERENCE_SHORT_MAX, f"Only {own}, under the {minimum}-word minimum: too short to organise and "
+                                       f"link the ideas fully, so Coherence stays at {COHERENCE_SHORT_MAX:g} at most.")
+        notices.append(f"Your {piece} has {own} - under the minimum of {minimum}, so Coherence was kept at "
+                       f"{COHERENCE_SHORT_MAX:g} at most. Aim for at least {minimum}.")
     if task_type == "task1":
         if figures_visual and count_comparisons(answer_text) == 0:
             cap("TR_or_TA", 5, "Figures are listed with no comparisons, so Task Achievement is 5 at most.")
@@ -1502,13 +1508,7 @@ async def _score_once(task_type, prompt_text, answer_text, prompt_images, sheet:
             return language_reason(k, weaknesses, answer_text, acceptable, checked, wide_of[k])
         return evidenced(weaknesses, answer_text, acceptable)
 
-    # Task 9 "fully satisfies all the requirements" (the descriptors): an 8 is lifted only with the word
-    # minimum, no Task mistake on the checked list and (Task 1) a clear overview - #137, a Band 6.5 map report
-    # with neither layout located, went 8 -> 9 for want of a quoted weakness
-    task_full = count_words(answer_text) >= TASK_MIN_WORDS.get(task_type, 0) \
-        and not any(m.criterion == "TR" for m in (checked or [])) \
-        and (task_type != "task1" or scores.overview == "clear")
-    # what each run gave and why, before the lifts - the one place a band's reasons can be read afterwards
+    # what each run gave and why, before the changes - the one place a band's reasons can be read afterwards
     # (2026-11-12: #164, a real Band 9 report, kept Lexical 8 and nothing showed why)
     logger.info("Writing scoring run (wide range: %s; shown by this run: %s): %s", wide,
                 [k for k in ("LR", "GRA") if wide_of[k]], "; ".join(
@@ -1527,27 +1527,10 @@ async def _score_once(task_type, prompt_text, answer_text, prompt_images, sheet:
         if out[k] == 9 and found(k) and reason(k, found(k)):
             logger.info("Score %s 9 -> 8: its checklist found %s", k, found(k))
             out[k] = 8.0
-        elif out[k] == 8 and k != "CC" and looked(k) and not reason(k, judged.weaknesses + found(k)) \
-                and ((task_full and not any(w.strip() for w in judged.weaknesses)) if k == "TR_or_TA"
-                     else wide_of[k] or checked is None):
-            # Task: only when the run named no weakness at all (2026-11-11, #153: "depth could be further
-            # expanded" and "some points could be probed further" were lifted to Task 9 in all three runs - the
-            # teachers' 7.0-7.5 essay came out 8.0; Task 9 is "explored in depth")
-            # only an 8 is lifted: a 6 or 7 whose reason came back unquoted stays (2026-10-29: #60's and
-            # #62's Coherence 6-7 -> 9 with "linking is basic and repetitive" as their reason). Never
-            # Coherence, and Lexical/Grammar only with a wide range shown (the teachers, 2026-11-09: a
-            # 128-word report of simple sentences came out Coherence 9 and Grammar 9)
-            logger.info("Score %s %g -> 9: no quoted weakness or named omission, checklist clear (%s)", k, out[k],
-                        judged.weaknesses)
-            out[k] = 9.0
-    if checked is not None:
-        # three 9s and one lower: Lexical or Grammar must show the errors behind it, or it is a 9 too
-        for k in ("LR", "GRA"):
-            if out[k] < 9 and wide_of[k] and looked(k) and all(out[o] == 9 for o in SCORE_KEYS if o != k) \
-                    and not reason(k, getattr(scores, k).weaknesses + found(k)):
-                logger.info("Score %s %g -> 9: the other three are 9 and no error justifies it", k, out[k])
-                out[k] = 9.0
-    out["_notes"] = {k: getattr(scores, k).note.strip() for k in SCORE_KEYS}
+        # No band is lifted to 9 any more (the owner, 2026-11-25: Lexical Resource "really is put that high" -
+        # #220 and #217 had Lexical 9): an 8 with no quoted weakness stays 8, on Task, Lexical and Grammar alike,
+        # and so does a Lexical or Grammar beside three 9s. A 9 is the scoring run's own.
+    out["_notes"] ={k: getattr(scores, k).note.strip() for k in SCORE_KEYS}
     # a Coherence 8 with its checklist run and no quoted weakness: coherence_nine() may make it a 9
     out["_cc_clear"] = out["CC"] == 8 and looked("CC") and not evidenced(
         scores.CC.weaknesses + found("CC"), answer_text, acceptable)
@@ -1635,11 +1618,12 @@ def mistake_evidence(answer_text: str, mistakes: list, strong: list[str], altern
     return "\n".join(lines)
 
 
-def grammar_count_band(checked: list | None) -> float | None:
+def grammar_count_band(checked: list | None, task_type: str = "task2") -> float | None:
     """Grammar by how many grammar mistakes the checked list has (the owner, 2026-11-24; config/writing_marking.json
     "grammar_count"). Every mistake counts, a slip too, and so does every time one is made again: the same slip two
     or three times is not knowing the rule, not a slip of the pen - so are many simple ones. One simple slip costs
-    nothing (9), one real error is 8; 2 -> 8; 3-6 -> 7; 7-10 -> 6; 11-14 -> 5; more -> 4. None without a list."""
+    nothing (9), one real error is 8; 2 -> 8; Task 2: 3-6 -> 7, 7-10 -> 6, 11-14 -> 5, more -> 4; Task 1, a shorter
+    text (2026-11-25): 3-4 -> 7, 5-6 -> 6, 7-9 -> 5, more -> 4. None without a list."""
     if checked is None:
         return None
     mine = [m for m in checked if m.criterion == "GRA"]
@@ -1647,18 +1631,20 @@ def grammar_count_band(checked: list | None) -> float | None:
     if len(mine) == 1:
         simple = getattr(mine[0], "severity", "error") == "slip" and not getattr(mine[0], "unclear", False)
         return float(c["one_simple"] if simple else c["one_serious"])
-    for most, band in c["bands"]:
+    table = c.get(task_type, c) if task_type == "task1" else c
+    for most, band in table["bands"]:
         if len(mine) <= most:
             return float(band)
-    return float(c["beyond"])
+    return float(table["beyond"])
 
 
-def grammar_by_count(bands: dict[str, float], checked: list | None) -> tuple[dict[str, float], list[str]]:
+def grammar_by_count(bands: dict[str, float], checked: list | None,
+                     task_type: str = "task2") -> tuple[dict[str, float], list[str]]:
     """Grammar no higher than its mistakes allow (grammar_count_band) - replacing the lifts to 8 ("only slips",
     "within the Band 8 density") and the density/sentence ceilings (the owner, 2026-11-24: Writing bands too high,
     e.g. #208: 8 grammar mistakes, 8 of 16 sentences clean, Grammar 7; the teachers' 6.0 overall). It never raises
     a band: the scoring runs judge the range ("simple sentences predominate"), the count the accuracy."""
-    band = grammar_count_band(checked)
+    band = grammar_count_band(checked, task_type)
     if band is None or bands["GRA"] <= band:
         return bands, []
     n = sum(1 for m in checked if m.criterion == "GRA")
@@ -1761,7 +1747,7 @@ async def decide_scores(
     votes = Counter(r.get("_overview", "clear") for r in runs)
     overview = "none" if votes["none"] * 2 > len(runs) else \
         "generic" if (votes["none"] + votes["generic"]) * 2 > len(runs) else "clear"
-    medians, lowered = grammar_by_count(medians, checked)
+    medians, lowered = grammar_by_count(medians, checked, task_type)
     if lowered:
         logger.info("Grammar by count (writing %s): %s", task_type, "; ".join(lowered))
     notes = {}

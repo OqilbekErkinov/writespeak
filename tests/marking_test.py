@@ -53,6 +53,9 @@ def writing() -> None:
           and band([NS(**{**vars(gra(1, "slip")[0]), "unclear": True})]) == 8)
     check("...2 -> 8, 3-6 -> 7, 7-10 -> 6, 11-14 -> 5, more -> 4",
           [band(gra(n)) for n in (2, 3, 6, 7, 10, 11, 14, 15)] == [8, 7, 7, 6, 6, 5, 5, 4])
+    check("...Task 1, a shorter text (2026-11-25): 2 -> 8, 3-4 -> 7, 5-6 -> 6, 7-9 -> 5, more -> 4; one as in Task 2",
+          [band(gra(n), "task1") for n in (0, 2, 3, 4, 5, 6, 7, 9, 10)] == [9, 8, 7, 7, 6, 6, 5, 5, 4]
+          and band(gra(1, "slip"), "task1") == 9 and band(gra(1), "task1") == 8)
     check("...slips count like errors: the same slip three times is not knowing the rule (-> 7)",
           band(gra(3, "slip")) == 7 and band(gra(2, "slip")) == 8)
     check("...only Grammar mistakes count", band(gra(1) + [error] * 5) == 8 and band(None) is None)
@@ -506,12 +509,20 @@ def round2() -> None:
         "task2", " ".join(["word"] * 190) + "\n\nend", {"TR_or_TA": 7.0, "CC": 6.0, "LR": 5.0, "GRA": 5.0},
         {"TR_or_TA": "Fine."})
     check("...and a 191-word one gets the count once", notes4["TR_or_TA"].count("191 words") == 1, notes4)
-    check("the word count lowers no band, it only gets a reminder (the user's ruling, 2026-11-09)",
-          bands4["TR_or_TA"] == 7 and not capped4 and any("aim for at least 250" in n for n in notices4),
+    check("under the word minimum only Coherence is held, at 6 (the owner, 2026-11-25; #225: 139 words, Coherence 8) "
+          "- Task, Lexical and Grammar keep theirs, and the report says why",
+          bands4 == {"TR_or_TA": 7.0, "CC": 6.0, "LR": 5.0, "GRA": 5.0} and not capped4
+          and any("Coherence was kept at 6" in n and "Aim for at least 250" in n for n in notices4),
           (bands4, capped4, notices4))
-    bands1, _, capped1, _ = writing_grader.cap_bands("task1", " ".join(["word"] * 60) + " 40%",
-                                                     {"TR_or_TA": 8.0, "CC": 7.0, "LR": 7.0, "GRA": 7.0}, {}, False)
-    check("...a 61-word Task 1 report too (was: Task 5 at most)", bands1["TR_or_TA"] == 8 and not capped1, capped1)
+    bands1, notes1b, capped1, _ = writing_grader.cap_bands("task1", " ".join(["word"] * 60) + " 40%",
+                                                           {"TR_or_TA": 8.0, "CC": 7.0, "LR": 7.0, "GRA": 7.0}, {},
+                                                           False)
+    check("...a 61-word Task 1 report: Coherence 7 -> 6 with its note, Task 8 kept (was: Task 5 at most)",
+          bands1["TR_or_TA"] == 8 and bands1["CC"] == 6 and "150-word minimum" in notes1b["CC"] and len(capped1) == 1,
+          capped1)
+    enough, _, capped150, _ = writing_grader.cap_bands("task1", " ".join(["word"] * 150) + "\n\n40%",
+                                                       {"TR_or_TA": 8.0, "CC": 8.0, "LR": 7.0, "GRA": 7.0}, {}, False)
+    check("...at the minimum (150 words): Coherence 8 kept", enough["CC"] == 8 and not capped150, capped150)
 
 
 def fair_marking() -> None:
@@ -917,8 +928,9 @@ def official_descriptors() -> None:
     essay = question + "\n\n" + own + "\n\n" + own[:60]
     capped, _, why, said = g.cap_bands("task2", essay, bands, {}, question=question)
     check("words copied from the question are not counted ('any copied rubric must be discounted'): about 263 "
-          "words, under 250 of the writer's own - a reminder, no band lowered",
-          capped == bands and any("words of your own" in n and "aim for at least 250" in n for n in said), (why, said))
+          "words, under 250 of the writer's own - Coherence held at 6, nothing else lowered",
+          capped == {**bands, "CC": min(bands["CC"], 6.0)}
+          and any("words of your own" in n and "Aim for at least 250" in n for n in said), (why, said))
     report = ("The graph shows how sales changed. Sales rose and then fell, while profits stayed higher than costs "
               "throughout the period. ") * 12
     capped, _, why, _ = g.cap_bands("task1", report, bands, {}, True)
@@ -953,7 +965,8 @@ def official_descriptors() -> None:
         finally:
             g._parse = real
 
-    check("Task 8 with nothing wrong, a clear overview and enough words: lifted to 9", task_run(checked=[])["TR_or_TA"] == 9)
+    check("Task 8 with nothing wrong, a clear overview and enough words: stays 8 - no lift to 9 (the owner, 2026-11-25)",
+          task_run(checked=[])["TR_or_TA"] == 8)
     check("...not with a generic overview", task_run("generic", [])["TR_or_TA"] == 8)
     check("...not with a Task mistake on the checked list",
           task_run(checked=[NS(criterion="TR", wrong="sales rose to 40%", correct="x", severity="error",
@@ -1484,11 +1497,12 @@ def writing_label_repetition() -> None:
             g._parse = real
 
     labels = run("task1", 'Frequent reuse of high-frequency items: "system(s)", "route", "passengers"')
-    check("Task 1: Lexical 8 held only by repeating the table's own terms is a 9", labels["LR"] == 9, labels)
+    check("Task 1: Lexical 8 held only by repeating the table's own terms stays 8 - no lift to 9 (2026-11-25)",
+          labels["LR"] == 8, labels)
     words = run("task1", '"compares", "serves", "carries"')
     check("...repetition of the writer's own words still holds it at 8", words["LR"] == 8, words)
     weak = run("task1", "", ['Some reliance on common nouns like "system" and "route" - repetition'])
-    check("...a weakness about the labels' repetition is no reason either", weak["LR"] == 9, weak)
+    check("...a weakness about the labels' repetition: 8 too", weak["LR"] == 8, weak)
     task2 = run("task2", '"system", "route", "passengers"')
     check("...never in Task 2 (the question's words copied instead of paraphrased is a real limitation)",
           task2["LR"] == 8, task2)
@@ -1587,8 +1601,8 @@ def per_criterion_range() -> None:
             g._parse, g.PER_CRITERION_WIDE = real, real_flag
 
     clean = run()
-    check("Lexical and Grammar 8 with no reason and no range item found: 9, though 2 strong phrases (not wide)",
-          clean["LR"] == 9 and clean["GRA"] == 9 and clean["CC"] == 8, clean)
+    check("Lexical and Grammar 8 with no reason and no range item found: stay 8 - no lift to 9 (the owner, 2026-11-25)",
+          clean["LR"] == 8 and clean["GRA"] == 8 and clean["CC"] == 8, clean)
     narrow = run(found_items=(g.RANGE_ITEMS["GRA"], g.RANGE_ITEMS["LR"]))
     check("...a run that finds a narrow range of structures / everyday words keeps them at 8",
           narrow["LR"] == 8 and narrow["GRA"] == 8, narrow)
