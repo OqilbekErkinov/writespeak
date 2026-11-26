@@ -137,6 +137,7 @@ def pure() -> None:
 async def middleware() -> None:
     from aiogram import Bot
     from aiogram.client.default import DefaultBotProperties
+    from aiogram.enums import ParseMode
     from aiogram.exceptions import TelegramBadRequest
     from aiogram.types import (InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, MessageEntity,
                                ReplyKeyboardMarkup)
@@ -150,7 +151,9 @@ async def middleware() -> None:
 
     def build(refuse=None, strip=False):
         s = fake_session(refuse, strip)
-        bot = Bot("123456:TEST", session=s, default=DefaultBotProperties(parse_mode="HTML"))
+        # the enum, as bot/main.py sets it: a plain "HTML" string hid the bug of 2026-11-26 (texts sent with the
+        # default mode got no premium emoji, only the buttons did)
+        bot = Bot("123456:TEST", session=s, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
         bot.session.middleware(mw.PremiumEmoji())
         return bot, s
 

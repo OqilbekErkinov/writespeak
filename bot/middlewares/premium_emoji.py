@@ -34,7 +34,9 @@ def _parse_mode(bot: Any, method: Any) -> str | None:
     mode = getattr(method, "parse_mode", None)
     if isinstance(mode, Default):
         mode = getattr(bot.default, mode.name, None) if getattr(bot, "default", None) else None
-    return mode
+    # the bot's default is the enum ParseMode.HTML: str() of it is "ParseMode.HTML", its value is "HTML" (2026-11-26:
+    # every message sent with the default mode went with no premium emoji in its text)
+    return getattr(mode, "value", mode)
 
 
 def _buttons(markup: Any, emoji_map: dict[str, str]) -> tuple[Any, int]:
