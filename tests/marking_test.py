@@ -66,6 +66,28 @@ def writing() -> None:
     kept, why = writing_grader.grammar_by_count({**votes, "GRA": 6.0}, gra(2))
     check("...never raised: the runs' lower Grammar (a narrow range) stays", kept["GRA"] == 6 and not why)
     check("...nothing changes without a checked list", writing_grader.grammar_by_count(votes, None) == (votes, []))
+    # Coherence by its counted lapses (the owner, 2026-11-27, #241): 1-2 -> 8, 3-4 -> 7, 5 or more -> 6
+    def cc(n, severity="error"):
+        return [NS(criterion="CC", severity=severity, unclear=False, wrong=f"w{i}", correct=f"c{i}") for i in range(n)]
+    cband = writing_grader.coherence_count_band
+    check("Coherence by count: none -> 9 (no ceiling); 1-2 -> 8; 3-4 -> 7; 5 or more -> 6",
+          [cband(cc(n)) for n in (0, 1, 2, 3, 4, 5, 6, 12)] == [9, 8, 8, 7, 7, 6, 6, 6]
+          and cband(None) is None)
+    check("...a slip counts like an error; only Coherence lapses count",
+          cband(cc(3, "slip")) == 7 and cband(gra(5) + cc(1)) == 8)
+    cvotes = {"TR_or_TA": 6.0, "CC": 8.0, "LR": 7.0, "GRA": 8.0}
+    cnotes = {"CC": "", "GRA": ""}
+    low, low_notes, why = writing_grader.coherence_by_count(cvotes, cnotes, cc(5))
+    check("#241: 5 lapses - Coherence 8 -> 6 with its note, the rest unchanged",
+          low == {**cvotes, "CC": 6.0} and why == ["CC 8 -> 6 (5 coherence lapses)"]
+          and "faulty" in low_notes["CC"], (low, why))
+    kept, _, why = writing_grader.coherence_by_count({**cvotes, "CC": 6.0}, cnotes, cc(1))
+    check("...never raised: the runs' lower Coherence stays", kept["CC"] == 6 and not why)
+    check("...nothing changes without a checked list",
+          writing_grader.coherence_by_count(cvotes, cnotes, None) == (cvotes, cnotes, []))
+    check("the Coherence examiner's prompt builds for both tasks (no f-string slip), each with its own checks",
+          "overview" in writing_grader._cc_prompt("task1") and "introduction" in writing_grader._cc_prompt("task2")
+          and "REFERENCE" in writing_grader._cc_prompt("task2") and "{" not in writing_grader._cc_prompt("task1"))
     check("no lifts left: the floors are gone from Writing",
           not hasattr(writing_grader, "floors") and not hasattr(writing_grader, "grammar_ceiling"))
     check("slip weight 0.25 (config)", marking_config.density()["slip_weight"] == 0.25)

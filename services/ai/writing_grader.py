@@ -121,6 +121,7 @@ logger = logging.getLogger(__name__)
 # essay needs at low effort, so only a runaway answer is cut off.
 FEEDBACK_MAX_TOKENS = 20000
 MISSED_MAX_TOKENS = 8000
+CC_EXAMINER = True  # the Coherence examiner call (_cc_examiner_call): off = the two mistake finders alone
 # 8000 ran out on a 306-word script (2026-11-01): the whole check was then scored on the unfiltered marks, too strictly
 VERIFY_MAX_TOKENS = 14000
 SCORE_MAX_TOKENS = 8000
@@ -950,6 +951,15 @@ THE STUDENT MEANT, or does NOT FIT BACK into the sentence (put it in place of th
 the sentence: no doubled or missing words); or you are not sure it is wrong - the student gets the \
 benefit of the doubt.
 
+A [CC] item is judged by a different question (the owner, 2026-11-27: the grammar test threw out real \
+Coherence lapses as "acceptable"): not "is this grammatical?" but "does a reader lose the thread here?" - an it / \
+they / this / such with no single clear antecedent (or one that points to something different in number or kind), a \
+linker that does not fit the logic of what it joins or two linkers doing one job, a paragraph that holds two central \
+ideas, a later sentence that contradicts an earlier one, an overview or introduction that disagrees with the body. A [CC] item \
+is an error when the reader has to stop and work out what is meant; a slip when it is a single small lapse in a text \
+that links well elsewhere; never an alternative (another linker being more common is no reason); not_a_mistake only \
+when the reference or the link is in fact clear, or the correction does not fit.
+
 Before calling anything an error or a slip, read the whole sentence: a verb may correctly continue an \
 earlier verb phrase ("people start using it and spend hours" is right), a negative or future form may \
 be correct as it stands. Correct, so never an error or a slip: a plural for several items of a kind \
@@ -1008,6 +1018,76 @@ never a steady decline) or carries a CHECK (it disagrees with the DATA SHEET - r
 sheet's verified figures and true comparisons), else null.
 
 Judge each item on its own; give a short reason. Return a verdict for every id."""
+
+
+def _cc_prompt(task_type: str) -> str:
+    """The Coherence examiner (the owner, 2026-11-27, #241: the teachers' Coherence 6, the bot's 8 - in 40 days the
+    two mistake finders listed 14 Coherence mistakes against 409 Grammar and 255 Lexical ones in Task 1, so the
+    scorer saw nothing and gave 8-9 by impression). A call that reads for organisation only."""
+    piece = _piece(task_type)
+    task1 = task_type == "task1"
+    opening = "overview" if task1 else "introduction"
+    progression = (
+        "The overview and the body must agree with each other and use the same grouping: an overview that leaves "
+        "out a category or group the body then describes, counts the categories wrongly, or names a trend the "
+        "body shows differently is a lapse (the figures themselves are another examiner's job: only the writer's "
+        "own contradiction between its parts is yours)." if task1 else
+        "Does the position stay the same from the introduction to the conclusion?")
+    grouping = (
+        'Is the information grouped by a clear principle, the same one throughout? Two categories written as one '
+        '("Food /drink") and then treated as two is a lapse.' if task1 else
+        "Are the paragraphs built round clear topics, each with its own point?")
+    return f"""You are a strict IELTS Writing examiner who judges ONLY Coherence & Cohesion. Read the student's \
+{piece} slowly, paragraph by paragraph, and list every real LAPSE in organisation and linking. Other examiners \
+already list grammar, vocabulary and data mistakes - do not list those.
+
+Go through these checks in order, one by one, and list each lapse you find:
+1. PARAGRAPHS. State each paragraph's one central idea to yourself. A paragraph that holds two central ideas, \
+or an idea that sits in the wrong paragraph, is a lapse.
+2. REFERENCE. For EVERY it / they / this / these / that / which / such / the former / the latter / each / \
+both: what exactly does it point to? A pronoun with no clear antecedent, one that points to something \
+different in number or kind ("Cars and buses led the list. It made up 20%" - two things, "it"), or "the former / \
+the latter" that could be either, is a lapse.
+3. LINKERS. For every linking word or phrase ask: does it fit the logic of what it joins? A contrast word between \
+two things that are not in contrast ("despite its lower share" when the share is not lower), a cause word where there is no cause, two linkers doing one job ("By contrast, while ...", "However ... \
+but ..."), "respectively" that does not match its two items, is a lapse. The same linker again and again, or a \
+linker opening almost every sentence, is one lapse for the pattern.
+4. PROGRESSION. Do the ideas follow in a logical order? Does a later sentence contradict an earlier one, or \
+does the conclusion or {opening} say something the body does not? {progression}
+5. GROUPING AND SUBSTITUTION. {grouping} The same noun repeated where a reference or \
+a synonym was needed, in a way that makes the text repetitive, is a lapse.
+
+Rules:
+- Only real lapses an examiner would write in a comment. A formal or common linker used correctly \
+("Moreover", "Furthermore", "In contrast") is NOT a lapse; a short paragraph is not a lapse; a free, logical \
+structure is not a lapse. When in doubt, leave it out - but a pronoun with a wrong antecedent, a contradiction \
+and a linker that breaks the logic are lapses, never "style".
+- Do not repeat or overlap a mistake already listed below, and ignore text copied from the question.
+- wrong: copied exactly from the {piece}, a few words up to one clause, long enough to occur only once (for a \
+lapse that lies in a whole sentence, the sentence's key words). correct: that part rewritten so the lapse is gone, \
+keeping the student's meaning; put in place of `wrong`, the sentence must read correctly.
+- why: one plain-English line, 25 words or fewer, saying what is unclear or illogical.
+- criterion is always CC (a mistake that is a pure grammar or word error belongs to others, so leave it out). \
+unclear=true with if_you_meant only when the meaning can't be determined.
+- An answer with good organisation may have no lapses: an empty list is a normal result. Never invent one.
+- {NOT_ERRORS}
+Plain text; you may put a key word in **double asterisks**."""
+
+
+async def _cc_examiner_call(task_type, prompt_text, answer_text, prompt_images, found: list[Mistake],
+                            sheet: str = "") -> list[MissedMistake]:
+    listed = "\n".join(f"{m.id}. {m.wrong} -> {m.correct}" for m in found) or "(none)"
+    text = (
+        f"QUESTION PROMPT:\n{prompt_text}\n\nSTUDENT'S ANSWER:\n{answer_text}\n\n"
+        f"MISTAKES ALREADY LISTED (do not repeat):\n{listed}"
+    )
+    messages = [
+        {"role": "system", "content": _cc_prompt(task_type)},
+        {"role": "user", "content": _with_images(text, prompt_images, task_type == "task1", _judged(sheet))},
+    ]
+    response = await _parse("cc_examiner", MISSED_MAX_TOKENS, messages, MissedMistakes)
+    parsed = response.choices[0].message.parsed
+    return [m for m in parsed.mistakes if m.criterion == "CC"] if parsed is not None else []
 
 
 async def _verify_call(source_text: str, items: list[tuple],
@@ -1651,6 +1731,38 @@ def grammar_by_count(bands: dict[str, float], checked: list | None,
     return {**bands, "GRA": band}, [f"GRA {bands['GRA']:g} -> {band:g} ({n} grammar mistake{'s' if n != 1 else ''})"]
 
 
+COHERENCE_NOTES = {8.0: "Ideas are logically sequenced; a lapse or two in linking or reference.",
+                   7.0: "A clear progression, but a few lapses in linking or reference.",
+                   6.0: "Generally coherent, but cohesion is faulty or unclear in places."}
+
+
+def coherence_count_band(checked: list | None) -> float | None:
+    """Coherence by how many Coherence lapses the checked list has (the owner, 2026-11-27; config/writing_marking.json
+    "coherence_count"): none -> 9 (no ceiling), 1-2 -> 8, 3-4 -> 7, 5 or more -> 6. A slip counts like an error.
+    None without a list."""
+    if checked is None:
+        return None
+    n = sum(1 for m in checked if m.criterion == "CC")
+    c = marking_config.coherence_count()
+    for most, band in c["bands"]:
+        if n <= most:
+            return float(band)
+    return float(c["beyond"])
+
+
+def coherence_by_count(bands: dict[str, float], notes: dict[str, str], checked: list | None
+                       ) -> tuple[dict[str, float], dict[str, str], list[str]]:
+    """Coherence no higher than its lapses allow (coherence_count_band). It never raises a band: the scoring runs
+    judge the organisation as a whole, the count keeps their impression honest (#241: Coherence 8 in all three
+    runs with no weakness named, the teachers' 6)."""
+    band = coherence_count_band(checked)
+    if band is None or bands["CC"] <= band:
+        return bands, notes, []
+    n = sum(1 for m in checked if m.criterion == "CC")
+    return ({**bands, "CC": band}, {**notes, "CC": COHERENCE_NOTES.get(band, notes.get("CC", ""))},
+            [f"CC {bands['CC']:g} -> {band:g} ({n} coherence lapse{'s' if n != 1 else ''})"])
+
+
 _SENTENCE_END = re.compile(r"(?<=[.!?])[\"'”’)]*\s+|\n+")
 
 
@@ -1757,6 +1869,9 @@ async def decide_scores(
                         (GRAMMAR_NOTES.get(medians[k], "") if k == "GRA" else "") or nine)
         if medians[k] >= 9 and _CRITICISM.search(notes[k]):  # "grouping could be sharper" under a 9
             notes[k] = NINE_NOTES[k][task_type] if k == "TR_or_TA" else NINE_NOTES[k]
+    medians, notes, lowered_cc = coherence_by_count(medians, notes, checked)
+    if lowered_cc:
+        logger.info("Coherence by count (writing %s): %s", task_type, "; ".join(lowered_cc))
     bands, notes, capped, notices = cap_bands(task_type, answer_text, medians, notes,
                                               data_visual(prompt_text, visual) if task_type == "task1" else True,
                                               overview, prompt_text)
@@ -1993,7 +2108,23 @@ async def grade_writing(
     # The first pass's mistakes and the missed-errors pass's finds go to the filter together, as one voted set
     # (2026-11-11, cost: two sets meant two to three more calls, each with its own fixed share of reasoning);
     # the missed finds' ids are offset so the two lists never share one.
-    missed = await find_missed()
+    async def find_cc() -> list[MissedMistake]:
+        if not CC_EXAMINER:
+            return []
+        try:
+            return await _cc_examiner_call(task_type, prompt_text, answer_text, prompt_images, feedback.mistakes,
+                                           sheet)
+        except Exception:
+            logger.exception("Coherence examiner failed - Coherence is judged without it")
+            return []
+
+    # the Coherence examiner reads beside the missed-errors pass; its lapses go through the same filter and
+    # count with the rest (the owner, 2026-11-27: Coherence by its counted lapses, coherence_by_count)
+    missed, cc_found = await asyncio.gather(find_missed(), find_cc())
+    missed = missed + [x for x in cc_found if not any(
+        canon(x.wrong).lower().strip(" .,") in canon(y.wrong).lower() or
+        canon(y.wrong).lower().strip(" .,") in canon(x.wrong).lower() for y in missed + feedback.mistakes
+        if y.wrong.strip() and x.wrong.strip())]
     unfiltered_missed = missed
     missed = [x for x in missed if not question_word(x) and not data_protected(x) and not scan_noise(x)
               and not visual_label(x)]

@@ -56,6 +56,7 @@ PURPOSES = {
     "score": "ball qo'yish",
     "self_check": "ballni qayta tekshirish",
     "missed_errors": "o'tkazib yuborilgan xatolar",
+    "cc_examiner": "Coherence tekshiruvi",
     "verify": "xatolarni tasdiqlash",
     "model_answer": "namuna javob",
     "answer_check": "namuna javobni tekshirish",

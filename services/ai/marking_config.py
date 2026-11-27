@@ -83,6 +83,11 @@ def grammar_count() -> dict:
     return load()["grammar_count"]
 
 
+def coherence_count() -> dict:
+    """Writing Coherence by its counted lapses (the owner, 2026-11-27; writing_grader.coherence_count_band)."""
+    return load()["coherence_count"]
+
+
 def banned_openers() -> list[str]:
     return list(load()["model_answer"].get("banned_openers", []))
 

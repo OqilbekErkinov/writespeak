@@ -41,6 +41,12 @@
     },
     "review": false
   },
+  "coherence_count": {
+    "_about": "Writing Coherence by how many Coherence lapses the checked list has (the owner, 2026-11-27, #241: the teachers' Coherence 6, the bot's 8). The Coherence examiner (writing_grader._cc_examiner_call) and the two mistake finders list the lapses - a pronoun with no clear antecedent, a linker that breaks the logic, an overview that contradicts the body, a paragraph with two ideas - and the filter keeps the real ones. Every lapse counts, a slip too. [most lapses, band] in order: 0 -> 9 (no ceiling: 9 still needs the others at 9, coherence_nine), 1-2 -> 8, 3-4 -> 7, 5 or more -> beyond (6). The band is a ceiling: the scoring runs' own Coherence band stays when it is lower.",
+    "bands": [[0, 9], [2, 8], [4, 7]],
+    "beyond": 6,
+    "review": false
+  },
   "model_answer": {
     "_about": "Openers no model answer uses: they came back in report after report (the academic lead, 2026-10-29). The student's last three model answers' paragraph openers are avoided too.",
     "banned_openers": ["There is a view that", "There is an opinion that", "First and foremost", "The following paragraphs explain", "In this essay, I will", "This essay will discuss", "These advantages notwithstanding", "With the advent of", "In this day and age"],
